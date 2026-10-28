@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -12,12 +12,15 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "../components/detail-list.js";
 import type { SettingsDetailRow } from "../components/detail-list.js";
 import "../components/refresh-button.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { CaffoldSettingsRefreshButton } from "../components/refresh-button.js";
 import {
   idleTimeoutValue,
   usageWindowLabel,
   usageWindowValue,
 } from "./display.js";
+
+import styles from "./page.css.js";
 
 export const CLAUDE_RUNTIME_RESTART_REQUEST_EVENT =
   "caffold:request-claude-runtime-restart";
@@ -36,7 +39,7 @@ const AGENT_ROWS: readonly SettingsDetailRow[] = Object.freeze([
 type UsageWindow = NonNullable<ClaudeStatus["usage"]>["windows"][number];
 
 @customElement("caffold-settings-claude-page")
-export class CaffoldSettingsClaudePage extends LitElement {
+export class CaffoldSettingsClaudePage extends CaffoldElement {
   @state()
   private accessor restartState = "idle";
   @state()
@@ -46,6 +49,8 @@ export class CaffoldSettingsClaudePage extends LitElement {
   @state()
   private accessor statusState: "idle" | "loading" | "loaded" | "unavailable" =
     "idle";
+
+  static override styles = styles;
 
   private operation = 0;
   private active = false;
@@ -57,10 +62,6 @@ export class CaffoldSettingsClaudePage extends LitElement {
   private readonly refreshButton = new DrawnRef<CaffoldSettingsRefreshButton>(
     this,
   );
-
-  override createRenderRoot() {
-    return this;
-  }
 
   activate() {
     if (this.active) {
@@ -306,7 +307,10 @@ export class CaffoldSettingsClaudePage extends LitElement {
 
   private openRestart() {
     this.dispatchEvent(
-      new CustomEvent(CLAUDE_RUNTIME_RESTART_REQUEST_EVENT, { bubbles: true }),
+      new CustomEvent(CLAUDE_RUNTIME_RESTART_REQUEST_EVENT, {
+        bubbles: true,
+        composed: true,
+      }),
     );
   }
 }

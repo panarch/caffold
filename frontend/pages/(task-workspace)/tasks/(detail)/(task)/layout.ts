@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type TemplateResult } from "lit";
+import { html, nothing, type TemplateResult } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -89,6 +89,9 @@ import type {
   MarkdownPreviewRequest,
 } from "./components/markdown-preview-dialog.js";
 import "./components/permission-instructions-dialog.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
+import { closestAcrossShadowRoots } from "#app/shadow-roots.js";
 import type { TurnOptionsSnapshot } from "../../components/task-turn-options.js";
 import type { TaskCreatedHandoff } from "../../layout.js";
 import type {
@@ -126,6 +129,9 @@ import {
   type TaskStateMessage,
   type TaskSyncMessage,
 } from "./session.js";
+
+import secondaryButton from "#app/component-styles/secondary-button.css.js";
+import styles from "./layout.css.js";
 
 const CLEAN_COMPOSER_CACHE_LIMIT = 6;
 
@@ -214,7 +220,12 @@ type UpdateKind = ConversationSnapshot["updateKind"];
  * moved into the pane's slot.
  */
 @customElement("caffold-task-detail")
-export class CaffoldTaskDetail extends LitElement {
+export class CaffoldTaskDetail extends CaffoldElement {
+  static override styles = [
+    scopedStyle(secondaryButton, ".task-secondary-button"),
+    styles,
+  ];
+
   private reviewView: TaskDetailView = "conversation";
   private taskDetail: TaskDetail | null = null;
   private readonly taskDetailRevisionByThread = new Map<string, number>();
@@ -312,10 +323,6 @@ export class CaffoldTaskDetail extends LitElement {
   private readonly brokenDeleteDialog =
     new DrawnRef<CaffoldBrokenTaskDeleteDialog>(this);
   private readonly absenceNotice = new DrawnRef<CaffoldTaskAbsence>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -2412,8 +2419,10 @@ export class CaffoldTaskDetail extends LitElement {
   // nested in it.
   private fromComposer(event: Event, composer: CaffoldTaskComposer) {
     return (
-      event.target instanceof Element &&
-      event.target.closest("caffold-task-composer") === composer
+      closestAcrossShadowRoots(
+        event.composedPath()[0] as Node,
+        "caffold-task-composer",
+      ) === composer
     );
   }
 }

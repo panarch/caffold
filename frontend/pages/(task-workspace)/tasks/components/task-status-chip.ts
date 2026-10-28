@@ -1,15 +1,17 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { TaskThreadStatus } from "#app/api.js";
-import { busySpin } from "#app/component-styles.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import { taskStatusView } from "../runtime-state.js";
+
+import busySpin from "#app/pages/component-styles/busy-spin.css.js";
+import styles from "./task-status-chip.css.js";
 
 // A spinner turns once in this long; a staggered one starts somewhere along
 // the turn.
 const SPINNER_TURN_MS = 800;
-
-await busySpin.register("caffold-task-status-chip", "> .task-status-spinner");
 
 /**
  * Where a Task stands, in a round slot: a spinner while it runs, an icon while
@@ -21,18 +23,19 @@ await busySpin.register("caffold-task-status-chip", "> .task-status-spinner");
  * spinners do not turn in step.
  */
 @customElement("caffold-task-status-chip")
-export class CaffoldTaskStatusChip extends LitElement {
+export class CaffoldTaskStatusChip extends CaffoldElement {
   @property({ attribute: false })
   accessor task: { threadStatus: TaskThreadStatus } | null = null;
   @property({ type: Boolean })
   accessor staggered = false;
 
+  static override styles = [
+    scopedStyle(busySpin, ".task-status-spinner"),
+    styles,
+  ];
+
   private spinnerDelayMs: number | null = null;
   private readonly iconsReady = () => this.requestUpdate();
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

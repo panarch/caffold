@@ -160,6 +160,28 @@ test("a change in any declaration's owner revalidates, the component's own inclu
   ]);
 });
 
+test("an owner that renders into a shadow root has a change there revalidate", () => {
+  const shadowRoot = {};
+  const owner = control({ shadowRoot });
+  const scope = declaredActionHintScope(
+    owner,
+    [
+      declared(control(), "button", {
+        id: "next",
+        label: "Next page",
+        action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+      }),
+    ],
+    {},
+  );
+
+  assert.deepEqual(scope.mutationRoots, [owner, shadowRoot]);
+  assert.deepEqual(declaredActionHintScope(owner, [], {}).mutationRoots, [
+    owner,
+    shadowRoot,
+  ]);
+});
+
 test("a link left unlabeled is named from what it shows and where it goes", () => {
   const attributes = new Map([
     ["href", "https://status.example.com"],

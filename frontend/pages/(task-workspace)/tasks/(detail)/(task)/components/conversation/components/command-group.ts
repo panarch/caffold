@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
@@ -14,8 +14,11 @@ import { eventIdentityKey } from "#tasks/task-events.js";
 import { formatDate, taskEventObservedMs } from "#tasks/task-format.js";
 import { commandGroupIdentity, isCommandEvent } from "../command-runs.js";
 import "./command.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { CaffoldTaskCommand } from "./command.js";
 import { commandGroupPresentation } from "./command-group/model.js";
+
+import styles from "./command-group.css.js";
 
 const CHEVRON = "task-command-group-chevron-icon";
 
@@ -33,11 +36,13 @@ export interface CommandGroupDisclosureIntentDetail {
 // opens to a row for each. Each row keeps its element while the group grows,
 // so a row someone is looking at or has focused is not drawn again under them.
 @customElement("caffold-task-command-group")
-export class CaffoldTaskCommandGroup extends LitElement {
+export class CaffoldTaskCommandGroup extends CaffoldElement {
   @property({ attribute: false })
   accessor identity = "";
   @property({ attribute: false, hasChanged: changedEventList })
   accessor events: TaskEvent[] = [];
+
+  static override styles = styles;
 
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this, {
@@ -48,10 +53,6 @@ export class CaffoldTaskCommandGroup extends LitElement {
   private readonly chevron = new DrawnRef<HTMLElement>(this);
   private readonly list = new DrawnRef<HTMLOListElement>(this);
   private readonly commands = new DrawnRefs<CaffoldTaskCommand>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

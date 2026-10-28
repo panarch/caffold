@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { elementHandles } from "../support/element-handles.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import { installTaskReviewFixture } from "../support/task-review-fixture.js";
 import {
@@ -239,7 +240,7 @@ test("opens resolved Markdown file links through Task Review with native link se
   const viewer = review.locator("caffold-review-file-viewer");
   await expect(viewer).toContainText("pub fn plan");
   await expect
-    .poll(() => viewer.evaluate(sourceLineIsVisible, 60))
+    .poll(() => viewer.locator('.code-row[data-line-number="60"]').evaluate(sourceLineIsVisible))
     .toBe(true);
   await expect(
     fileNavigator.locator('button[data-file-tree-path="src/planner.rs"]'),
@@ -250,7 +251,7 @@ test("opens resolved Markdown file links through Task Review with native link se
     `/tasks/${scenario.threadId}/review?nav=files&view=source&file=planner.rs&line=60`,
   );
   await expect
-    .poll(() => viewer.evaluate(sourceLineIsVisible, 60))
+    .poll(() => viewer.locator('.code-row[data-line-number="60"]').evaluate(sourceLineIsVisible))
     .toBe(true);
   await page.goBack();
   await expect(page).toHaveURL(`/tasks/${scenario.threadId}`);
@@ -602,10 +603,9 @@ function reviewRoute(threadId, path, line = null) {
   return `/tasks/${threadId}/review?${query}`;
 }
 
-function sourceLineIsVisible(viewer, line) {
-  const scroller = viewer.querySelector(".code-lines");
-  const row = viewer.querySelector(`.code-row[data-line-number="${line}"]`);
-  if (!scroller || !row) {
+function sourceLineIsVisible(row) {
+  const scroller = row.closest(".code-lines");
+  if (!scroller) {
     return false;
   }
   const scrollerRect = scroller.getBoundingClientRect();
@@ -905,8 +905,7 @@ test("shows a prompt as the characters a person typed", { tag: "@all-viewports" 
     })),
   ).toEqual({ markup: 0, whiteSpace: "pre-wrap" });
 
-  const layout = await bubble.evaluate((element) => {
-    const scroller = element.closest(".task-conversation-scroll");
+  const layout = await bubble.evaluate((element, scroller) => {
     const box = element.getBoundingClientRect();
     const style = getComputedStyle(element);
     const inner =
@@ -919,7 +918,7 @@ test("shows a prompt as the characters a person typed", { tag: "@all-viewports" 
       renderedLines: Math.round(inner / parseFloat(style.lineHeight)),
       wrapsInsteadOfOverflowing: element.scrollWidth <= element.clientWidth,
     };
-  });
+  }, await page.locator(".task-conversation-scroll").elementHandle());
   expect(layout.containedInScroller).toBe(true);
   expect(layout.wrapsInsteadOfOverflowing).toBe(true);
   expect(layout.renderedLines).toBeGreaterThanOrEqual(prompt.split("\n").length);
@@ -946,10 +945,9 @@ test("renders an agent message that ends where its text ends", { tag: "@all-view
     tasksPage.locator('.task-assistant-message caffold-task-markdown'),
   ).toHaveAttribute("data-render-state", "markdown");
 
-  const edges = await tasksPage.evaluate((root) => {
-    const body = root.querySelector(
-      '.task-assistant-message .markdown-body',
-    );
+  const edges = await tasksPage.locator(
+    ".task-assistant-message .markdown-body",
+  ).evaluate((body) => {
     return {
       marginTop: getComputedStyle(body.firstElementChild).marginTop,
       marginBottom: getComputedStyle(body.lastElementChild).marginBottom,
@@ -991,7 +989,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   await expect
     .poll(() =>
       assistantMarkdown.evaluate((element) => {
-        const body = element.querySelector(":scope > .markdown-body");
+        const body = element.shadowRoot.querySelector(".markdown-body");
         return body.scrollWidth <= body.clientWidth;
       }),
     )
@@ -1003,7 +1001,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
         probe.markdown = "Fallback content";
         document.body.append(probe);
         await probe.updateComplete;
-        const loading = probe.querySelector(":scope > .markdown-body > .markdown-loading");
+        const loading = probe.shadowRoot.querySelector(".markdown-body > .markdown-loading");
         const style = getComputedStyle(loading);
         const result = {
           backgroundColor: style.backgroundColor,
@@ -1023,15 +1021,14 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     });
   await tasksPage.evaluate(() => {
     const probe = document.createElement("caffold-task-markdown");
+    probe.id = "unsafe-markdown-probe";
     probe.hidden = true;
     probe.markdown = "[unsafe](javascript:alert(1))";
     document.body.append(probe);
   });
-  await expect(page.locator("caffold-task-markdown").last()).toHaveAttribute(
-    "data-render-state",
-    "markdown",
-  );
-  await expect(page.locator("caffold-task-markdown").last().locator("a")).toHaveCount(0);
+  const unsafeProbe = page.locator("#unsafe-markdown-probe");
+  await expect(unsafeProbe).toHaveAttribute("data-render-state", "markdown");
+  await expect(unsafeProbe.locator("a")).toHaveCount(0);
   await expect(tasksPage.locator(".task-assistant-message")).toHaveCount(1);
   await expect(
     tasksPage.locator(
@@ -1049,9 +1046,9 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   ).not.toHaveAttribute("open", "");
   await expect
     .poll(() =>
-      tasksPage.evaluate((element) => {
-        const work = element.querySelector(".task-turn-work");
-        const assistant = element.querySelector(".task-assistant-message");
+      page.locator("caffold-task-conversation").evaluate((conversation) => {
+        const work = conversation.shadowRoot.querySelector(".task-turn-work");
+        const assistant = conversation.shadowRoot.querySelector(".task-assistant-message");
         const position = work && assistant ? work.compareDocumentPosition(assistant) : 0;
         return Boolean(position & Node.DOCUMENT_POSITION_FOLLOWING);
       }),
@@ -1062,18 +1059,21 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   const workDetails = tasksPage.locator("caffold-task-work-details > details");
   const workSummary = workDetails.locator(":scope > summary");
   await workSummary.scrollIntoViewIfNeeded();
-  const workSummaryOffset = await workSummary.evaluate((summary) => {
-    const scroller = summary.closest(".task-conversation-scroll");
-    return summary.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-  });
+  const conversationScroller = await page.locator(".task-conversation-scroll").elementHandle();
+  const workSummaryOffset = await workSummary.evaluate(
+    (summary, scroller) =>
+      summary.getBoundingClientRect().top - scroller.getBoundingClientRect().top,
+    conversationScroller,
+  );
   await workSummary.click();
   await expect(workDetails).toHaveAttribute("open", "");
   await expect
     .poll(() =>
-      workSummary.evaluate((summary) => {
-        const scroller = summary.closest(".task-conversation-scroll");
-        return summary.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-      }),
+      workSummary.evaluate(
+        (summary, scroller) =>
+          summary.getBoundingClientRect().top - scroller.getBoundingClientRect().top,
+        conversationScroller,
+      ),
     )
     .toBeCloseTo(workSummaryOffset, 1);
   await expect(
@@ -1409,22 +1409,19 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     ).toBeLessThanOrEqual(0.5);
   }
   expect(new Set(detailActionGeometry.map(({ iconWidth }) => iconWidth)).size).toBe(1);
-  const contextualControlGeometry = await tasksPage.evaluate((element) => {
-    const modeSwitch = element.querySelector(
-      "caffold-segmented-control[data-detail-view-switch]",
+  // The header's parts sit in the Detail layout's root and in the roots of the
+  // controls that draw them.
+  const detailLayout = page.locator("caffold-detail-layout");
+  const contextualControlGeometry = await page.evaluate(([
+    modeSwitch,
+    actionControls,
+    touchControls,
+  ]) => {
+    const controls = [modeSwitch, ...actionControls];
+    const modeButtons = [...modeSwitch.shadowRoot.querySelectorAll("button")];
+    const expandedTouchControls = touchControls.filter(
+      (control) => !control.matches(":disabled"),
     );
-    const controls = [
-      modeSwitch,
-      ...element.querySelectorAll(
-        ".detail-layout-actions > button, .detail-layout-actions > details > summary, .task-detail-info-button",
-      ),
-    ];
-    const modeButtons = [...modeSwitch.querySelectorAll("button")];
-    const expandedTouchControls = [
-      ...element.querySelectorAll(
-        ".task-detail-actions > button, .task-detail-actions > details > summary, .task-detail-info-button",
-      ),
-    ].filter((control) => !control.matches(":disabled"));
     return {
       visualHeights: controls.map((control) => {
         const bounds = control.getBoundingClientRect();
@@ -1440,7 +1437,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
         (control) => control.getBoundingClientRect().height,
       ),
       selectedInset: (() => {
-        const selected = modeSwitch.querySelector('button[aria-pressed="true"] > span');
+        const selected = modeSwitch.shadowRoot.querySelector('button[aria-pressed="true"] > span');
         const group = modeSwitch.getBoundingClientRect();
         const visual = selected.getBoundingClientRect();
         return {
@@ -1451,7 +1448,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       expandedTouchHits: expandedTouchControls.map((control) => {
         const bounds = control.getBoundingClientRect();
         const hitEdgeY = bounds.height >= 39 ? bounds.top + 1 : bounds.top - 3;
-        const hit = document.elementFromPoint(
+        const hit = control.getRootNode().elementFromPoint(
           bounds.left + bounds.width / 2,
           hitEdgeY,
         );
@@ -1470,7 +1467,21 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
         };
       }),
     };
-  });
+  }, [
+    await detailLayout
+      .locator("caffold-segmented-control[data-detail-view-switch]")
+      .elementHandle(),
+    await detailLayout
+      .locator(
+        ".detail-layout-actions > button, .detail-layout-actions > details > summary, .task-detail-info-button",
+      )
+      .elementHandles(),
+    await detailLayout
+      .locator(
+        ".task-detail-actions > button, .task-detail-actions > details > summary, .task-detail-info-button",
+      )
+      .elementHandles(),
+  ]);
   expect(
     Math.max(...contextualControlGeometry.visualHeights) -
       Math.min(...contextualControlGeometry.visualHeights),
@@ -1487,20 +1498,18 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       JSON.stringify(contextualControlGeometry.expandedTouchHits),
     ).toBe(true);
   }
-  const workspaceHeaderMetrics = await tasksPage.evaluate((element) => {
-    const close = document.querySelector(".task-workspace-back");
-    const summary = element.querySelector(".task-detail-summary");
+  const workspaceHeaderMetrics = await tasksPage.evaluate((element, [
+    [summary, heading, actions, title],
+    actionControls,
+    close,
+  ]) => {
     const summaryBounds = summary.getBoundingClientRect();
-    const headingBounds = summary
-      .querySelector(".task-detail-heading")
-      .getBoundingClientRect();
-    const actionBounds = summary
-      .querySelector(".detail-layout-actions")
-      .getBoundingClientRect();
+    const headingBounds = heading.getBoundingClientRect();
+    const actionBounds = actions.getBoundingClientRect();
     const closeBounds = close.getBoundingClientRect();
-    const titleBounds = summary.querySelector("h2").getBoundingClientRect();
+    const titleBounds = title.getBoundingClientRect();
     return {
-      appHeaderCount: element.querySelectorAll(".tasks-header").length,
+      appHeaderCount: element.shadowRoot.querySelectorAll(".tasks-header").length,
       closeSize: closeBounds.width,
       closeTitleCenterDelta: Math.abs(
         closeBounds.top + closeBounds.height / 2 -
@@ -1511,9 +1520,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
         close.getBoundingClientRect().width > 0,
       overflow: element.scrollWidth > element.clientWidth,
       actionHeight: actionBounds.height,
-      actionChildren: [...summary.querySelectorAll(
-        ".detail-layout-actions > *, .task-detail-info-button",
-      )].map((control) => ({
+      actionChildren: actionControls.map((control) => ({
         className: control.className,
         height: control.getBoundingClientRect().height,
       })),
@@ -1527,32 +1534,43 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       summaryTop: Math.round(summaryBounds.top),
       surfaceTop: Math.round(element.getBoundingClientRect().top),
     };
-  });
+  }, [
+    await elementHandles(detailLayout, [
+      ".task-detail-summary",
+      ".task-detail-heading",
+      ".detail-layout-actions",
+      ".task-detail-heading h2",
+    ]),
+    await detailLayout
+      .locator(".detail-layout-actions > *, .task-detail-info-button")
+      .elementHandles(),
+    await page.locator(".task-workspace-back").elementHandle(),
+  ]);
   expect(workspaceHeaderMetrics.appHeaderCount).toBe(0);
   expect(workspaceHeaderMetrics.summaryTop).toBe(workspaceHeaderMetrics.surfaceTop);
   expect(workspaceHeaderMetrics.overflow).toBe(false);
   if (testInfo.project.name !== "phone") {
     const navigatorClearance = await page
       .locator("caffold-task-workspace")
-      .evaluate((element) => {
-        const brand = element
+      .evaluate((element, summaryElement) => {
+        // The header is the navigator's, drawn in its root.
+        const navigator = element.shadowRoot.querySelector("caffold-task-navigator").shadowRoot;
+        const brand = navigator
           .querySelector(".task-list-primary-header caffold-workspace-brand")
           .getBoundingClientRect();
-        const sectionHeader = element
+        const sectionHeader = navigator
           .querySelector(".task-list-primary-header")
           .getBoundingClientRect();
-        const newTask = element
+        const newTask = navigator
           .querySelector(".task-list-primary-header .task-list-new-task")
           .getBoundingClientRect();
-        const summary = element
-          .querySelector(".task-detail-summary")
-          .getBoundingClientRect();
+        const summary = summaryElement.getBoundingClientRect();
         return {
           headerBottomDelta: Math.abs(sectionHeader.bottom - summary.bottom),
           brandLeftInset: brand.left - sectionHeader.left,
           brandActionGap: newTask.left - brand.right,
         };
-      });
+      }, await detailLayout.locator(".task-detail-summary").elementHandle());
     expect(workspaceHeaderMetrics.closeVisible).toBe(false);
     expect(navigatorClearance.brandLeftInset).toBeGreaterThanOrEqual(0);
     expect(navigatorClearance.brandActionGap).toBeGreaterThanOrEqual(0);
@@ -1576,18 +1594,11 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   }
   if (testInfo.project.name === "foldable") {
     await page.setViewportSize({ width: 800, height: 1100 });
-    const compactFoldableHeader = await tasksPage.evaluate((element) => {
-      const summary = element.querySelector(".task-detail-summary");
-      const heading = summary
-        .querySelector(".task-detail-heading")
-        .getBoundingClientRect();
-      const actions = summary
-        .querySelector(".detail-layout-actions")
-        .getBoundingClientRect();
+    const compactFoldableHeader = await page.evaluate(([summary, headingElement, actionsElement, close]) => {
+      const heading = headingElement.getBoundingClientRect();
+      const actions = actionsElement.getBoundingClientRect();
       return {
-        closeVisible:
-          getComputedStyle(document.querySelector(".task-workspace-back"))
-            .display !== "none",
+        closeVisible: getComputedStyle(close).display !== "none",
         sameRow:
           Math.abs(
             heading.top + heading.height / 2 -
@@ -1595,7 +1606,14 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
           ) <= 1,
         summaryHeight: summary.getBoundingClientRect().height,
       };
-    });
+    }, [
+      ...(await elementHandles(detailLayout, [
+        ".task-detail-summary",
+        ".task-detail-heading",
+        ".detail-layout-actions",
+      ])),
+      await page.locator(".task-workspace-back").elementHandle(),
+    ]);
     expect(compactFoldableHeader.closeVisible).toBe(true);
     expect(compactFoldableHeader.sameRow).toBe(true);
     expect(compactFoldableHeader.summaryHeight).toBeLessThanOrEqual(64);

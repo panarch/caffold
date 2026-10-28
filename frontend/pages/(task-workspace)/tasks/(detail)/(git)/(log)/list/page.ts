@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
@@ -13,8 +13,11 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
 import "#components/pagination.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { ChangePageDetail } from "#components/pagination/components/button.js";
 import type { CaffoldPagination } from "#components/pagination.js";
+
+import styles from "./page.css.js";
 
 export interface OpenGitCommitDetail {
   sha: string;
@@ -31,11 +34,13 @@ type LogState =
   | { status: "error"; error: Error };
 
 @customElement("caffold-git-log-list-page")
-export class CaffoldGitLogListPage extends LitElement {
+export class CaffoldGitLogListPage extends CaffoldElement {
   @state()
   private accessor state: LogState = { status: "idle" };
   @state()
   private accessor expandedShas: ReadonlySet<string> = new Set();
+
+  static override styles = styles;
 
   // A new log starts at its top; a refreshed one keeps its place.
   private scrollToTop = false;
@@ -46,10 +51,6 @@ export class CaffoldGitLogListPage extends LitElement {
     clipRoots: () => [this, this.list.value],
   });
   private readonly surfaces = new ScrollSurfaces(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -256,6 +257,7 @@ export class CaffoldGitLogListPage extends LitElement {
     this.dispatchEvent(
       new CustomEvent<ChangeLogPageDetail>("caffold:change-log-page", {
         bubbles: true,
+        composed: true,
         detail: { page },
       }),
     );
@@ -273,6 +275,7 @@ export class CaffoldGitLogListPage extends LitElement {
     this.dispatchEvent(
       new CustomEvent<OpenGitCommitDetail>("caffold:open-git-commit", {
         bubbles: true,
+        composed: true,
         detail: { sha },
       }),
     );

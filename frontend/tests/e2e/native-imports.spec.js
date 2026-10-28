@@ -18,7 +18,7 @@ test("native import aliases share module identity with asset URLs and register t
   const result = await page.evaluate(async () => {
     const modules = [
       ["#app/api.js", "/assets/api.js"],
-      ["#app/component-styles.js", "/assets/component-styles.js"],
+      ["#app/scoped-style.js", "/assets/scoped-style.js"],
       ["#components/dom.js", "/assets/components/dom.js"],
       ["#tasks/task-format.js", "/assets/pages/(task-workspace)/tasks/task-format.js"],
     ];
@@ -40,7 +40,7 @@ test("native import aliases share module identity with asset URLs and register t
 
   expect(result.identities).toEqual([
     { alias: "#app/api.js", sameModule: true },
-    { alias: "#app/component-styles.js", sameModule: true },
+    { alias: "#app/scoped-style.js", sameModule: true },
     { alias: "#components/dom.js", sameModule: true },
     { alias: "#tasks/task-format.js", sameModule: true },
   ]);

@@ -43,7 +43,7 @@ test("owns disclosure presentation and preserves its identity across canonical u
     }, chevronSelector);
   const itemSeams = () =>
     owner.evaluate((element) =>
-      [...element.querySelectorAll(".task-work-details-item")]
+      [...element.shadowRoot.querySelectorAll(".task-work-details-item")]
         .map((item) => {
           const header = item.querySelector(":scope > header");
           if (!header) {
@@ -84,13 +84,13 @@ test("owns disclosure presentation and preserves its identity across canonical u
   await page.keyboard.press("Escape");
 
   await summary.evaluate((element) => {
-    window.__workDetailsOwner = element.closest("caffold-task-work-details");
+    window.__workDetailsOwner = element.getRootNode().host;
   });
   await activateActionHint(page, /Expand (?:Worked for|Work details)/);
 
   await expect(disclosure).toHaveAttribute("open", "");
   await expect
-    .poll(() => summary.evaluate((element) => document.activeElement === element))
+    .poll(() => summary.evaluate((element) => element.getRootNode().activeElement === element))
     .toBe(true);
   await expect(collapsedChevron).not.toBeVisible();
   await expect(expandedChevron).toBeVisible();

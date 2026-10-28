@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   type ActionHintPull,
@@ -17,6 +17,9 @@ import {
   type FileTreeSelectDetail,
 } from "#components/file-tree.js";
 import "#components/loading-text.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+
+import styles from "./tree.css.js";
 
 export interface OpenGithubPullFileDetail {
   path: string;
@@ -32,17 +35,15 @@ type FilesState =
   | { status: "error"; error: Error };
 
 @customElement("caffold-github-pull-files-tree")
-export class CaffoldGithubPullFilesTree extends LitElement {
+export class CaffoldGithubPullFilesTree extends CaffoldElement {
   @state()
   private accessor state: FilesState = { status: "idle" };
+
+  static override styles = styles;
 
   private readonly treeElement = new DrawnRef<CaffoldFileTree>(this);
   private selectedPath = "";
   private fileKeyByPath = new Map<string, string>();
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     const state = this.state;
@@ -165,6 +166,7 @@ export class CaffoldGithubPullFilesTree extends LitElement {
         "caffold:open-github-pull-file",
         {
           bubbles: true,
+          composed: true,
           detail: { path: file.path, status: file.status },
         },
       ),

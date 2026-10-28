@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { elementHandles } from "../support/element-handles.js";
 import {
   installTaskApiFixture,
   taskDetailFixture,
@@ -80,6 +81,7 @@ test("selects and scrolls only the registered surface", { tag: "@all-viewports" 
     const repeated = await entryOwner.evaluate((element) => {
       const event = new KeyboardEvent("keydown", {
         bubbles: true,
+        composed: true,
         cancelable: true,
         code: "KeyJ",
         key: "j",
@@ -108,6 +110,7 @@ test("selects and scrolls only the registered surface", { tag: "@all-viewports" 
     const boundary = await entryOwner.evaluate((element) => {
       const event = new KeyboardEvent("keydown", {
         bubbles: true,
+        composed: true,
         cancelable: true,
         code: "KeyD",
         key: "d",
@@ -788,7 +791,7 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
   );
   const preview = dialog.locator("caffold-markdown-preview");
   const modalHud = dialog.locator(
-    ":scope > caffold-keyboard-navigation-presentation caffold-scroll-mode-hud",
+    ":scope > caffold-keyboard-navigation-presentation caffold-scroll-mode-hud .scroll-mode-status",
   );
   const modalSelector = dialog.locator(
     ":scope > caffold-keyboard-navigation-presentation " +
@@ -950,7 +953,8 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
   await expect(modalSelector).toBeVisible();
   const replacementChecklistFile = fileResponse(page, checklistPath);
   await documentDialog.evaluate((element, path) => {
-    const opener = element.closest("caffold-task-current-plan")?.querySelector(
+    // The dialog sits in the current plan's root, beside the strip.
+    const opener = element.getRootNode().querySelector(
       '[data-current-plan-action="checklist"]',
     );
     element.openDocument({
@@ -1023,6 +1027,7 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
   const consumed = await dialog.evaluate((element) => {
     const event = new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "KeyS",
       key: "s",
@@ -1044,6 +1049,7 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
   const shortPlanConsumed = await dialog.evaluate((element) => {
     const event = new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "KeyS",
       key: "s",
@@ -1070,10 +1076,12 @@ test("leaves editing, composition, modifiers, settings Off, and external owners 
   await prompt.evaluate((textarea) => {
     textarea.dispatchEvent(new CompositionEvent("compositionstart", {
       bubbles: true,
+      composed: true,
       data: "ㅎ",
     }));
     textarea.dispatchEvent(new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "KeyS",
       isComposing: true,
@@ -1081,6 +1089,7 @@ test("leaves editing, composition, modifiers, settings Off, and external owners 
     }));
     textarea.dispatchEvent(new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "Escape",
       isComposing: true,
@@ -1091,6 +1100,7 @@ test("leaves editing, composition, modifiers, settings Off, and external owners 
   await prompt.evaluate((textarea) => {
     textarea.dispatchEvent(new CompositionEvent("compositionend", {
       bubbles: true,
+      composed: true,
       data: "ㅎ",
     }));
   });
@@ -1101,6 +1111,7 @@ test("leaves editing, composition, modifiers, settings Off, and external owners 
   const modified = await owner.evaluate((element) => {
     const event = new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "KeyS",
       ctrlKey: true,
@@ -1114,6 +1125,7 @@ test("leaves editing, composition, modifiers, settings Off, and external owners 
   await owner.evaluate((element) => {
     element.dispatchEvent(new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "KeyS",
       key: "ㄴ",
@@ -1416,16 +1428,18 @@ async function surfaceCode(selector, label) {
 }
 
 async function scrollPositions(page) {
-  return page.evaluate(() => ({
-    taskList: document.querySelector(".task-list-scroll")?.scrollTop ?? 0,
-    conversation:
-      document.querySelector(".task-conversation-scroll")?.scrollTop ?? 0,
+  return page.evaluate(([taskList, conversation]) => ({
+    taskList: taskList?.scrollTop ?? 0,
+    conversation: conversation?.scrollTop ?? 0,
     window: window.scrollY,
-  }));
+  }), await elementHandles(page, [".task-list-scroll", ".task-conversation-scroll"]));
 }
 
 async function captureScrollPresentation(page, kind) {
-  return page.evaluate((presentationKind) => {
+  const presentation = kind === "selector"
+    ? scrollSelector(page)
+    : page.locator("caffold-scroll-mode-hud:not([hidden])").first();
+  return presentation.evaluate((element, presentationKind) => {
     const viewport = {
       left: window.visualViewport?.offsetLeft ?? 0,
       top: window.visualViewport?.offsetTop ?? 0,
@@ -1458,9 +1472,7 @@ async function captureScrollPresentation(page, kind) {
         : [];
     });
     if (presentationKind === "selector") {
-      const dialog = document.querySelector(
-        "caffold-scroll-surface-selector > dialog:modal",
-      );
+      const dialog = element;
       const badge = dialog.querySelector("button[data-scroll-surface-code]");
       badge.focus();
       const badgeStyle = getComputedStyle(badge);
@@ -1502,10 +1514,9 @@ async function captureScrollPresentation(page, kind) {
       };
     }
 
-    const host = [...document.querySelectorAll("caffold-scroll-mode-hud")]
-      .find((element) => !element.hidden);
-    const status = host.querySelector(".scroll-mode-status");
-    const outline = host.querySelector(".scroll-mode-outline");
+    const host = element;
+    const status = host.shadowRoot.querySelector(".scroll-mode-status");
+    const outline = host.shadowRoot.querySelector(".scroll-mode-outline");
     const help = status.querySelector("[data-scroll-mode-shortcut-help]");
     const statusRect = status.getBoundingClientRect();
     const outlineRect = outline.getBoundingClientRect();

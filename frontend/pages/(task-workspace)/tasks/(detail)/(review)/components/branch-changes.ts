@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import type { ActionHintPull } from "#app/action-hints.js";
 import {
@@ -11,6 +11,7 @@ import {
 import type { ScrollSurfacePull } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/git-compare-tree.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type {
   CaffoldGitCompareTree,
   SelectCompareBaseDetail,
@@ -19,12 +20,16 @@ import { ChangesReading } from "../changes-reading.js";
 import type { ChangesRead } from "../layout.js";
 import type { ReviewChange } from "./selected-file/content.js";
 
+import styles from "./branch-changes.css.js";
+
 export interface ReviewBaseIntentDetail {
   baseRef: string;
 }
 
 @customElement("caffold-review-branch-changes")
-export class CaffoldReviewBranchChanges extends LitElement {
+export class CaffoldReviewBranchChanges extends CaffoldElement {
+  static override styles = styles;
+
   private rootPath = "";
   private branch: string | null = null;
   private baseRef = "";
@@ -37,10 +42,6 @@ export class CaffoldReviewBranchChanges extends LitElement {
   private listShows = "";
   private generation = 0;
   private selectedPath = "";
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override disconnectedCallback() {
     super.disconnectedCallback();

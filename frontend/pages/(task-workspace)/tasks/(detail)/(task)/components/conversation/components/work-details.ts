@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
@@ -41,7 +41,10 @@ import "./changed-files.js";
 import "./command.js";
 import type { CaffoldTaskCommand } from "./command.js";
 import "./command-group.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { CaffoldTaskCommandGroup } from "./command-group.js";
+
+import styles from "./work-details.css.js";
 
 const CHEVRON = "task-work-details-chevron-icon";
 
@@ -87,7 +90,7 @@ type WorkItem =
 // A finished turn's work, folded behind one disclosure that says how long the
 // turn worked and how many updates it made.
 @customElement("caffold-task-work-details")
-export class CaffoldTaskWorkDetails extends LitElement {
+export class CaffoldTaskWorkDetails extends CaffoldElement {
   @property({ attribute: false })
   accessor identity = "";
   @property({ attribute: false })
@@ -98,6 +101,8 @@ export class CaffoldTaskWorkDetails extends LitElement {
   accessor events: TaskEvent[] = [];
   @property({ attribute: false })
   accessor filePathPresentationBase = "";
+
+  static override styles = styles;
 
   private items: WorkItem[] = [];
   private readonly iconsReady = () => this.requestUpdate();
@@ -111,10 +116,6 @@ export class CaffoldTaskWorkDetails extends LitElement {
   private readonly body = new DrawnRef<HTMLDivElement>(this);
   // Each item's command, command group, or message, by kind and identity.
   private readonly parts = new DrawnRefs<WorkItemPart>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

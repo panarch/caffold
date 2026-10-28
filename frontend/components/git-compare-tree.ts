@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   type ActionHintPull,
@@ -19,7 +19,10 @@ import {
   type FileTreeSelectDetail,
 } from "./file-tree.js";
 import "./loading-text.js";
+import { CaffoldElement } from "../caffold-element.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
+
+import styles from "./git-compare-tree.css.js";
 
 export interface SelectCompareBaseDetail {
   baseRef: string;
@@ -53,7 +56,7 @@ interface BaseSelection {
 }
 
 @customElement("caffold-git-compare-tree")
-export class CaffoldGitCompareTree extends LitElement {
+export class CaffoldGitCompareTree extends CaffoldElement {
   @state()
   private accessor state: CompareState = { status: "idle" };
   @state()
@@ -65,6 +68,8 @@ export class CaffoldGitCompareTree extends LitElement {
   @state()
   private accessor emptyMessage = "";
 
+  static override styles = styles;
+
   selectedPath = "";
   private fileKeyByPath = new Map<string, string>();
   private readonly hints = new ActionHints(this);
@@ -72,10 +77,6 @@ export class CaffoldGitCompareTree extends LitElement {
   private readonly compareBase = new DrawnRef<HTMLSpanElement>(this);
   private readonly baseRefSelect = new DrawnRef<HTMLSelectElement>(this);
   private readonly tree = new DrawnRef<CaffoldFileTree>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     const state = this.state;
@@ -326,6 +327,7 @@ export class CaffoldGitCompareTree extends LitElement {
     this.dispatchEvent(
       new CustomEvent<OpenCompareDiffDetail>("caffold:open-compare-diff", {
         bubbles: true,
+        composed: true,
         detail: { path: file.path, status: file.status },
       }),
     );

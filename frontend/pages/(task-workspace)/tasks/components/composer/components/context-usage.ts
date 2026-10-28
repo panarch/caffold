@@ -1,10 +1,14 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { returnPopoverFocus } from "#app/popover-focus.js";
+
+import styles from "./context-usage.css.js";
 
 // How full a Task's context is, as its agent last said.
 export interface ContextUsage {
@@ -21,16 +25,14 @@ let contextUsageInstanceId = 0;
  * drawn ring beside the microphone reads as its busy spinner.
  */
 @customElement("caffold-task-context-usage")
-export class CaffoldTaskContextUsage extends LitElement {
+export class CaffoldTaskContextUsage extends CaffoldElement {
   @state()
   private accessor usage: ContextUsage | null = null;
 
+  static override styles = styles;
+
   private readonly popoverId = `task-context-usage-${++contextUsageInstanceId}`;
   private readonly hints = new ActionHints(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   // What the agent last reported, or null until it says. A count that is not
   // a share of a window reads as not reported.
@@ -80,6 +82,7 @@ export class CaffoldTaskContextUsage extends LitElement {
         id=${this.popoverId}
         class="task-context-usage-popover"
         popover="auto"
+        @beforetoggle=${returnPopoverFocus}
         aria-label="Context usage"
       >${
         view.known

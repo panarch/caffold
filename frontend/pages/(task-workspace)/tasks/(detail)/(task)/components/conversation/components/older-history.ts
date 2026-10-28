@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -6,6 +6,9 @@ import {
   ActionHints,
 } from "#app/action-hints.js";
 import "#components/loading-text.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+
+import styles from "./older-history.css.js";
 
 // `retry` says the request follows a failed one.
 export interface OlderHistoryIntentDetail {
@@ -17,7 +20,7 @@ export interface OlderHistoryIntentDetail {
 // whether older messages exist and how reading them is going; this row owns
 // its controls, and loading or retrying never starts a request here.
 @customElement("caffold-task-older-history")
-export class CaffoldTaskOlderHistory extends LitElement {
+export class CaffoldTaskOlderHistory extends CaffoldElement {
   @property({ attribute: false })
   accessor threadId = "";
   @property({ attribute: false })
@@ -30,13 +33,11 @@ export class CaffoldTaskOlderHistory extends LitElement {
   @property({ attribute: false })
   accessor active = true;
 
+  static override styles = styles;
+
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     if (this.empty) {

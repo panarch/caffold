@@ -599,8 +599,7 @@ export async function refuseTaskDetail(page, threadId, code) {
 }
 
 export async function openTaskWithBootstrap(tasksPage, detail) {
-  await tasksPage.evaluate(async (element, bootstrapDetail) => {
-    const taskDetail = element.querySelector("caffold-task-detail");
+  await tasksPage.locator("caffold-task-detail").evaluate(async (taskDetail, bootstrapDetail) => {
     const threadId =
       bootstrapDetail.threadId ??
       bootstrapDetail.task?.threadId ??

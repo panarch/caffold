@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { ActionHintPull } from "#app/action-hints.js";
 import type { TaskUploadLine } from "#app/api.js";
@@ -8,10 +8,13 @@ import {
   type PromptSubmissionState,
 } from "#tasks/runtime-state.js";
 import "./message-attachments.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type {
   CaffoldTaskMessageAttachments,
   MessageAttachment,
 } from "./message-attachments.js";
+
+import styles from "./user-message.css.js";
 
 const { UPLOADING, SENDING, ACCEPTED, OUTCOME_UNKNOWN } =
   PROMPT_SUBMISSION_STATE;
@@ -33,7 +36,7 @@ export interface UploadProgress {
  * so the text sits exactly where it will once sent.
  */
 @customElement("caffold-task-user-message")
-export class CaffoldTaskUserMessage extends LitElement {
+export class CaffoldTaskUserMessage extends CaffoldElement {
   @property({ attribute: false })
   accessor text = "";
   @property({ attribute: false })
@@ -48,13 +51,11 @@ export class CaffoldTaskUserMessage extends LitElement {
   @property({ attribute: false })
   accessor uploadProgress: UploadProgress | null = null;
 
+  static override styles = styles;
+
   private readonly attachmentList = new DrawnRef<CaffoldTaskMessageAttachments>(
     this,
   );
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     const lines = this.deliveryState === UPLOADING ? this.uploadLines : [];

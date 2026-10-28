@@ -393,19 +393,6 @@ test("marks only the selected model and permission options as the popover autofo
   assert.equal(permissions.match(/\?autofocus="true"/g).length, 1);
 });
 
-test("hides only its own popover when a bound Action Hint session is dismissed", () => {
-  const hidden = [];
-  const nodes = {
-    modelPopover: popoverNode({ open: true, hidden }),
-    permissionPopover: popoverNode({ open: true, hidden }),
-  };
-  const element = turnOptionsHost(nodes);
-  element.dismissed({ target: {} });
-  element.dismissed({ target: nodes.permissionPopover });
-  element.dismissed({ target: nodes.modelPopover });
-  assert.deepEqual(hidden, [nodes.permissionPopover, nodes.modelPopover]);
-});
-
 test("renders only the exact provider and model identity as selected", async (t) => {
   const { element, server } = mount();
   t.after(() => server.restore());
@@ -1174,8 +1161,10 @@ function turnOptionsHost(nodes, properties = {}) {
     isConnected: false,
     dataset: {},
     drawn: null,
+    renderRoot: {},
     addEventListener() {},
     removeEventListener() {},
+    toggleAttribute() {},
     dispatchEvent: () => true,
     modelPopover: {
       get value() {

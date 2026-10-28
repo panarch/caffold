@@ -234,7 +234,10 @@ test("App Shell owns the normal context and route cleanup while Task Workspace p
   assert.match(presentation, /<caffold-scroll-mode-hud\b/);
   assert.match(presentation, /<caffold-scroll-surface-selector\b/);
   assert.doesNotMatch(presentation, /<caffold-keyboard-shortcut-dialog\b/);
-  assert.match(context, /!context\.root\.contains\(context\.presentation\)/);
+  assert.match(
+    context,
+    /!containsAcrossShadowRoots\(context\.root, context\.presentation\)/,
+  );
 
   const applyRoute = appShell.match(
     /async applyRoute\([\s\S]*?\n  \}\n/,
@@ -330,6 +333,12 @@ test("product dialog CSS does not style nested keyboard presentation dialogs", (
 
   for (const path of styles) {
     const source = readFrontend(path);
+    if (/^:host\b/m.test(source)) {
+      // In a shadow root, a nested presentation's dialogs are in its own root.
+      assert.match(source, /^dialog \{/m, path);
+      assert.match(source, /^dialog::backdrop \{/m, path);
+      continue;
+    }
     assert.match(source, /& > dialog \{/m, path);
     assert.match(source, /& > dialog::backdrop \{/m, path);
     assert.doesNotMatch(source, /^\s*& dialog(?:\b|::|\[)/m, path);
@@ -963,32 +972,32 @@ test("Task and Section reordering keep navigation, ordering, and row presentatio
   );
   assert.match(
     rowStyles,
-    /& \.task-row-reorder-slot \{[\s\S]*?justify-items: stretch/,
+    /^\.task-row-reorder-slot \{[\s\S]*?justify-items: stretch/m,
   );
   assert.match(
     rowStyles,
-    /& \.task-reorder-handle \{[\s\S]*?width: 100%/,
+    /^\.task-reorder-handle \{[\s\S]*?width: 100%/m,
   );
   assert.match(
     rowStyles,
-    /& \.task-row-indicators:not\(\.task-row-reorder-slot\) \{[\s\S]*?@starting-style/,
+    /^\.task-row-indicators:not\(\.task-row-reorder-slot\) \{[\s\S]*?@starting-style/m,
   );
   assert.match(
     rowStyles,
-    /& \.task-reorder-handle-icon \{[\s\S]*?translate: 0\.5rem 0/,
+    /^\.task-reorder-handle-icon \{[\s\S]*?translate: 0\.5rem 0/m,
   );
   assert.match(
     sectionStyles,
-    /&\[data-reorder-mode="tasks"\] \.task-repository-count,[\s\S]*?transition-duration: 0ms/,
+    /^:host\(\[data-reorder-mode="tasks"\]\) \.task-repository-count,[\s\S]*?transition-duration: 0ms/m,
   );
   assert.match(sectionStyles, /translateY\(-8px\)/);
   assert.match(
     sectionStyles,
-    /& button\.task-repository-select \{[\s\S]*?position: absolute[\s\S]*?inset: 0/,
+    /^button\.task-repository-select \{[\s\S]*?position: absolute[\s\S]*?inset: 0/m,
   );
   assert.match(
     sectionStyles,
-    /& \.task-repository-count \{[\s\S]*?@starting-style/,
+    /^\.task-repository-count \{[\s\S]*?@starting-style/m,
   );
   assert.match(section, /inlineIcon\(\s*"Grip",\s*"Reorder Section"/);
   assert.match(section, /const POINTER_DRAG_THRESHOLD_PX = 5/);

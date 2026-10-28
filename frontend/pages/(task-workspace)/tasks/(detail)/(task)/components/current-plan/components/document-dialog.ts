@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -13,8 +13,11 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
 import "#components/markdown-preview.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { CaffoldMarkdownPreview } from "#components/markdown-preview.js";
 import type { CurrentPlanDocument } from "../model.js";
+
+import styles from "./document-dialog.css.js";
 
 // What the Current Plan asks the dialog to show. `rootPath` is the Task root
 // that an image address starting with "/" is read from.
@@ -42,7 +45,9 @@ type ReadPhase = "idle" | "loading" | "refreshing" | "failed" | "shown";
  * It reads the file again when the Current Plan reports that it changed.
  */
 @customElement("caffold-current-plan-document-dialog")
-export class CaffoldCurrentPlanDocumentDialog extends LitElement {
+export class CaffoldCurrentPlanDocumentDialog extends CaffoldElement {
+  static override styles = styles;
+
   private requestId = 0;
   private requestController: AbortController | null = null;
   private current: OpenDocument | null = null;
@@ -55,10 +60,6 @@ export class CaffoldCurrentPlanDocumentDialog extends LitElement {
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
   private readonly preview = new DrawnRef<CaffoldMarkdownPreview>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

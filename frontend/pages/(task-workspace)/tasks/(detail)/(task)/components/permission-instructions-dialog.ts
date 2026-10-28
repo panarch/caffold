@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import {
@@ -7,12 +7,17 @@ import {
 } from "#app/api.js";
 import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import { formatDate } from "#tasks/task-format.js";
 import type { TaskRequestFailedIntent } from "../../task-detail-intent-event.js";
 import { TASK_DETAIL_INTENT_EVENT } from "../../task-detail-intent-event.js";
+
+import secondaryButton from "#app/component-styles/secondary-button.css.js";
+import styles from "./permission-instructions-dialog.css.js";
 
 const EMPTY_MESSAGE =
   "Nothing yet. A prompt that says what this Task may or may not do is kept here while it runs under Ask Jev first.";
@@ -32,7 +37,7 @@ interface RecordState {
  * beside it, and this is a page of the person's own sentences.
  */
 @customElement("caffold-task-permission-instructions-dialog")
-export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
+export class CaffoldTaskPermissionInstructionsDialog extends CaffoldElement {
   @state()
   private accessor threadId = "";
   @state()
@@ -42,16 +47,17 @@ export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
     error: "",
   };
 
+  static override styles = [
+    scopedStyle(secondaryButton, ".task-secondary-button"),
+    styles,
+  ];
+
   private opener: HTMLElement | null = null;
   private request = 0;
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

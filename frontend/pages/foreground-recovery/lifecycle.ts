@@ -5,7 +5,6 @@ import {
   type ForegroundRecoveryBrowserSignal,
   ForegroundRecoveryBrowserSignals,
 } from "./browser-signals.js";
-
 import {
   createForegroundRecoveryState,
   FOREGROUND_RECOVERY_EVENT,

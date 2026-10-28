@@ -326,11 +326,12 @@ test("the notice is laid out like Task Recovery and keeps a long title inside it
   // Measured from the Task content pane both screens fill.
   // Task Recovery's action row also holds Recheck, whose taller touch target
   // centers its buttons lower on touch layouts; the rows start at the same place.
-  const layout = (owner, prefix, actions) =>
-    owner.evaluate((element, [classPrefix, actionRow]) => {
-      const pane = element.closest(".tasks-detail-pane").getBoundingClientRect();
+  const layout = async (owner, prefix, actions) =>
+    // Both screens draw in their own roots.
+    owner.evaluate((element, [classPrefix, actionRow, paneElement]) => {
+      const pane = paneElement.getBoundingClientRect();
       const box = (selector) => {
-        const rect = element.querySelector(selector).getBoundingClientRect();
+        const rect = element.shadowRoot.querySelector(selector).getBoundingClientRect();
         return {
           left: rect.left - pane.left,
           top: rect.top - pane.top,
@@ -339,7 +340,7 @@ test("the notice is laid out like Task Recovery and keeps a long title inside it
         };
       };
       const font = (selector) => {
-        const style = getComputedStyle(element.querySelector(selector));
+        const style = getComputedStyle(element.shadowRoot.querySelector(selector));
         return `${style.fontSize}/${style.lineHeight}/${style.fontWeight}`;
       };
       const button = box(".task-secondary-button");
@@ -353,7 +354,7 @@ test("the notice is laid out like Task Recovery and keeps a long title inside it
         actions: { left: row.left, top: row.top },
         button: { left: button.left, height: button.height },
       };
-    }, [prefix, actions]);
+    }, [prefix, actions, await page.locator(".tasks-detail-pane").elementHandle()]);
 
   await page.goto(`/tasks/${recovery.threadId}/recovery`);
   const recoveryPage = page.locator("caffold-task-recovery");
@@ -376,15 +377,15 @@ test("the notice is laid out like Task Recovery and keeps a long title inside it
 
   // A long title ends inside the header, and nothing of the notice reaches
   // past its pane or under the corner controls a narrow workspace shows.
-  const fit = await notice.evaluate((element) => {
-    const pane = element.closest(".tasks-detail-pane").getBoundingClientRect();
-    const title = element.querySelector(".task-absence-header h2");
-    const header = element.querySelector(".task-absence-header").getBoundingClientRect();
+  const fit = await notice.evaluate((element, paneElement) => {
+    const pane = paneElement.getBoundingClientRect();
+    const title = element.shadowRoot.querySelector(".task-absence-header h2");
+    const header = element.shadowRoot.querySelector(".task-absence-header").getBoundingClientRect();
     const parts = [
       title,
-      element.querySelector(".task-absence-heading"),
-      element.querySelector(".task-absence-description"),
-      element.querySelector(".task-absence-actions"),
+      element.shadowRoot.querySelector(".task-absence-heading"),
+      element.shadowRoot.querySelector(".task-absence-description"),
+      element.shadowRoot.querySelector(".task-absence-actions"),
     ].map((part) => part.getBoundingClientRect());
     const overlaps = [...document.querySelectorAll(".task-workspace-route-control")]
       .filter((control) => control.getClientRects().length > 0)
@@ -399,7 +400,7 @@ test("the notice is laid out like Task Recovery and keeps a long title inside it
       insidePane: parts.every((part) => part.right <= pane.right + 0.5),
       overlaps,
     };
-  });
+  }, await page.locator(".tasks-detail-pane").elementHandle());
   expect(fit).toEqual({
     titleEnds: "ellipsis",
     titleInsideHeader: true,

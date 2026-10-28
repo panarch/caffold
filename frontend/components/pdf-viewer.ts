@@ -1,8 +1,11 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.js";
 import type { DocumentPreviewFile } from "./dom.js";
 import "./loading-text.js";
+import { CaffoldElement } from "../caffold-element.js";
+
+import styles from "./pdf-viewer.css.js";
 
 const PDFJS_VERSION = "6.3.289";
 const PDFJS_BASE = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}`;
@@ -60,13 +63,15 @@ type RenderState = "empty" | "loading" | "error" | "pdf";
 let libraryPromise: Promise<PdfJs> | undefined;
 
 @customElement("caffold-pdf-viewer")
-class CaffoldPdfViewer extends LitElement {
+class CaffoldPdfViewer extends CaffoldElement {
   @property({ attribute: false })
   accessor file: DocumentPreviewFile | null = null;
   @state()
   private accessor renderState: RenderState = "empty";
   @state()
   private accessor pages: PageRecord[] | null = null;
+
+  static override styles = styles;
 
   private generation = 0;
   private visiblePages: Set<PageRecord> | null = null;
@@ -75,10 +80,6 @@ class CaffoldPdfViewer extends LitElement {
   private loadingTask: PdfLoadingTask | null = null;
 
   private readonly surfaces = new ScrollSurfaces(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

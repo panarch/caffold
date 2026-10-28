@@ -1,115 +1,113 @@
-caffold-code-viewer {
+:host {
   display: block;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
 
-  & .code-viewer {
-    display: grid;
-    grid-template-rows: minmax(0, 1fr);
-    min-width: 0;
-    min-height: 0;
-    height: 100%;
-    overflow: hidden;
-    background: var(--code-bg);
-    color: var(--code-text);
-  }
+.code-viewer {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--code-bg);
+  color: var(--code-text);
+}
 
-  & .code-lines {
-    --code-line-number-padding: 0.625rem;
-    --code-line-number-width: calc(
-      var(--code-line-number-columns) + var(--code-line-number-padding) +
-        var(--code-line-number-padding)
-    );
-    display: grid;
-    min-width: 0;
-    min-height: 0;
-    overflow: auto;
-    overscroll-behavior: contain;
-    background: var(--code-bg);
-    font-family: var(--font-code);
-    font-size: var(--code-font-size);
-    line-height: var(--code-line-height);
-    -webkit-text-size-adjust: 100%;
-    text-size-adjust: 100%;
-  }
+.code-lines {
+  --code-line-number-padding: 0.625rem;
+  --code-line-number-width: calc(
+    var(--code-line-number-columns) + var(--code-line-number-padding) +
+      var(--code-line-number-padding)
+  );
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--code-bg);
+  font-family: var(--font-code);
+  font-size: var(--code-font-size);
+  line-height: var(--code-line-height);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 
-  & .code-gutter-backdrop {
-    position: sticky;
-    left: 0;
-    z-index: 1;
-    grid-area: 1 / 1;
-    width: var(--code-line-number-width);
-    min-height: 100%;
-    border-right: 1px solid var(--border);
-    background: var(--code-gutter);
-    pointer-events: none;
-  }
+.code-gutter-backdrop {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  grid-area: 1 / 1;
+  width: var(--code-line-number-width);
+  min-height: 100%;
+  border-right: 1px solid var(--border);
+  background: var(--code-gutter);
+  pointer-events: none;
+}
 
-  & .code-table {
-    grid-area: 1 / 1;
-    width: max(
-      100%,
-      calc(var(--code-line-number-width) + var(--code-content-width) + 24px)
-    );
-    min-height: 100%;
-  }
+.code-table {
+  grid-area: 1 / 1;
+  width: max(
+    100%,
+    calc(var(--code-line-number-width) + var(--code-content-width) + 24px)
+  );
+  min-height: 100%;
+}
 
-  & .code-row {
-    display: grid;
-    grid-template-columns: var(--code-line-number-width) minmax(0, 1fr);
-    width: 100%;
-    min-width: 0;
-    background: var(--code-bg);
-  }
+.code-row {
+  display: grid;
+  grid-template-columns: var(--code-line-number-width) minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
+  background: var(--code-bg);
+}
 
-  & .line-number {
-    position: sticky;
-    left: 0;
-    z-index: 2;
-    user-select: none;
-    background: var(--code-gutter);
-    border-right: 1px solid var(--border);
-    color: var(--code-gutter-text);
-    padding: 0 var(--code-line-number-padding);
-    text-align: right;
-  }
+.line-number {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  user-select: none;
+  background: var(--code-gutter);
+  border-right: 1px solid var(--border);
+  color: var(--code-gutter-text);
+  padding: 0 var(--code-line-number-padding);
+  text-align: right;
+}
 
-  & .line-code {
-    min-width: 0;
-    white-space: pre;
-    padding: 0 0.75rem;
-  }
+.line-code {
+  min-width: 0;
+  white-space: pre;
+  padding: 0 0.75rem;
+}
 
-  & .syntax-comment {
-    color: var(--syntax-comment);
-  }
+.syntax-comment {
+  color: var(--syntax-comment);
+}
 
-  & .syntax-keyword {
-    color: var(--syntax-keyword);
-  }
+.syntax-keyword {
+  color: var(--syntax-keyword);
+}
 
-  & .syntax-literal {
-    color: var(--syntax-literal);
-  }
+.syntax-literal {
+  color: var(--syntax-literal);
+}
 
-  & .syntax-string {
-    color: var(--syntax-string);
-  }
+.syntax-string {
+  color: var(--syntax-string);
+}
 
-  & .syntax-title {
-    color: var(--syntax-title);
-  }
+.syntax-title {
+  color: var(--syntax-title);
+}
 
-  & .syntax-type {
-    color: var(--syntax-type);
-  }
+.syntax-type {
+  color: var(--syntax-type);
 }
 
 @media (max-width: 520px) {
-  caffold-code-viewer {
-    & .code-lines {
-      --code-line-number-padding: 0.5rem;
-    }
+  .code-lines {
+    --code-line-number-padding: 0.5rem;
   }
 }

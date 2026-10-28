@@ -84,13 +84,14 @@ test("offers Copy beside every agent message time without growing the meta line"
   for (const message of [finalMessage, inlineMessage, foldedMessage]) {
     await message.scrollIntoViewIfNeeded();
     const geometry = await message.evaluate((element) => {
-      const header = element.querySelector(":scope > .task-assistant-message-header");
+      // The message draws in its own root, and Copy in its own.
+      const header = element.shadowRoot.querySelector(".task-assistant-message-header");
       const time = header.querySelector(":scope > time");
-      const button = header.querySelector(
-        "caffold-task-assistant-message-copy-button > button",
-      );
+      const button = header
+        .querySelector("caffold-task-assistant-message-copy-button")
+        .shadowRoot.querySelector("button");
       const icon = button.querySelector("svg");
-      const body = element.querySelector(":scope > .task-assistant-message-body");
+      const body = element.shadowRoot.querySelector(".task-assistant-message-body");
       const headerBox = header.getBoundingClientRect();
       const timeBox = time.getBoundingClientRect();
       const buttonBox = button.getBoundingClientRect();
@@ -190,7 +191,7 @@ test("copies each message's Markdown source exactly with bounded success and ret
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
     .toBe(FINAL_RESPONSE);
   expect(
-    await finalCopy.evaluate((button) => document.activeElement === button),
+    await finalCopy.evaluate((button) => button.getRootNode().activeElement === button),
   ).toBe(true);
   expect(requests).toEqual([]);
 
@@ -281,10 +282,10 @@ test("drops a copy of text the message no longer holds", { tag: "@desktop" }, as
   // Without an observed time the header holds only Copy, at the same height.
   expect(
     await probe.evaluate((element) => {
-      const header = element.querySelector(":scope > .task-assistant-message-header");
-      const button = header.querySelector(
-        "caffold-task-assistant-message-copy-button > button",
-      );
+      const header = element.shadowRoot.querySelector(".task-assistant-message-header");
+      const button = header
+        .querySelector("caffold-task-assistant-message-copy-button")
+        .shadowRoot.querySelector("button");
       const headerBox = header.getBoundingClientRect();
       const iconBox = button.querySelector("svg").getBoundingClientRect();
       return {

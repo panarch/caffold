@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -24,11 +24,17 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
 import "../components/task-absence.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import type {
   CaffoldTaskAbsence,
   TaskAbsenceIntent,
 } from "../components/task-absence.js";
 import { taskThreadId } from "../task-list-model.js";
+
+import secondaryButton from "#app/component-styles/secondary-button.css.js";
+import actionIcon from "#tasks/component-styles/action-icon.css.js";
+import styles from "./page.css.js";
 
 const REMOVAL_WARNING =
   "The Codex Thread could not be found. Caffold will remove its membership and managed Task resources. This cannot be undone.";
@@ -67,7 +73,13 @@ export type TaskRecoveryIntent =
  * draws what to show right after drawing it.
  */
 @customElement("caffold-task-recovery")
-export class CaffoldTaskRecovery extends LitElement {
+export class CaffoldTaskRecovery extends CaffoldElement {
+  static override styles = [
+    scopedStyle(secondaryButton, ".task-secondary-button"),
+    scopedStyle(actionIcon, ".task-action-icon"),
+    styles,
+  ];
+
   private recovery: ActiveTaskRecovery | null = null;
   // Why the Task is no longer one to recover here: archived elsewhere, or
   // not found at all, as an action's answer said.
@@ -82,10 +94,6 @@ export class CaffoldTaskRecovery extends LitElement {
     clipRoots: () => [this, this.body.value],
   });
   private readonly surfaces = new ScrollSurfaces(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -233,7 +241,7 @@ export class CaffoldTaskRecovery extends LitElement {
                     ?disabled=${busy}
                     @click=${this.takeAction}
                   >
-                    ${actionIcon(
+                    ${recoveryActionIcon(
                       "restore",
                       "ArchiveRestore",
                       "Restore to Active",
@@ -256,7 +264,7 @@ export class CaffoldTaskRecovery extends LitElement {
                     ?disabled=${busy}
                     @click=${this.takeAction}
                   >
-                    ${actionIcon("archive", "Archive", "Move to Archived")}
+                    ${recoveryActionIcon("archive", "Archive", "Move to Archived")}
                     <span>Move to Archived</span>
                   </button>`
                 : nothing
@@ -275,7 +283,7 @@ export class CaffoldTaskRecovery extends LitElement {
                     ?disabled=${busy}
                     @click=${this.takeAction}
                   >
-                    ${actionIcon("remove", "Trash2", "Remove from Caffold")}
+                    ${recoveryActionIcon("remove", "Trash2", "Remove from Caffold")}
                     <span>Remove from Caffold</span>
                   </button>`
                 : nothing
@@ -295,7 +303,7 @@ export class CaffoldTaskRecovery extends LitElement {
                   ?disabled=${busy}
                   @click=${this.takeAction}
                 >
-                  ${actionIcon("recheck", "RefreshCw", "Recheck Task")}
+                  ${recoveryActionIcon("recheck", "RefreshCw", "Recheck Task")}
                   <span>Recheck</span>
                 </button>`
               : nothing
@@ -526,7 +534,7 @@ export class CaffoldTaskRecovery extends LitElement {
   }
 }
 
-function actionIcon(key: string, name: string, label: string) {
+function recoveryActionIcon(key: string, name: string, label: string) {
   return html`<span
     class="task-recovery-action-icon-slot"
     data-task-recovery-icon=${key}

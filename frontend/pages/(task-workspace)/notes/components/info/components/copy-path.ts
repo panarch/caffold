@@ -1,4 +1,4 @@
-import { html, LitElement, type PropertyValues } from "lit";
+import { html, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -6,6 +6,9 @@ import {
   ActionHints,
 } from "#app/action-hints.js";
 import type { Note } from "#app/api.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+
+import styles from "./copy-path.css.js";
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
 
@@ -15,20 +18,18 @@ type CopyState = "idle" | "copying" | "copied" | "failed";
 // that hold the Note, the Note's own name, and its id on the clipboard, so a
 // person can tell an agent exactly which Note they mean.
 @customElement("caffold-notes-info-copy-path")
-export class CaffoldNotesInfoCopyPath extends LitElement {
+export class CaffoldNotesInfoCopyPath extends CaffoldElement {
   @property({ attribute: false })
   accessor note: Note | null = null;
   @state()
   accessor copyState: CopyState = "idle";
 
+  static override styles = styles;
+
   private path = "";
   private generation = 0;
   private feedbackTimer: number | undefined;
   private readonly hints = new ActionHints(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override disconnectedCallback() {
     super.disconnectedCallback();

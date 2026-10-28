@@ -1,108 +1,105 @@
-caffold-notes-info {
+:host {
   display: grid;
   place-items: center;
+}
 
-  & > .notes-info-button {
-    color: var(--control-fg);
-  }
+.notes-info-button {
+  color: var(--control-fg);
+}
 
-  & .notes-info-icon {
-    position: relative;
-    display: block;
-    width: var(--interface-icon-size);
-    height: var(--interface-icon-size);
-  }
+.notes-info-icon {
+  position: relative;
+  display: block;
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
+}
 
-  & .notes-info-popover {
-    position: fixed;
-    inset: auto;
-    position-area: block-end center;
-    position-try-fallbacks: flip-block;
-    width: max-content;
-    max-width: min(42rem, calc(100vw - 1.5rem));
-    max-height: min(75vh, 600px);
-    margin: var(--interface-space-3) var(--interface-space-5);
-    padding: 0.75rem;
-    overflow: auto;
-    overscroll-behavior: contain;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--surface);
-    color: var(--text);
-    box-shadow: 0 14px 34px rgb(var(--shadow-rgb) / 18%);
-  }
+.notes-info-popover {
+  position: fixed;
+  inset: auto;
+  position-area: block-end center;
+  position-try-fallbacks: flip-block;
+  width: max-content;
+  max-width: min(42rem, calc(100vw - 1.5rem));
+  max-height: min(75vh, 600px);
+  margin: var(--interface-space-3) var(--interface-space-5);
+  padding: 0.75rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 14px 34px rgb(var(--shadow-rgb) / 18%);
+}
 
-  & .notes-info-popover::backdrop {
-    background: transparent;
-  }
+.notes-info-popover::backdrop {
+  background: transparent;
+}
 
-  & .notes-info-popover dl {
-    display: grid;
-    grid-template-columns: max-content minmax(192px, 1fr);
-    gap: 0.5625rem 0.875rem;
-    margin: 0;
-  }
+.notes-info-popover dl {
+  display: grid;
+  grid-template-columns: max-content minmax(192px, 1fr);
+  gap: 0.5625rem 0.875rem;
+  margin: 0;
+}
 
-  & .notes-info-popover dl div {
-    display: contents;
-  }
+.notes-info-popover dl div {
+  display: contents;
+}
 
-  & .notes-info-popover dt {
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-  }
+.notes-info-popover dt {
+  color: var(--muted);
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+}
 
-  & .notes-info-popover dd {
-    min-width: 0;
-    margin: 0;
-    overflow-wrap: anywhere;
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-  }
+.notes-info-popover dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+}
 
-  & .notes-info-popover a {
-    color: inherit;
-    text-decoration: underline;
-    text-underline-offset: 0.15em;
-  }
+.notes-info-popover a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
 
-  & .notes-info-actions {
-    display: grid;
-    justify-items: start;
-    gap: max(
-      var(--interface-space-3),
-      calc(var(--interface-compact-hit-outset) * 2)
-    );
-    margin-top: var(--interface-space-6);
-    padding-top: var(--interface-space-5);
-    border-top: 1px solid var(--border);
-  }
+.notes-info-actions {
+  display: grid;
+  justify-items: start;
+  gap: max(
+    var(--interface-space-3),
+    calc(var(--interface-compact-hit-outset) * 2)
+  );
+  margin-top: var(--interface-space-6);
+  padding-top: var(--interface-space-5);
+  border-top: 1px solid var(--border);
 }
 
 @media (max-width: 520px) {
-  caffold-notes-info {
-    & .notes-info-popover {
-      position-anchor: --notes-workspace-detail-header;
-      position-area: none;
-      inset: auto var(--interface-space-4);
-      top: calc(anchor(bottom) + var(--interface-space-3));
-      width: auto;
-      margin: 0;
-    }
+  .notes-info-popover {
+    position-area: none;
+    inset: auto var(--interface-space-4);
+    top: calc(anchor(bottom) + var(--interface-space-3));
+    width: auto;
+    margin: 0;
+  }
 
-    & .notes-info-popover dl {
-      grid-template-columns: 1fr;
-      gap: 0.1875rem;
-    }
+  .notes-info-popover dl {
+    grid-template-columns: 1fr;
+    gap: 0.1875rem;
+  }
 
-    & .notes-info-popover dl div {
-      display: grid;
-      gap: 0.125rem;
-    }
+  .notes-info-popover dl div {
+    display: grid;
+    gap: 0.125rem;
+  }
 
-    & .notes-info-popover dl div + div {
-      margin-top: 0.5rem;
-    }
+  .notes-info-popover dl div + div {
+    margin-top: 0.5rem;
   }
 }

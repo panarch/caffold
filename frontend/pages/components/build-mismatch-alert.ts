@@ -1,10 +1,13 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+
+import styles from "./build-mismatch-alert.css.js";
 
 export const CAFFOLD_BUILD_MISMATCH_RELOAD_EVENT =
   "caffold:build-mismatch-reload";
@@ -14,18 +17,16 @@ export const CAFFOLD_BUILD_MISMATCH_RELOAD_EVENT =
  * Reload. It shows only while the app shell names that build.
  */
 @customElement("caffold-build-mismatch-alert")
-export class CaffoldBuildMismatchAlert extends LitElement {
+export class CaffoldBuildMismatchAlert extends CaffoldElement {
   // The server's build while it differs from this window's, or empty.
   @property({ attribute: false })
   accessor serverLabel = "";
 
+  static override styles = styles;
+
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
-
-  override createRenderRoot() {
-    return this;
-  }
 
   actionHintScope({
     scopeId = "app:build-mismatch",

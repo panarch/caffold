@@ -1,21 +1,21 @@
-caffold-loading-text {
+:host {
   display: inline-block;
   max-width: 100%;
   color: var(--muted);
   overflow-wrap: anywhere;
   animation: caffold-loading-text-enter 150ms ease-out 180ms backwards;
+}
 
-  &[hidden] {
-    display: none;
-  }
+:host([hidden]) {
+  display: none;
+}
 
-  &[immediate] {
-    animation: none;
-  }
+:host([immediate]) {
+  animation: none;
 }
 
 @supports (background-clip: text) or (-webkit-background-clip: text) {
-  caffold-loading-text {
+  :host {
     background-image: linear-gradient(
       90deg,
       var(--muted) 0%,
@@ -32,10 +32,10 @@ caffold-loading-text {
     animation:
       caffold-loading-text-enter 150ms ease-out 180ms backwards,
       caffold-loading-text-sweep 1.8s linear 180ms infinite;
+  }
 
-    &[immediate] {
-      animation: caffold-loading-text-sweep 1.8s linear infinite;
-    }
+  :host([immediate]) {
+    animation: caffold-loading-text-sweep 1.8s linear infinite;
   }
 }
 
@@ -52,13 +52,13 @@ caffold-loading-text {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  caffold-loading-text {
+  :host {
     background-image: none;
     -webkit-text-fill-color: currentColor;
     animation: caffold-loading-text-enter 1ms step-end 180ms backwards;
+  }
 
-    &[immediate] {
-      animation: none;
-    }
+  :host([immediate]) {
+    animation: none;
   }
 }

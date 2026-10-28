@@ -71,10 +71,14 @@ test("production alias imports resolve to the same served and precached files in
       );
       assert.ok(assetPath.endsWith(".js") && !assetPath.endsWith(".test.js"));
       assert.ok(!assetPath.split("/").includes("tests"));
-      // Rust generates build-info.js; it is served and cached with source modules.
+      // Rust generates build-info.js, and the module beside each stylesheet
+      // from that stylesheet; they are served and cached with source modules.
       if (assetPath !== "build-info.js") {
+        const sourcePath = assetPath.endsWith(".css.js")
+          ? assetPath.slice(0, -".js".length)
+          : assetPath.replace(/\.js$/, ".ts");
         assert.match(
-          readFileSync(new URL(assetPath.replace(/\.js$/, ".ts"), frontendUrl), "utf8"),
+          readFileSync(new URL(sourcePath, frontendUrl), "utf8"),
           /\S/,
           `${path}: ${specifier} must refer to a production module`,
         );

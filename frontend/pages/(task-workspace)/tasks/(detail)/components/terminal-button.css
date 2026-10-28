@@ -1,22 +1,22 @@
-caffold-task-detail-terminal {
+:host {
   display: grid;
   flex: 0 0 auto;
   place-items: center;
+}
 
-  & > .task-terminal-button {
-    color: var(--control-fg);
-  }
+.task-terminal-button {
+  color: var(--control-fg);
+}
 
-  & > .task-terminal-button > svg {
-    position: relative;
-    display: block;
-    width: var(--interface-icon-size);
-    height: var(--interface-icon-size);
-    stroke-width: 2;
-  }
+.task-terminal-button > svg {
+  position: relative;
+  display: block;
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
+  stroke-width: 2;
+}
 
-  & > .task-terminal-button[aria-pressed="true"]::before {
-    border-color: var(--border-strong);
-    background: var(--surface-muted);
-  }
+.task-terminal-button[aria-pressed="true"]::before {
+  border-color: var(--border-strong);
+  background: var(--surface-muted);
 }

@@ -1,16 +1,14 @@
-@import "./file-navigator/components/list.css";
-
-caffold-file-navigator {
+:host {
   display: block;
   min-width: 0;
   min-height: 0;
   height: 100%;
   overflow: hidden;
+}
 
-  & > caffold-file-list {
-    width: 100%;
-    min-width: 0;
-    min-height: 0;
-    height: 100%;
-  }
+caffold-file-list {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
 }

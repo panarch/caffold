@@ -1,11 +1,12 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+
+import styles from "./workspace-brand.css.js";
 
 @customElement("caffold-workspace-brand")
-class CaffoldWorkspaceBrand extends LitElement {
-  override createRenderRoot() {
-    return this;
-  }
+class CaffoldWorkspaceBrand extends CaffoldElement {
+  static override styles = styles;
 
   override render() {
     return html`

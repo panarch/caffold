@@ -78,6 +78,7 @@ test("draws Send again once the turn options take the new context", () => {
     initialSelection: { model: "", effort: "", fastMode: false, permissionMode: "" },
     locked: false,
     placement: "above",
+    voiceInput: false,
   });
 });
 

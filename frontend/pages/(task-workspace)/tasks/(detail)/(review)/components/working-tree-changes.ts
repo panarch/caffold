@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   type ActionHintPull,
@@ -11,14 +11,24 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { ChangesReading } from "../changes-reading.js";
 import type { ReviewChange } from "./selected-file/content.js";
 import "./working-tree-changes/components/changes-tree.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import type { ChangesRead } from "../layout.js";
 import type { CaffoldGitDiffChangesTree } from "./working-tree-changes/components/changes-tree.js";
 
+import secondaryButton from "#app/component-styles/secondary-button.css.js";
+import styles from "./working-tree-changes.css.js";
+
 @customElement("caffold-review-working-tree-changes")
-export class CaffoldReviewWorkingTreeChanges extends LitElement {
+export class CaffoldReviewWorkingTreeChanges extends CaffoldElement {
   // A clean Working Tree offers the branch's changes instead.
   @state()
   private accessor branchActionShown = false;
+
+  static override styles = [
+    scopedStyle(secondaryButton, ".task-secondary-button"),
+    styles,
+  ];
 
   private rootPath = "";
   private branch: string | null = null;
@@ -30,10 +40,6 @@ export class CaffoldReviewWorkingTreeChanges extends LitElement {
   private listShows = "";
   private generation = 0;
   private selectedPath = "";
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override disconnectedCallback() {
     super.disconnectedCallback();

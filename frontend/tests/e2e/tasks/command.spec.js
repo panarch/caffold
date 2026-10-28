@@ -108,7 +108,7 @@ test("owns active disclosure state and terminal presentation across canonical up
   await expect(disclosure).not.toHaveAttribute("open", "");
   await expect.poll(outputSeam).toEqual({ output: false, lines: 0 });
   await expect
-    .poll(() => summary.evaluate((element) => document.activeElement === element))
+    .poll(() => summary.evaluate((element) => element.getRootNode().activeElement === element))
     .toBe(true);
   await expect(collapsedChevron).toBeVisible();
   await expect(expandedChevron).not.toBeVisible();
@@ -365,37 +365,34 @@ async function rememberCommandIdentity(command) {
   await command.evaluate((element) => {
     window.__commandIdentity = {
       element,
-      details: element.querySelector(":scope > details"),
-      summary: element.querySelector(":scope > details > summary"),
+      details: element.shadowRoot.querySelector("details"),
+      summary: element.shadowRoot.querySelector("details > summary"),
     };
   });
 }
 
 async function expectCommandIdentity(page, { activeStructure }) {
   expect(
-    await page.evaluate(({ activeStructure }) => {
+    await page.evaluate(({ activeStructure, current }) => {
       const identity = window.__commandIdentity;
-      const current = document.querySelector(
-        ".task-command > caffold-task-command",
-      );
       return (
         current === identity.element &&
         (activeStructure
-          ? current.querySelector(":scope > details") === identity.details &&
-            current.querySelector(":scope > details > summary") ===
+          ? current.shadowRoot.querySelector("details") === identity.details &&
+            current.shadowRoot.querySelector("details > summary") ===
               identity.summary
           : !identity.details.isConnected && !identity.summary.isConnected)
       );
-    }, { activeStructure }),
+    }, {
+      activeStructure,
+      current: await page.locator(".task-command > caffold-task-command").elementHandle(),
+    }),
   ).toBe(true);
 }
 
 async function disclosureOffset(summary) {
-  return summary.evaluate((element) => {
-    const scroller = element.closest(".task-conversation-scroll");
-    return (
-      element.getBoundingClientRect().top -
-      scroller.getBoundingClientRect().top
-    );
-  });
+  return summary.evaluate((element, scroller) => (
+    element.getBoundingClientRect().top -
+    scroller.getBoundingClientRect().top
+  ), await summary.page().locator(".task-conversation-scroll").elementHandle());
 }

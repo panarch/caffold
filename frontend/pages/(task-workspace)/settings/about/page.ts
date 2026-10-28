@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
 import {
@@ -18,7 +18,10 @@ import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/loading-text.js";
 import "../components/detail-list.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { SettingsDetailRow } from "../components/detail-list.js";
+
+import styles from "./page.css.js";
 
 export interface CaffoldUpdateTaskRequestDetail {
   opener: HTMLButtonElement;
@@ -63,7 +66,7 @@ const CHECKING_UPDATE: CaffoldUpdateSnapshot = {
 };
 
 @customElement("caffold-settings-about-page")
-export class CaffoldSettingsAboutPage extends LitElement {
+export class CaffoldSettingsAboutPage extends CaffoldElement {
   @property({ attribute: false })
   accessor health: Health | null = null;
   /** Whether a newer Caffold exists, and how the last update ended. */
@@ -76,15 +79,13 @@ export class CaffoldSettingsAboutPage extends LitElement {
   @state()
   private accessor copyStatus = "";
 
+  static override styles = styles;
+
   private readonly hints: ActionHints = new ActionHints(this, {
     clipRoots: () => [this, this.scrollport.value],
   });
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     const updates = this.caffoldUpdate ?? CHECKING_UPDATE;

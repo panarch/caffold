@@ -29,6 +29,17 @@ test("keeps the start pane within its maximum, the end minimum, and 70% of the c
   assert.equal(panel(1280).clampValue(10_000), 896);
 });
 
+test("divides the host of the shadow root it sits at the top of", () => {
+  const pane = Object.assign(Object.create(resizer), {
+    parentElement: null,
+    parentNode: { host: { getBoundingClientRect: () => ({ width: 1280 }) } },
+    getAttribute: () => null,
+    getClientRects: () => [{}],
+  });
+
+  assert.equal(pane.clampValue(10_000), 896);
+});
+
 test("returns to the chosen width when its container widens again", () => {
   let containerWidth = 1280;
   const updates = [];

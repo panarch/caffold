@@ -1,10 +1,11 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import type { SettingsChangeDetail } from "#app/settings.js";
 import {
@@ -14,6 +15,8 @@ import {
   setFileSortMode,
 } from "#app/settings.js";
 import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
+
+import styles from "./page.css.js";
 
 const SORT_OPTIONS = Object.freeze([
   Object.freeze({
@@ -29,9 +32,11 @@ const SORT_OPTIONS = Object.freeze([
 ]);
 
 @customElement("caffold-settings-files-page")
-export class CaffoldSettingsFilesPage extends LitElement {
+export class CaffoldSettingsFilesPage extends CaffoldElement {
   @state()
   private accessor settings: Settings = getSettings();
+
+  static override styles = styles;
 
   private readonly settingsChanged = (
     event: CustomEvent<SettingsChangeDetail>,
@@ -44,10 +49,6 @@ export class CaffoldSettingsFilesPage extends LitElement {
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly optionLabels = new DrawnRefs<HTMLLabelElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

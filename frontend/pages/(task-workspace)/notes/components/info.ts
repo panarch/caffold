@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -7,11 +7,7 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hints.js";
 import type { Note, NoteTask } from "#app/api.js";
-import { compactIconButton } from "#app/component-styles.js";
-import {
-  KEYBOARD_SESSION_DISMISS_EVENT,
-  KeyboardContexts,
-} from "#app/keyboard-navigation.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
 import { formatModified } from "#components/dom.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
@@ -19,17 +15,26 @@ import { inlineIcon, warmIcons } from "#components/icons.js";
 import "./info/components/copy-markdown.js";
 import type { CaffoldNotesInfoCopyMarkdown } from "./info/components/copy-markdown.js";
 import "./info/components/copy-path.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { returnPopoverFocus } from "#app/popover-focus.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import type { CaffoldNotesInfoCopyPath } from "./info/components/copy-path.js";
 
-let notesInfoInstanceId = 0;
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import styles from "./info.css.js";
 
-await compactIconButton.register("caffold-notes-info", "> .notes-info-button");
+let notesInfoInstanceId = 0;
 
 // The details button at the end of the Note header. Its popover shows when the
 // open Note changed and was created and the Tasks that wrote it, and copies the
 // Note's path or its Markdown.
 @customElement("caffold-notes-info")
-export class CaffoldNotesInfo extends LitElement {
+export class CaffoldNotesInfo extends CaffoldElement {
+  static override styles = [
+    scopedStyle(compactIconButton, ".notes-info-button"),
+    styles,
+  ];
+
   // The Note shown in the header, or null while none is.
   @property({ attribute: false })
   accessor note: Note | null = null;
@@ -46,17 +51,6 @@ export class CaffoldNotesInfo extends LitElement {
   private readonly copyMarkdown = new DrawnRef<CaffoldNotesInfoCopyMarkdown>(
     this,
   );
-
-  constructor() {
-    super();
-    this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) =>
-      this.handleDismiss(event),
-    );
-  }
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -115,7 +109,9 @@ export class CaffoldNotesInfo extends LitElement {
         id=${this.popoverId}
         class="notes-info-popover"
         popover="auto"
+        @beforetoggle=${returnPopoverFocus}
         aria-label="Note details"
+        @caffold:keyboard-session-dismiss=${this.deactivate}
       >
         <dl>
           <div>
@@ -206,12 +202,6 @@ export class CaffoldNotesInfo extends LitElement {
       })}
       href=${`/tasks/${encodeURIComponent(task.threadId)}`}
     >${task.displayName}</a>`;
-  }
-
-  private handleDismiss(event: Event) {
-    if (event.target === this.infoPopover.value) {
-      this.deactivate();
-    }
   }
 }
 

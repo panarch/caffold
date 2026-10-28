@@ -1800,8 +1800,8 @@ test("replaces a connection that stopped delivering instead of leaving the Task 
       registryKey,
     );
   const listState = () =>
-    page.evaluate(
-      () => document.querySelector("caffold-task-workspace").taskNavigator.streamState,
+    page.locator("caffold-task-workspace").evaluate(
+      (workspace) => workspace.taskNavigator.streamState,
     );
   const notice = page.locator(".app-foreground-recovery");
 
@@ -1858,8 +1858,8 @@ test("gives up on a Task list reading that never answers and reads again", { tag
     return route.fallback();
   });
   const listState = () =>
-    page.evaluate(
-      () => document.querySelector("caffold-task-workspace").taskNavigator.streamState,
+    page.locator("caffold-task-workspace").evaluate(
+      (workspace) => workspace.taskNavigator.streamState,
     );
   const notice = page.locator(".app-foreground-recovery");
 
@@ -2236,8 +2236,7 @@ test("routes the single viewport Retry through app-shell foreground recovery", {
       { key: registryKey, threadId },
     );
   const streamStates = () =>
-    page.evaluate(() => {
-      const workspace = document.querySelector("caffold-task-workspace");
+    page.locator("caffold-task-workspace").evaluate((workspace) => {
       return {
         list: workspace.taskNavigator.streamState,
         detail: workspace.tasksPage.taskDetail().streamState,
@@ -2304,14 +2303,22 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
     .toBe(true);
 
   const lifecycle = await taskWorkspace.evaluate((workspace) => {
-    const element = workspace.querySelector("caffold-tasks-page");
+    // The workspace and the Tasks page each draw in their own root.
+    const element = workspace.shadowRoot.querySelector("caffold-tasks-page");
     const parent = element.parentNode;
     const nextSibling = element.nextSibling;
-    const navigator = workspace.querySelector("caffold-task-navigator");
-    const taskNew = element.querySelector("caffold-task-new");
-    const detail = element.querySelector("caffold-task-detail");
-    const composer = taskNew.querySelector("caffold-task-composer");
-    const turnOptions = composer.querySelector("caffold-task-turn-options");
+    const navigator = workspace.shadowRoot.querySelector("caffold-task-navigator");
+    const taskNew = element.shadowRoot.querySelector("caffold-task-new");
+    const taskDetail = () =>
+      element.shadowRoot
+        .querySelector("caffold-detail-layout")
+        .shadowRoot.querySelector("caffold-task-detail");
+    const detail = taskDetail();
+    // New Task draws Task creation, which draws the Composer, each in its root.
+    const composer = taskNew.shadowRoot
+      .querySelector("caffold-task-create")
+      .shadowRoot.querySelector("caffold-task-composer");
+    const turnOptions = composer.shadowRoot.querySelector("caffold-task-turn-options");
     turnOptions.modelLoading = true;
     turnOptions.permissionRequest = { key: "still-on-its-way" };
     turnOptions.modelLoadingFeedback.visible = true;
@@ -2333,10 +2340,10 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
     return {
       attached,
       detached,
-      sameNavigator: navigator === workspace.querySelector("caffold-task-navigator"),
+      sameNavigator: navigator === workspace.shadowRoot.querySelector("caffold-task-navigator"),
       navigatorStillConnected: element.taskNavigator() === navigator,
-      sameTaskNew: taskNew === element.querySelector("caffold-task-new"),
-      sameDetail: detail === element.querySelector("caffold-task-detail"),
+      sameTaskNew: taskNew === element.shadowRoot.querySelector("caffold-task-new"),
+      sameDetail: detail !== null && detail === taskDetail(),
       turnOptionRequestsReleased,
       settledTurnOptionsNotAskedAgain:
         turnOptions.permissionRequest === null &&

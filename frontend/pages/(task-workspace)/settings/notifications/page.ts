@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
@@ -13,6 +13,7 @@ import {
   removePushInstallation,
   upsertPushInstallation,
 } from "#app/api.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import {
@@ -25,6 +26,8 @@ import {
   shortPushClientId,
   subscriptionPayload,
 } from "./lifecycle.js";
+
+import styles from "./page.css.js";
 
 const STATE_COPY: Readonly<
   Record<NotificationState, { label: string; detail: string }>
@@ -65,13 +68,15 @@ const STATE_COPY: Readonly<
 });
 
 @customElement("caffold-settings-notifications-page")
-export class CaffoldSettingsNotificationsPage extends LitElement {
+export class CaffoldSettingsNotificationsPage extends CaffoldElement {
   @state()
   private accessor installations: PushInstallation[] = [];
   @state()
   private accessor state: NotificationState = "disabled";
   @state()
   private accessor message = "";
+
+  static override styles = styles;
 
   private active = false;
   private operation = 0;
@@ -83,10 +88,6 @@ export class CaffoldSettingsNotificationsPage extends LitElement {
   });
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   activate() {
     this.active = true;

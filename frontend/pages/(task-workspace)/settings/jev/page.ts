@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -8,14 +8,17 @@ import {
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "../components/detail-list.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import {
   type JevSettings,
   JevSettingsLifecycle,
   type JevSettingsSnapshot,
 } from "./lifecycle.js";
 
+import styles from "./page.css.js";
+
 @customElement("caffold-settings-jev-page")
-export class CaffoldSettingsJevPage extends LitElement {
+export class CaffoldSettingsJevPage extends CaffoldElement {
   @state()
   private accessor snapshot: JevSettingsSnapshot = {
     settings: null,
@@ -24,6 +27,8 @@ export class CaffoldSettingsJevPage extends LitElement {
     retry: false,
     message: "",
   };
+
+  static override styles = styles;
 
   private active = false;
   // A half-written rule is the person's, not the server's. While one is being
@@ -43,10 +48,6 @@ export class CaffoldSettingsJevPage extends LitElement {
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly criteria = new DrawnRef<HTMLTextAreaElement>(this);
   private readonly key = new DrawnRef<HTMLInputElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override disconnectedCallback() {
     super.disconnectedCallback();

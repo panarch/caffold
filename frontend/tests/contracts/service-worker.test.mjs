@@ -12,12 +12,65 @@ const source = readFileSync(
 
 test("precaches every bundled runtime asset", () => {
   const shellAssets = appShellAssets(source);
-  const runtimeAssets = runtimeFrontendFiles(frontendRoot).map(assetUrl);
+  const moduleStylesheets = stylesheetsImportedAsModules(frontendRoot);
+  const documentStylesheets = stylesheetsTheDocumentLoads();
+  const runtimeAssets = runtimeFrontendFiles(frontendRoot).flatMap((relative) => {
+    if (!moduleStylesheets.has(relative)) {
+      return [assetUrl(relative)];
+    }
+    // A stylesheet a module imports is the module the build writes beside it.
+    const module = `${assetUrl(relative)}.js`;
+    return documentStylesheets.has(relative) ? [assetUrl(relative), module] : [module];
+  });
   runtimeAssets.push("/assets/build-info.js");
   assert.equal(new Set(shellAssets).size, shellAssets.length);
   const missing = runtimeAssets.filter((asset) => !shellAssets.includes(asset));
   assert.deepEqual(missing, []);
 });
+
+test("precaches no stylesheet the document does not load", () => {
+  const shellAssets = appShellAssets(source);
+  const documentStylesheets = stylesheetsTheDocumentLoads();
+  const unloaded = shellAssets.filter((asset) =>
+    asset.endsWith(".css") && !documentStylesheets.has(asset.slice("/assets/".length)),
+  );
+  assert.deepEqual(unloaded, []);
+});
+
+// Stylesheets production modules import as `<stylesheet>.js`, by a relative
+// path or through an alias in `package.json`.
+function stylesheetsImportedAsModules(root) {
+  const aliases = Object.entries(
+    JSON.parse(readFileSync(path.join(frontendRoot, "package.json"), "utf8")).imports,
+  ).map(([alias, target]) => [alias.slice(0, -1), target.slice("./".length, -1)]);
+  const stylesheets = new Set();
+  for (const relative of runtimeFrontendFiles(root)) {
+    if (!relative.endsWith(".ts")) continue;
+    const module = readFileSync(path.join(root, relative), "utf8");
+    for (const [, specifier] of module.matchAll(/\bfrom\s+"([^"]+\.css)\.js"/g)) {
+      const [alias, target] = aliases.find(([alias]) => specifier.startsWith(alias)) ?? [];
+      stylesheets.add(alias
+        ? `${target}${specifier.slice(alias.length)}`
+        : path.posix.join(path.posix.dirname(relative), specifier));
+    }
+  }
+  return stylesheets;
+}
+
+// `styles.css` with every stylesheet it imports.
+function stylesheetsTheDocumentLoads() {
+  const stylesheets = new Set();
+  const visit = (relative) => {
+    if (stylesheets.has(relative)) return;
+    stylesheets.add(relative);
+    const css = readFileSync(path.join(frontendRoot, relative), "utf8");
+    for (const [, specifier] of css.matchAll(/@import "([^"]+)"/g)) {
+      visit(path.posix.join(path.posix.dirname(relative), specifier));
+    }
+  };
+  visit("styles.css");
+  return stylesheets;
+}
 
 function appShellAssets(serviceWorkerSource) {
   const sourceList = serviceWorkerSource.match(

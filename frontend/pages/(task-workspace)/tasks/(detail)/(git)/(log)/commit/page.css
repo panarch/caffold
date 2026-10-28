@@ -1,6 +1,4 @@
-@import "./components/changes-tree.css";
-
-caffold-git-log-commit-page {
+:host {
   position: relative;
   display: grid;
   grid-template-columns:
@@ -9,56 +7,56 @@ caffold-git-log-commit-page {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
 
-  &.is-resizing-panel {
-    cursor: col-resize;
-    user-select: none;
-  }
+:host(.is-resizing-panel) {
+  cursor: col-resize;
+  user-select: none;
+}
 
-  & > caffold-commit-changes-tree {
-    grid-column: 1;
-  }
+caffold-commit-changes-tree {
+  grid-column: 1;
+}
 
-  & > caffold-pane-resizer {
-    left: var(--git-log-commit-panel-width, 320px);
-  }
+caffold-pane-resizer {
+  left: var(--git-log-commit-panel-width, 320px);
+}
 
-  & > caffold-review-file-viewer {
-    grid-column: 2;
-  }
+caffold-review-file-viewer {
+  grid-column: 2;
+}
 
-  &[data-side-pane-collapsed] {
-    grid-template-columns: minmax(0, 1fr);
+:host([data-side-pane-collapsed]) {
+  grid-template-columns: minmax(0, 1fr);
+}
 
-    & > caffold-commit-changes-tree,
-    & > caffold-pane-resizer {
-      display: none;
-    }
+:host([data-side-pane-collapsed]) > caffold-commit-changes-tree,
+:host([data-side-pane-collapsed]) > caffold-pane-resizer {
+  display: none;
+}
 
-    & > caffold-review-file-viewer {
-      grid-column: 1;
-    }
-  }
+:host([data-side-pane-collapsed]) > caffold-review-file-viewer {
+  grid-column: 1;
 }
 
 @media (max-width: 860px) {
-  caffold-git-log-commit-page {
+  :host {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1fr);
+  }
 
-    & > caffold-commit-changes-tree,
-    & > caffold-review-file-viewer {
-      grid-column: 1;
-      grid-row: 1;
-    }
+  caffold-commit-changes-tree,
+  caffold-review-file-viewer {
+    grid-column: 1;
+    grid-row: 1;
+  }
 
-    &[data-detail-view="list"] > caffold-review-file-viewer,
-    &[data-detail-view="viewer"] > caffold-commit-changes-tree {
-      display: none;
-    }
+  :host([data-detail-view="list"]) > caffold-review-file-viewer,
+  :host([data-detail-view="viewer"]) > caffold-commit-changes-tree {
+    display: none;
+  }
 
-    & > caffold-pane-resizer {
-      display: none;
-    }
+  caffold-pane-resizer {
+    display: none;
   }
 }

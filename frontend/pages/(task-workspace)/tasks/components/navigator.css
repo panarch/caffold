@@ -1,4 +1,4 @@
-caffold-task-navigator {
+:host {
   position: relative;
   display: grid;
   grid-template-rows:
@@ -8,180 +8,172 @@ caffold-task-navigator {
   min-height: 0;
   height: 100%;
   overflow: hidden;
+}
 
-  & .task-list-scroll {
-    min-height: 0;
-    overflow: auto;
-    overscroll-behavior: contain;
-    scrollbar-width: none;
-    padding: var(--task-navigator-scroll-padding-top, 0.3125rem) 0
-      max(1.5rem, var(--task-workspace-navigation-clearance, 0rem));
-    scroll-padding-block: var(--interface-space-2)
-      max(var(--interface-space-12), var(--task-workspace-navigation-clearance, 0rem));
-    font-size: var(--task-list-font-size);
-  }
+.task-list-scroll {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  padding: var(--task-navigator-scroll-padding-top, 0.3125rem) 0
+    max(1.5rem, var(--task-workspace-navigation-clearance, 0rem));
+  scroll-padding-block: var(--interface-space-2)
+    max(var(--interface-space-12), var(--task-workspace-navigation-clearance, 0rem));
+  font-size: var(--task-list-font-size);
+}
 
-  & .task-list-scroll::-webkit-scrollbar {
-    display: none;
-  }
+.task-list-scroll::-webkit-scrollbar {
+  display: none;
+}
 
-  & .task-list-scroll > caffold-active-task-list,
-  & .task-list-scroll > caffold-archived-task-list {
-    display: block;
-  }
+.task-list-scroll > caffold-active-task-list,
+.task-list-scroll > caffold-archived-task-list {
+  display: block;
+}
 
-  & .task-list-scroll > caffold-archived-task-list {
-    margin-top: 1rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--border);
-  }
+.task-list-scroll > caffold-archived-task-list {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
 
-  & .task-list-scroll > caffold-archived-task-list[hidden] {
-    display: none;
-  }
+.task-list-scroll > caffold-archived-task-list[hidden] {
+  display: none;
+}
 
-  &[data-reorder-mode="sections"]
-    .task-list-scroll
-    > caffold-archived-task-list {
-    display: none;
-  }
+:host([data-reorder-mode="sections"]) .task-list-scroll > caffold-archived-task-list {
+  display: none;
+}
 
-  & .task-list-primary-header {
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    height: var(--task-navigator-top-header-size, auto);
-    padding-block: 0;
-    padding-left: calc(
-      var(--interface-space-6) + var(--task-header-leading-space, 0rem)
-    );
-    padding-inline-end: calc(
-      (
-          var(
-              --task-navigator-top-header-size,
-              var(--interface-compact-visual-size)
-            ) - var(--interface-compact-visual-size)
-        ) / 2
-    );
-    border-bottom: 1px solid var(--border);
-    box-shadow: var(--structural-shadow-block-end);
-    color: var(--muted);
-  }
+.task-list-primary-header {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  height: var(--task-navigator-top-header-size, auto);
+  padding-block: 0;
+  padding-left: calc(
+    var(--interface-space-6) + var(--task-header-leading-space, 0rem)
+  );
+  padding-inline-end: calc(
+    (
+        var(
+            --task-navigator-top-header-size,
+            var(--interface-compact-visual-size)
+          ) - var(--interface-compact-visual-size)
+      ) / 2
+  );
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--structural-shadow-block-end);
+  color: var(--muted);
+}
 
-  & .task-list-primary-actions {
-    display: flex;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: max(
-      0rem,
-      calc(
-        var(--interface-toolbar-gap) -
-          var(--interface-compact-hit-outset) -
-          var(--interface-compact-hit-outset)
-      )
-    );
-    margin-inline-end: calc(0rem - var(--interface-compact-hit-outset));
-  }
+.task-list-primary-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: max(
+    0rem,
+    calc(
+      var(--interface-toolbar-gap) -
+        var(--interface-compact-hit-outset) -
+        var(--interface-compact-hit-outset)
+    )
+  );
+  margin-inline-end: calc(0rem - var(--interface-compact-hit-outset));
+}
 
-  & .task-list-header-action {
-    isolation: isolate;
-    flex: 0 0 auto;
-    color: var(--control-fg);
-  }
+.task-list-header-action {
+  isolation: isolate;
+  flex: 0 0 auto;
+  color: var(--control-fg);
+}
 
-  & .task-list-header-action:disabled {
-    opacity: 1;
-    cursor: pointer;
-  }
+.task-list-header-action:disabled {
+  opacity: 1;
+  cursor: pointer;
+}
 
-  & .task-list-header-action::before {
-    z-index: -1;
-  }
+.task-list-header-action::before {
+  z-index: -1;
+}
 
-  & .task-list-header-action .task-action-icon {
-    width: var(--interface-icon-size);
-    height: var(--interface-icon-size);
-    stroke-width: 1.9;
-  }
+.task-list-header-action .task-action-icon {
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
+  stroke-width: 1.9;
+}
 
-  & .task-list-reorder {
-    anchor-name: --task-list-reorder-trigger;
-  }
+.task-list-reorder {
+  anchor-name: --task-list-reorder-trigger;
+}
 
-  & .task-list-reorder-popover {
-    position: fixed;
-    z-index: 8;
-    inset: auto;
-    position-anchor: --task-list-reorder-trigger;
-    position-area: block-end center;
-    position-try-fallbacks: flip-block;
-    width: max-content;
-    margin: var(--interface-space-3) var(--interface-space-5);
-    padding: 0.25rem;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--surface);
-    box-shadow: 0 12px 30px rgb(var(--shadow-rgb) / 16%);
-  }
+.task-list-reorder-popover {
+  position: fixed;
+  z-index: 8;
+  inset: auto;
+  position-anchor: --task-list-reorder-trigger;
+  position-area: block-end center;
+  position-try-fallbacks: flip-block;
+  width: max-content;
+  margin: var(--interface-space-3) var(--interface-space-5);
+  padding: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 12px 30px rgb(var(--shadow-rgb) / 16%);
+}
 
-  & .task-list-reorder-popover:popover-open {
-    display: grid;
-    align-content: start;
-  }
+.task-list-reorder-popover:popover-open {
+  display: grid;
+  align-content: start;
+}
 
-  & .task-list-reorder-popover > button[data-task-action="select-reorder-mode"] {
-    box-sizing: border-box;
-    height: var(--interface-compact-control-size);
-    min-height: var(--interface-compact-control-size);
-    padding: 0 calc(var(--interface-space-5) + var(--keyboard-choice-slot-size))
-      0 var(--interface-space-5);
-    border: 0;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--text);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-    text-align: left;
-    cursor: pointer;
-  }
+.task-list-reorder-popover > button[data-task-action="select-reorder-mode"] {
+  box-sizing: border-box;
+  height: var(--interface-compact-control-size);
+  min-height: var(--interface-compact-control-size);
+  padding: 0 calc(var(--interface-space-5) + var(--keyboard-choice-slot-size))
+    0 var(--interface-space-5);
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+  text-align: left;
+  cursor: pointer;
+}
 
-  & .task-list-reorder-popover
-    > button[data-task-action="select-reorder-mode"]:hover,
-  & .task-list-reorder-popover
-    > button[data-task-action="select-reorder-mode"]:focus-visible {
-    background: var(--control-hover-bg);
-    outline: none;
-  }
+.task-list-reorder-popover > button[data-task-action="select-reorder-mode"]:hover,
+.task-list-reorder-popover > button[data-task-action="select-reorder-mode"]:focus-visible {
+  background: var(--control-hover-bg);
+  outline: none;
+}
 
-  &:has(.task-list-reorder-popover:popover-open) .task-list-reorder::before {
-    border-color: var(--border-strong);
-    background: var(--surface-muted);
-  }
+.task-list-reorder:has(~ .task-list-reorder-popover:popover-open)::before {
+  border-color: var(--border-strong);
+  background: var(--surface-muted);
+}
 
-  & .task-list-reorder[aria-pressed="true"] {
-    color: var(--control-active-text);
-  }
+.task-list-reorder[aria-pressed="true"] {
+  color: var(--control-active-text);
+}
 
-  & .task-list-reorder[aria-pressed="true"]::before {
-    border-color: var(--control-active-border);
-    background: var(--control-active-bg);
-  }
+.task-list-reorder[aria-pressed="true"]::before {
+  border-color: var(--control-active-border);
+  background: var(--control-active-bg);
+}
 
-  & .task-list-reorder[aria-pressed="true"]
-    .task-action-icon
-    > :nth-child(-n + 2) {
-    --task-reorder-arrow-offset: 3px;
-    animation: task-reorder-arrow-shift 1.5s ease-in-out infinite;
-  }
+.task-list-reorder[aria-pressed="true"] .task-action-icon > :nth-child(-n + 2) {
+  --task-reorder-arrow-offset: 3px;
+  animation: task-reorder-arrow-shift 1.5s ease-in-out infinite;
+}
 
-  & .task-list-reorder[aria-pressed="true"]
-    .task-action-icon
-    > :nth-child(n + 3) {
-    --task-reorder-arrow-offset: -3px;
-    animation: task-reorder-arrow-shift 1.5s ease-in-out infinite;
-  }
+.task-list-reorder[aria-pressed="true"] .task-action-icon > :nth-child(n + 3) {
+  --task-reorder-arrow-offset: -3px;
+  animation: task-reorder-arrow-shift 1.5s ease-in-out infinite;
 }
 
 @keyframes task-reorder-arrow-shift {
@@ -197,15 +189,9 @@ caffold-task-navigator {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  caffold-task-navigator {
-    & .task-list-reorder[aria-pressed="true"]
-      .task-action-icon
-      > :nth-child(-n + 2),
-    & .task-list-reorder[aria-pressed="true"]
-      .task-action-icon
-      > :nth-child(n + 3) {
-      animation: none;
-      transform: none;
-    }
+  .task-list-reorder[aria-pressed="true"] .task-action-icon > :nth-child(-n + 2),
+  .task-list-reorder[aria-pressed="true"] .task-action-icon > :nth-child(n + 3) {
+    animation: none;
+    transform: none;
   }
 }

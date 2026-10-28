@@ -87,11 +87,11 @@ test("keeps pinch gestures native while blocking background wheel and one-finger
     dialog: { value: { contains: (element) => element === button } },
   });
   assert.equal(
-    selector.allowsNativeActivation.call(shown, { key: "Enter", target: button }),
+    selector.allowsNativeActivation.call(shown, { key: "Enter", composedPath: () => [button] }),
     true,
   );
   assert.equal(
-    selector.allowsNativeActivation.call(shown, { key: "Escape", target: button }),
+    selector.allowsNativeActivation.call(shown, { key: "Escape", composedPath: () => [button] }),
     false,
   );
 });

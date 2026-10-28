@@ -172,7 +172,7 @@ async function captureTaskCreation(page) {
 function composerSubmission(form) {
   return form.evaluate((element) => ({
     pending: Boolean(
-      element.closest("caffold-task-composer").activeSubmissionFor(),
+      element.getRootNode().host.activeSubmissionFor(),
     ),
     draft: element.querySelector("textarea[name='prompt']").value,
   }));
@@ -211,9 +211,12 @@ test("composer exposes Codex approval modes and confirms full access", { tag: "@
   await expect(permissionPopover).toBeVisible();
   const permissionPopoverBounds = await permissionPopover.evaluate((element) => {
     const rect = element.getBoundingClientRect();
-    const paneRect = element
-      .closest(".tasks-detail-pane")
-      .getBoundingClientRect();
+    // The menu is the turn options', inside the Composer and New Task roots.
+    let pane = element;
+    while (!pane.matches?.(".tasks-detail-pane")) {
+      pane = pane.parentNode ?? pane.host;
+    }
+    const paneRect = pane.getBoundingClientRect();
     return {
       left: rect.left,
       right: rect.right,
@@ -1683,23 +1686,22 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
       }),
     )
     .toBe(true);
-  const metrics = () =>
-    form.evaluate((element) => {
+  const metrics = async () =>
+    form.evaluate((element, conversation) => {
       const panel = element.querySelector(".task-composer-panel");
       const textarea = element.querySelector("textarea[name='prompt']");
       const sendButton = element.querySelector(".task-primary-action-button");
-      const modelButton = element.querySelector(".task-model-button");
-      const modelName = element.querySelector(".task-model-name");
-      const permissionButton = element.querySelector(".task-permission-button");
+      const turnOptions = element.querySelector("caffold-task-turn-options").shadowRoot;
+      const modelButton = turnOptions.querySelector(".task-model-button");
+      const modelName = turnOptions.querySelector(".task-model-name");
+      const permissionButton = turnOptions.querySelector(".task-permission-button");
       const permissionIcon = permissionButton.querySelector(".task-permission-icon");
       const permissionLabel = permissionButton.querySelector(".task-permission-label");
       const voiceButton = element.querySelector(".task-voice-button");
-      const buildAlert = document.querySelector(
-        "caffold-build-mismatch-alert",
-      );
+      // The App Shell draws the alert and the workspace in its own root.
       const shell = document.querySelector("caffold-app-shell");
-      const workspace = document.querySelector("caffold-task-workspace");
-      const conversation = document.querySelector(".task-conversation-scroll");
+      const buildAlert = shell.shadowRoot.querySelector("caffold-build-mismatch-alert");
+      const workspace = shell.shadowRoot.querySelector("caffold-task-workspace");
       const rootStyle = getComputedStyle(document.documentElement);
       const formStyle = getComputedStyle(element);
       const conversationStyle = getComputedStyle(conversation);
@@ -1739,7 +1741,7 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
         shellBottom: shellRect.bottom,
         workspaceBottom: workspaceRect.bottom,
       };
-    });
+    }, await page.locator(".task-conversation-scroll").elementHandle());
 
   await expect(form.locator(".task-permission-button svg.task-permission-icon")).toHaveCount(1);
   const idle = await metrics();

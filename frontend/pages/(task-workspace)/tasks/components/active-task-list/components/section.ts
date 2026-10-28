@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -6,10 +6,12 @@ import {
   ActionHints,
   mergeActionHintScopes,
 } from "#app/action-hints.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import {
   type TaskOperationsPresentation,
   taskStoreOperationsPresentation,
 } from "#app/pages/(task-workspace)/task-store-status.js";
+import { containsAcrossShadowRoots } from "#app/shadow-roots.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import { sectionLabel } from "#tasks/task-format.js";
@@ -19,6 +21,8 @@ import {
   CaffoldActiveTaskRow,
   type TaskRowIntent,
 } from "./section/components/row.js";
+
+import styles from "./section.css.js";
 
 export const ACTIVE_TASK_SECTION_INTENT_EVENT =
   "caffold:active-task-section-intent";
@@ -47,6 +51,8 @@ export interface SectionSnapshot {
   selectedThreadId: string;
   taskOperations: TaskOperationsPresentation;
   reorderMode: ReorderMode;
+  // The Tasks slide back in as Section reordering ends.
+  revealTasks: boolean;
   // A move is being saved.
   pending: boolean;
 }
@@ -83,13 +89,16 @@ interface PointerGesture {
  * `ACTIVE_TASK_SECTION_INTENT_EVENT`.
  */
 @customElement("caffold-active-task-section")
-export class CaffoldActiveTaskSection extends LitElement {
+export class CaffoldActiveTaskSection extends CaffoldElement {
+  static override styles = styles;
+
   private snapshot: SectionSnapshot = {
     section: null,
     selectedSectionId: "",
     selectedThreadId: "",
     taskOperations: taskStoreOperationsPresentation(null),
     reorderMode: "none",
+    revealTasks: false,
     pending: false,
   };
   private pointerGesture: PointerGesture | null = null;
@@ -112,10 +121,6 @@ export class CaffoldActiveTaskSection extends LitElement {
     this.addEventListener("lostpointercapture", (event) =>
       this.handlePointerCancel(event),
     );
-  }
-
-  override createRenderRoot() {
-    return this;
   }
 
   override connectedCallback() {
@@ -163,7 +168,7 @@ export class CaffoldActiveTaskSection extends LitElement {
   }
 
   containsReorderFocus(element: Element | null) {
-    if (!element || !this.contains(element)) {
+    if (!element || !containsAcrossShadowRoots(this, element)) {
       return false;
     }
     return (
@@ -316,10 +321,11 @@ export class CaffoldActiveTaskSection extends LitElement {
   }
 
   override updated() {
-    const { section, reorderMode } = this.snapshot;
+    const { section, reorderMode, revealTasks } = this.snapshot;
     if (this.dataset.reorderMode !== reorderMode) {
       this.dataset.reorderMode = reorderMode;
     }
+    this.toggleAttribute("data-task-reveal", revealTasks);
     const sectionId = section && !section.recovery ? section.id : undefined;
     if (this.dataset.sectionId !== sectionId) {
       if (sectionId === undefined) {

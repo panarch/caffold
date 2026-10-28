@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { elementHandles } from "../support/element-handles.js";
 import {
   installTaskApiFixture,
   taskDetailFixture,
@@ -42,10 +43,9 @@ test("scales visible Task controls without shrinking their touch targets", { tag
       "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden]) .task-model-name",
     ),
   ).toHaveCount(1);
-  await page.evaluate(async () => {
-    const composer = document.querySelector(
-      "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])",
-    );
+  await page.locator(
+    "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])",
+  ).evaluate(async (composer) => {
     composer.state.attachments = [
       {
         id: "scale-audit-image",
@@ -225,10 +225,9 @@ async function installScalingTask(page) {
 }
 
 function attachmentRemoveMetrics(page) {
-  return page.evaluate(() => {
-    const button = document.querySelector(
-      "caffold-task-detail:not([hidden]) .task-composer-attachment-remove",
-    );
+  return page.locator(
+    "caffold-task-detail:not([hidden]) .task-composer-attachment-remove",
+  ).evaluate((button) => {
     const icon = button.querySelector(".task-composer-attachment-remove-icon");
     const box = button.getBoundingClientRect();
     const inset = Number.parseFloat(
@@ -237,7 +236,8 @@ function attachmentRemoveMetrics(page) {
     const centerX = box.left + box.width / 2;
     const centerY = box.top + box.height / 2;
     const hitAt = (x, y) => {
-      const hit = document.elementFromPoint(x, y);
+      // The strip draws the button in its own root.
+      const hit = button.getRootNode().elementFromPoint(x, y);
       return hit === button || button.contains(hit);
     };
     return {
@@ -259,35 +259,40 @@ function attachmentRemoveMetrics(page) {
   });
 }
 
-function taskInterfaceMetrics(page) {
-  return page.evaluate(() => {
+async function taskInterfaceMetrics(page) {
+  return page.evaluate(([
+    activeComposer,
+    info,
+    git,
+    github,
+    terminal,
+    archive,
+    popoverTerm,
+    popoverValue,
+    openPopover,
+    close,
+    navigator,
+    taskNew,
+  ]) => {
     const number = (value) => Number.parseFloat(value) || 0;
     const rootStyle = getComputedStyle(document.documentElement);
     const rootFontSize = number(rootStyle.fontSize);
     const tokenPixels = (name) =>
       number(rootStyle.getPropertyValue(name)) * rootFontSize;
-    const activeComposer = document.querySelector(
-      "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])",
-    );
-    const activeDetail = document.querySelector(
-      "caffold-task-detail:not([hidden])",
-    );
-    const detailLayout = activeDetail.closest("caffold-detail-layout");
+    // The Composer draws in its own root, and its turn options in theirs.
+    const composer = activeComposer.shadowRoot;
+    const turnOptions = composer.querySelector("caffold-task-turn-options").shadowRoot;
     const controls = {
-      close: document.querySelector(".task-workspace-back"),
-      info: detailLayout.querySelector(".task-detail-info-button"),
-      newTask: document.querySelector(
-        "caffold-task-navigator .task-list-new-task",
-      ),
-      git: detailLayout.querySelector(".task-git-button"),
-      github: detailLayout.querySelector(".task-github-button"),
-      terminal: detailLayout.querySelector(".task-terminal-button"),
-      archive: detailLayout.querySelector(
-        ".task-detail-popover:popover-open .task-detail-archive-action .task-secondary-button",
-      ),
-      model: activeComposer.querySelector(".task-model-button"),
-      permission: activeComposer.querySelector(".task-permission-button"),
-      send: activeComposer.querySelector(".task-primary-action-button"),
+      close,
+      info,
+      newTask: navigator.shadowRoot.querySelector(".task-list-new-task"),
+      git,
+      github,
+      terminal,
+      archive,
+      model: turnOptions.querySelector(".task-model-button"),
+      permission: turnOptions.querySelector(".task-permission-button"),
+      send: composer.querySelector(".task-primary-action-button"),
     };
     const boxHeight = (element) => element.getBoundingClientRect().height;
     const paintedHeight = (element) => {
@@ -298,8 +303,9 @@ function taskInterfaceMetrics(page) {
       return box.height - number(getComputedStyle(element, "::before").top) * 2;
     };
     const fontSize = (element) => number(getComputedStyle(element).fontSize);
+    // Each control is looked up at a point in the tree it is drawn in.
     const hitAt = (element, x, y) => {
-      const hit = document.elementFromPoint(x, y);
+      const hit = element.getRootNode().elementFromPoint(x, y);
       return hit === element || element.contains(hit);
     };
     const verticalHitTarget = (element) => {
@@ -352,7 +358,7 @@ function taskInterfaceMetrics(page) {
           [centerX - 19, centerY],
           [centerX + 19, centerY],
         ].map(([x, y]) => {
-          const hit = document.elementFromPoint(x, y);
+          const hit = element.getRootNode().elementFromPoint(x, y);
           return {
             x,
             y,
@@ -379,29 +385,28 @@ function taskInterfaceMetrics(page) {
       }
       return rightBounds.left - leftBounds.right;
     };
-    const taskRow = document.querySelector("caffold-task-navigator .task-row");
+    // The first Task row, in the navigator, the Active list, its Section, and
+    // its own root.
+    const taskRow = ["caffold-active-task-list", "caffold-active-task-section", "caffold-active-task-row"]
+      .reduce(
+        (root, tag) => root.querySelector(tag).shadowRoot,
+        navigator.shadowRoot,
+      )
+      .querySelector(".task-row");
     const taskTitle = taskRow.querySelector(".task-row-title");
     const compactInset = number(
       getComputedStyle(controls.git, "::before").left,
     );
-    const popoverLabelFontSize = fontSize(
-      document.querySelector(".task-detail-popover dt"),
-    );
-    const popoverValueFontSize = fontSize(
-      document.querySelector(".task-detail-popover dd"),
-    );
-    const worktreeGuide = document.querySelector(
-      "caffold-task-new .task-new-worktree-guide",
-    );
+    const popoverLabelFontSize = fontSize(popoverTerm);
+    const popoverValueFontSize = fontSize(popoverValue);
+    const worktreeGuide = taskNew.shadowRoot.querySelector(".task-new-worktree-guide");
     const worktreeGuideHeadingFontSize = fontSize(
       worktreeGuide.querySelector("h2"),
     );
     const worktreeGuideBodyFontSize = fontSize(worktreeGuide);
     const archiveHitTarget = verticalHitTarget(controls.archive);
     const archiveHitDebug = hitDebug(controls.archive);
-    detailLayout
-      .querySelector(".task-detail-popover:popover-open")
-      ?.hidePopover();
+    openPopover?.hidePopover();
 
     return {
       rootFontSize,
@@ -457,5 +462,22 @@ function taskInterfaceMetrics(page) {
         archive: archiveHitDebug,
       },
     };
-  });
+  }, await elementHandles(page.locator("caffold-detail-layout"), [
+    "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])",
+    ".task-detail-info-button",
+    ".task-git-button",
+    ".task-github-button",
+    ".task-terminal-button",
+    ".task-detail-popover:popover-open .task-detail-archive-action .task-secondary-button",
+    ".task-detail-popover dt",
+    ".task-detail-popover dd",
+    ".task-detail-popover:popover-open",
+  ]).then(async (handles) => [
+    ...handles,
+    ...(await elementHandles(page, [
+      ".task-workspace-back",
+      "caffold-task-navigator",
+      "caffold-task-new",
+    ])),
+  ]));
 }

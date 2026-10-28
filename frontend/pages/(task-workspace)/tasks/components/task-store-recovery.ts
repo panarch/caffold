@@ -1,10 +1,11 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import {
   INITIAL_TASK_STORE_STATUS_SNAPSHOT,
   TASK_STORE_RETRY_REQUEST_EVENT,
@@ -12,6 +13,8 @@ import {
 } from "#app/pages/(task-workspace)/task-store-status.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
+
+import styles from "./task-store-recovery.css.js";
 
 const PREPARING_MESSAGE =
   "Caffold is preparing the local Task navigator before Tasks start.";
@@ -27,20 +30,18 @@ const FAILED_INSTRUCTION =
  * upgraded, or after its upgrade failed and can be retried.
  */
 @customElement("caffold-task-store-recovery")
-export class CaffoldTaskStoreRecovery extends LitElement {
+export class CaffoldTaskStoreRecovery extends CaffoldElement {
   @state()
   private accessor snapshot: TaskStoreStatusSnapshot =
     INITIAL_TASK_STORE_STATUS_SNAPSHOT;
+
+  static override styles = styles;
 
   private readonly surface = new DrawnRef<HTMLElement>(this);
   private readonly hints: ActionHints = new ActionHints(this, {
     clipRoots: () => [this, this.surface.value],
   });
   private readonly surfaces = new ScrollSurfaces(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   setSnapshot(snapshot: TaskStoreStatusSnapshot | null | undefined) {
     const next = snapshot ?? INITIAL_TASK_STORE_STATUS_SNAPSHOT;
@@ -117,7 +118,10 @@ export class CaffoldTaskStoreRecovery extends LitElement {
 
   private requestRetry() {
     this.dispatchEvent(
-      new CustomEvent(TASK_STORE_RETRY_REQUEST_EVENT, { bubbles: true }),
+      new CustomEvent(TASK_STORE_RETRY_REQUEST_EVENT, {
+        bubbles: true,
+        composed: true,
+      }),
     );
   }
 }

@@ -1,11 +1,8 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
-import {
-  KEYBOARD_SESSION_DISMISS_EVENT,
-  KeyboardContexts,
-} from "#app/keyboard-navigation.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
 import { ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
@@ -15,6 +12,9 @@ import { formatRelativeAgePresentation } from "../task-format.js";
 import { type ListedTask, taskThreadId } from "../task-list-model.js";
 import type { TaskWithSection } from "./active-task-list.js";
 import "./task-status-chip.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+
+import styles from "./task-switcher-dialog.css.js";
 
 export const TASK_SWITCHER_SELECT_EVENT = "caffold:task-switcher-select";
 
@@ -42,7 +42,9 @@ export interface TaskSwitcherSnapshot {
  * is usually that something finished.
  */
 @customElement("caffold-task-switcher-dialog")
-export class CaffoldTaskSwitcherDialog extends LitElement {
+export class CaffoldTaskSwitcherDialog extends CaffoldElement {
+  static override styles = styles;
+
   private tasksLoaded = true;
   // Thread IDs in the order taken when the dialog opened.
   private order: string[] = [];
@@ -54,17 +56,6 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
   private readonly modal = new DrawnRef<HTMLDialogElement>(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly items = new DrawnRefs<HTMLLIElement>(this);
-
-  constructor() {
-    super();
-    this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) =>
-      this.handleDismiss(event),
-    );
-  }
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -146,6 +137,7 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
         ${this.keyboard.modal({ id: "task-switcher", sessionBound: true })}
         closedby="any"
         aria-labelledby="task-switcher-dialog-title"
+        @caffold:keyboard-session-dismiss=${this.close}
       >
         <article class="task-switcher-card">
           <header class="task-switcher-header">
@@ -233,12 +225,6 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
         <span class="task-switcher-row-indicators">${rowMeta(task)}</span>
       </button>
     </li>`;
-  }
-
-  private handleDismiss(event: Event) {
-    if (event.target === this.dialog) {
-      this.close();
-    }
   }
 
   private select(detail: TaskSwitcherSelectDetail) {

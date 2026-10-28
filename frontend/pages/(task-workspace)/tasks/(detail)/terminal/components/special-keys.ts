@@ -1,5 +1,8 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+
+import styles from "./special-keys.css.js";
 
 // The keys a phone keyboard lacks. Ctrl waits for the next key, from this row
 // or the keyboard, and applies to that one key only.
@@ -23,23 +26,22 @@ const KEYS = Object.freeze([
 ]);
 
 @customElement("caffold-terminal-special-keys")
-export class CaffoldTerminalSpecialKeys extends LitElement {
+export class CaffoldTerminalSpecialKeys extends CaffoldElement {
   @state()
   private accessor controlPending = false;
+
+  static override styles = styles;
 
   constructor() {
     super();
     // The keys must not take focus from the terminal, or a phone would close
     // its keyboard on every press.
     this.addEventListener("pointerdown", (event) => {
-      if (event.target instanceof Element && event.target.closest("button")) {
+      const pressed = event.composedPath()[0];
+      if (pressed instanceof Element && pressed.closest("button")) {
         event.preventDefault();
       }
     });
-  }
-
-  override createRenderRoot() {
-    return this;
   }
 
   override connectedCallback() {

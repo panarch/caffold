@@ -1,4 +1,4 @@
-import { html, LitElement, type PropertyValues } from "lit";
+import { html, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import {
   captureLinkActionHintBinding,
@@ -12,6 +12,7 @@ import {
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION, type ActionHintPull } from "#app/action-hints.js";
 import type { TaskFileLink } from "#app/api.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { parseLinkRoute, routeUrl } from "#app/navigation-routes.js";
 import {
   emptyScrollSurfaceScope,
@@ -20,8 +21,11 @@ import {
   type ScrollSurfacePull,
   type ScrollSurfaceScope,
 } from "#app/scroll-scope.js";
+import { closestAcrossShadowRoots } from "#app/shadow-roots.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { CaffoldTaskMarkdownCodeBlock } from "./markdown/components/code-block.js";
+
+import styles from "./markdown.css.js";
 
 const MARKED_IMPORT = "https://esm.sh/marked@15.0.12";
 
@@ -76,7 +80,7 @@ let parserPromise: Promise<MarkedParser> | null = null;
 // become links into the Task's files, and with `code-block-controls` each
 // fenced block gets its name and actions.
 @customElement("caffold-task-markdown")
-export class CaffoldTaskMarkdown extends LitElement {
+export class CaffoldTaskMarkdown extends CaffoldElement {
   @property({ attribute: false })
   accessor markdown = "";
   @property({
@@ -93,15 +97,13 @@ export class CaffoldTaskMarkdown extends LitElement {
   @state()
   private accessor renderedContent: DocumentFragment | null = null;
 
+  static override styles = styles;
+
   private renderToken: symbol | null = null;
   private actionHintLinks: LinkRecord[] = [];
   private scrollSurfaceRecords: ScrollSurfaceRecord[] = [];
   private scrollCodeBlocks: CaffoldTaskMarkdownCodeBlock[] = [];
   private readonly bodyElement = new DrawnRef<HTMLElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   // Parsing reads all four, so a change to any of them reads the Markdown
   // again, and the same values leave it as drawn.
@@ -180,7 +182,7 @@ export class CaffoldTaskMarkdown extends LitElement {
       {
         blocked: false,
         targets: linkTargets,
-        mutationRoots: [this],
+        mutationRoots: [this, this.renderRoot],
         scrollRoots: [...new Set(tableScrollRoots)],
       },
       ...blocks.map((block, index) =>
@@ -214,7 +216,7 @@ export class CaffoldTaskMarkdown extends LitElement {
                     clipRoots: [this, body, record.scrollport, ...clipRoots],
                   },
                 ],
-                mutationRoots: [this],
+                mutationRoots: [this, this.renderRoot],
                 resizeElements: [this, record.scrollport],
                 scrollRoots: [record.scrollport],
               },
@@ -272,12 +274,19 @@ export class CaffoldTaskMarkdown extends LitElement {
       const blocks = mountCodeBlocks(
         template.content,
         this.codeBlockControls ? codeBlocks : [],
-        (mutation) => this.mutateLayout(mutation),
       );
       const scrollContext = captureScrollContext(this);
       this.renderedContent = template.content;
       this.renderState = "markdown";
       this.performUpdate();
+      // A block draws into a shadow root, which it can only make once it is in
+      // this document rather than the template's.
+      for (const { block, pre, label } of blocks) {
+        block.setContent(pre, {
+          label,
+          preserveLayout: (mutation) => this.mutateLayout(mutation),
+        });
+      }
       const body = this.body;
       if (!body) {
         return;
@@ -287,7 +296,7 @@ export class CaffoldTaskMarkdown extends LitElement {
         body,
         codeBlocks,
       );
-      this.scrollCodeBlocks = blocks;
+      this.scrollCodeBlocks = blocks.map(({ block }) => block);
       dispatchRendered(this, scrollContext);
     } catch {
       parserPromise = null;
@@ -342,9 +351,6 @@ function collectNativeScrollSurfaceRecords(
   return Array.from(
     root.querySelectorAll<HTMLElement>("pre, .markdown-table-scroll"),
   ).flatMap((scrollport) => {
-    if (scrollport.closest("caffold-task-markdown-code-block")) {
-      return [];
-    }
     const kind = scrollport.localName === "pre" ? "code" : "table";
     const ordinal = (ordinals.get(kind) ?? 0) + 1;
     ordinals.set(kind, ordinal);
@@ -582,11 +588,11 @@ function collectCodeBlocks(parent: DocumentFragment): CodeBlockSource[] {
   });
 }
 
-// Each fenced block takes its `<pre>` into a code block in the `<pre>`'s place.
+// Each fenced block gets a code block in its `<pre>`'s place, which takes the
+// `<pre>` once both are drawn.
 function mountCodeBlocks(
   parent: DocumentFragment,
   candidates: CodeBlockSource[],
-  preserveLayout: (mutation: () => void) => void,
 ) {
   return candidates.flatMap(({ code, label }) => {
     const pre = code.parentElement;
@@ -602,13 +608,15 @@ function mountCodeBlocks(
     code.classList.remove("markdown-block-code");
     const block = new CaffoldTaskMarkdownCodeBlock();
     pre.parentNode.insertBefore(block, pre);
-    block.setContent(pre, { label, preserveLayout });
-    return [block];
+    return [{ block, pre, label }];
   });
 }
 
 function captureScrollContext(element: Element): ScrollContext | null {
-  const scroller = element.closest(".task-conversation-scroll");
+  const scroller = closestAcrossShadowRoots(
+    element,
+    ".task-conversation-scroll",
+  );
   if (!scroller || scroller.clientHeight === 0) {
     return null;
   }
@@ -628,10 +636,14 @@ function captureScrollContext(element: Element): ScrollContext | null {
 }
 
 function dispatchRendered(element: Element, before: ScrollContext | null) {
-  const scroller = element.closest(".task-conversation-scroll");
+  const scroller = closestAcrossShadowRoots(
+    element,
+    ".task-conversation-scroll",
+  );
   element.dispatchEvent(
     new CustomEvent<MarkdownRenderedDetail>("caffold:task-markdown-rendered", {
       bubbles: true,
+      composed: true,
       detail: { before, nextScrollHeight: scroller?.scrollHeight ?? null },
     }),
   );

@@ -1,300 +1,310 @@
-caffold-task-conversation {
+:host {
   --task-conversation-block-end-padding: calc(
     1.125rem + var(--interface-control-hit-size) + var(--interface-space-3)
   );
-
-  & .task-thinking-content,
-  & .task-file-change p {
-    font-size: var(--conversation-font-size);
-    line-height: var(--conversation-line-height);
-  }
-
-  & .task-message > .task-message-header,
-  & .task-thinking summary,
-  & .task-tool-card header,
-  & .task-file-change header {
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-  }
-
-  & .task-message > .task-message-header,
-  & .task-thinking summary,
-  & .task-tool-card header,
-  & .task-file-change header,
-  & .task-file-change p {
-    color: var(--muted);
-  }
-
-  & .task-conversation-scroll {
-    min-height: 0;
-    overflow: auto;
-    overflow-anchor: none;
-    padding: 1rem 0.875rem var(--task-conversation-block-end-padding);
-  }
-
-  /* Content reaching the bottom edge fades into the surface instead of being
-     cut. Sticky offsets start inside the scroller's padding, and the negative
-     margin keeps the fade out of the scroll height. */
-  & .task-conversation-scroll::after {
-    display: block;
-    position: sticky;
-    bottom: calc(0px - var(--task-conversation-block-end-padding));
-    height: 1.5rem;
-    margin-bottom: -1.5rem;
-    background: linear-gradient(to bottom, transparent, var(--surface));
-    content: "";
-    pointer-events: none;
-  }
-
-  & .task-conversation-column {
-    display: grid;
-    gap: 1.25rem;
-    width: min(100%, 980px);
-    min-width: 0;
-    margin: 0 auto;
-  }
-
-  & .task-conversation-notices {
-    display: contents;
-  }
-
-  & .task-conversation,
-  & .task-approvals {
-    display: grid;
-    gap: 1.375rem;
-    width: 100%;
-    min-width: 0;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  & .task-approval-flow {
-    justify-self: start;
-    width: min(100%, 850px);
-    min-width: 0;
-    max-width: 100%;
-  }
-
-  & .task-approval-flow > .task-approvals {
-    gap: 0.625rem;
-  }
-
-  & .task-load-error-message {
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-  }
-
-  & .task-event {
-    min-width: 0;
-  }
-
-  & .task-event-status {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    padding: 0.125rem 0;
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-  }
-
-  & .task-event-status > .task-status-chip {
-    display: inline-grid;
-    grid-auto-flow: column;
-    align-items: center;
-    gap: 0.3125rem;
-    padding: 0.125rem 0.5rem;
-    border: 1px solid var(--border-subtle);
-    border-radius: 999px;
-    background: var(--surface-subtle);
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-    white-space: nowrap;
-  }
-
-  & .task-event-status[data-event-status="warning"] .task-status-chip {
-    border-color: var(--warning-border);
-    background: var(--warning-soft);
-    color: var(--warning-strong);
-  }
-
-  & .task-message {
-    display: grid;
-    gap: 0.3125rem;
-    width: 100%;
-    min-width: 0;
-  }
-
-  & .task-turn-work,
-  & .task-thinking details,
-  & .task-command,
-  & .task-command-group,
-  & .task-tool-card,
-  & .task-file-change article {
-    min-width: 0;
-    max-width: 100%;
-  }
-
-  & .task-message > .task-message-header {
-    display: flex;
-    align-items: center;
-    min-height: 1rem;
-    color: var(--muted);
-  }
-
-  & .task-tool-card pre {
-    margin: 0;
-    font-size: var(--code-font-size);
-    line-height: var(--code-line-height);
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-  }
-
-  & .task-message[data-message-role="assistant"] > caffold-task-message-attachments {
-    justify-self: start;
-    width: min(100%, 700px);
-  }
-
-  & .task-thinking details,
-  & .task-tool-card,
-  & .task-file-change article {
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: var(--surface-subtle);
-  }
-
-  & .task-thinking[data-thinking-state="complete"] details:not([open]) {
-    background: var(--surface);
-  }
-
-  & .task-thinking summary,
-  & .task-tool-card header,
-  & .task-file-change header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    min-width: 0;
-    min-height: var(--interface-control-size);
-    padding: 0.4375rem 0.6875rem;
-    border-bottom: 1px solid var(--border-subtle);
-    cursor: pointer;
-  }
-
-  & .task-thinking details:not([open]) > summary {
-    border-bottom: 0;
-  }
-
-  & .task-thinking summary::marker {
-    color: var(--muted);
-  }
-
-  & .task-thinking-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4375rem;
-    min-width: 0;
-  }
-
-  & .task-thinking-disclosure-chevron {
-    display: inline-block;
-    width: 0.375rem;
-    height: 0.375rem;
-    border-right: 1.5px solid currentColor;
-    border-bottom: 1.5px solid currentColor;
-    flex: 0 0 0.375rem;
-    transform: rotate(-45deg);
-  }
-
-  & .task-thinking details[open] .task-thinking-disclosure-chevron {
-    transform: rotate(45deg);
-  }
-
-  & .task-tool-card header,
-  & .task-file-change header {
-    cursor: default;
-  }
-
-  & .task-thinking summary time,
-  & .task-tool-card header time,
-  & .task-file-change header time {
-    margin-left: auto;
-    font-size: var(--interface-meta-font-size);
-  }
-
-  & .task-thinking-content,
-  & .task-tool-card pre {
-    overflow-x: auto;
-    padding: 0.625rem;
-  }
-
-  & .task-turn-work {
-    justify-self: start;
-    width: min(100%, 850px);
-    margin-top: 0.125rem;
-  }
-
-  & .task-turn-work > caffold-task-work-details {
-    min-width: 0;
-    max-width: 100%;
-  }
-
-  & .task-turn-active {
-    justify-self: start;
-    width: min(100%, 850px);
-  }
-
-  &:is(
-    [data-transport-state="reconnecting"],
-    [data-transport-state="unavailable"]
-  ) .task-turn-active {
-    display: none;
-  }
-
 }
 
+.task-thinking-content,
+.task-file-change p {
+  font-size: var(--conversation-font-size);
+  line-height: var(--conversation-line-height);
+}
 
-caffold-task-conversation {
-  & .task-tool-card[data-tool-tone="danger"] {
-    border-color: var(--danger-faint-border);
-    background: var(--danger-faint);
-  }
+.task-message > .task-message-header,
+.task-thinking summary,
+.task-tool-card header,
+.task-file-change header {
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+}
 
-  & .task-file-change p {
-    margin: 0;
-    padding: 0.625rem 0.6875rem;
-  }
+.task-message > .task-message-header,
+.task-thinking summary,
+.task-tool-card header,
+.task-file-change header,
+.task-file-change p {
+  color: var(--muted);
+}
+
+.task-conversation-scroll {
+  min-height: 0;
+  overflow: auto;
+  overflow-anchor: none;
+  padding: 1rem 0.875rem var(--task-conversation-block-end-padding);
+}
+
+/* Content reaching the bottom edge fades into the surface instead of being
+   cut. Sticky offsets start inside the scroller's padding, and the negative
+   margin keeps the fade out of the scroll height. */
+.task-conversation-scroll::after {
+  display: block;
+  position: sticky;
+  bottom: calc(0px - var(--task-conversation-block-end-padding));
+  height: 1.5rem;
+  margin-bottom: -1.5rem;
+  background: linear-gradient(to bottom, transparent, var(--surface));
+  content: "";
+  pointer-events: none;
+}
+
+.task-conversation-column {
+  display: grid;
+  gap: 1.25rem;
+  width: min(100%, 980px);
+  min-width: 0;
+  margin: 0 auto;
+}
+
+.task-conversation-notices {
+  display: contents;
+}
+
+.task-conversation,
+.task-approvals {
+  display: grid;
+  gap: 1.375rem;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task-approval-flow {
+  justify-self: start;
+  width: min(100%, 850px);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.task-approval-flow > .task-approvals {
+  gap: 0.625rem;
+}
+
+.task-detail-load-error-inline {
+  display: grid;
+  justify-items: start;
+  justify-self: stretch;
+  align-content: start;
+  gap: 0.5rem;
+  max-width: 680px;
+  margin: 0;
+  padding: 0.5625rem 0.625rem;
+  border: 1px solid var(--warning-border);
+  border-radius: 5px;
+  background: var(--warning-soft);
+  color: var(--text);
+}
+
+.task-detail-load-error-inline > p {
+  margin: 0;
+}
+
+.task-load-error-message {
+  color: var(--muted);
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+}
+
+.task-event {
+  min-width: 0;
+}
+
+.task-event-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.125rem 0;
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+}
+
+.task-event-status > .task-status-chip {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  gap: 0.3125rem;
+  padding: 0.125rem 0.5rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+  white-space: nowrap;
+}
+
+.task-event-status[data-event-status="warning"] .task-status-chip {
+  border-color: var(--warning-border);
+  background: var(--warning-soft);
+  color: var(--warning-strong);
+}
+
+.task-message {
+  display: grid;
+  gap: 0.3125rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.task-turn-work,
+.task-thinking details,
+.task-command,
+.task-command-group,
+.task-tool-card,
+.task-file-change article {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.task-message > .task-message-header {
+  display: flex;
+  align-items: center;
+  min-height: 1rem;
+  color: var(--muted);
+}
+
+.task-tool-card pre {
+  margin: 0;
+  font-size: var(--code-font-size);
+  line-height: var(--code-line-height);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.task-message[data-message-role="assistant"] > caffold-task-message-attachments {
+  justify-self: start;
+  width: min(100%, 700px);
+}
+
+.task-thinking details,
+.task-tool-card,
+.task-file-change article {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+}
+
+.task-thinking[data-thinking-state="complete"] details:not([open]) {
+  background: var(--surface);
+}
+
+.task-thinking summary,
+.task-tool-card header,
+.task-file-change header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  min-height: var(--interface-control-size);
+  padding: 0.4375rem 0.6875rem;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+}
+
+.task-thinking details:not([open]) > summary {
+  border-bottom: 0;
+}
+
+.task-thinking summary::marker {
+  color: var(--muted);
+}
+
+.task-thinking-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  min-width: 0;
+}
+
+.task-thinking-disclosure-chevron {
+  display: inline-block;
+  width: 0.375rem;
+  height: 0.375rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  flex: 0 0 0.375rem;
+  transform: rotate(-45deg);
+}
+
+.task-thinking details[open] .task-thinking-disclosure-chevron {
+  transform: rotate(45deg);
+}
+
+.task-tool-card header,
+.task-file-change header {
+  cursor: default;
+}
+
+.task-thinking summary time,
+.task-tool-card header time,
+.task-file-change header time {
+  margin-left: auto;
+  font-size: var(--interface-meta-font-size);
+}
+
+.task-thinking-content,
+.task-tool-card pre {
+  overflow-x: auto;
+  padding: 0.625rem;
+}
+
+.task-turn-work {
+  justify-self: start;
+  width: min(100%, 850px);
+  margin-top: 0.125rem;
+}
+
+.task-turn-work > caffold-task-work-details {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.task-turn-active {
+  justify-self: start;
+  width: min(100%, 850px);
+}
+
+:host(:is( [data-transport-state="reconnecting"], [data-transport-state="unavailable"] )) .task-turn-active {
+  display: none;
+}
+
+.task-tool-card[data-tool-tone="danger"] {
+  border-color: var(--danger-faint-border);
+  background: var(--danger-faint);
+}
+
+.task-file-change p {
+  margin: 0;
+  padding: 0.625rem 0.6875rem;
 }
 
 @media (max-width: 860px) {
-  caffold-task-conversation {
+  :host {
     --task-conversation-block-end-padding: calc(
       0.875rem + var(--interface-control-hit-size) + var(--interface-space-3)
     );
+  }
 
-    & .task-conversation-scroll {
-      padding: 0.75rem 0.625rem var(--task-conversation-block-end-padding);
-    }
+  .task-conversation-scroll {
+    padding: 0.75rem 0.625rem var(--task-conversation-block-end-padding);
   }
 }
 
 @media (max-width: 520px) and (orientation: portrait) {
-  caffold-task-conversation {
-    & .task-conversation-scroll {
-      padding-inline: 0.75rem;
-    }
+  .task-conversation-scroll {
+    padding-inline: 0.75rem;
   }
 }
 
-caffold-task-conversation {
+:host {
   display: block;
   min-height: 0;
   height: 100%;
   overflow: hidden;
+}
 
-  & > .task-conversation-scroll {
-    height: 100%;
-  }
+.task-conversation-scroll {
+  height: 100%;
 }

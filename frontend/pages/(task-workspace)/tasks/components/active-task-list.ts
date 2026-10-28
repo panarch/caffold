@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type TemplateResult } from "lit";
+import { html, nothing, type TemplateResult } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   type ActionHintPull,
@@ -17,6 +17,9 @@ import {
 } from "#app/api.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/loading-text.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
+import { focusedElement } from "#app/shadow-roots.js";
 import type { WorkspaceLiveUpdates } from "../../live-updates.js";
 import {
   type TaskOperationsPresentation,
@@ -40,6 +43,9 @@ import {
   type SectionSnapshot,
 } from "./active-task-list/components/section.js";
 import { moveListItemBefore } from "./active-task-list/move-list-item.js";
+
+import secondaryButton from "#app/component-styles/secondary-button.css.js";
+import styles from "./active-task-list.css.js";
 
 export interface TaskNavigatorTransportChangeDetail {
   available: boolean;
@@ -163,7 +169,12 @@ interface SectionDrag {
  * any reordering.
  */
 @customElement("caffold-active-task-list")
-export class CaffoldActiveTaskList extends LitElement {
+export class CaffoldActiveTaskList extends CaffoldElement {
+  static override styles = [
+    scopedStyle(secondaryButton, ".task-secondary-button"),
+    styles,
+  ];
+
   private sections: HeldSection[] = [];
   private unsectioned: ListedTask[] = [];
   private taskListLoading = false;
@@ -187,6 +198,7 @@ export class CaffoldActiveTaskList extends LitElement {
   private active = false;
   private taskOperations = taskStoreOperationsPresentation(null);
   private reorderMode: ReorderMode = "none";
+  private revealTasks = false;
   private pendingMove: PendingMove | null = null;
   private reorderError: { subjectTitle: string } | null = null;
   private dragState: TaskDrag | null = null;
@@ -204,10 +216,6 @@ export class CaffoldActiveTaskList extends LitElement {
       this.reconcileTaskList(isCurrent, metadata),
     onStateChange: (state) => this.announceTransport(state),
   });
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -366,7 +374,7 @@ export class CaffoldActiveTaskList extends LitElement {
       Boolean(
         this.sectionComponentFor(
           context?.section.id ?? "",
-        )?.containsTaskHandleFocus(threadId, document.activeElement),
+        )?.containsTaskHandleFocus(threadId, focusedElement()),
       );
     if (this.dragState?.threadId === threadId) {
       this.cancelDrag();
@@ -420,10 +428,7 @@ export class CaffoldActiveTaskList extends LitElement {
     const anchor = this.captureScrollAnchor();
     this.reorderMode = mode;
     this.dataset.reorderMode = mode;
-    this.toggleAttribute(
-      "data-task-reveal",
-      mode !== "sections" && revealTasks,
-    );
+    this.revealTasks = mode !== "sections" && revealTasks;
     this.cancelDrag();
     this.cancelSectionDrag();
     if (mode === "none") {
@@ -748,6 +753,7 @@ export class CaffoldActiveTaskList extends LitElement {
       selectedThreadId: this.selectedThreadId,
       taskOperations: this.taskOperations,
       reorderMode: this.reorderMode,
+      revealTasks: this.revealTasks,
       pending: Boolean(this.pendingMove),
     };
   }
@@ -781,7 +787,10 @@ export class CaffoldActiveTaskList extends LitElement {
   }
 
   private handleSectionIntent(event: CustomEvent<SectionIntent>) {
-    if (!(event.target instanceof Element) || !this.contains(event.target)) {
+    if (
+      !(event.target instanceof Element) ||
+      !this.renderRoot.contains(event.target)
+    ) {
       return;
     }
     event.stopPropagation();
@@ -1551,6 +1560,7 @@ export class CaffoldActiveTaskList extends LitElement {
     this.dispatchEvent(
       new CustomEvent<ActiveTaskListState>(ACTIVE_TASK_LIST_STATE_EVENT, {
         bubbles: true,
+        composed: true,
         detail: this.listState(),
       }),
     );

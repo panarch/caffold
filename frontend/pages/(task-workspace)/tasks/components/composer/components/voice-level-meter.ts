@@ -1,5 +1,8 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+
+import styles from "./voice-level-meter.css.js";
 
 const SEGMENT_COUNT = 16;
 const MINIMUM_SCALE = 0.18;
@@ -8,13 +11,11 @@ const MINIMUM_SCALE = 0.18;
 // the right. A reading arrives every tenth of a second while recording, and
 // each one moves the bars by writing their style rather than drawing again.
 @customElement("caffold-voice-level-meter")
-export class CaffoldVoiceLevelMeter extends LitElement {
+export class CaffoldVoiceLevelMeter extends CaffoldElement {
+  static override styles = styles;
+
   level = 0;
   private levels = new Array<number>(SEGMENT_COUNT).fill(0);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     return Array.from(
@@ -46,7 +47,7 @@ export class CaffoldVoiceLevelMeter extends LitElement {
   }
 
   private drawLevels() {
-    const segments = [...this.children] as HTMLElement[];
+    const segments = [...this.renderRoot.children] as HTMLElement[];
     for (const [index, segment] of segments.entries()) {
       const level = this.levels[index] ?? 0;
       const scale = MINIMUM_SCALE + level * (1 - MINIMUM_SCALE);

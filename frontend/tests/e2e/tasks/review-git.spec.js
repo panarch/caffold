@@ -119,14 +119,15 @@ test("normalizes and compacts shared file-tree statuses", { tag: "@all-viewports
     expect.arrayContaining([" M", "M ", "MM", "AM", "??"]),
   );
 
-  const geometry = await changes.evaluate((tree) => {
-    const entry = tree.querySelector(
+  const geometry = await changes.evaluate((changesTree) => {
+    const tree = changesTree.shadowRoot.querySelector("caffold-file-tree");
+    const entry = tree.shadowRoot.querySelector(
       'button[data-file-tree-relative-path="planner.rs"]',
     );
-    const directory = tree.querySelector(
+    const directory = tree.shadowRoot.querySelector(
       'button[data-file-tree-path="tests"]',
     );
-    const nested = tree.querySelector(
+    const nested = tree.shadowRoot.querySelector(
       'button[data-file-tree-relative-path="tests/planner.rs"]',
     );
     const status = entry.querySelector(".file-tree-status-code");
@@ -146,12 +147,12 @@ test("normalizes and compacts shared file-tree statuses", { tag: "@all-viewports
       ["unmerged", "--file-status-unmerged-fg"],
       ["unknown", "--file-status-unknown-fg"],
     ]) {
-      const statusElement = tree.querySelector(
+      const statusElement = tree.shadowRoot.querySelector(
         `.file-tree-entry[data-file-tree-status-tone="${tone}"] .file-tree-status-code`,
       );
       const probe = document.createElement("span");
       probe.style.color = `var(${token})`;
-      tree.append(probe);
+      tree.shadowRoot.append(probe);
       statusColors[tone] = {
         actual: getComputedStyle(statusElement).color,
         expected: getComputedStyle(probe).color,
@@ -159,7 +160,7 @@ test("normalizes and compacts shared file-tree statuses", { tag: "@all-viewports
       probe.remove();
     }
     return {
-      statusColumn: entry.closest("caffold-file-tree").dataset.statusColumn,
+      statusColumn: tree.dataset.statusColumn,
       statusWidth: statusRect.width,
       statusGap: labelRect.left - statusRect.right,
       iconSlotWidth: iconRect.width,
@@ -216,7 +217,7 @@ test("normalizes and compacts shared file-tree statuses", { tag: "@all-viewports
     statuslessTree.locator('button[data-file-tree-path="src/planner.rs"]'),
   ).toBeAttached();
   const statuslessGeometry = await statuslessTree.evaluate((tree) => {
-    const entry = tree.querySelector('button[data-file-tree-path="src/planner.rs"]');
+    const entry = tree.shadowRoot.querySelector('button[data-file-tree-path="src/planner.rs"]');
     const status = entry.querySelector(".file-tree-status-code");
     const icon = entry.querySelector(".file-tree-icon").getBoundingClientRect();
     const name = entry.querySelector(".file-tree-name").getBoundingClientRect();
@@ -630,10 +631,8 @@ test("hands the Branch comparison base Hint to its retained native select", { ta
     hasBlockPadding: true,
     position: "absolute",
   });
-  const geometry = await badge.evaluate((element) => {
-    const anchor = document.querySelector(
-      "caffold-task-review caffold-git-compare-tree .compare-base",
-    );
+  const anchorHandle = await compareTree.locator(".compare-base").elementHandle();
+  const geometry = await badge.evaluate((element, anchor) => {
     const primary = anchor.closest(".compare-tree-primary");
     const control = anchor.querySelector("select[data-compare-base-ref]");
     const badgeRect = element.getBoundingClientRect();
@@ -654,7 +653,7 @@ test("hands the Branch comparison base Hint to its retained native select", { ta
         badgeRect.top >= 0 &&
         badgeRect.bottom <= window.innerHeight,
     };
-  });
+  }, anchorHandle);
   expect(geometry).toEqual({
     alignedLeft: true,
     alignedTop: true,
@@ -733,7 +732,7 @@ test("retires the Branch base owner when its select binding is replaced", { tag:
   const baseCode = await baseBadge.getAttribute("data-action-hint-code");
   expect(baseCode).toBeTruthy();
   await compareTree.evaluate((tree) => {
-    const select = tree.querySelector("select[data-compare-base-ref]");
+    const select = tree.shadowRoot.querySelector("select[data-compare-base-ref]");
     select.replaceWith(select.cloneNode(true));
   });
 
@@ -842,8 +841,8 @@ test("keeps equivalent Branch header refreshes mutation-free", { tag: "@all-view
         sameSelect:
           probe.select.isConnected &&
           probe.select
-            .closest("caffold-git-compare-tree")
-            ?.querySelector("select[data-compare-base-ref]") === probe.select,
+            .getRootNode()
+            .querySelector("select[data-compare-base-ref]") === probe.select,
         mutations: probe.records.length,
       };
     }),
@@ -1148,7 +1147,7 @@ test("keeps the Working Tree loading text while another reread starts", { tag: "
     await expect.poll(() => reviewScenario.gitStatusRequests).toBe(statusBefore + 2);
     expect(
       await changes.evaluate(
-        (tree) => tree.querySelector("caffold-loading-text") === window.__workingTreeLoadingText,
+        (tree) => tree.shadowRoot.querySelector("caffold-loading-text") === window.__workingTreeLoadingText,
       ),
     ).toBe(true);
   } finally {
@@ -1458,12 +1457,15 @@ test("keeps compact review controls and available panes inside the workspace", {
     ),
   ).toBeLessThanOrEqual(0.1);
   const changesAlignment = await taskReview.evaluate((review) => {
-    const pane = review.querySelector(".task-review-navigator-pane");
-    const header = review.querySelector(
-      "caffold-git-diff-changes-tree .changes-tree-panel > header",
+    const pane = review.shadowRoot.querySelector(".task-review-navigator-pane");
+    const changesTree = review.shadowRoot
+      .querySelector("caffold-review-working-tree-changes")
+      .shadowRoot.querySelector("caffold-git-diff-changes-tree");
+    const header = changesTree.shadowRoot.querySelector(
+      ".changes-tree-panel > header",
     );
     const count = header.querySelector(".change-count");
-    const controls = review.querySelector(
+    const controls = review.shadowRoot.querySelector(
       '.task-review-navigator-axis caffold-segmented-control[data-review-axis="navigator"]',
     );
     const paneRect = pane.getBoundingClientRect();
@@ -1515,12 +1517,9 @@ test("keeps compact review controls and available panes inside the workspace", {
   expect(
     Math.abs(filesHeaderMetrics.titleFontSize - changesHeaderMetrics.titleFontSize),
   ).toBeLessThanOrEqual(0.1);
-  const filesAlignment = await taskReview.evaluate((review) => {
-    const header = review.querySelector(
-      "caffold-file-list .file-list-panel > header",
-    );
+  const filesAlignment = await taskReview.evaluate((review, header) => {
     const count = header.querySelector(".entry-count");
-    const controls = review.querySelector(
+    const controls = review.shadowRoot.querySelector(
       '.task-review-navigator-axis caffold-segmented-control[data-review-axis="navigator"]',
     );
     const rootStyle = getComputedStyle(document.documentElement);
@@ -1532,7 +1531,7 @@ test("keeps compact review controls and available panes inside the workspace", {
         Number.parseFloat(rootStyle.getPropertyValue("--interface-space-5")) *
         Number.parseFloat(rootStyle.fontSize),
     };
-  });
+  }, await filesHeader.elementHandle());
   expect(filesAlignment.labelGap).toBeGreaterThanOrEqual(
     filesAlignment.expectedLabelGap - 1,
   );
@@ -1549,15 +1548,12 @@ test("keeps compact review controls and available panes inside the workspace", {
   ).toHaveCount(3);
   await expect(taskReview.locator(".task-review-toolbar")).toHaveCount(0);
 
-  const layout = await taskReview.evaluate((element) => {
-    const workspace = element.querySelector(".task-review-workspace");
-    const pageRect = document.querySelector("caffold-tasks-page").getBoundingClientRect();
+  const layout = await taskReview.evaluate((element, [detailSwitch, tasksPage]) => {
+    const workspace = element.shadowRoot.querySelector(".task-review-workspace");
+    const pageRect = tasksPage.getBoundingClientRect();
     const workspaceRect = workspace.getBoundingClientRect();
-    const navigator = element.querySelector(".task-review-navigator-pane");
-    const viewer = element.querySelector(".task-review-viewer-pane");
-    const detailSwitch = document.querySelector(
-      "caffold-segmented-control[data-detail-view-switch]",
-    );
+    const navigator = element.shadowRoot.querySelector(".task-review-navigator-pane");
+    const viewer = element.shadowRoot.querySelector(".task-review-viewer-pane");
     const detailSwitchRect = detailSwitch.getBoundingClientRect();
     const detailSwitchStyle = getComputedStyle(detailSwitch);
     const rootFontSize = Number.parseFloat(
@@ -1580,10 +1576,10 @@ test("keeps compact review controls and available panes inside the workspace", {
         insidePage:
           detailSwitchRect.left >= pageRect.left - 1 &&
           detailSwitchRect.right <= pageRect.right + 1,
-        buttonFontSizes: [...detailSwitch.querySelectorAll("button")].map(
+        buttonFontSizes: [...detailSwitch.shadowRoot.querySelectorAll("button")].map(
           (button) => getComputedStyle(button).fontSize,
         ),
-        segments: [...detailSwitch.querySelectorAll("button")].map((button) => {
+        segments: [...detailSwitch.shadowRoot.querySelectorAll("button")].map((button) => {
           const label = button.querySelector(":scope > span");
           const labelStyle = getComputedStyle(label);
           const textRange = document.createRange();
@@ -1598,7 +1594,7 @@ test("keeps compact review controls and available panes inside the workspace", {
         }),
       },
       axisControlWidths: Object.fromEntries(
-        [...element.querySelectorAll(".task-review-pane-axis")]
+        [...element.shadowRoot.querySelectorAll(".task-review-pane-axis")]
           .filter((axis) => axis.getClientRects().length > 0)
           .map((axis) => {
             const control = axis.querySelector("caffold-segmented-control");
@@ -1610,13 +1606,13 @@ test("keeps compact review controls and available panes inside the workspace", {
       ),
       layoutStartsAtWorkspaceTop:
         Math.abs(
-          element.querySelector(".task-review-layout").getBoundingClientRect().top -
+          element.shadowRoot.querySelector(".task-review-layout").getBoundingClientRect().top -
             workspaceRect.top,
         ) <= 1,
-      visiblePaneAxes: [...element.querySelectorAll(".task-review-pane-axis")]
+      visiblePaneAxes: [...element.shadowRoot.querySelectorAll(".task-review-pane-axis")]
         .filter((axis) => axis.getClientRects().length > 0)
         .map((axis) => axis.querySelector("caffold-segmented-control").getAttribute("aria-label")),
-      paneAxisClearances: [...element.querySelectorAll(".task-review-pane-axis")]
+      paneAxisClearances: [...element.shadowRoot.querySelectorAll(".task-review-pane-axis")]
         .filter((axis) => axis.getClientRects().length > 0)
         .map((axis) => {
           const axisBounds = axis.getBoundingClientRect();
@@ -1629,23 +1625,27 @@ test("keeps compact review controls and available panes inside the workspace", {
           };
         }),
       emptyViewerHeaderVisible:
-        element.querySelector(".task-review-viewer-empty-header").getClientRects().length > 0,
+        element.shadowRoot.querySelector(".task-review-viewer-empty-header").getClientRects().length > 0,
       visualControlHeights: [
-        ...element.querySelectorAll(
+        ...element.shadowRoot.querySelectorAll(
           ".task-review-pane-axis > caffold-segmented-control",
         ),
       ]
         .filter((control) => control.getClientRects().length > 0)
         .map((control) => control.getBoundingClientRect().height),
       directTouchControlHeights: [
-        ...element.querySelectorAll(
-          ".task-review-pane-axis > caffold-segmented-control > button",
+        ...element.shadowRoot.querySelectorAll(
+          ".task-review-pane-axis > caffold-segmented-control",
         ),
       ]
+        .flatMap((control) => [...control.shadowRoot.querySelectorAll("button")])
         .filter((control) => control.getClientRects().length > 0)
         .map((control) => control.getBoundingClientRect().height),
     };
-  });
+  }, [
+    await page.locator("caffold-segmented-control[data-detail-view-switch]").elementHandle(),
+    await page.locator("caffold-tasks-page").elementHandle(),
+  ]);
 
   expect(layout.leftGap).toBeLessThanOrEqual(1);
   expect(layout.rightGap).toBeLessThanOrEqual(1);
@@ -1892,7 +1892,7 @@ test("maps the visible source line when Diff and Source representations switch",
     '.task-review-viewer-axis caffold-segmented-control[data-review-axis="viewer"]',
   );
   const controlMetrics = () => viewerAxis.evaluate((group) => {
-    const selected = group.querySelector(
+    const selected = group.shadowRoot.querySelector(
       'button[aria-pressed="true"] > span',
     );
     const groupRect = group.getBoundingClientRect();
@@ -2169,10 +2169,13 @@ function longDiffText(label) {
 
 async function scrollViewerAndWatchReload(viewer, contentSelector, scrollSelector) {
   return viewer.evaluate((element, { contentSelector, scrollSelector }) => {
-    const scroller = element.querySelector(`${contentSelector} ${scrollSelector}`);
+    // The viewer draws its content viewer in its shadow root, and that viewer
+    // its scroller in its own.
+    const content = element.shadowRoot.querySelector(contentSelector);
+    const scroller = content.shadowRoot.querySelector(scrollSelector);
     scroller.scrollTop = scroller.scrollHeight / 2;
     const probe = {
-      content: element.querySelector(contentSelector),
+      content,
       handedAgain: false,
       loadingSeen: false,
       record(records) {
@@ -2197,7 +2200,7 @@ async function scrollViewerAndWatchReload(viewer, contentSelector, scrollSelecto
       return updated.call(this, changed);
     };
     probe.observer = new MutationObserver((records) => probe.record(records));
-    probe.observer.observe(element, { childList: true, subtree: true });
+    probe.observer.observe(element.shadowRoot, { childList: true, subtree: true });
     window.__reviewViewerReloadProbe = probe;
     return scroller.scrollTop;
   }, { contentSelector, scrollSelector });
@@ -2207,12 +2210,12 @@ async function readViewerReload(viewer, contentSelector, scrollSelector) {
   return viewer.evaluate((element, { contentSelector, scrollSelector }) => {
     const probe = window.__reviewViewerReloadProbe;
     probe.record(probe.observer.takeRecords());
-    const content = element.querySelector(contentSelector);
+    const content = element.shadowRoot.querySelector(contentSelector);
     return {
       handedAgain: probe.handedAgain,
       sameContent: content === probe.content,
       loadingSeen: probe.loadingSeen,
-      top: content?.querySelector(scrollSelector)?.scrollTop ?? null,
+      top: content?.shadowRoot.querySelector(scrollSelector)?.scrollTop ?? null,
     };
   }, { contentSelector, scrollSelector });
 }

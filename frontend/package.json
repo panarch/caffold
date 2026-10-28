@@ -9,7 +9,7 @@
     "#tasks/*": "./pages/(task-workspace)/tasks/*"
   },
   "scripts": {
-    "test:unit": "npm run build:unit-tests && node --test \"tests/unit-build/**/*.test.js\"",
+    "test:unit": "npm run build:unit-tests && node --import ./tests/support/stylesheet-modules.js --test \"tests/unit-build/**/*.test.js\"",
     "build:unit-tests": "rm -rf tests/unit-build && tsc -p tsconfig.test.json && tsc -p tsconfig.worker.json --noEmit false --outDir tests/unit-build",
     "test:contract": "node --test \"tests/contracts/*.test.mjs\"",
     "typecheck": "tsc && tsc -p tsconfig.worker.json",

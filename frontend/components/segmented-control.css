@@ -1,4 +1,4 @@
-caffold-segmented-control {
+:host {
   display: inline-grid;
   grid-auto-flow: column;
   grid-auto-columns: var(--segmented-control-column-size, max-content);
@@ -10,71 +10,71 @@ caffold-segmented-control {
   border-radius: 5px;
   background: var(--surface-muted);
   font-size: var(--interface-meta-font-size);
+}
 
-  &[hidden],
-  &[data-empty] {
-    display: none;
-  }
+:host([hidden]),
+:host([data-empty]) {
+  display: none;
+}
 
-  & button {
-    position: relative;
-    display: grid;
-    box-sizing: border-box;
-    height: var(--interface-compact-hit-size);
-    min-width: var(--segmented-control-choice-min-inline-size, auto);
-    min-height: var(--interface-compact-hit-size);
-    margin-block: calc(0rem - var(--interface-compact-hit-outset));
-    padding: 0;
-    border: 0;
-    border-radius: 3px;
-    background: transparent;
-    color: var(--muted);
-    font: inherit;
-    font-size: var(--interface-meta-font-size);
-    place-items: center;
-    cursor: pointer;
-  }
+button {
+  position: relative;
+  display: grid;
+  box-sizing: border-box;
+  height: var(--interface-compact-hit-size);
+  min-width: var(--segmented-control-choice-min-inline-size, auto);
+  min-height: var(--interface-compact-hit-size);
+  margin-block: calc(0rem - var(--interface-compact-hit-outset));
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--interface-meta-font-size);
+  place-items: center;
+  cursor: pointer;
+}
 
-  & button > span {
-    display: grid;
-    box-sizing: border-box;
-    width: 100%;
-    min-width: var(--segmented-control-choice-min-inline-size, auto);
-    height: calc(var(--interface-compact-visual-size) - 2px);
-    padding: 0
-      var(--segmented-control-label-padding-inline, var(--interface-space-4));
-    place-items: center;
-    border-radius: 3px;
-    white-space: nowrap;
-  }
+button > span {
+  display: grid;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: var(--segmented-control-choice-min-inline-size, auto);
+  height: calc(var(--interface-compact-visual-size) - 2px);
+  padding: 0
+    var(--segmented-control-label-padding-inline, var(--interface-space-4));
+  place-items: center;
+  border-radius: 3px;
+  white-space: nowrap;
+}
 
-  & button[aria-pressed="true"] > span {
-    background: var(--surface);
-    color: var(--text);
-    box-shadow: 0 0 0 1px var(--border);
-  }
+button[aria-pressed="true"] > span {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--border);
+}
 
-  & button + button::before {
-    position: absolute;
-    top: 50%;
-    left: 0;
-    width: 1px;
-    height: 0.875rem;
-    background: var(--border);
-    content: "";
-    opacity: 0.72;
-    pointer-events: none;
-    transform: translate(-0.5px, -50%);
-  }
+button + button::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 1px;
+  height: 0.875rem;
+  background: var(--border);
+  content: "";
+  opacity: 0.72;
+  pointer-events: none;
+  transform: translate(-0.5px, -50%);
+}
 
-  & button[aria-pressed="true"] + button::before,
-  & button + button[aria-pressed="true"]::before {
-    opacity: 0;
-  }
+button[aria-pressed="true"] + button::before,
+button + button[aria-pressed="true"]::before {
+  opacity: 0;
 }
 
 @media (max-width: 520px) {
-  caffold-segmented-control button > span {
+  button > span {
     padding-inline: var(
       --segmented-control-label-padding-inline,
       var(--interface-space-3)

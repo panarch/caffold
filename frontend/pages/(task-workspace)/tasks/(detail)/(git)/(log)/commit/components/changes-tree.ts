@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   type ActionHintPull,
@@ -17,6 +17,9 @@ import {
   type FileTreeSelectDetail,
 } from "#components/file-tree.js";
 import "#components/loading-text.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+
+import styles from "./changes-tree.css.js";
 
 export interface OpenCommitDiffDetail {
   sha: string;
@@ -31,17 +34,15 @@ type CommitState =
   | { status: "error"; error: Error };
 
 @customElement("caffold-commit-changes-tree")
-export class CaffoldCommitChangesTree extends LitElement {
+export class CaffoldCommitChangesTree extends CaffoldElement {
   @state()
   private accessor state: CommitState = { status: "idle" };
+
+  static override styles = styles;
 
   private readonly treeElement = new DrawnRef<CaffoldFileTree>(this);
   selectedPath = "";
   private fileKeyByPath = new Map<string, string>();
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     const state = this.state;
@@ -175,6 +176,7 @@ export class CaffoldCommitChangesTree extends LitElement {
     this.dispatchEvent(
       new CustomEvent<OpenCommitDiffDetail>("caffold:open-commit-diff", {
         bubbles: true,
+        composed: true,
         detail: {
           sha: this.state.commitPayload.commit.sha,
           path: file.path,

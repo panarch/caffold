@@ -1,4 +1,4 @@
-caffold-task-review {
+:host {
   --review-header-padding-block: var(--interface-space-4);
   --review-navigator-header-padding-inline: var(--interface-space-6);
   --review-navigator-action-inline-end: var(--interface-space-6);
@@ -29,201 +29,198 @@ caffold-task-review {
   height: 100%;
   overflow: hidden;
   background: var(--surface);
+}
 
-  /* Shipping iPadOS Safari cannot read a typed attr(), so each count is mapped here. */
-  &[data-review-navigator-choice-count="2"] {
-    --review-navigator-choice-count: 2;
-  }
+/* Shipping iPadOS Safari cannot read a typed attr(), so each count is mapped here. */
+:host([data-review-navigator-choice-count="2"]) {
+  --review-navigator-choice-count: 2;
+}
 
-  &[data-review-viewer-choice-count="2"] {
-    --review-viewer-choice-count: 2;
-  }
+:host([data-review-viewer-choice-count="2"]) {
+  --review-viewer-choice-count: 2;
+}
 
-  &[data-review-viewer-choice-count="3"] {
-    --review-viewer-choice-count: 3;
-  }
+:host([data-review-viewer-choice-count="3"]) {
+  --review-viewer-choice-count: 3;
+}
 
-  & .task-review-workspace {
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
-    min-width: 0;
-    min-height: 0;
-    height: 100%;
-    overflow: hidden;
-  }
+.task-review-workspace {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
 
-  & .task-review-notices:has(> :not([hidden])) {
-    border-bottom: 1px solid var(--border);
-  }
+.task-review-notices:has(> :not([hidden])) {
+  border-bottom: 1px solid var(--border);
+}
 
-  & .task-review-error {
-    margin: 0;
-    padding: var(--interface-space-3) var(--interface-space-6);
-    background: var(--danger-subtle);
-    color: var(--danger-strong);
-    font-size: var(--interface-meta-font-size);
-  }
+.task-review-error {
+  margin: 0;
+  padding: var(--interface-space-3) var(--interface-space-6);
+  background: var(--danger-subtle);
+  color: var(--danger-strong);
+  font-size: var(--interface-meta-font-size);
+}
 
-  & .task-review-error[hidden] {
-    display: none;
-  }
+.task-review-error[hidden] {
+  display: none;
+}
 
-  & .task-review-layout {
-    position: relative;
-    display: grid;
-    grid-template-columns:
-      var(--task-review-panel-width, 320px)
-      minmax(360px, 1fr);
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-  }
+.task-review-layout {
+  position: relative;
+  display: grid;
+  grid-template-columns:
+    var(--task-review-panel-width, 320px)
+    minmax(360px, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
 
-  & .task-review-navigator-pane,
-  & .task-review-viewer-pane,
-  & .task-review-navigator,
-  & caffold-file-navigator,
-  & caffold-review-working-tree-changes,
-  & caffold-review-branch-changes,
-  & caffold-review-selected-file {
-    min-width: 0;
-    min-height: 0;
-    height: 100%;
-  }
+.task-review-navigator-pane,
+.task-review-viewer-pane,
+.task-review-navigator,
+caffold-file-navigator,
+caffold-review-working-tree-changes,
+caffold-review-branch-changes,
+caffold-review-selected-file {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
 
-  & .task-review-navigator-pane,
-  & .task-review-viewer-pane {
-    position: relative;
-    overflow: hidden;
-  }
+.task-review-navigator-pane,
+.task-review-viewer-pane {
+  position: relative;
+  overflow: hidden;
+}
 
-  & .task-review-navigator-pane {
-    --review-pane-action-clearance: calc(
-      var(--review-navigator-action-inline-end) +
-        var(--review-navigator-control-inline-size) + var(--interface-space-5)
-    );
-  }
+.task-review-navigator-pane {
+  --review-pane-action-clearance: calc(
+    var(--review-navigator-action-inline-end) +
+      var(--review-navigator-control-inline-size) + var(--interface-space-5)
+  );
+}
 
-  & .task-review-viewer-pane {
-    --review-pane-action-clearance: calc(
-      var(--review-viewer-action-inline-end) +
-        var(--review-viewer-control-inline-size) + var(--interface-space-5) -
-        var(--interface-compact-hit-outset)
-    );
-  }
+.task-review-viewer-pane {
+  --review-pane-action-clearance: calc(
+    var(--review-viewer-action-inline-end) +
+      var(--review-viewer-control-inline-size) + var(--interface-space-5) -
+      var(--interface-compact-hit-outset)
+  );
+}
 
-  & .task-review-pane-axis {
-    position: absolute;
-    z-index: 4;
-    top: 0;
-    display: flex;
-    align-items: center;
-    box-sizing: border-box;
-    height: var(--review-header-height);
-    padding-block: var(--review-header-padding-block);
-  }
+.task-review-pane-axis {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--review-header-height);
+  padding-block: var(--review-header-padding-block);
+}
 
-  & .task-review-navigator-axis {
-    right: var(--review-navigator-action-inline-end);
-  }
+.task-review-navigator-axis {
+  right: var(--review-navigator-action-inline-end);
+}
 
-  & .task-review-viewer-axis {
-    right: var(--review-viewer-action-inline-end);
-  }
+.task-review-viewer-axis {
+  right: var(--review-viewer-action-inline-end);
+}
 
-  & .task-review-pane-axis > caffold-segmented-control {
-    --segmented-control-column-size: auto;
-    --segmented-control-choice-min-inline-size: 0;
-    --segmented-control-label-padding-inline: var(--interface-space-1);
-  }
+.task-review-pane-axis > caffold-segmented-control {
+  --segmented-control-column-size: auto;
+  --segmented-control-choice-min-inline-size: 0;
+  --segmented-control-label-padding-inline: var(--interface-space-1);
+}
 
-  & .task-review-navigator-axis > caffold-segmented-control {
-    width: var(--review-navigator-control-inline-size);
-  }
+.task-review-navigator-axis > caffold-segmented-control {
+  width: var(--review-navigator-control-inline-size);
+}
 
-  & .task-review-viewer-axis > caffold-segmented-control {
-    width: var(--review-viewer-control-inline-size);
-  }
+.task-review-viewer-axis > caffold-segmented-control {
+  width: var(--review-viewer-control-inline-size);
+}
 
-  & .task-review-viewer-empty-header {
-    position: absolute;
-    z-index: 1;
-    inset: 0 0 auto;
-    box-sizing: border-box;
-    height: var(--review-header-height);
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-    pointer-events: none;
-  }
+.task-review-viewer-empty-header {
+  position: absolute;
+  z-index: 1;
+  inset: 0 0 auto;
+  box-sizing: border-box;
+  height: var(--review-header-height);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  pointer-events: none;
+}
 
-  &[data-file-selected] .task-review-viewer-empty-header {
-    display: none;
-  }
+:host([data-file-selected]) .task-review-viewer-empty-header {
+  display: none;
+}
 
-  & .task-review-navigator {
-    display: grid;
-    overflow: hidden;
-  }
+.task-review-navigator {
+  display: grid;
+  overflow: hidden;
+}
 
-  & .task-review-navigator[hidden] {
-    display: none;
-  }
+.task-review-navigator[hidden] {
+  display: none;
+}
 
-  & .task-review-layout > caffold-pane-resizer {
-    left: var(--task-review-panel-width, 320px);
-  }
+.task-review-layout > caffold-pane-resizer {
+  left: var(--task-review-panel-width, 320px);
+}
 
-  &[data-side-pane-collapsed] .task-review-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
+:host([data-side-pane-collapsed]) .task-review-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
 
-  &[data-side-pane-collapsed] .task-review-navigator-pane,
-  &[data-side-pane-collapsed] .task-review-layout > caffold-pane-resizer {
-    display: none;
-  }
+:host([data-side-pane-collapsed]) .task-review-navigator-pane,
+:host([data-side-pane-collapsed]) .task-review-layout > caffold-pane-resizer {
+  display: none;
+}
 
-  & .task-review-viewer-pane {
-    display: grid;
-    grid-template-rows: minmax(0, 1fr);
-  }
-
+.task-review-viewer-pane {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
 }
 
 @media (max-width: 560px) {
-  caffold-task-review {
-    & .task-review-workspace {
-      grid-template-rows: auto minmax(0, 1fr);
-    }
+  .task-review-workspace {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
 
-    & .task-review-layout {
-      grid-template-columns: minmax(0, 1fr);
-    }
+  .task-review-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
 
-    & caffold-pane-resizer {
-      display: none;
-    }
+  caffold-pane-resizer {
+    display: none;
+  }
 
-    & .task-review-navigator-pane,
-    & .task-review-viewer-pane {
-      grid-row: 1;
-      grid-column: 1;
-    }
+  .task-review-navigator-pane,
+  .task-review-viewer-pane {
+    grid-row: 1;
+    grid-column: 1;
+  }
 
-    &:not([data-file-selected]) .task-review-viewer-pane,
-    &[data-file-selected] .task-review-navigator-pane {
-      display: none;
-    }
+  :host(:not([data-file-selected])) .task-review-viewer-pane,
+  :host([data-file-selected]) .task-review-navigator-pane {
+    display: none;
   }
 }
 
 @media (pointer: coarse), (max-width: 520px) {
-  caffold-task-review {
+  :host {
     --review-header-padding-block: 0px;
   }
 }
 
 @media (max-width: 520px) {
-  caffold-task-review {
+  :host {
     --review-viewer-action-inline-end: calc(
       var(--interface-space-4) + var(--interface-compact-hit-outset)
     );

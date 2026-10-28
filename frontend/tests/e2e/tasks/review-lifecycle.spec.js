@@ -166,23 +166,24 @@ test("keeps Task view and pane controls mounted and focused through live updates
     .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="planner.rs"]')
     .click();
 
-  await tasksPage.evaluate((tasks) => {
-    tasks.querySelector(
-      'caffold-segmented-control[data-detail-view-switch] '
-        + 'button[data-segmented-value="working"]',
-    ).stableControlProbe = true;
-    const review = tasks.querySelector("caffold-task-review");
-    review.querySelector(
-      'caffold-segmented-control[data-review-axis="navigator"] '
-        + 'button[data-segmented-value="files"]',
-    ).stableControlProbe = true;
-    const viewerControl = review.querySelector(
-      'caffold-segmented-control[data-review-axis="viewer"] '
-        + 'button[data-segmented-value="diff"]',
-    );
-    viewerControl.stableControlProbe = true;
-    viewerControl.focus();
-  });
+  const scopeControl = tasksPage.locator(
+    'caffold-segmented-control[data-detail-view-switch] '
+      + 'button[data-segmented-value="working"]',
+  );
+  const navigatorControl = taskReview.locator(
+    'caffold-segmented-control[data-review-axis="navigator"] '
+      + 'button[data-segmented-value="files"]',
+  );
+  const viewerControl = taskReview.locator(
+    'caffold-segmented-control[data-review-axis="viewer"] '
+      + 'button[data-segmented-value="diff"]',
+  );
+  for (const control of [scopeControl, navigatorControl, viewerControl]) {
+    await control.evaluate((button) => {
+      button.stableControlProbe = true;
+    });
+  }
+  await viewerControl.focus();
 
   const requestsBefore = reviewScenario.gitStatusRequests;
   reviewScenario.includeLiveFile = true;
@@ -195,34 +196,14 @@ test("keeps Task view and pane controls mounted and focused through live updates
   });
   await expect.poll(() => reviewScenario.gitStatusRequests).toBeGreaterThan(requestsBefore);
 
-  expect(
-    await tasksPage.evaluate((tasks) => {
-      const scope = tasks.querySelector(
-        'caffold-segmented-control[data-detail-view-switch] '
-          + 'button[data-segmented-value="working"]',
-      );
-      const review = tasks.querySelector("caffold-task-review");
-      const navigator = review.querySelector(
-        'caffold-segmented-control[data-review-axis="navigator"] '
-          + 'button[data-segmented-value="files"]',
-      );
-      const viewer = review.querySelector(
-        'caffold-segmented-control[data-review-axis="viewer"] '
-          + 'button[data-segmented-value="diff"]',
-      );
-      return {
-        scope: scope.stableControlProbe === true,
-        navigator: navigator.stableControlProbe === true,
-        viewer: viewer.stableControlProbe === true,
-        viewerFocused: document.activeElement === viewer,
-      };
-    }),
-  ).toEqual({
-    scope: true,
-    navigator: true,
-    viewer: true,
-    viewerFocused: true,
-  });
+  const kept = (control) =>
+    control.evaluate((button) => button.stableControlProbe === true);
+  expect({
+    scope: await kept(scopeControl),
+    navigator: await kept(navigatorControl),
+    viewer: await kept(viewerControl),
+  }).toEqual({ scope: true, navigator: true, viewer: true });
+  await expect(viewerControl).toBeFocused();
 });
 
 test("does not reveal the selected Files entry again during canonical task sync", { tag: ["@desktop", "@foldable"] }, async ({
@@ -230,16 +211,8 @@ test("does not reveal the selected Files entry again during canonical task sync"
 }, testInfo) => {
   const { taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
-  await page.addStyleTag({
-    content: `
-      caffold-task-review .task-review-navigator-pane,
-      caffold-task-review .task-review-navigator {
-        height: 180px !important;
-      }
-    `,
-  });
-
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await constrainReviewNavigator(taskReview);
   await taskReview.getByRole("button", { name: "Files", exact: true }).click();
   const fileList = taskReview.locator("caffold-file-navigator .file-tree-scroll");
   const selected = fileList.locator('button[data-file-tree-path="src/alpha.rs"]');
@@ -268,14 +241,6 @@ test("keeps both Review navigator scroll positions during unrelated live updates
         review.largeChangeSet = true;
       },
     });
-  await page.addStyleTag({
-    content: `
-      caffold-task-review .task-review-navigator-pane,
-      caffold-task-review .task-review-navigator {
-        height: 180px !important;
-      }
-    `,
-  });
   let directoryRequests = 0;
   page.on("request", (request) => {
     if (new URL(request.url()).pathname === "/api/list") {
@@ -284,6 +249,7 @@ test("keeps both Review navigator scroll positions during unrelated live updates
   });
 
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await constrainReviewNavigator(taskReview);
   const changesList = taskReview.locator("caffold-git-diff-changes-tree .file-tree-scroll");
   await expect(
     taskReview.locator('caffold-git-diff-changes-tree button[data-file-tree-kind="file"]'),
@@ -443,8 +409,7 @@ test("rejects a late file navigator response while Review is inactive", { tag: "
 
     await expect
       .poll(() =>
-        tasksPage.evaluate((element, threadId) => {
-          const detail = element.querySelector("caffold-detail-layout");
+        tasksPage.locator("caffold-detail-layout").evaluate((detail, threadId) => {
           const review = detail.reviewComponents.get(`task:${threadId}`);
           return review.fileNavigator.loadedDirectoryPath;
         }, taskScenario.threadId),
@@ -568,6 +533,24 @@ test("keeps the first Branch loads running through Task updates", { tag: "@viewp
     await page.unrouteAll({ behavior: "wait" });
   }
 });
+
+// The navigator panes sit in the Review's shadow root, which a document style
+// does not reach.
+async function constrainReviewNavigator(taskReview) {
+  await taskReview.evaluate((review) => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(`
+      .task-review-navigator-pane,
+      .task-review-navigator {
+        height: 180px !important;
+      }
+    `);
+    review.shadowRoot.adoptedStyleSheets = [
+      ...review.shadowRoot.adoptedStyleSheets,
+      sheet,
+    ];
+  });
+}
 
 async function scrollAwayFromTop(locator) {
   return locator.evaluate(async (element) => {

@@ -113,15 +113,15 @@ DOM as current. Keep inactive caches bounded.
 
 ## Web Components And CSS
 
-Caffold currently uses internal Web Components rendered in Light DOM. This
-keeps browser behavior, debugging, Playwright tests, shared theme variables,
-and small frontend modules straightforward. It also means CSS is still one
-global cascade.
+Caffold's internal Web Components render into an open shadow root through
+`CaffoldElement`, so the browser keeps each component's styles and DOM inside
+its own boundary instead of review keeping one global cascade apart. A
+component does not override `createRenderRoot()` to render into Light DOM.
 
-Light DOM is the default until a component has a clear reason to isolate styles
-with Shadow DOM. Good reasons include reusable leaf widgets, third-party-like
-components, or a component whose styles cannot reasonably share the app
-cascade.
+`document` does not reach inside those roots. Code that has to see across them,
+such as a document query, an observer, a capturing listener, the focused
+element, or whether an element sits inside an owner, goes through
+`frontend/shadow-roots.ts`.
 
 ### Native disclosure and modal surfaces
 
@@ -153,9 +153,10 @@ primary public entry point for non-visual behavior. `name/` contains the
 module's private implementation. Routed `page.js` and `layout.js` files are
 ownership entry points rather than private implementation. The only other
 conventionally visible paths below a boundary are Web Component entry points
-directly under its `components/` namespace, as defined below. `index.js` has no
-special role in this convention. A same-stem private implementation directory
-must not contain `page.js` or `layout.js`.
+directly under its `components/` namespace, as defined below, and shared styles
+directly under its `component-styles/` directory. `index.js` has no special
+role in this convention. A same-stem private implementation directory must not
+contain `page.js` or `layout.js`.
 
 Apply import rules at the ownership boundary rather than by counting directory
 levels:
@@ -188,9 +189,9 @@ stem: `name.js` is tested by `name.test.js`. A test for an internal module
 may import that module directly at its owning boundary, but it does not justify
 re-exporting the internal API from `name.js`. Colocated `*.test.js` files
 must remain outside the production static import graph, JavaScript ownership
-scans, Rust static assets, and the service-worker cache. Global stylesheet and
-static-asset manifests may enumerate production internal paths because they are
-build inventories rather than runtime feature consumers.
+scans, Rust static assets, and the service-worker cache. Static-asset
+manifests may enumerate production internal paths because they are build
+inventories rather than runtime feature consumers.
 
 ### Component Ownership And Lifecycles
 
@@ -247,16 +248,17 @@ DOM, scoped CSS, and regression tests together. The previous container must not
 retain a second writer or lifecycle owner after the extraction.
 
 Use snapshots and public methods for parent-to-child data flow. Use intent
-events for actions that cross upward. UI-local state such as drafts, focus,
-scroll anchors, disclosure, picker state, and review selection belongs in the
-leaf component that renders and restores it. External mutations and canonical
+events for actions that cross upward, `composed` when a listener outside the
+root they start in hears them. UI-local state such as drafts, focus, scroll
+anchors, disclosure, picker state, and review selection belongs in the leaf
+component that renders and restores it. External mutations and canonical
 domain reconciliation remain with the component that owns that API boundary.
 A leaf must not reach sideways to mutate sibling state.
 
 Stateful children should be mounted once and shown or hidden. Do not let a
 container rerender destroy child DOM and then depend on capture-and-restore
 code for drafts, focus, scroll, selection, subscriptions, timers, or watchers.
-If a container patches its own Light DOM, preserve stateful child elements by
+When a container updates its own root, preserve stateful child elements by
 identity and interact with them only through their public component boundary.
 
 ### Keyboard Action Ownership
@@ -274,8 +276,8 @@ activation path must provide its keyboard action through an explicit public
 component contract. That provider supplies the action's stable semantic
 identity, accessible meaning, current actionability, and existing click, focus,
 or intent path. An ancestor must not infer keyboard actions by scanning generic
-interactive DOM, attaching markers outside the owner, or reaching through a
-child's Light DOM to reconstruct them.
+interactive DOM, attaching markers outside the owner, or reaching into a
+child's shadow root to reconstruct them.
 
 A container may provide actions for controls it owns, select its active direct
 child providers, and combine their scopes through the shared composition
@@ -376,69 +378,29 @@ provides one shared ordering contract. For example, a task-list revision must
 not reject a task-detail snapshot, and a detail revision must not advance the
 list baseline.
 
-Because nested custom elements are still normal descendants in Light DOM,
-container selectors must be narrow.
+### Component Styles
 
-Preferred patterns:
+A component's stylesheet reaches only its own shadow root, and the document's
+stylesheet does not reach inside;
+[Styling and assets](../architecture/frontend.md#styling-and-assets) describes
+the boundary. Use these rules when reviewing CSS:
 
-```css
-caffold-task-git-layout {
-  & > .task-git-workspace {
-    display: grid;
-  }
-
-  & .task-git-title > h2 {
-    font-weight: 600;
-  }
-}
-
-caffold-git-log-list-page {
-  & .log-entry {
-    display: grid;
-  }
-}
-```
-
-Avoid broad container selectors that can enter child components:
-
-```css
-caffold-task-workspace h2 {
-  font-weight: 600;
-}
-
-caffold-app-shell button {
-  font-size: 0.9rem;
-}
-```
-
-Use these rules when reviewing CSS:
-
-- Group a component's internal selectors under its custom-element owner with
-  native CSS nesting. Keep nesting shallow, preserve source order across media
-  queries and owner-specific overrides, and do not combine or reorder selectors
-  merely to make the nesting tree smaller.
-- Keep global document rules and keyframes flat when nesting would not express
-  component ownership.
-- Container components should style their own chrome and direct layout
-  children.
-- A container may style a child custom-element host for placement, sizing, and
-  visibility, but selectors that cross into that child's descendants belong in
-  the child component's stylesheet.
-- Prefer `>` for container layout selectors.
-- Use component-local classes for internal chrome.
-- A component declares its own use of shared styles. Shared CSS must not name
-  feature consumers, and registration must not discover targets by scanning the
-  DOM. Preserve component-owned state and local overrides, and verify scoped
+- Style the host through `:host`, and the elements in the root by local class
+  or element name.
+- A parent may style a child component's host to place, size, or hide it; what
+  the child draws belongs in the child's stylesheet.
+- A container that components drawn inside a root query is named on an
+  element in that root, not on `:host`: WebKit hides a host's container name
+  from those components' roots.
+- Shared styles live directly under a `component-styles/` directory, and a
+  component declares its own use of them. Shared CSS must not name feature
+  consumers, and registration must not discover targets by scanning the DOM.
+  Preserve component-owned state and local overrides, and verify scoped
   application and isolation in the browser. CSS ownership contracts must also
   cover shared sources.
-- Avoid raw tag selectors from shell or container components.
-- Cross-component overrides must be narrow and intentional.
-- New component selectors must be scoped below that custom element, and
-  overlapping broad container selectors must be removed when ownership moves.
-- Register new JavaScript and CSS assets in module imports, the stylesheet
-  entrypoint or consuming component's style declaration, service worker cache,
-  Rust static asset table, and static asset tests in the same change.
-- If a selector looks convenient because it is broad, review it with suspicion.
+- Register new JavaScript and CSS assets in module imports, the consuming
+  component's `static styles`, the service worker cache, the Rust static asset
+  table, and static asset tests in the same change.
 
 ### Appearance Ownership
 

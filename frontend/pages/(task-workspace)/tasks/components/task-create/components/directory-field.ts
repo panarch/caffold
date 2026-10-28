@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -19,6 +19,12 @@ import type {
   FileTreeSelectDetail,
 } from "#components/file-tree.js";
 import "#components/file-tree.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import {
+  closestAcrossShadowRoots,
+  containsAcrossShadowRoots,
+  focusedElement,
+} from "#app/shadow-roots.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import { directoryPathDisplay, type ServerPaths } from "../directory-path.js";
 import {
@@ -31,6 +37,8 @@ import {
   PARENT_ROW_KEY,
   reduceDirectoryField,
 } from "./directory-field/control.js";
+
+import styles from "./directory-field.css.js";
 
 export const DIRECTORY_CHOSEN_EVENT = "caffold:task-directory-chosen";
 
@@ -67,7 +75,9 @@ interface FolderListView {
  * the field at once, because an effect can move focus into what it drew.
  */
 @customElement("caffold-task-directory-field")
-export class CaffoldTaskDirectoryField extends LitElement {
+export class CaffoldTaskDirectoryField extends CaffoldElement {
+  static override styles = styles;
+
   private state = initialDirectoryFieldState();
   private folderList: FolderListView = {
     hidden: true,
@@ -95,10 +105,6 @@ export class CaffoldTaskDirectoryField extends LitElement {
       this.pressedInside = false;
     }, 0);
   };
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -181,101 +187,103 @@ export class CaffoldTaskDirectoryField extends LitElement {
     const editLabel = editing ? "Stop typing" : "Type a path";
     const folders = `${this.fieldId}-folders`;
     return html`
-      <div
-        class="task-directory-field-box"
-        @pointerdown=${this.handlePointerDown}
-        @click=${this.handleClick}
-        @keydown=${this.handleKeydown}
-        @focusout=${this.scheduleLeaveCheck}
-      >
-        <span class="task-directory-field-icon" aria-hidden="true">${inlineIcon(
-          open ? "FolderOpen" : "Folder",
-          "",
-          "task-directory-field-glyph",
-        )}</span>
-        <button
-          ${drawn(this.toggle)}
-          ${this.hints.button({
-            id: "directory:toggle",
-            label: open ? "Hide folders" : "Show folders",
-            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          })}
-          type="button"
-          class="task-directory-field-toggle"
-          aria-expanded=${open ? "true" : "false"}
-          aria-controls=${folders}
-          aria-describedby=${`${this.fieldId}-path`}
-          aria-label=${open ? "Hide folders" : "Show folders"}
-          title=${shown}
-          ?hidden=${editing}
-          ?disabled=${locked}
-        ><span
-          class="task-directory-field-path"
-          id=${`${this.fieldId}-path`}
-        ><span dir="ltr">${shown}</span></span></button>
-        <input
-          ${drawn(this.input)}
-          class="task-directory-field-input"
-          type="text"
-          role="combobox"
-          aria-label="Working directory path"
-          aria-expanded="true"
-          aria-controls=${folders}
-          aria-autocomplete="list"
-          autocomplete="off"
-          autocapitalize="off"
-          autocorrect="off"
-          spellcheck="false"
-          enterkeyhint="go"
-          ?hidden=${!editing}
-          @input=${this.handleInput}
+      <div class="task-directory-field-frame">
+        <div
+          class="task-directory-field-box"
+          @pointerdown=${this.handlePointerDown}
+          @click=${this.handleClick}
+          @keydown=${this.handleKeydown}
+          @focusout=${this.scheduleLeaveCheck}
         >
-        <button
-          ${this.hints.button({
-            id: "directory:edit",
-            label: editLabel,
-            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          })}
-          type="button"
-          class="task-directory-field-edit"
-          aria-pressed=${editing ? "true" : "false"}
-          aria-label=${editLabel}
-          title=${editLabel}
-          ?disabled=${locked}
-        >${inlineIcon(
-          "Pencil",
-          editLabel,
-          "task-directory-field-glyph",
-        )}</button>
-        <span
-          class="task-directory-field-chevron"
-          aria-hidden="true"
-        >${inlineIcon(
-          open ? "ChevronUp" : "ChevronDown",
-          "",
-          "task-directory-field-chevron-glyph",
-        )}</span>
-      </div>
-      <div
-        ${drawn(this.panel)}
-        class="task-directory-field-panel"
-        ?hidden=${!error && this.folderList.hidden}
-        @pointerdown=${this.handlePointerDown}
-        @keydown=${this.handleKeydown}
-        @focusout=${this.scheduleLeaveCheck}
-      >
-        <p
-          class="task-directory-field-error"
-          role="alert"
-          ?hidden=${!error}
-        >${error}</p>
-        <caffold-file-tree
-          ${drawn(this.tree)}
-          id=${folders}
-          file-sort-mode="folders-first"
-          ?hidden=${this.folderList.hidden}
-          @caffold:file-tree-select=${this.chooseFolder}
-        ></caffold-file-tree>
+          <span class="task-directory-field-icon" aria-hidden="true">${inlineIcon(
+            open ? "FolderOpen" : "Folder",
+            "",
+            "task-directory-field-glyph",
+          )}</span>
+          <button
+            ${drawn(this.toggle)}
+            ${this.hints.button({
+              id: "directory:toggle",
+              label: open ? "Hide folders" : "Show folders",
+              action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            })}
+            type="button"
+            class="task-directory-field-toggle"
+            aria-expanded=${open ? "true" : "false"}
+            aria-controls=${folders}
+            aria-describedby=${`${this.fieldId}-path`}
+            aria-label=${open ? "Hide folders" : "Show folders"}
+            title=${shown}
+            ?hidden=${editing}
+            ?disabled=${locked}
+          ><span
+            class="task-directory-field-path"
+            id=${`${this.fieldId}-path`}
+          ><span dir="ltr">${shown}</span></span></button>
+          <input
+            ${drawn(this.input)}
+            class="task-directory-field-input"
+            type="text"
+            role="combobox"
+            aria-label="Working directory path"
+            aria-expanded="true"
+            aria-controls=${folders}
+            aria-autocomplete="list"
+            autocomplete="off"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            enterkeyhint="go"
+            ?hidden=${!editing}
+            @input=${this.handleInput}
+          >
+          <button
+            ${this.hints.button({
+              id: "directory:edit",
+              label: editLabel,
+              action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            })}
+            type="button"
+            class="task-directory-field-edit"
+            aria-pressed=${editing ? "true" : "false"}
+            aria-label=${editLabel}
+            title=${editLabel}
+            ?disabled=${locked}
+          >${inlineIcon(
+            "Pencil",
+            editLabel,
+            "task-directory-field-glyph",
+          )}</button>
+          <span
+            class="task-directory-field-chevron"
+            aria-hidden="true"
+          >${inlineIcon(
+            open ? "ChevronUp" : "ChevronDown",
+            "",
+            "task-directory-field-chevron-glyph",
+          )}</span>
+        </div>
+        <div
+          ${drawn(this.panel)}
+          class="task-directory-field-panel"
+          ?hidden=${!error && this.folderList.hidden}
+          @pointerdown=${this.handlePointerDown}
+          @keydown=${this.handleKeydown}
+          @focusout=${this.scheduleLeaveCheck}
+        >
+          <p
+            class="task-directory-field-error"
+            role="alert"
+            ?hidden=${!error}
+          >${error}</p>
+          <caffold-file-tree
+            ${drawn(this.tree)}
+            id=${folders}
+            file-sort-mode="folders-first"
+            ?hidden=${this.folderList.hidden}
+            @caffold:file-tree-select=${this.chooseFolder}
+          ></caffold-file-tree>
+        </div>
       </div>
     `;
   }
@@ -508,11 +516,11 @@ export class CaffoldTaskDirectoryField extends LitElement {
   }
 
   private handleOutsidePointerDown(event: PointerEvent) {
-    const target = event.target;
+    const [target] = event.composedPath();
     if (
       target instanceof Node &&
-      !this.contains(target) &&
-      !(target instanceof Element && target.closest(KEYBOARD_PRESENTATION))
+      !containsAcrossShadowRoots(this, target) &&
+      !closestAcrossShadowRoots(target, KEYBOARD_PRESENTATION)
     ) {
       this.dispatch({ type: "leave" });
     }
@@ -524,13 +532,13 @@ export class CaffoldTaskDirectoryField extends LitElement {
   private scheduleLeaveCheck() {
     window.clearTimeout(this.leaveCheck);
     this.leaveCheck = window.setTimeout(() => {
-      const active = document.activeElement;
+      const active = focusedElement();
       if (
         this.state.node === CLOSED ||
         this.pressedInside ||
         !document.hasFocus() ||
-        this.contains(active) ||
-        active?.closest(KEYBOARD_PRESENTATION)
+        containsAcrossShadowRoots(this, active) ||
+        closestAcrossShadowRoots(active, KEYBOARD_PRESENTATION)
       ) {
         return;
       }

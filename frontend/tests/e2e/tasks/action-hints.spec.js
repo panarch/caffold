@@ -84,18 +84,14 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
     await expect(dialog.getByLabel(/Show folders/)).toHaveCount(0);
   }
 
-  const anchored = await page.evaluate(() => {
-    const control = document.querySelector(".task-list-new-task");
-    const badge = document.querySelector(
-      'caffold-action-hint-dialog [data-action-hint-code="N"]',
-    );
+  const anchored = await dialog.locator('[data-action-hint-code="N"]').evaluate((badge, control) => {
     const controlRect = control.getBoundingClientRect();
     const badgeRect = badge.getBoundingClientRect();
     return {
       left: Math.abs(controlRect.left - badgeRect.left),
       top: Math.abs(controlRect.top - badgeRect.top),
     };
-  });
+  }, await page.locator(".task-list-new-task").elementHandle());
   expect(anchored.left).toBeLessThanOrEqual(1);
   expect(anchored.top).toBeLessThanOrEqual(1);
 
@@ -134,7 +130,7 @@ test("retires newly covered Task rows on panel resize without reallocating froze
   await page.setViewportSize({ width: 933, height: 440 });
   await page.goto("/tasks");
   await expect(page.locator("caffold-active-task-row")).toHaveCount(48);
-  const initial = await workspaceOcclusionTargets(page, "caffold-task-navigator");
+  const initial = await workspaceOcclusionTargets(page.locator("caffold-task-navigator"));
   expect(initial.covered.length).toBeGreaterThan(0);
   const dialog = await enterActionHints(page);
   for (const label of initial.covered) await expect(dialog.getByLabel(new RegExp(` — ${label}$`))).toHaveCount(0);
@@ -143,7 +139,7 @@ test("retires newly covered Task rows on panel resize without reallocating froze
   })));
   const panel = page.locator("caffold-task-workspace-navigation");
   await panel.evaluate((element) => { element.style.height = `${element.getBoundingClientRect().height + 80}px`; });
-  const expanded = await workspaceOcclusionTargets(page, "caffold-task-navigator");
+  const expanded = await workspaceOcclusionTargets(page.locator("caffold-task-navigator"));
   const retired = frozen.filter(({ label }) => expanded.covered.includes(label));
   const surviving = frozen.filter(({ label }) => expanded.clear.includes(label));
   expect(retired.length).toBeGreaterThan(0);
@@ -625,7 +621,7 @@ test("hands create M to the native model popover and P to prompt editing", { tag
     .getAttribute("data-action-hint-code");
   expect(selectedCode).toBeTruthy();
   const retained = await turnOptions.evaluate(async (options) => {
-    const root = options.querySelector(".task-model-popover");
+    const root = options.shadowRoot.querySelector(".task-model-popover");
     const presentation = root.querySelector(
       ":scope > caffold-keyboard-navigation-presentation",
     );
@@ -640,7 +636,7 @@ test("hands create M to the native model popover and P to prompt editing", { tag
       presentation: root.querySelector(
         ":scope > caffold-keyboard-navigation-presentation",
       ) === presentation,
-      root: options.querySelector(".task-model-popover") === root,
+      root: options.shadowRoot.querySelector(".task-model-popover") === root,
     };
   });
   expect(retained).toEqual({ presentation: true, root: true });
@@ -1065,10 +1061,12 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
   await prompt.evaluate((textarea) => {
     textarea.dispatchEvent(new CompositionEvent("compositionstart", {
       bubbles: true,
+      composed: true,
       data: "ㅎ",
     }));
     textarea.dispatchEvent(new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "Escape",
       isComposing: true,
@@ -1079,6 +1077,7 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
   await prompt.evaluate((textarea) => {
     textarea.dispatchEvent(new CompositionEvent("compositionend", {
       bubbles: true,
+      composed: true,
       data: "ㅎ",
     }));
   });
@@ -1089,6 +1088,7 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
     const dispatch = (init) => {
       const event = new KeyboardEvent("keydown", {
         bubbles: true,
+        composed: true,
         cancelable: true,
         code: "KeyF",
         key: "f",
@@ -1107,6 +1107,7 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
   await detail.evaluate((region) => {
     region.dispatchEvent(new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "KeyF",
       key: "ㄹ",
@@ -1117,6 +1118,7 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
   await dialog.evaluate((element) => {
     element.dispatchEvent(new CompositionEvent("compositionstart", {
       bubbles: true,
+      composed: true,
       data: "ㅎ",
     }));
     element.dispatchEvent(new Event("cancel", {
@@ -1127,6 +1129,7 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
   await dialog.evaluate((element) => {
     element.dispatchEvent(new CompositionEvent("compositionend", {
       bubbles: true,
+      composed: true,
       data: "ㅎ",
     }));
   });
@@ -1145,12 +1148,13 @@ test("keeps unaffected row owners through local actionability, scroll, and topol
 
   const dialog = actionHintDialog(page);
   await expect(dialog).toBeVisible();
+  const firstRow = page.locator('.task-row[data-thread-id="action_hint_01"]');
+  await firstRow.evaluate((row) => {
+    window.__actionHintRow = row;
+  });
   const rowIdentity = await page.locator("caffold-active-task-list").evaluate(
     (list) => {
       const task = list.taskFor("action_hint_01");
-      window.__actionHintRow = list.querySelector(
-        '.task-row[data-thread-id="action_hint_01"]',
-      );
       list.upsertCanonicalTask({
         ...task,
         title: "Renamed Action Hint Task 01",
@@ -1167,11 +1171,7 @@ test("keeps unaffected row owners through local actionability, scroll, and topol
     "aria-label",
     "TA — Open task: Renamed Action Hint Task 01",
   );
-  expect(await page.evaluate(() =>
-    window.__actionHintRow === document.querySelector(
-      '.task-row[data-thread-id="action_hint_01"]',
-    )
-  )).toBe(true);
+  expect(await firstRow.evaluate((row) => window.__actionHintRow === row)).toBe(true);
 
   const offscreenRow = page.locator(
     'button.task-row[data-thread-id="action_hint_48"]',
@@ -1198,20 +1198,11 @@ test("keeps unaffected row owners through local actionability, scroll, and topol
   });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('[data-action-hint-code="TA"]')).toBeVisible();
-  await expect.poll(() => page.evaluate(() => {
-    const control = document.querySelector(
-      'button.task-row[data-thread-id="action_hint_01"]',
-    );
-    const badge = document.querySelector(
-      'caffold-action-hint-dialog [data-action-hint-code="TA"]',
-    );
-    if (!control || !badge) {
-      return Infinity;
-    }
-    return Math.abs(
+  const firstRowHandle = await firstRow.elementHandle();
+  await expect.poll(() => dialog.locator('[data-action-hint-code="TA"]').evaluate((badge, control) =>
+    Math.abs(
       control.getBoundingClientRect().top - badge.getBoundingClientRect().top,
-    );
-  })).toBeLessThanOrEqual(1);
+    ), firstRowHandle)).toBeLessThanOrEqual(1);
   await expect(page).toHaveURL(routeBeforeCancel);
   await page.keyboard.press("Escape");
 
@@ -1353,12 +1344,14 @@ test("retires only a changed Conversation owner while preserving codes and the r
   await outsideBadge.evaluate((element) => {
     window.__conversationHintOutsideBadge = element;
   });
-  await survivorPreview.evaluate((element) => {
+  // The entry sits in the conversation's root, the button in the attachments'.
+  const survivorOwner = conversation
+    .locator(".task-event[data-conversation-entry-key]")
+    .filter({ has: page.getByRole("button", { name: "Preview owner-b.png" }) });
+  await survivorPreview.evaluate((element, owner) => {
     window.__conversationHintSurvivorControl = element;
-    window.__conversationHintSurvivorOwner = element.closest(
-      ".task-event[data-conversation-entry-key]",
-    );
-  });
+    window.__conversationHintSurvivorOwner = owner;
+  }, await survivorOwner.elementHandle());
 
   await conversation.evaluate((element, imageUrl) => {
     const ownerB = element.snapshot.events.find(
@@ -1406,14 +1399,12 @@ test("retires only a changed Conversation owner while preserving codes and the r
   await expect(dialog.locator(
     `[data-action-hint-code="${outsideCode}"]`,
   )).toBeVisible();
-  expect(await page.evaluate(({ outsideCode, survivorCode }) => (
-    window.__conversationHintSurvivorBadge === document.querySelector(
-      `caffold-action-hint-dialog [data-action-hint-code="${survivorCode}"]`,
-    ) &&
-    window.__conversationHintOutsideBadge === document.querySelector(
-      `caffold-action-hint-dialog [data-action-hint-code="${outsideCode}"]`,
-    )
-  ), { outsideCode, survivorCode })).toBe(true);
+  expect(await dialog.locator(
+    `[data-action-hint-code="${survivorCode}"]`,
+  ).evaluate((badge) => badge === window.__conversationHintSurvivorBadge)).toBe(true);
+  expect(await dialog.locator(
+    `[data-action-hint-code="${outsideCode}"]`,
+  ).evaluate((badge) => badge === window.__conversationHintOutsideBadge)).toBe(true);
 
   await conversation.evaluate((element) => {
     // A new picture replaces Owner A's preview button; new words alone would
@@ -1441,7 +1432,16 @@ test("retires only a changed Conversation owner while preserving codes and the r
       updateKind: "live",
       events,
     });
-    const changedPreview = element.querySelector(
+    // The button sits in the attachments' root, inside the message's.
+    const find = (root, selector) =>
+      root.querySelector(selector) ??
+      [...root.querySelectorAll("*")]
+        .filter((child) => child.shadowRoot)
+        .map((child) => find(child.shadowRoot, selector))
+        .find(Boolean) ??
+      null;
+    const changedPreview = find(
+      element.shadowRoot,
       'button[aria-label="Preview owner-a.png"]',
     );
     changedPreview.style.minHeight = "40px";
@@ -1460,33 +1460,26 @@ test("retires only a changed Conversation owner while preserving codes and the r
   await expect(dialog.locator(
     `[data-action-hint-code="${outsideCode}"]`,
   )).toBeVisible();
-  expect(await page.evaluate(({ outsideCode, survivorCode }) => (
-    window.__conversationHintSurvivorBadge === document.querySelector(
-      `caffold-action-hint-dialog [data-action-hint-code="${survivorCode}"]`,
-    ) &&
-    window.__conversationHintOutsideBadge === document.querySelector(
-      `caffold-action-hint-dialog [data-action-hint-code="${outsideCode}"]`,
-    )
-  ), { outsideCode, survivorCode })).toBe(true);
-  expect(await survivorPreview.evaluate((element) =>
+  expect(await dialog.locator(
+    `[data-action-hint-code="${survivorCode}"]`,
+  ).evaluate((badge) => badge === window.__conversationHintSurvivorBadge)).toBe(true);
+  expect(await dialog.locator(
+    `[data-action-hint-code="${outsideCode}"]`,
+  ).evaluate((badge) => badge === window.__conversationHintOutsideBadge)).toBe(true);
+  expect(await survivorPreview.evaluate((element, owner) =>
     element === window.__conversationHintSurvivorControl &&
-    element.closest(".task-event[data-conversation-entry-key]") ===
-      window.__conversationHintSurvivorOwner
-  )).toBe(true);
-  await expect.poll(() => page.evaluate((code) => {
-    const control = document.querySelector(
-      'button[aria-label="Preview owner-b.png"]',
-    );
-    const badge = document.querySelector(
-      `caffold-action-hint-dialog [data-action-hint-code="${code}"]`,
-    );
-    if (!control || !badge) {
+    owner === window.__conversationHintSurvivorOwner
+  , await survivorOwner.elementHandle())).toBe(true);
+  await expect.poll(async () => dialog.locator(
+    `[data-action-hint-code="${survivorCode}"]`,
+  ).evaluate((badge, control) => {
+    if (!control) {
       return Infinity;
     }
     return Math.abs(
       control.getBoundingClientRect().top - badge.getBoundingClientRect().top,
     );
-  }, survivorCode)).toBeLessThanOrEqual(1);
+  }, await survivorPreview.elementHandle())).toBeLessThanOrEqual(1);
   const currentSurvivorTop = await dialog.locator(
     `[data-action-hint-code="${survivorCode}"]`,
   ).evaluate((element) => element.getBoundingClientRect().top);
@@ -1653,12 +1646,11 @@ test("keeps badges aligned and legible at appearance and zoom extremes", { tag: 
   // The expected target map reads the New Task pickers, which settle only once
   // the model list has landed.
   await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const taskNew = document.querySelector("caffold-task-new:not([hidden])");
-        return !taskNew || Boolean(taskNew.querySelector(".task-model-name"));
-      }),
-    )
+    .poll(async () => {
+      const taskNew = page.locator("caffold-task-new:not([hidden])");
+      return !(await taskNew.count()) ||
+        (await taskNew.locator("caffold-task-turn-options .task-model-name").count()) > 0;
+    })
     .toBe(true);
   const devtools = await context.newCDPSession(page);
 
@@ -1874,10 +1866,16 @@ function actionHintTaskDetail(task) {
 
 async function visibleTaskTitles(page) {
   return page.locator("caffold-task-navigator").evaluate((navigator) => {
-    const scroll = navigator.querySelector(":scope > .task-list-scroll");
+    // Every match below `root`, through the open shadow roots under it, in tree
+    // order.
+    const deepAll = (root, selector) => [...root.querySelectorAll("*")].flatMap((element) => [
+      ...(element.matches(selector) ? [element] : []),
+      ...(element.shadowRoot ? deepAll(element.shadowRoot, selector) : []),
+    ]);
+    const scroll = navigator.shadowRoot.querySelector(".task-list-scroll");
     const navigatorRect = navigator.getBoundingClientRect();
     const scrollRect = scroll.getBoundingClientRect();
-    const panel = document.querySelector("caffold-task-workspace-navigation").getBoundingClientRect();
+    const panel = deepAll(document, "caffold-task-workspace-navigation")[0].getBoundingClientRect();
     const viewport = {
       left: window.visualViewport?.offsetLeft ?? 0,
       top: window.visualViewport?.offsetTop ?? 0,
@@ -1888,9 +1886,9 @@ async function visibleTaskTitles(page) {
         (window.visualViewport?.offsetTop ?? 0) +
         (window.visualViewport?.height ?? document.documentElement.clientHeight),
     };
-    return [...navigator.querySelectorAll(
-      "caffold-active-task-row > button.task-row:not(:disabled)",
-    )].filter((row) => {
+    return deepAll(navigator.shadowRoot, "button.task-row:not(:disabled)").filter((row) =>
+      row.getRootNode().host.localName === "caffold-active-task-row"
+    ).filter((row) => {
       const rect = row.getBoundingClientRect();
       const centerX = rect.left + rect.width / 2;
       const centerY = rect.top + rect.height / 2;
@@ -1908,7 +1906,8 @@ async function visibleTaskTitles(page) {
 }
 
 async function captureActionHintVisualState(page) {
-  return page.evaluate(() => {
+  const badges = actionHintDialog(page).locator("button[data-action-hint-code]");
+  return badges.evaluateAll((badges) => {
     const viewport = {
       left: window.visualViewport?.offsetLeft ?? 0,
       top: window.visualViewport?.offsetTop ?? 0,
@@ -1925,7 +1924,14 @@ async function captureActionHintVisualState(page) {
       right: Math.min(...rects.map((rect) => rect.right)),
       bottom: Math.min(...rects.map((rect) => rect.bottom)),
     });
-    const panel = document.querySelector("caffold-task-workspace-navigation").getBoundingClientRect();
+    // Every match below `root`, through the open shadow roots under it, in tree
+    // order.
+    const deepAll = (root, selector) => [...root.querySelectorAll("*")].flatMap((element) => [
+      ...(element.matches(selector) ? [element] : []),
+      ...(element.shadowRoot ? deepAll(element.shadowRoot, selector) : []),
+    ]);
+    const first = (selector) => deepAll(document, selector)[0] ?? null;
+    const panel = first("caffold-task-workspace-navigation").getBoundingClientRect();
     const target = (element, clips, content = true) => {
       if (!element) {
         return null;
@@ -1948,36 +1954,37 @@ async function captureActionHintVisualState(page) {
         ? visible
         : null;
     };
-    const navigator = document.querySelector("caffold-task-navigator");
-    const taskScroll = navigator.querySelector(":scope > .task-list-scroll");
-    const taskTargets = [...navigator.querySelectorAll(
-      "caffold-active-task-row > button.task-row:not(:disabled)",
-    )].map((row) => target(row, [navigator, taskScroll])).filter(Boolean);
-    const taskNew = document.querySelector("caffold-task-new:not([hidden])");
-    const createScroll = taskNew?.querySelector(":scope > .task-new-workspace");
+    const navigator = first("caffold-task-navigator");
+    const taskScroll = navigator.shadowRoot.querySelector(".task-list-scroll");
+    const taskTargets = deepAll(navigator.shadowRoot, "button.task-row:not(:disabled)")
+      .filter((row) => row.getRootNode().host.localName === "caffold-active-task-row")
+      .map((row) => target(row, [navigator, taskScroll])).filter(Boolean);
+    const taskNew = first("caffold-task-new:not([hidden])");
+    const createScroll = taskNew?.shadowRoot.querySelector(".task-new-workspace");
+    const inTaskNew = (selector) => (taskNew ? deepAll(taskNew.shadowRoot, selector) : []);
     const fixedTargets = new Map([
-      ["N", target(document.querySelector(".task-list-new-task"), [navigator])],
-      ["M", target(taskNew?.querySelector(".task-model-button"), [taskNew, createScroll])],
-      ["P", target(taskNew?.querySelector("textarea[name='prompt']"), [taskNew, createScroll])],
+      ["N", target(navigator.shadowRoot.querySelector(".task-list-new-task"), [navigator])],
+      ["M", target(inTaskNew(".task-model-button")[0], [taskNew, createScroll])],
+      ["P", target(inTaskNew("textarea[name='prompt']")[0], [taskNew, createScroll])],
     ]);
     const automaticTargets = new Map();
     for (const selector of [".task-list-switcher", ".task-list-reorder"]) {
-      const control = navigator.querySelector(`:scope ${selector}`);
+      const control = navigator.shadowRoot.querySelector(selector);
       automaticTargets.set(
         control.getAttribute("aria-label"),
         target(control, [navigator]),
       );
     }
-    const permission = taskNew?.querySelector(".task-permission-button");
+    const permission = inTaskNew(".task-permission-button")[0];
     if (permission) {
       automaticTargets.set(
         permission.getAttribute("aria-label"),
         target(permission, [taskNew, createScroll]),
       );
     }
-    for (const control of taskNew?.querySelectorAll(
+    for (const control of inTaskNew(
       'button[data-composer-action="attach"], .task-directory-field-toggle, .task-directory-field-edit, button[data-composer-action="voice"]',
-    ) ?? []) {
+    )) {
       if (control.disabled) {
         continue;
       }
@@ -1988,21 +1995,20 @@ async function captureActionHintVisualState(page) {
         target(control, [taskNew, createScroll]),
       );
     }
-    for (const control of document.querySelectorAll(
-      'caffold-active-task-section .task-repository-select[data-active-task-section-action="open-section"]',
+    for (const control of deepAll(
+      navigator.shadowRoot,
+      '.task-repository-select[data-active-task-section-action="open-section"]',
     )) {
       const name = control.querySelector(".task-repository-label")?.textContent ?? "";
       automaticTargets.set(`Open section: ${name}`, target(control, [navigator, taskScroll]));
     }
-    const workspaceNavigation = document.querySelector(
-      "caffold-task-workspace-navigation",
-    );
+    const workspaceNavigation = first("caffold-task-workspace-navigation");
     const workspaceModeNames = {
       tasks: "Tasks",
       notes: "Notes",
       settings: "Settings",
     };
-    for (const control of workspaceNavigation?.querySelectorAll(
+    for (const control of workspaceNavigation?.shadowRoot.querySelectorAll(
       "button[data-workspace-mode]",
     ) ?? []) {
       if (control.hasAttribute("aria-current")) {
@@ -2012,19 +2018,19 @@ async function captureActionHintVisualState(page) {
       const label = control.getAttribute("aria-label") ||
         `Open ${workspaceModeNames[mode]}`;
       automaticTargets.set(label, target(control, [
-        document.querySelector("caffold-task-workspace"),
-        document.querySelector(".task-workspace-master-pane"),
+        first("caffold-task-workspace"),
+        first(".task-workspace-master-pane"),
       ], false));
     }
-    const workspace = document.querySelector("caffold-task-workspace");
-    const masterDetail = workspace?.querySelector(
-      ":scope > .task-workspace-surface > .task-workspace-master-detail",
+    const workspace = first("caffold-task-workspace");
+    const masterDetail = workspace?.shadowRoot.querySelector(
+      ".task-workspace-surface > .task-workspace-master-detail",
     );
-    const workspaceSeparator = workspace?.querySelector(
-      ":scope > .task-workspace-surface > .task-workspace-master-detail > caffold-pane-resizer",
+    const workspaceSeparator = workspace?.shadowRoot.querySelector(
+      ".task-workspace-surface > .task-workspace-master-detail > caffold-pane-resizer",
     );
-    const workspaceHandle = workspaceSeparator?.querySelector(
-      ":scope > .pane-resizer-handle",
+    const workspaceHandle = workspaceSeparator?.shadowRoot.querySelector(
+      ".pane-resizer-handle",
     );
     if (workspaceSeparator && workspaceHandle && masterDetail) {
       automaticTargets.set(
@@ -2035,9 +2041,6 @@ async function captureActionHintVisualState(page) {
     let taskIndex = 0;
     const alignmentErrors = [];
     const viewportEscapes = [];
-    const badges = [...document.querySelectorAll(
-      "caffold-action-hint-dialog button[data-action-hint-code]",
-    )];
     for (const badge of badges) {
       const code = badge.dataset.actionHintCode;
       const label = badge.getAttribute("aria-label")

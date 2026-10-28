@@ -1,0 +1,42 @@
+/* The resets sit beneath the shared styles, so a shared button style sets its
+   own font. */
+@layer base, component-styles;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
+
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family: var(--font-code);
+  }
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.surface-message {
+  margin: 0;
+  padding: var(--interface-space-7);
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}

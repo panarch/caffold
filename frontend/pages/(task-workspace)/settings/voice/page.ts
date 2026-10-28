@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { live } from "lit/directives/live.js";
 import {
@@ -9,6 +9,7 @@ import {
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
 import "../components/detail-list.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import {
   VOICE_KEY_PROVIDERS,
   type VoiceKeyProvider,
@@ -17,6 +18,8 @@ import {
   type VoiceSettingsSnapshot,
   voiceReadinessKey,
 } from "./lifecycle.js";
+
+import styles from "./page.css.js";
 
 const PROVIDER_CHOICES = Object.freeze([
   {
@@ -47,7 +50,7 @@ const PROVIDER_DESCRIPTION =
   "settings-voice-description settings-voice-provider-note";
 
 @customElement("caffold-settings-voice-page")
-export class CaffoldSettingsVoicePage extends LitElement {
+export class CaffoldSettingsVoicePage extends CaffoldElement {
   @state()
   private accessor snapshot: VoiceSettingsSnapshot = {
     settings: null,
@@ -56,6 +59,8 @@ export class CaffoldSettingsVoicePage extends LitElement {
     retry: false,
     message: "",
   };
+
+  static override styles = styles;
 
   private active = false;
   private announcedReadiness = "";
@@ -72,10 +77,6 @@ export class CaffoldSettingsVoicePage extends LitElement {
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly choiceLabels = new DrawnRefs<HTMLLabelElement>(this);
   private readonly keyInputs = new DrawnRefs<HTMLInputElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override disconnectedCallback() {
     super.disconnectedCallback();

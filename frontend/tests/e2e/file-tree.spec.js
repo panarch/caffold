@@ -69,7 +69,7 @@ test("reorders existing rows while preserving structural and reconciled state", 
     });
 
     const rowKeys = (target) => [
-      ...target.querySelectorAll(":scope .file-tree-rows > li"),
+      ...target.shadowRoot.querySelectorAll(".file-tree-rows > li"),
     ].map((row) => row.dataset.fileTreeRowKey);
     const selectedRow = tree.rowForKey("file:zeta");
     const selectedButton = selectedRow.querySelector("button");
@@ -106,7 +106,7 @@ test("reorders existing rows while preserving structural and reconciled state", 
       sameButton:
         tree.rowForKey("file:zeta").querySelector("button") === selectedButton &&
         selectedButton.contractMarker === "retained-button",
-      focusPreserved: document.activeElement === selectedButton,
+      focusPreserved: tree.shadowRoot.activeElement === selectedButton,
       selectionPreserved:
         tree.selectedKey === "file:zeta" &&
         selectedButton.getAttribute("aria-current") === "true",
@@ -231,7 +231,7 @@ for (const themeMode of ["light", "dark"]) {
           ])),
         ],
       });
-      await document.fonts.load(getComputedStyle(changes.querySelector(".file-tree-entry")).font);
+      await document.fonts.load(getComputedStyle(changes.shadowRoot.querySelector(".file-tree-entry")).font);
     }, themeMode);
     const viewport = page.viewportSize();
     await page.mouse.move(viewport.width - 1, viewport.height - 1);
@@ -262,7 +262,7 @@ for (const themeMode of ["light", "dark"]) {
       return Object.fromEntries(
         [...document.querySelectorAll("caffold-file-tree")].flatMap((tree) => {
           const rows = [
-            ...tree.querySelectorAll(".file-tree-rows > li:not(.file-tree-group)"),
+            ...tree.shadowRoot.querySelectorAll(".file-tree-rows > li:not(.file-tree-group)"),
           ].map((row) => ({
             row,
             depth: Number(
@@ -351,10 +351,10 @@ test("places a status row's message on its branch guide below its folder's name"
         { key: "status:top", kind: "status", name: "No matching folders." },
       ],
     });
-    const rows = [...tree.querySelectorAll(".file-tree-status")];
+    const rows = [...tree.shadowRoot.querySelectorAll(".file-tree-status")];
     await document.fonts.load(getComputedStyle(rows[0]).font);
     const nameLeft = (key) =>
-      tree.querySelector(`[data-file-tree-key="${key}"] .file-tree-name`).getBoundingClientRect().left;
+      tree.shadowRoot.querySelector(`[data-file-tree-key="${key}"] .file-tree-name`).getBoundingClientRect().left;
 
     return Object.fromEntries(rows.map((row) => {
       const message = document.createRange();
@@ -421,7 +421,7 @@ test("offers its rows as Action Hints: directories toggle, entries open, the ope
     const scope = pull();
     const collapsed = described(scope);
     const scrollRoots = scope.scrollRoots.map((root) => root === tree.scroller());
-    tree.querySelector('[data-file-tree-key="src"]').click();
+    tree.shadowRoot.querySelector('[data-file-tree-key="src"]').click();
     const expanded = described(pull())
       .filter(({ id }) => id.includes("src"))
       .map(({ id, label }) => [id, label]);

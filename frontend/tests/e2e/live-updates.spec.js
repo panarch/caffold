@@ -25,15 +25,13 @@ test(
     for (const candidate of [page, secondPage]) {
       await expect
         .poll(() =>
-          candidate.evaluate(() =>
-            document.querySelector("caffold-task-workspace")?.liveUpdates?.node
+          candidate.locator("caffold-task-workspace").evaluate((workspace) =>
+            workspace.liveUpdates?.node
           )
         )
         .toBe("connected");
-      await candidate.evaluate(() => {
-        const gateway = document.querySelector(
-          "caffold-task-workspace",
-        ).liveUpdates;
+      await candidate.locator("caffold-task-workspace").evaluate((workspace) => {
+        const gateway = workspace.liveUpdates;
         window.__livePoolProbe = [
           gateway.subscribeTaskList({}),
           gateway.subscribeTaskDetail("connection-pool-probe", {}),
@@ -42,10 +40,8 @@ test(
       });
       await expect
         .poll(() =>
-          candidate.evaluate(() => {
-            const desired = document.querySelector(
-              "caffold-task-workspace",
-            ).liveUpdates.desiredSubscriptions();
+          candidate.locator("caffold-task-workspace").evaluate((workspace) => {
+            const desired = workspace.liveUpdates.desiredSubscriptions();
             return {
               detail: Boolean(desired.taskDetail),
               list: Boolean(desired.taskList),

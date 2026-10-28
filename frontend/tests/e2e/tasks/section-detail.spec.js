@@ -62,12 +62,16 @@ test("selects a Section and opens fixed-directory Task creation", { tag: "@all-v
   await expect(section).toHaveJSProperty("tagName", "BUTTON");
   await expect.poll(() => sectionCount.evaluate((count) => {
     const bounds = count.getBoundingClientRect();
-    return document
-      .elementFromPoint(
-        bounds.left + bounds.width / 2,
-        bounds.top + bounds.height / 2,
-      )
-      ?.closest(".task-repository-select")?.tagName ?? "";
+    const x = bounds.left + bounds.width / 2;
+    const y = bounds.top + bounds.height / 2;
+    // The document names only the outermost host at a point.
+    let hit = document.elementFromPoint(x, y);
+    while (hit?.shadowRoot) {
+      const inner = hit.shadowRoot.elementFromPoint(x, y);
+      if (!inner || inner === hit) break;
+      hit = inner;
+    }
+    return hit?.closest(".task-repository-select")?.tagName ?? "";
   })).toBe("BUTTON");
   await activateActionHint(
     page,
@@ -442,10 +446,12 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
   await threadIdInput.evaluate((input) => {
     input.dispatchEvent(new CompositionEvent("compositionstart", {
       bubbles: true,
+      composed: true,
       data: "ㅎ",
     }));
     input.dispatchEvent(new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "Escape",
       isComposing: true,
@@ -457,6 +463,7 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
   await threadIdInput.evaluate((input) => {
     input.dispatchEvent(new CompositionEvent("compositionend", {
       bubbles: true,
+      composed: true,
       data: "ㅎ",
     }));
   });
@@ -524,7 +531,7 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
   await forkButton.focus();
   await page.keyboard.press("s");
   const forkHud = dialog.locator(
-    "caffold-keyboard-navigation-presentation caffold-scroll-mode-hud",
+    "caffold-keyboard-navigation-presentation caffold-scroll-mode-hud .scroll-mode-status",
   );
   await expect(forkHud).toContainText("Scroll: Fork preview");
   await page.keyboard.press("j");
@@ -957,14 +964,13 @@ test("keeps a repository Section draft while switching shared surfaces", { tag: 
   await expect(detail.locator("caffold-task-detail-git")).toBeVisible();
   await expect(detail.locator("caffold-task-detail-github")).toBeVisible();
   if (await page.evaluate(() => window.innerWidth > 520)) {
-    const rightAlignment = await detail.evaluate((element) => {
-      const header = element.querySelector(".detail-layout-summary");
-      // The terminal button closes the Section header's controls.
-      const visibleActionButtons = [
-        ...element.querySelectorAll(
-          ".detail-layout-actions button, caffold-task-detail-terminal > button",
-        ),
-      ].filter((button) => button.getBoundingClientRect().width > 0);
+    // The terminal button closes the Section header's controls; each control
+    // draws its button in its own root.
+    const rightAlignment = await detail.locator(
+      ".detail-layout-actions button, caffold-task-detail-terminal button",
+    ).evaluateAll((buttons, header) => {
+      const visibleActionButtons = buttons
+        .filter((button) => button.getBoundingClientRect().width > 0);
       const rightmostButton = visibleActionButtons.reduce((rightmost, button) =>
         button.getBoundingClientRect().right > rightmost.getBoundingClientRect().right
           ? button
@@ -978,7 +984,7 @@ test("keeps a repository Section draft while switching shared surfaces", { tag: 
         ),
         rightInset: headerBox.right - buttonBox.right,
       };
-    });
+    }, await detail.locator(".detail-layout-summary").elementHandle());
     expect(
       Math.abs(rightAlignment.rightInset - rightAlignment.headerPaddingRight),
     ).toBeLessThanOrEqual(0.5);
@@ -1171,11 +1177,13 @@ test("starts the Section composer where global New Task starts its composer", { 
   await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
     route.fulfill({ json: { tasks: [], nextCursor: null } })
   );
-  const composerOffset = (scroller) => page.evaluate((selector) => {
-    const scroll = document.querySelector(selector);
-    const create = scroll.querySelector(":scope > caffold-task-create");
+  // The Section scrolls as a whole and draws Task creation in its own root.
+  const composerOffset = (scroller) => page.locator(scroller).evaluate((scroll) => {
+    const create = [...(scroll.shadowRoot ?? scroll).children].find(
+      (child) => child.localName === "caffold-task-create",
+    );
     return create.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
-  }, scroller);
+  });
 
   await page.goto("/tasks/new");
   await expect(page.locator("caffold-task-new .task-new-form")).toBeVisible();

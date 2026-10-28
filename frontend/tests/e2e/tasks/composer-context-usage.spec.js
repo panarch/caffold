@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { activateActionHint } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { elementHandles } from "../support/element-handles.js";
 import {
   installTaskApiFixture,
   taskDetailFixture,
@@ -34,13 +35,10 @@ test("sits just left of the microphone, the microphone's size", { tag: "@all-vie
   await expect(pie).toBeVisible();
   await expect(pie).toHaveAccessibleName("Context usage: 16%");
 
-  const layout = await form.evaluate((element) => {
-    const box = (selector) =>
-      element.querySelector(selector).getBoundingClientRect();
-    const pie = box(".task-context-usage-button");
-    const microphone = box(".task-voice-button");
-    const send = box(".task-primary-action-button");
-    const permission = box(".task-permission-button");
+  const layout = await page.evaluate((elements) => {
+    const [pie, microphone, send, permission] = elements.map((element) =>
+      element.getBoundingClientRect()
+    );
     const middle = (rect) => rect.top + rect.height / 2;
     return {
       pieToMicrophone: microphone.left - pie.right,
@@ -50,7 +48,12 @@ test("sits just left of the microphone, the microphone's size", { tag: "@all-vie
       middle: Math.abs(middle(pie) - middle(microphone)),
       clearOfPermission: pie.left >= permission.right,
     };
-  });
+  }, await elementHandles(form, [
+    ".task-context-usage-button",
+    ".task-voice-button",
+    ".task-primary-action-button",
+    ".task-permission-button",
+  ]));
   expect(layout.pieToMicrophone).toBeCloseTo(layout.microphoneToSend, 1);
   expect(layout).toEqual(
     expect.objectContaining({ width: 0, height: 0, clearOfPermission: true }),
@@ -74,20 +77,14 @@ test("opens the agent's numbers above the pie in the Task details form", { tag: 
     "200,000 tokens",
   ]);
   await captureReviewScreenshot(page, testInfo, "tasks-composer-context-usage-open");
-  const opened = await form.evaluate((element) => {
-    const pie = element
-      .querySelector(".task-context-usage-button")
-      .getBoundingClientRect();
-    const panel = element
-      .querySelector(".task-composer-panel")
-      .getBoundingClientRect();
-    const popover = element.querySelector(".task-context-usage-popover");
+  const opened = await page.evaluate(([pieElement, popover]) => {
+    const pie = pieElement.getBoundingClientRect();
     const box = popover.getBoundingClientRect();
     return {
       phone: window.innerWidth <= 520,
       abovePie: box.bottom <= pie.top,
       rightEdgeToPie: Math.abs(box.right - pie.right),
-      aboveComposer: panel.top - box.bottom,
+      gapAbovePie: pie.top - box.bottom,
       left: box.left,
       right: window.innerWidth - box.right,
       form: popoverForm(popover),
@@ -109,23 +106,22 @@ test("opens the agent's numbers above the pie in the Task details form", { tag: 
         valueSize: value.fontSize,
       };
     }
-  });
+  }, await elementHandles(form, [
+    ".task-context-usage-button",
+    ".task-context-usage-popover",
+  ]));
 
   await page.keyboard.press("Escape");
   await expect(popover).toBeHidden();
   await page.locator("caffold-task-detail-info .task-detail-info-button").click();
-  const reference = await page.evaluate(() => {
-    const header = document
-      .querySelector("caffold-task-detail-info")
-      .closest(".detail-layout-summary")
-      .getBoundingClientRect();
-    const popover = document.querySelector(".task-detail-popover");
+  const reference = await page.evaluate(([buttonElement, popover]) => {
+    const button = buttonElement.getBoundingClientRect();
     const box = popover.getBoundingClientRect();
     const style = getComputedStyle(popover);
     const term = getComputedStyle(popover.querySelector("dt"));
     const value = getComputedStyle(popover.querySelector("dd"));
     return {
-      belowHeader: box.top - header.bottom,
+      belowButton: box.top - button.bottom,
       left: box.left,
       right: window.innerWidth - box.right,
       form: {
@@ -140,13 +136,17 @@ test("opens the agent's numbers above the pie in the Task details form", { tag: 
         valueSize: value.fontSize,
       },
     };
-  });
+  }, await elementHandles(page.locator("caffold-detail-layout"), [
+    ".task-detail-info-button",
+    ".task-detail-popover",
+  ]));
 
   expect(opened.form).toEqual(reference.form);
   if (opened.phone) {
+    // The width of Task details, and its gap from the button it opens from.
     expect(opened.left).toBeCloseTo(reference.left, 1);
     expect(opened.right).toBeCloseTo(reference.right, 1);
-    expect(opened.aboveComposer).toBeCloseTo(reference.belowHeader, 1);
+    expect(opened.gapAbovePie).toBeCloseTo(reference.belowButton, 1);
   } else {
     expect(opened.abovePie).toBe(true);
     expect(opened.rightEdgeToPie).toBeLessThan(1);

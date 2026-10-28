@@ -15,6 +15,7 @@ import {
   type ScrollSurfacePull,
   type ScrollSurfaceScope,
 } from "../scroll-scope.js";
+import { containsAcrossShadowRoots } from "../shadow-roots.js";
 import type { CaffoldKeyboardNavigationPresentation } from "./components/presentation.js";
 
 export type KeyboardNavigationContextKind = "workspace" | "modal" | "popover";
@@ -222,7 +223,7 @@ export function normalizeKeyboardNavigationContexts(
       !id ||
       ids.has(id) ||
       roots.has(context.root) ||
-      !context.root.contains(context.presentation)
+      !containsAcrossShadowRoots(context.root, context.presentation)
     ) {
       return null;
     }

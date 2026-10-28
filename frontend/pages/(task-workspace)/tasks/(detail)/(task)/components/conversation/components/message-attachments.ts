@@ -1,4 +1,4 @@
-import { html, LitElement, type PropertyValues } from "lit";
+import { html, type PropertyValues } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
 import {
@@ -10,7 +10,10 @@ import { fetchInChunks } from "#app/chunked-fetch.js";
 import { type DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { requestTaskImagePreview } from "#tasks/components/image-preview-dialog.js";
+
+import styles from "./message-attachments.css.js";
 
 // A picture is fetched when it comes this near view, in the viewport and in
 // the conversation that scrolls it: the distance Chrome itself keeps for a
@@ -56,13 +59,15 @@ interface FetchedPicture {
  * as it is. Other pictures are new nodes, so each starts from loading.
  */
 @customElement("caffold-task-message-attachments")
-export class CaffoldTaskMessageAttachments extends LitElement {
+export class CaffoldTaskMessageAttachments extends CaffoldElement {
   @property({
     attribute: false,
     hasChanged: (next: MessageAttachment[], previous?: MessageAttachment[]) =>
       JSON.stringify(next) !== JSON.stringify(previous),
   })
   accessor attachments: MessageAttachment[] = [];
+
+  static override styles = styles;
 
   private fetchedPictures = new Map<HTMLImageElement, FetchedPicture>();
   private pictureObserver: IntersectionObserver | null = null;
@@ -73,10 +78,6 @@ export class CaffoldTaskMessageAttachments extends LitElement {
     clipRoots: () => [this],
   });
   private readonly pictures = new DrawnRefs<HTMLImageElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

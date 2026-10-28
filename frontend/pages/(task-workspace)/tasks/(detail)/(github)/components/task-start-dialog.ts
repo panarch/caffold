@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -31,8 +31,11 @@ import type {
 import "./task-start-dialog/components/github-issue.js";
 import type { CaffoldGithubIssueTaskSource } from "./task-start-dialog/components/github-issue.js";
 import "./task-start-dialog/components/github-pull.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { TaskCreatedHandoff } from "#tasks/layout.js";
 import type { CaffoldGithubPullTaskSource } from "./task-start-dialog/components/github-pull.js";
+
+import styles from "./task-start-dialog.css.js";
 
 // The issue or pull request a Task is started for.
 export type TaskStartSource =
@@ -49,7 +52,7 @@ interface Setup {
 }
 
 @customElement("caffold-github-task-start-dialog")
-export class CaffoldGithubTaskStartDialog extends LitElement {
+export class CaffoldGithubTaskStartDialog extends CaffoldElement {
   @state()
   private accessor sourceKind: TaskStartSource["kind"] | null = null;
   @state()
@@ -63,6 +66,8 @@ export class CaffoldGithubTaskStartDialog extends LitElement {
     number: "",
     ready: false,
   };
+
+  static override styles = styles;
 
   private repository: GitRepository | null = null;
   private opener: HTMLElement | null = null;
@@ -78,10 +83,6 @@ export class CaffoldGithubTaskStartDialog extends LitElement {
   private readonly pull = new DrawnRef<CaffoldGithubPullTaskSource>(this);
   private readonly options = new DrawnRef<CaffoldTaskTurnOptions>(this);
   private readonly cancelButton = new DrawnRef<HTMLButtonElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     const setup = this.setup;

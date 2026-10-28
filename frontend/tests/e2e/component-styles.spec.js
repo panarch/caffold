@@ -5,62 +5,47 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("components wait for shared CSS and share one request per stylesheet", { tag: "@viewport-independent" }, async ({ page }) => {
-  const started = Promise.withResolvers();
-  const release = Promise.withResolvers();
+test("components take shared styles as modules and request no stylesheet for them", { tag: "@viewport-independent" }, async ({ page }) => {
   const requests = [];
-  await page.route("**/assets/component-styles/*.css", async (route) => {
-    const name = new URL(route.request().url()).pathname.split("/").pop();
-    requests.push(name);
-    if (name === "compact-icon-button.css") {
-      started.resolve();
-      await release.promise;
-    }
-    await route.continue();
+  page.on("request", (request) => {
+    const { pathname } = new URL(request.url());
+    if (pathname.includes("/component-styles/")) requests.push(pathname);
   });
-  try {
-    await page.goto("/", { waitUntil: "commit" });
-    await started.promise;
-    expect(await page.evaluate(() => [
-      "caffold-task-detail-terminal", "caffold-task-detail-git",
-      "caffold-task-detail-github", "caffold-task-detail-info", "caffold-notes-info",
-      "caffold-note-document", "caffold-notes-navigator",
-      "caffold-task-navigator", "caffold-task-workspace", "caffold-task-git-layout",
-      "caffold-task-github-layout", "caffold-terminal-page", "caffold-git-review-controls",
-      "caffold-file-list", "caffold-pagination", "caffold-review-file-viewer",
-    ].some((name) => Boolean(customElements.get(name))))).toBe(false);
-    release.resolve();
-    await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
-    expect(requests.sort()).toEqual(["busy-spin.css", "compact-icon-button.css"]);
-    // 19 compact icon button scopes and 9 busy spin scopes.
-    expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(28);
-  } finally {
-    release.resolve();
-  }
-});
-
-test("new consumers declare their own scope, retain local overrides and reconnect without extra sheets", { tag: "@desktop" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
-  const originalSheets = await page.evaluate(() => document.adoptedStyleSheets.length);
+  expect(requests).toContain("/assets/component-styles/compact-icon-button.css.js");
+  expect(requests.filter((pathname) => !pathname.endsWith(".css.js"))).toEqual([]);
+  // Every component takes them in its own root; the document adopts none.
+  expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(0);
+});
+
+test("new consumers declare their own scope, retain local overrides and share one sheet per target", { tag: "@desktop" }, async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   await page.evaluate(async () => {
-    const { compactIconButton } = await import("/assets/component-styles.js");
-    await compactIconButton.register("caffold-style-contract", "> header > .contract-actions > .contract-button");
+    const [{ scopedStyle }, { default: compactIconButton }] = await Promise.all([
+      import("/assets/scoped-style.js"),
+      import("/assets/component-styles/compact-icon-button.css.js"),
+    ]);
     customElements.define("caffold-style-contract", class extends HTMLElement {
       connectedCallback() {
-        if (this.childElementCount) return;
-        this.innerHTML = `<header><div class="contract-actions">
+        if (this.shadowRoot) return;
+        const root = this.attachShadow({ mode: "open" });
+        root.adoptedStyleSheets = [
+          scopedStyle(compactIconButton, ".contract-actions > .contract-button"),
+        ];
+        root.innerHTML = `<header><div class="contract-actions">
           <button class="contract-button">New consumer</button>
-          <caffold-unregistered-contract><button class="contract-button">Nested control</button></caffold-unregistered-contract>
-        </div></header>`;
+        </div></header><button class="contract-button">Outside the path</button>`;
       }
     });
-    const host = document.createElement("caffold-style-contract");
-    const other = document.createElement("caffold-unregistered-contract");
-    other.innerHTML = `<button class="contract-button">Other owner</button>`;
-    document.body.append(host, other);
+    document.body.append(
+      document.createElement("caffold-style-contract"),
+      document.createElement("caffold-style-contract"),
+    );
   });
-  const button = page.locator("caffold-style-contract > header > .contract-actions > .contract-button");
+  const hosts = page.locator("caffold-style-contract");
+  const button = hosts.first().locator(".contract-actions > .contract-button");
   await expect(button).toHaveCSS("display", "grid");
   const dimensions = await button.evaluate((element) => {
     const style = getComputedStyle(element);
@@ -68,41 +53,42 @@ test("new consumers declare their own scope, retain local overrides and reconnec
   });
   expect(dimensions.width).toBe(dimensions.height);
   expect(dimensions.surface).toBe('""');
-  for (const other of [
-    page.locator("caffold-style-contract caffold-unregistered-contract button"),
-    page.locator("body > caffold-unregistered-contract button"),
-  ]) {
-    expect(await other.evaluate((element) => getComputedStyle(element, "::before").content)).toBe("none");
-  }
+  expect(await hosts.first().locator(":scope > button.contract-button").evaluate(
+    (element) => getComputedStyle(element, "::before").content,
+  )).toBe("none");
+  expect(await hosts.evaluateAll(([first, second]) =>
+    first.shadowRoot.adoptedStyleSheets[0] === second.shadowRoot.adoptedStyleSheets[0])).toBe(true);
 
+  // An unlayered rule of the owner's own wins over the shared one.
   await button.focus();
   await expect(button).toBeFocused();
   const focusedSurface = await button.evaluate((element) => getComputedStyle(element, "::before").backgroundColor);
-  await page.addStyleTag({ content: "caffold-style-contract > header > .contract-actions > .contract-button::before { background: rgb(12, 34, 56); }" });
+  await hosts.first().evaluate((host) => {
+    const own = new CSSStyleSheet();
+    own.replaceSync(".contract-button::before { background: rgb(12, 34, 56); }");
+    host.shadowRoot.adoptedStyleSheets = [...host.shadowRoot.adoptedStyleSheets, own];
+  });
   expect(focusedSurface).not.toBe("rgb(12, 34, 56)");
   await expect.poll(() => button.evaluate((element) => getComputedStyle(element, "::before").backgroundColor)).toBe("rgb(12, 34, 56)");
   await button.evaluate((element) => { element.disabled = true; });
   await expect(button).toHaveCSS("opacity", "0.35");
-  await page.evaluate(() => {
-    const host = document.querySelector("caffold-style-contract");
-    host.remove();
-    document.body.append(host);
-    document.body.append(document.createElement("caffold-style-contract"));
-  });
-  await expect(page.locator("caffold-style-contract > header > .contract-actions > .contract-button")).toHaveCount(2);
-  expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(originalSheets + 1);
+  expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(0);
 });
 
 test("a busy spin turns only its owner's busy element and stops for reduced motion", { tag: "@viewport-independent" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   await page.evaluate(async () => {
-    const { busySpin } = await import("/assets/component-styles.js");
-    await busySpin.register("caffold-spin-contract", "> .contract-button.is-busy > .contract-icon");
+    const [{ scopedStyle }, { default: busySpin }] = await Promise.all([
+      import("/assets/scoped-style.js"),
+      import("/assets/pages/component-styles/busy-spin.css.js"),
+    ]);
     customElements.define("caffold-spin-contract", class extends HTMLElement {
       connectedCallback() {
-        if (this.childElementCount) return;
-        this.innerHTML = `
+        if (this.shadowRoot) return;
+        const root = this.attachShadow({ mode: "open" });
+        root.adoptedStyleSheets = [scopedStyle(busySpin, ".contract-button.is-busy > .contract-icon")];
+        root.innerHTML = `
           <button class="contract-button is-busy" data-contract="busy"><span class="contract-icon"></span></button>
           <button class="contract-button" data-contract="idle"><span class="contract-icon"></span></button>
         `;
@@ -112,8 +98,8 @@ test("a busy spin turns only its owner's busy element and stops for reduced moti
     other.innerHTML = `<button class="contract-button is-busy"><span class="contract-icon"></span></button>`;
     document.body.append(document.createElement("caffold-spin-contract"), other);
   });
-  const busy = page.locator('caffold-spin-contract > [data-contract="busy"] > .contract-icon');
-  const idle = page.locator('caffold-spin-contract > [data-contract="idle"] > .contract-icon');
+  const busy = page.locator('caffold-spin-contract [data-contract="busy"] > .contract-icon');
+  const idle = page.locator('caffold-spin-contract [data-contract="idle"] > .contract-icon');
   const otherOwner = page.locator("caffold-unregistered-spin .contract-icon");
   await expect(busy).toHaveCSS("animation-name", "caffold-busy-spin");
   await expect(busy).toHaveCSS("animation-duration", "0.8s");
@@ -178,6 +164,52 @@ test("pagination keeps its compact surface, disabled appearance and native activ
   await expect(pagination).toHaveAttribute("data-selected-page", "2");
 });
 
+test("pagination draws into shadow roots its styles stay inside and the document's styles do not enter", { tag: "@viewport-independent" }, async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("caffold-task-workspace")).toBeVisible();
+  await page.evaluate(() => customElements.whenDefined("caffold-pagination"));
+  const result = await page.evaluate(async () => {
+    const pagination = document.createElement("caffold-pagination");
+    pagination.setAttribute("page", "1");
+    pagination.setAttribute("total-pages", "3");
+    pagination.setAttribute("has-next", "");
+    // Outside the pagination, the classes it styles inside.
+    const outside = document.createElement("div");
+    outside.innerHTML = `<nav class="pagination-panel"><button class="pagination-button">Outside</button></nav>`;
+    document.body.append(pagination, outside);
+    await pagination.updateComplete;
+    const host = pagination.shadowRoot.querySelector('caffold-pagination-button[kind="next"]');
+    await host.updateComplete;
+    const next = host.shadowRoot.querySelector(".pagination-button");
+    const documentRule = new CSSStyleSheet();
+    documentRule.replaceSync(".pagination-button { opacity: 0.25; }");
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, documentRule];
+    const outsideButton = outside.querySelector(".pagination-button");
+    return {
+      roots: [pagination.shadowRoot?.mode, host.shadowRoot?.mode],
+      lightChildren: pagination.childElementCount + host.childElementCount,
+      outsidePanel: getComputedStyle(outside.firstElementChild).display,
+      outsideSurface: getComputedStyle(outsideButton, "::before").content,
+      outsideOpacity: getComputedStyle(outsideButton).opacity,
+      insideOpacity: getComputedStyle(next).opacity,
+      insideBoxSizing: getComputedStyle(next).boxSizing,
+      insideFont: getComputedStyle(next).fontFamily === getComputedStyle(document.body).fontFamily,
+      hiddenLabel: getComputedStyle(next.querySelector(".sr-only")).position,
+    };
+  });
+  expect(result).toEqual({
+    roots: ["open", "open"],
+    lightChildren: 0,
+    outsidePanel: "block",
+    outsideSurface: "none",
+    outsideOpacity: "0.25",
+    insideOpacity: "1",
+    insideBoxSizing: "border-box",
+    insideFont: true,
+    hiddenLabel: "absolute",
+  });
+});
+
 test("a drawn ref keeps its element out of the document and lets go once it is no longer drawn", { tag: "@viewport-independent" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace")).toBeVisible();
@@ -192,9 +224,6 @@ test("a drawn ref keeps its element out of the document and lets go once it is n
         super();
         this.shown = true;
         this.keys = ["a", "b"];
-      }
-      createRenderRoot() {
-        return this;
       }
       render() {
         return html`${this.shown ? html`<section ${drawn(this.panel)}></section>` : nothing}
@@ -241,13 +270,14 @@ test("pagination offers its enabled page buttons as Action Hints from the page i
     pagination.setAttribute("has-next", "");
     document.body.append(pagination);
     const clip = document.body;
+    const pull = () => pagination.actionHintScope({
+      scopeId: "issues:page",
+      actionId: "navigation.page",
+      clipRoots: [clip],
+    });
     const targets = async () => {
       await new Promise(requestAnimationFrame);
-      return pagination.actionHintScope({
-        scopeId: "issues:page",
-        actionId: "navigation.page",
-        clipRoots: [clip],
-      }).targets.map((target) => ({
+      return pull().targets.map((target) => ({
         id: target.id,
         actionId: target.actionId,
         label: target.label,
@@ -255,16 +285,21 @@ test("pagination offers its enabled page buttons as Action Hints from the page i
       }));
     };
     const firstPage = await targets();
+    // A change inside any of the shadow roots revalidates.
+    const buttons = [...pagination.shadowRoot.querySelectorAll("caffold-pagination-button")];
+    const watchesEveryRoot = [pagination, ...buttons].every((owner) =>
+      pull().mutationRoots.includes(owner.shadowRoot));
     pagination.setAttribute("has-previous", "");
     pagination.setAttribute("page", "2");
     const secondPage = await targets();
     pagination.setAttribute("total-pages", "1");
     const onePage = await targets();
-    return { firstPage, secondPage, onePage };
+    return { firstPage, watchesEveryRoot, secondPage, onePage };
   });
   const target = (id, label) => ({ id: `issues:page:page:${id}`, actionId: "navigation.page", label, clipped: true });
   expect(result).toEqual({
     firstPage: [target("next:2", "Next page"), target("last:3", "Last page")],
+    watchesEveryRoot: true,
     secondPage: [
       target("first:1", "First page"),
       target("previous:1", "Previous page"),
@@ -306,6 +341,71 @@ test("segmented control offers the choices other than the current one as Action 
   });
 });
 
+test("segmented control keeps its button rule inside its shadow root and the document's button rules out", { tag: "@viewport-independent" }, async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("caffold-task-workspace")).toBeVisible();
+  await page.evaluate(() => customElements.whenDefined("caffold-segmented-control"));
+  const result = await page.evaluate(async () => {
+    const control = document.createElement("caffold-segmented-control");
+    // Outside the control, the element its stylesheet styles inside by name.
+    const outside = document.createElement("button");
+    outside.textContent = "Outside";
+    document.body.append(control, outside);
+    control.setSnapshot({
+      label: "Review navigator",
+      selected: "changes",
+      choices: [{ value: "changes", label: "Changes" }, { value: "files", label: "Files" }],
+    });
+    await control.updateComplete;
+    const inside = control.shadowRoot.querySelector("button");
+    const documentRule = new CSSStyleSheet();
+    documentRule.replaceSync("button { opacity: 0.25; }");
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, documentRule];
+    return {
+      root: control.shadowRoot?.mode,
+      lightChildren: control.childElementCount,
+      outside: [getComputedStyle(outside).display, getComputedStyle(outside).cursor],
+      outsideOpacity: getComputedStyle(outside).opacity,
+      inside: [getComputedStyle(inside).display, getComputedStyle(inside).cursor],
+      insideOpacity: getComputedStyle(inside).opacity,
+    };
+  });
+  expect(result).toEqual({
+    root: "open",
+    lightChildren: 0,
+    outside: ["inline-block", "default"],
+    outsideOpacity: "0.25",
+    inside: ["grid", "pointer"],
+    insideOpacity: "1",
+  });
+});
+
+test("the Settings refresh button turns its icon inside its shadow root and nothing outside it", { tag: "@viewport-independent" }, async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
+  await page.evaluate(() => customElements.whenDefined("caffold-settings-refresh-button"));
+  await page.evaluate(() => {
+    const button = document.createElement("caffold-settings-refresh-button");
+    button.id = "refresh-contract";
+    // Outside the button's root, the markup its spin names inside it.
+    const outside = document.createElement("div");
+    outside.id = "refresh-outside";
+    outside.innerHTML = `<button class="is-refreshing"><span><span class="settings-refresh-icon"></span></span></button>`;
+    document.body.append(button, outside);
+  });
+  const icon = page.locator("#refresh-contract .settings-refresh-icon");
+  const outside = page.locator("#refresh-outside .settings-refresh-icon");
+  await expect(icon).toHaveCSS("animation-name", "none");
+  await page.locator("#refresh-contract").evaluate((button) => {
+    button.refreshing = true;
+  });
+  await expect(icon).toHaveCSS("animation-name", "caffold-busy-spin");
+  await expect(outside).toHaveCSS("animation-name", "none");
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(icon).toHaveCSS("animation-name", "none");
+});
+
 test("pagination changes its page in place and leaves the same page untouched", { tag: "@viewport-independent" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace")).toBeVisible();
@@ -316,20 +416,23 @@ test("pagination changes its page in place and leaves the same page untouched", 
     pagination.setAttribute("total-pages", "3");
     pagination.setAttribute("has-next", "");
     document.body.append(pagination);
+    const hosts = () => [...pagination.shadowRoot.querySelectorAll(
+      ".pagination-panel > caffold-pagination-button",
+    )];
     const rendered = async () => {
       await pagination.updateComplete;
-      await Promise.all([...pagination.querySelectorAll("caffold-pagination-button")].map((button) => button.updateComplete));
+      await Promise.all(hosts().map((host) => host.updateComplete));
     };
     await rendered();
-    const buttons = () => [...pagination.querySelectorAll(
-      ":scope > .pagination-panel > caffold-pagination-button > .pagination-button",
-    )];
-    const indicator = () => pagination.querySelector(":scope > .pagination-panel > .pagination-indicator");
+    const buttons = () => hosts().map((host) => host.shadowRoot.querySelector(".pagination-button"));
+    const indicator = () => pagination.shadowRoot.querySelector(".pagination-panel > .pagination-indicator");
     const firstButtons = buttons();
     const firstIndicator = indicator();
     const records = [];
     const observer = new MutationObserver((delivered) => records.push(...delivered));
-    observer.observe(pagination, { subtree: true, childList: true, attributes: true, characterData: true });
+    for (const root of [pagination, pagination.shadowRoot, ...hosts().map((host) => host.shadowRoot)]) {
+      observer.observe(root, { subtree: true, childList: true, attributes: true, characterData: true });
+    }
     const renderedChanges = () => records.splice(0).concat(observer.takeRecords())
       .filter((record) => record.target !== pagination || record.type !== "attributes");
 

@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -7,6 +7,9 @@ import {
   emptyActionHintScope,
 } from "#app/action-hints.js";
 import { type GitHubStatus, getGitHubStatus } from "#app/api.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+
+import styles from "./github-shortcuts.css.js";
 
 // The Section's directory, and whether it is a Git repository. `key` names
 // the Section the directory belongs to.
@@ -31,9 +34,11 @@ type GitHubKind = "issues" | "pulls";
  * It asks GitHub about the repository while active, once for each directory.
  */
 @customElement("caffold-section-github-shortcuts")
-export class CaffoldSectionGithubShortcuts extends LitElement {
+export class CaffoldSectionGithubShortcuts extends CaffoldElement {
   @state()
   private accessor githubStatus: GitHubStatus | null = null;
+
+  static override styles = styles;
 
   private active = false;
   private context: GitHubShortcutsContext = {
@@ -44,10 +49,6 @@ export class CaffoldSectionGithubShortcuts extends LitElement {
   private statusContextKey = "";
   private statusRequestId = 0;
   private readonly hints = new ActionHints(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

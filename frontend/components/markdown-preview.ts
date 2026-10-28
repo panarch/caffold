@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   type ActionHintScope,
@@ -22,7 +22,10 @@ import {
   ScrollSurfaces,
 } from "../scroll-scope.js";
 import "./loading-text.js";
+import { CaffoldElement } from "../caffold-element.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
+
+import styles from "./markdown-preview.css.js";
 
 const MARKED_IMPORT = "https://esm.sh/marked@15.0.12";
 
@@ -84,13 +87,15 @@ type MarkedParser = ParseMarkdown & { parse?: ParseMarkdown };
 let parserPromise: Promise<MarkedParser> | null = null;
 
 @customElement("caffold-markdown-preview")
-export class CaffoldMarkdownPreview extends LitElement {
+export class CaffoldMarkdownPreview extends CaffoldElement {
   @state()
   private accessor renderState: RenderState | null = null;
   @state()
   private accessor markdown: string | undefined;
   @state()
   private accessor renderedContent: DocumentFragment | null = null;
+
+  static override styles = styles;
 
   private images: MarkdownImages | null = null;
   private pendingScroll: ScrollPosition | null = null;
@@ -101,10 +106,6 @@ export class CaffoldMarkdownPreview extends LitElement {
   private imageObserver: IntersectionObserver | null = null;
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly body = new DrawnRef<HTMLElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -205,7 +206,7 @@ export class CaffoldMarkdownPreview extends LitElement {
                 clipRoots: [this, body, nested, ...(pull.clipRoots ?? [])],
               },
             ],
-            mutationRoots: [this],
+            mutationRoots: [this, this.renderRoot],
             resizeElements: [this, nested],
             scrollRoots: [this, nested],
           },
@@ -260,7 +261,7 @@ export class CaffoldMarkdownPreview extends LitElement {
     return {
       blocked: false,
       targets,
-      mutationRoots: [this],
+      mutationRoots: [this, this.renderRoot],
       scrollRoots: [this, ...new Set(tableScrollRoots)],
     };
   }

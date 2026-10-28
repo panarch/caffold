@@ -200,9 +200,7 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
       const target = await entry.action.evaluate((action) => {
         const root = getComputedStyle(document.documentElement);
         const actionBox = action.getBoundingClientRect();
-        const rowBox = action
-          .closest("caffold-task-command")
-          .getBoundingClientRect();
+        const rowBox = action.getRootNode().host.getBoundingClientRect();
         return {
           actionHeight: actionBox.height,
           rowHeight: rowBox.height,
@@ -281,7 +279,7 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
       "caffold-scroll-surface-selector > dialog:modal",
   );
   const commandHud = dialog.locator(
-    "caffold-keyboard-navigation-presentation caffold-scroll-mode-hud",
+    "caffold-keyboard-navigation-presentation caffold-scroll-mode-hud .scroll-mode-status",
   );
   await expect(commandSelector).toBeVisible();
   const commandBadges = commandSelector.locator(
@@ -510,13 +508,10 @@ async function closeDialog(dialog, close) {
 
 async function closeDialogAndMoveFocus(dialog, action) {
   const closeCount = await observeDialogClose(dialog);
-  await action.evaluate((nextAction) => {
-    const closeButton = nextAction.ownerDocument.querySelector(
-      'caffold-task-command-dialog [data-command-dialog-action="close"]',
-    );
+  await action.evaluate((nextAction, closeButton) => {
     closeButton.click();
     nextAction.focus();
-  });
+  }, await dialog.locator('[data-command-dialog-action="close"]').elementHandle());
   await expectDialogClose(dialog, closeCount);
   await expect(action).toBeFocused();
 }
@@ -544,8 +539,8 @@ async function expectDialogClose(dialog, closeCount) {
 
 async function touchScrollFrom(page, target) {
   await target.scrollIntoViewIfNeeded();
-  const before = await target.evaluate((element) => {
-    const scroller = element.closest(".task-conversation-scroll");
+  const scrollerHandle = await page.locator(".task-conversation-scroll").elementHandle();
+  const before = await target.evaluate((element, scroller) => {
     const box = element.getBoundingClientRect();
     return {
       maxScrollTop: scroller.scrollHeight - scroller.clientHeight,
@@ -553,7 +548,7 @@ async function touchScrollFrom(page, target) {
       x: Math.round(box.left + box.width / 2),
       y: Math.round(box.top + box.height / 2),
     };
-  });
+  }, scrollerHandle);
   expect(before.maxScrollTop).toBeGreaterThan(0);
   const delta = before.scrollTop > before.maxScrollTop / 2 ? 48 : -48;
   const session = await page.context().newCDPSession(page);
@@ -578,10 +573,6 @@ async function touchScrollFrom(page, target) {
   });
   await session.detach();
   await expect
-    .poll(() =>
-      target.evaluate(
-        (element) => element.closest(".task-conversation-scroll").scrollTop,
-      ),
-    )
+    .poll(() => scrollerHandle.evaluate((scroller) => scroller.scrollTop))
     .not.toBe(before.scrollTop);
 }

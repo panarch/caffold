@@ -214,7 +214,7 @@ test("drives the preview with Action Hints and Scroll mode", { tag: "@desktop" }
   const dialog = page.locator("caffold-task-markdown-preview-dialog > dialog");
   const preview = dialog.locator("caffold-markdown-preview");
   const modalHud = dialog.locator(
-    ":scope > caffold-keyboard-navigation-presentation caffold-scroll-mode-hud",
+    ":scope > caffold-keyboard-navigation-presentation caffold-scroll-mode-hud .scroll-mode-status",
   );
 
   await previewButton.scrollIntoViewIfNeeded();

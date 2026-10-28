@@ -1,4 +1,4 @@
-caffold-task-git-layout {
+:host {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
@@ -6,157 +6,155 @@ caffold-task-git-layout {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
 
-  & .task-git-surface {
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
-    min-width: 0;
-    min-height: 0;
-    height: 100%;
-  }
+.task-git-surface {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
 
-  & .task-domain-header {
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
-    gap: var(--interface-space-3);
-    min-height: var(--task-workspace-header-size);
-    padding: 0 var(--task-detail-header-padding-inline);
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-  }
+.task-domain-header {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--interface-space-3);
+  min-height: var(--task-workspace-header-size);
+  padding: 0 var(--task-detail-header-padding-inline);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
 
-  & .task-domain-back {
-    flex: 0 0 var(--interface-compact-hit-size);
-    margin-block: 0;
-    margin-inline: calc(0rem - var(--interface-compact-hit-outset));
-    color: var(--control-fg);
-  }
+.task-domain-back {
+  flex: 0 0 var(--interface-compact-hit-size);
+  margin-block: 0;
+  margin-inline: calc(0rem - var(--interface-compact-hit-outset));
+  color: var(--control-fg);
+}
 
-  & .task-domain-back:hover::before,
-  & .task-domain-back:focus-visible::before {
-    border-color: var(--control-emphasis-border);
-    background: var(--control-subtle-hover-bg);
-  }
+.task-domain-back:hover::before,
+.task-domain-back:focus-visible::before {
+  border-color: var(--control-emphasis-border);
+  background: var(--control-subtle-hover-bg);
+}
 
-  & .task-domain-back[hidden] {
-    display: none;
-  }
+.task-domain-back[hidden] {
+  display: none;
+}
 
-  & .task-domain-back-icon {
-    position: relative;
-    display: block;
-    width: var(--interface-icon-size);
-    height: var(--interface-icon-size);
-    stroke-width: 2;
-  }
+.task-domain-back-icon {
+  position: relative;
+  display: block;
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
+  stroke-width: 2;
+}
 
-  & .task-domain-title {
-    display: grid;
-    min-width: 0;
-    flex: 1 1 0;
-    gap: var(--interface-space-1);
-    align-content: center;
-  }
+.task-domain-title {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 0;
+  gap: var(--interface-space-1);
+  align-content: center;
+}
 
-  & .task-domain-title-row,
-  & .task-domain-meta-row {
-    display: grid;
-    gap: var(--interface-space-4);
-    align-items: center;
-    width: 100%;
-    min-width: 0;
-  }
+.task-domain-title-row,
+.task-domain-meta-row {
+  display: grid;
+  gap: var(--interface-space-4);
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
 
-  & .task-domain-title-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
+.task-domain-title-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
 
-  & .task-domain-meta-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.task-domain-meta-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 
-  & .task-domain-title h2 {
-    margin: 0;
-    min-width: 0;
-    overflow: hidden;
-    font-size: var(--task-detail-header-title-size);
-    line-height: 1.05;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+.task-domain-title h2 {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--task-detail-header-title-size);
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-  & .task-domain-count,
-  & .task-domain-primary-meta,
-  & .task-domain-secondary-meta {
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-    line-height: 1.1;
-  }
+.task-domain-count,
+.task-domain-primary-meta,
+.task-domain-secondary-meta {
+  color: var(--muted);
+  font-size: var(--interface-meta-font-size);
+  line-height: 1.1;
+}
 
-  & .task-domain-count {
-    justify-self: end;
-    white-space: nowrap;
-  }
+.task-domain-count {
+  justify-self: end;
+  white-space: nowrap;
+}
 
-  & .task-domain-secondary-meta {
-    width: 100%;
-    text-align: right;
-  }
+.task-domain-secondary-meta {
+  width: 100%;
+  text-align: right;
+}
 
-  & .task-domain-primary-meta,
-  & .task-domain-secondary-meta {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+.task-domain-primary-meta,
+.task-domain-secondary-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-  & .task-domain-title-row[hidden],
-  & .task-domain-meta-row[hidden],
-  & .task-domain-count[hidden],
-  & .task-domain-primary-meta[hidden],
-  & .task-domain-secondary-meta[hidden] {
-    display: none;
-  }
+.task-domain-title-row[hidden],
+.task-domain-meta-row[hidden],
+.task-domain-count[hidden],
+.task-domain-primary-meta[hidden],
+.task-domain-secondary-meta[hidden] {
+  display: none;
+}
 
-  & .task-domain-body {
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-  }
+.task-domain-body {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
 
-  & .git-review-view {
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-  }
+.git-review-view {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
 
-  & .git-mode-compare,
-  & .git-mode-log {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr);
-    height: 100%;
-  }
+.git-mode-compare,
+.git-mode-log {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
 }
 
 @media (max-width: 520px) {
-  caffold-task-git-layout[data-git-mode="compare"] {
-    & .task-domain-title {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      padding: 0;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
-      border: 0;
-    }
+  :host([data-git-mode="compare"]) .task-domain-title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
 
-    & caffold-git-review-controls {
-      flex: 1 1 0;
-      width: 100%;
-    }
+  :host([data-git-mode="compare"]) caffold-git-review-controls {
+    flex: 1 1 0;
+    width: 100%;
   }
 }

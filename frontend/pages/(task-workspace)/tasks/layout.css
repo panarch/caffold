@@ -1,58 +1,58 @@
-caffold-tasks-page {
+:host {
   display: block;
   min-width: 0;
   min-height: 0;
   height: 100%;
   overflow: hidden;
   background: var(--surface);
+}
 
-  & .tasks-surface {
-    height: 100%;
-    min-height: 0;
-  }
+.tasks-surface {
+  height: 100%;
+  min-height: 0;
+}
 
-  & .tasks-detail-pane {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    min-height: 0;
-    height: 100%;
-    overflow: hidden;
-  }
+.tasks-detail-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
 
-  /* The Task store takeover has no header row for the corner controls to sit
-     in, so it leaves a header-high band above itself. */
-  &[data-tasks-view="new"] .tasks-detail-pane > caffold-task-store-recovery,
-  &[data-tasks-view="home"] .tasks-detail-pane > caffold-task-store-recovery {
-    margin-top: var(--task-header-block-space, 0rem);
-  }
+/* The Task store takeover has no header row for the corner controls to sit
+   in, so it leaves a header-high band above itself. */
+:host([data-tasks-view="new"]) .tasks-detail-pane > caffold-task-store-recovery,
+:host([data-tasks-view="home"]) .tasks-detail-pane > caffold-task-store-recovery {
+  margin-top: var(--task-header-block-space, 0rem);
+}
 
-  /* One child fills the pane. */
-  & .tasks-detail-pane > caffold-task-store-recovery,
-  & .tasks-detail-pane > caffold-task-new,
-  & .tasks-detail-pane > caffold-detail-layout,
-  & .tasks-detail-pane > caffold-task-recovery {
-    flex: 1 1 auto;
-    min-height: 0;
-  }
+/* One child fills the pane. */
+.tasks-detail-pane > caffold-task-store-recovery,
+.tasks-detail-pane > caffold-task-new,
+.tasks-detail-pane > caffold-detail-layout,
+.tasks-detail-pane > caffold-task-recovery {
+  flex: 1 1 auto;
+  min-height: 0;
+}
 
-  & .tasks-neutral-state {
-    display: grid;
-    place-content: center;
-    justify-items: center;
-    gap: 0.625rem;
-    height: 100%;
-    padding: 1.5rem;
-    color: var(--muted);
-    text-align: center;
-  }
+.tasks-neutral-state {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.625rem;
+  height: 100%;
+  padding: 1.5rem;
+  color: var(--muted);
+  text-align: center;
+}
 
-  & .tasks-neutral-state p {
-    margin: 0;
-  }
+.tasks-neutral-state p {
+  margin: 0;
+}
 
-  & .tasks-neutral-icon {
-    width: 1.5rem;
-    height: 1.5rem;
-  }
+.tasks-neutral-icon {
+  width: 1.5rem;
+  height: 1.5rem;
 }

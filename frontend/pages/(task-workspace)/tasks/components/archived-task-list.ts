@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type TemplateResult } from "lit";
+import { html, nothing, type TemplateResult } from "lit";
 import { customElement } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
@@ -14,7 +14,6 @@ import {
   restoreTask,
   type Task,
 } from "#app/api.js";
-import { busySpin } from "#app/component-styles.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
 import {
@@ -38,8 +37,14 @@ import {
   upsertTask,
 } from "../task-list-model.js";
 import "./task-status-chip.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import type { ArchivedTaskListIntent } from "../task-navigator-intent-event.js";
 import { TASK_NAVIGATOR_INTENT_EVENT } from "../task-navigator-intent-event.js";
+
+import secondaryButton from "#app/component-styles/secondary-button.css.js";
+import busySpin from "#app/pages/component-styles/busy-spin.css.js";
+import styles from "./archived-task-list.css.js";
 
 export const ARCHIVED_TASK_LIST_INITIAL_SETTLED_EVENT =
   "caffold:archived-task-list-initial-settled";
@@ -61,11 +66,6 @@ export interface ArchivedTaskRestoredDetail {
   activeTopPlacement: ActiveTaskTopPlacement;
 }
 
-await busySpin.register(
-  "caffold-archived-task-list",
-  "> .task-repository-groups > .task-repository-group > .task-list > .task-archived-row > .task-archived-actions > .task-archived-action-button.is-loading > .task-archived-action-icon",
-);
-
 /**
  * The Archived list: archived Tasks by repository, most recently active
  * first, a page at a time, each with Restore and Delete.
@@ -74,7 +74,16 @@ await busySpin.register(
  * answered, so the two do not arrive one after the other.
  */
 @customElement("caffold-archived-task-list")
-export class CaffoldArchivedTaskList extends LitElement {
+export class CaffoldArchivedTaskList extends CaffoldElement {
+  static override styles = [
+    scopedStyle(
+      busySpin,
+      ".task-archived-action-button.is-loading > .task-archived-action-icon",
+    ),
+    scopedStyle(secondaryButton, ".task-secondary-button"),
+    styles,
+  ];
+
   private archivedTasks: Task[] = [];
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
@@ -99,10 +108,6 @@ export class CaffoldArchivedTaskList extends LitElement {
   private readonly deleting = new Set<string>();
   private readonly deleteErrors = new Map<string, Error>();
   private readonly iconsReady = () => this.requestUpdate();
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

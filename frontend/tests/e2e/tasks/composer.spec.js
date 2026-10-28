@@ -1164,7 +1164,9 @@ test("keeps each attachment on screen while others come and go", { tag: "@viewpo
   // A node drawn again loses its mark.
   const marked = form.locator("[data-test-shown-before]");
   await form.evaluate((element) => {
-    for (const node of element.querySelectorAll(
+    // The strip draws the pictures and files in its own root.
+    const strip = element.querySelector("caffold-task-composer-attachments").shadowRoot;
+    for (const node of strip.querySelectorAll(
       ".task-composer-attachment img, .task-composer-file",
     )) {
       node.dataset.testShownBefore = "";
@@ -1325,5 +1327,5 @@ function iconContrastOnCircle(remove) {
 function receivesTapOutsideThumbnail(remove) {
   remove.scrollIntoView({ block: "nearest", inline: "nearest" });
   const hitBox = remove.getBoundingClientRect();
-  return remove.contains(document.elementFromPoint(hitBox.right - 1, hitBox.top + 1));
+  return remove.contains(remove.getRootNode().elementFromPoint(hitBox.right - 1, hitBox.top + 1));
 }

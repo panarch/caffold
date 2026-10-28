@@ -1,89 +1,86 @@
-caffold-task-detail-info {
+:host {
   display: grid;
   flex: 0 0 auto;
   place-items: center;
+}
 
-  & > .task-detail-info-button {
-    color: var(--control-fg);
-  }
+.task-detail-info-button {
+  color: var(--control-fg);
+}
 
-  & .task-detail-status {
-    position: relative;
-    pointer-events: none;
-  }
+.task-detail-status {
+  position: relative;
+  pointer-events: none;
+}
 
-  & .task-detail-popover {
-    position: fixed;
-    inset: auto;
-    position-area: block-end center;
-    position-try-fallbacks: flip-block;
-    width: max-content;
-    max-width: min(42rem, calc(100vw - 1.5rem));
-    max-height: min(75vh, 600px);
-    margin: var(--interface-space-3) var(--interface-space-5);
-    padding: 0.75rem;
-    overflow: auto;
-    overscroll-behavior: contain;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--surface);
-    color: var(--text);
-    box-shadow: 0 14px 34px rgb(var(--shadow-rgb) / 18%);
-  }
+.task-detail-popover {
+  position: fixed;
+  inset: auto;
+  position-area: block-end center;
+  position-try-fallbacks: flip-block;
+  width: max-content;
+  max-width: min(42rem, calc(100vw - 1.5rem));
+  max-height: min(75vh, 600px);
+  margin: var(--interface-space-3) var(--interface-space-5);
+  padding: 0.75rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 14px 34px rgb(var(--shadow-rgb) / 18%);
+}
 
-  & .task-detail-popover::backdrop {
-    background: transparent;
-  }
+.task-detail-popover::backdrop {
+  background: transparent;
+}
 
-  & .task-detail-popover dl {
-    display: grid;
-    grid-template-columns: max-content minmax(192px, 1fr);
-    gap: 0.5625rem 0.875rem;
-    margin: 0;
-  }
+.task-detail-popover dl {
+  display: grid;
+  grid-template-columns: max-content minmax(192px, 1fr);
+  gap: 0.5625rem 0.875rem;
+  margin: 0;
+}
 
-  & .task-detail-popover dl div {
-    display: contents;
-  }
+.task-detail-popover dl div {
+  display: contents;
+}
 
-  & .task-detail-popover dt {
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-  }
+.task-detail-popover dt {
+  color: var(--muted);
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+}
 
-  & .task-detail-popover dd {
-    min-width: 0;
-    margin: 0;
-    overflow-wrap: anywhere;
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-  }
+.task-detail-popover dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
 }
 
 @media (max-width: 520px) {
-  caffold-task-detail-info {
-    & .task-detail-popover {
-      position-anchor: --task-detail-summary;
-      position-area: none;
-      inset: auto var(--interface-space-4);
-      top: calc(anchor(bottom) + var(--interface-space-3));
-      width: auto;
-      margin: 0;
-    }
+  .task-detail-popover {
+    position-area: none;
+    inset: auto var(--interface-space-4);
+    top: calc(anchor(bottom) + var(--interface-space-3));
+    width: auto;
+    margin: 0;
+  }
 
-    & .task-detail-popover dl {
-      grid-template-columns: 1fr;
-      gap: 0.1875rem;
-    }
+  .task-detail-popover dl {
+    grid-template-columns: 1fr;
+    gap: 0.1875rem;
+  }
 
-    & .task-detail-popover dl div {
-      display: grid;
-      gap: 0.125rem;
-    }
+  .task-detail-popover dl div {
+    display: grid;
+    gap: 0.125rem;
+  }
 
-    & .task-detail-popover dl div + div {
-      margin-top: 0.5rem;
-    }
+  .task-detail-popover dl div + div {
+    margin-top: 0.5rem;
   }
 }

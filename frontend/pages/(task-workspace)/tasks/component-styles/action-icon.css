@@ -1,0 +1,8 @@
+/* The icon of an action button. */
+:scope {
+  position: relative;
+  display: block;
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
+  stroke-width: 2;
+}

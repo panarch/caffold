@@ -43,18 +43,14 @@ test("navigates Settings as responsive master-detail pages with browser history"
     "/assets/icons/favicon-32.png",
   );
   await expect(taskWorkspace.getByText("Local to this browser")).toHaveCount(0);
-  const settingsHeaderTypography = await taskWorkspace.evaluate((element) => {
+  // The brand and the Settings header sit in the shadow roots of their owners.
+  const settingsHeaderTypography = await taskWorkspace.evaluate((element, [
+    brandTitle,
+    brandIcon,
+    detailTitle,
+  ]) => {
     const rootFontSize = Number.parseFloat(
       getComputedStyle(document.documentElement).fontSize,
-    );
-    const brandTitle = element.querySelector(
-      "caffold-settings-navigator .workspace-brand-title",
-    );
-    const brandIcon = element.querySelector(
-      "caffold-settings-navigator .workspace-brand-icon",
-    );
-    const detailTitle = element.querySelector(
-      ".settings-workspace-detail-header h1",
     );
     return {
       rootFontSize,
@@ -65,7 +61,11 @@ test("navigates Settings as responsive master-detail pages with browser history"
       ).m42,
       detailTitleSize: Number.parseFloat(getComputedStyle(detailTitle).fontSize),
     };
-  });
+  }, [
+    await taskWorkspace.locator("caffold-settings-navigator .workspace-brand-title").elementHandle(),
+    await taskWorkspace.locator("caffold-settings-navigator .workspace-brand-icon").elementHandle(),
+    await taskWorkspace.locator(".settings-workspace-detail-header h1").elementHandle(),
+  ]);
   expect(settingsHeaderTypography.brandTitleSize).toBeCloseTo(
     settingsHeaderTypography.rootFontSize * 0.8125,
     2,
@@ -82,21 +82,18 @@ test("navigates Settings as responsive master-detail pages with browser history"
     settingsHeaderTypography.rootFontSize * -0.0625,
     2,
   );
-  const rootGeometry = await taskWorkspace.evaluate((element) => {
-    const list = element.querySelector(".task-workspace-master-pane");
-    const navigator = element.querySelector("caffold-settings-navigator");
-    const navigationHost = element.querySelector(
+  const rootGeometry = await taskWorkspace.evaluate((element, [
+    navigatorHeader,
+    detailHeader,
+  ]) => {
+    const list = element.shadowRoot.querySelector(".task-workspace-master-pane");
+    const navigator = element.shadowRoot.querySelector("caffold-settings-navigator");
+    const navigationHost = element.shadowRoot.querySelector(
       "caffold-task-workspace-navigation",
     );
-    const navigation = element.querySelector(".task-workspace-navigation");
-    const detail = element.querySelector(".task-workspace-detail-pane");
-    const navigatorHeader = element.querySelector(
-      ".settings-navigator-header",
-    );
-    const detailHeader = element.querySelector(
-      ".settings-workspace-detail-header",
-    );
-    const masterDetail = element.querySelector(".task-workspace-master-detail");
+    const navigation = navigationHost.shadowRoot.querySelector(".task-workspace-navigation");
+    const detail = element.shadowRoot.querySelector(".task-workspace-detail-pane");
+    const masterDetail = element.shadowRoot.querySelector(".task-workspace-master-detail");
     const listRect = list.getBoundingClientRect();
     const navigatorRect = navigator.getBoundingClientRect();
     const navigationRect = navigation.getBoundingClientRect();
@@ -118,7 +115,10 @@ test("navigates Settings as responsive master-detail pages with browser history"
         detailHeader.hidden ||
         Math.abs(navigatorHeaderRect.height - detailHeaderRect.height) <= 1,
     };
-  });
+  }, [
+    await taskWorkspace.locator(".settings-navigator-header").elementHandle(),
+    await taskWorkspace.locator(".settings-workspace-detail-header").elementHandle(),
+  ]);
   expect(rootGeometry).toEqual({
     ownedByList: true,
     position: testInfo.project.name === "phone" ? "static" : "absolute",
@@ -411,11 +411,11 @@ test("shares navigation pane resizing across Tasks and Settings", { tag: "@all-v
       setAppearanceRangeSetting("interfaceScalePercent", value);
     }, interfaceScalePercent);
     const geometry = await taskWorkspace.evaluate((element) => {
-      const navigationPane = element.querySelector(
+      const navigationPane = element.shadowRoot.querySelector(
         ".task-workspace-master-pane",
       );
-      const detailPane = element.querySelector(".task-workspace-detail-pane");
-      const separator = element.querySelector(
+      const detailPane = element.shadowRoot.querySelector(".task-workspace-detail-pane");
+      const separator = element.shadowRoot.querySelector(
         ".task-workspace-master-detail > caffold-pane-resizer",
       );
       const navigationBounds = navigationPane.getBoundingClientRect();
@@ -476,11 +476,11 @@ test("clamps the shared navigation pane across the desktop boundary and restores
   await expect(separator).toHaveAttribute("aria-valuenow", "480");
   const constrainedLayout = await taskWorkspace.evaluate((element) => ({
     detailWidth: element
-      .querySelector(".task-workspace-detail-pane")
+      .shadowRoot.querySelector(".task-workspace-detail-pane")
       .getBoundingClientRect().width,
     hasHorizontalOverflow: element.scrollWidth > element.clientWidth,
     navigationWidth: element
-      .querySelector(".task-workspace-master-pane")
+      .shadowRoot.querySelector(".task-workspace-master-pane")
       .getBoundingClientRect().width,
   }));
   expect(constrainedLayout.hasHorizontalOverflow).toBe(false);
@@ -505,11 +505,11 @@ test("clamps the shared navigation pane across the desktop boundary and restores
   await expect(detailPane).toBeVisible();
   const boundaryLayout = await taskWorkspace.evaluate((element) => ({
     detailWidth: element
-      .querySelector(".task-workspace-detail-pane")
+      .shadowRoot.querySelector(".task-workspace-detail-pane")
       .getBoundingClientRect().width,
     hasHorizontalOverflow: element.scrollWidth > element.clientWidth,
     navigationWidth: element
-      .querySelector(".task-workspace-master-pane")
+      .shadowRoot.querySelector(".task-workspace-master-pane")
       .getBoundingClientRect().width,
   }));
   expect(boundaryLayout).toEqual({
@@ -592,13 +592,12 @@ test("collapses the navigation pane from the corner toggle only while a Task is 
     page.evaluate(() => window.localStorage.getItem("caffold:pane-collapsed:task-workspace"));
   // The header leaves room for the toggle's visible box, not its touch target,
   // so the gap after the toggle is the same with a mouse and on touch.
-  const gapAfterToggle = (content) =>
-    content.evaluate((element) => {
-      const toggle = document.querySelector(".task-workspace-side-pane-toggle");
+  const gapAfterToggle = async (content) =>
+    content.evaluate((element, toggle) => {
       const visibleRight = toggle.getBoundingClientRect().right -
         Number.parseFloat(getComputedStyle(toggle, "::before").right);
       return element.getBoundingClientRect().left - visibleRight;
-    });
+    }, await page.locator(".task-workspace-side-pane-toggle").elementHandle());
   const lengths = (content, names) =>
     content.evaluate((element, properties) => {
       const rem = Number.parseFloat(
@@ -642,7 +641,7 @@ test("collapses the navigation pane from the corner toggle only while a Task is 
   const layout = await taskWorkspace.evaluate((element) => {
     const workspace = element.getBoundingClientRect();
     const detail = element
-      .querySelector(".task-workspace-detail-pane")
+      .shadowRoot.querySelector(".task-workspace-detail-pane")
       .getBoundingClientRect();
     return {
       detailStartsAtEdge: Math.abs(detail.left - workspace.left) <= 1,
@@ -849,8 +848,9 @@ test("preserves Tasks and Settings DOM while hidden task updates arrive", { tag:
   await prompt.fill("조합 중인 입력과 화면 상태를 그대로 유지한다");
   await tasksPage.evaluate((element) => {
     element.dataset.identityMarker = "tasks-stable";
-    element.querySelector('textarea[name="prompt"]').dataset.identityMarker =
-      "prompt-stable";
+  });
+  await prompt.evaluate((textarea) => {
+    textarea.dataset.identityMarker = "prompt-stable";
   });
   await expect
     .poll(() =>
@@ -892,7 +892,7 @@ test("preserves Tasks and Settings DOM while hidden task updates arrive", { tag:
   );
   await appearancePage.evaluate((element) => {
     element.dataset.identityMarker = "settings-stable";
-    element.querySelector('.settings-scroll').scrollTop = 96;
+    element.shadowRoot.querySelector(".settings-scroll").scrollTop = 96;
   });
   await interfaceRange.evaluate((element) => {
     element.dataset.identityMarker = "range-stable";
@@ -975,12 +975,13 @@ test("keeps bottom navigation responsive in Conversation and hides it throughout
   const detail = page.locator("caffold-task-detail");
   expect(
     await navigation.evaluate(
-      (element) =>
-        element.parentElement?.matches("caffold-task-workspace-navigation") &&
-        element.parentElement.parentElement ===
-          document.querySelector(
-            "caffold-task-workspace .task-workspace-master-pane",
-          ),
+      (element, masterPane) => {
+        // The navigation draws in its own root, under its host in the pane.
+        const host = element.getRootNode().host;
+        return host?.matches("caffold-task-workspace-navigation") &&
+          host.parentElement === masterPane;
+      },
+      await page.locator("caffold-task-workspace .task-workspace-master-pane").elementHandle(),
     ),
   ).toBe(true);
   await expect(detail).toBeVisible();
@@ -992,11 +993,14 @@ test("keeps bottom navigation responsive in Conversation and hides it throughout
     await expect(navigationPane).toBeVisible();
     await expect(separator).toBeVisible();
     const geometry = await page.locator("caffold-task-workspace").evaluate((element) => {
-      const list = element.querySelector(".task-workspace-master-pane");
-      const navigator = element.querySelector("caffold-task-navigator");
-      const navigation = element.querySelector(".task-workspace-navigation");
-      const detail = element.querySelector(".task-workspace-detail-pane");
-      const masterDetail = element.querySelector(".task-workspace-master-detail");
+      const root = element.shadowRoot;
+      const list = root.querySelector(".task-workspace-master-pane");
+      const navigator = root.querySelector("caffold-task-navigator");
+      const navigation = root
+        .querySelector("caffold-task-workspace-navigation")
+        .shadowRoot.querySelector(".task-workspace-navigation");
+      const detail = root.querySelector(".task-workspace-detail-pane");
+      const masterDetail = root.querySelector(".task-workspace-master-detail");
       const listRect = list.getBoundingClientRect();
       const navigatorRect = navigator.getBoundingClientRect();
       const navigationRect = navigation.getBoundingClientRect();
@@ -1281,7 +1285,7 @@ async function installTaskRoutes(page, task, listed = [task]) {
 
 async function workspaceNavigationGeometry(footer) {
   return footer.evaluate((element) => {
-    const group = element.querySelector(".task-workspace-navigation");
+    const group = element.shadowRoot.querySelector(".task-workspace-navigation");
     const buttons = [...group.querySelectorAll("button")];
     const pane = element.parentElement;
     const content = [...pane.children].find((child) => child !== element && getComputedStyle(child).display !== "none");

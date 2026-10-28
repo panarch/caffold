@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -17,8 +17,11 @@ import {
   taskStoreBlocksTaskOperations,
 } from "#app/pages/(task-workspace)/task-store-status.js";
 import "./conversation-shortcuts/components/fork-dialog.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import type { CaffoldConversationForkDialog } from "./conversation-shortcuts/components/fork-dialog.js";
+
+import styles from "./conversation-shortcuts.css.js";
 
 // The Section the shortcuts start a Task in: its identity, and the path a
 // fork is shown with.
@@ -36,7 +39,7 @@ export interface ConversationShortcutsContext {
  * asks Codex each time it is shown.
  */
 @customElement("caffold-section-conversation-shortcuts")
-export class CaffoldSectionConversationShortcuts extends LitElement {
+export class CaffoldSectionConversationShortcuts extends CaffoldElement {
   @state()
   private accessor context: ConversationShortcutsContext = {
     key: "",
@@ -52,6 +55,8 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
   private accessor taskStoreStatusSnapshot: TaskStoreStatusSnapshot | null =
     null;
 
+  static override styles = styles;
+
   private active = false;
   // Asked for whenever the row is shown: whether Codex is installed, and why
   // it is blocked. The previous answer stays on show while the next is asked.
@@ -60,10 +65,6 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
     clipRoots: () => [this],
   });
   private readonly dialog = new DrawnRef<CaffoldConversationForkDialog>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

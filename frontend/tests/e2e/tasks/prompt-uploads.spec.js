@@ -98,9 +98,8 @@ test("paints how far each file has gone without drawing the message again", { ta
   await expect(message.locator(".task-user-message-upload-bar")).toHaveCount(2);
   const rendered = await message.elementHandle();
 
-  await page.evaluate(() => {
-    const conversation = document.querySelector("caffold-task-conversation");
-    const eventId = conversation.querySelector(
+  await page.locator("caffold-task-conversation").evaluate((conversation) => {
+    const eventId = conversation.shadowRoot.querySelector(
       '.task-message[data-message-role="user"]',
     ).dataset.eventId;
     conversation.setPromptUploadProgress(eventId, { percent: 42, lines: [0.75, 0] });
@@ -134,9 +133,8 @@ test("keeps every line where it is while bars go and the message is confirmed", 
   await prompt.press("Enter");
   await expect(message.locator('[data-upload-line="0"] .task-user-message-upload-bar')).toHaveCount(0);
   await expect(message.locator('[data-upload-line="1"] .task-user-message-upload-bar')).toHaveCount(1);
-  await page.evaluate(() => {
-    const conversation = document.querySelector("caffold-task-conversation");
-    const eventId = conversation.querySelector(
+  await page.locator("caffold-task-conversation").evaluate((conversation) => {
+    const eventId = conversation.shadowRoot.querySelector(
       '.task-message[data-message-role="user"]',
     ).dataset.eventId;
     conversation.setPromptUploadProgress(eventId, { percent: 71, lines: [1, 0.4] });
@@ -386,16 +384,16 @@ function attach(form, files) {
   return form.locator("input[data-composer-file-input]").setInputFiles(files);
 }
 
-function textBox(message) {
-  return message.locator(".task-user-message-text").evaluate((element) => {
+async function textBox(message) {
+  return message.locator(".task-user-message-text").evaluate((element, ownerElement) => {
     const box = element.getBoundingClientRect();
-    const owner = element.closest(".task-message").getBoundingClientRect();
+    const owner = ownerElement.getBoundingClientRect();
     return {
       top: Math.round(box.top - owner.top),
       width: Math.round(box.width),
       height: Math.round(box.height),
     };
-  });
+  }, await message.elementHandle());
 }
 
 function deferred() {

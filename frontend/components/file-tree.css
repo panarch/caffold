@@ -1,4 +1,4 @@
-caffold-file-tree {
+:host {
   --file-tree-guide-origin: calc(
     0.1875rem + var(--file-tree-padding-left) + var(--file-tree-icon-slot-size) / 2
   );
@@ -8,257 +8,257 @@ caffold-file-tree {
   /* An owner whose tree grows with its rows sets the height to auto and caps
      the scrollport instead. */
   height: var(--file-tree-height, 100%);
+}
 
-  & .file-tree-scroll {
-    display: block;
-    min-height: 0;
-    height: 100%;
-    max-height: var(--file-tree-max-height, none);
-    overflow: auto;
-    overscroll-behavior: contain;
-    scroll-padding-bottom: var(--file-tree-scroll-end-clearance, 0rem);
-  }
+.file-tree-scroll {
+  display: block;
+  min-height: 0;
+  height: 100%;
+  max-height: var(--file-tree-max-height, none);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scroll-padding-bottom: var(--file-tree-scroll-end-clearance, 0rem);
+}
 
-  & .file-tree-rows {
-    display: grid;
-    grid-template-columns: auto;
-    align-content: start;
-    width: max-content;
-    min-width: 100%;
-    min-height: 0;
-    margin: 0;
-    padding: 0.25rem 0 calc(0.25rem + var(--file-tree-scroll-end-clearance, 0rem));
-    list-style: none;
-  }
+.file-tree-rows {
+  display: grid;
+  grid-template-columns: auto;
+  align-content: start;
+  width: max-content;
+  min-width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0.25rem 0 calc(0.25rem + var(--file-tree-scroll-end-clearance, 0rem));
+  list-style: none;
+}
 
-  & .file-tree-rows > li {
-    width: auto;
-    min-width: 0;
-  }
+.file-tree-rows > li {
+  width: auto;
+  min-width: 0;
+}
 
-  & .file-tree-entry {
-    position: relative;
-    display: grid;
-    grid-template-columns: minmax(0, max-content);
-    width: 100%;
-    min-width: 0;
-    min-height: var(--file-tree-row-height);
-    align-items: center;
-    padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
-      var(--file-tree-padding-y)
-      calc(0.1875rem + var(--file-tree-padding-left));
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    color: var(--text);
-    cursor: pointer;
-    font-family: var(--font-code);
-    font-size: var(--file-tree-font-size);
-    text-align: left;
-  }
+.file-tree-entry {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, max-content);
+  width: 100%;
+  min-width: 0;
+  min-height: var(--file-tree-row-height);
+  align-items: center;
+  padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
+    var(--file-tree-padding-y)
+    calc(0.1875rem + var(--file-tree-padding-left));
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-family: var(--font-code);
+  font-size: var(--file-tree-font-size);
+  text-align: left;
+}
 
-  &[data-status-column="true"] .file-tree-entry {
-    --file-tree-guide-origin: calc(
-      0.1875rem + var(--file-tree-padding-left) + var(--file-tree-status-slot-size) +
-        var(--file-tree-status-gap) + var(--file-tree-icon-slot-size) / 2
+:host([data-status-column="true"]) .file-tree-entry {
+  --file-tree-guide-origin: calc(
+    0.1875rem + var(--file-tree-padding-left) + var(--file-tree-status-slot-size) +
+      var(--file-tree-status-gap) + var(--file-tree-icon-slot-size) / 2
+  );
+  grid-template-columns: var(--file-tree-status-slot-size) minmax(0, max-content);
+  gap: var(--file-tree-status-gap);
+}
+
+.file-tree-guides {
+  position: absolute;
+  inset: 0;
+}
+
+.file-tree-guide {
+  position: absolute;
+  inset-block: 0;
+  left: calc(
+    var(--file-tree-guide-origin) + var(--tree-guide-depth) * var(--file-tree-indent)
+  );
+  width: 1px;
+  background: var(--tree-indent-guide);
+}
+
+[data-file-tree-parent-key] .file-tree-guides::before,
+[data-file-tree-parent-key] .file-tree-guides::after {
+  position: absolute;
+  background: var(--tree-indent-guide);
+  content: "";
+}
+
+[data-file-tree-parent-key] .file-tree-guides::before {
+  inset-block: 0;
+  left: calc(
+    var(--file-tree-guide-origin) + (var(--tree-depth, 0) - 1) * var(--file-tree-indent)
+  );
+  width: 1px;
+}
+
+[data-file-tree-first-sibling] .file-tree-guides::before {
+  top: calc(var(--file-tree-icon-size) / 2 - 50%);
+}
+
+[data-file-tree-last-sibling] .file-tree-guides::before {
+  bottom: calc(50% - 1px);
+}
+
+[data-file-tree-parent-key] .file-tree-guides::after {
+  top: 50%;
+  left: calc(
+    var(--file-tree-guide-origin) + (var(--tree-depth, 0) - 1) * var(--file-tree-indent) +
+      1px
+  );
+  width: calc(var(--file-tree-indent) - var(--file-tree-icon-size) / 2 - 1px);
+  height: 1px;
+}
+
+.file-tree-entry:hover,
+.file-tree-entry:focus-visible {
+  background: var(--row-hover-bg);
+  outline: none;
+}
+
+.file-tree-entry:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.file-tree-entry[aria-current="true"],
+.file-tree-entry[aria-selected="true"] {
+  background: var(--selection-bg);
+}
+
+.file-tree-status-code {
+  display: none;
+  align-self: center;
+  width: 100%;
+  color: var(--file-status-unknown-fg);
+  font-size: var(--file-tree-font-size);
+  justify-self: center;
+  text-align: center;
+  white-space: nowrap;
+}
+
+:host([data-status-column="true"]) .file-tree-status-code {
+  display: block;
+}
+
+.file-tree-entry[data-file-tree-status-tone="added"] .file-tree-status-code {
+  color: var(--file-status-added-fg);
+}
+
+.file-tree-entry[data-file-tree-status-tone="modified"] .file-tree-status-code {
+  color: var(--file-status-modified-fg);
+}
+
+.file-tree-entry[data-file-tree-status-tone="deleted"] .file-tree-status-code {
+  color: var(--file-status-deleted-fg);
+}
+
+.file-tree-entry[data-file-tree-status-tone="renamed"] .file-tree-status-code {
+  color: var(--file-status-renamed-fg);
+}
+
+.file-tree-entry[data-file-tree-status-tone="copied"] .file-tree-status-code {
+  color: var(--file-status-copied-fg);
+}
+
+.file-tree-entry[data-file-tree-status-tone="type-changed"] .file-tree-status-code {
+  color: var(--file-status-type-changed-fg);
+}
+
+.file-tree-entry[data-file-tree-status-tone="unmerged"] .file-tree-status-code {
+  color: var(--file-status-unmerged-fg);
+}
+
+.file-tree-node-label {
+  display: grid;
+  grid-template-columns: var(--file-tree-icon-slot-size) max-content;
+  gap: var(--file-tree-column-gap);
+  align-items: center;
+  min-width: 0;
+  margin-left: calc(var(--tree-depth, 0) * var(--file-tree-indent));
+}
+
+.file-tree-icon {
+  position: relative;
+  display: inline-grid;
+  width: var(--file-tree-icon-slot-size);
+  height: var(--file-tree-icon-slot-size);
+  place-items: center;
+  justify-self: center;
+}
+
+.entry-icon {
+  display: inline-grid;
+  width: var(--file-tree-icon-slot-size);
+  height: var(--file-tree-icon-slot-size);
+  place-items: center;
+}
+
+.entry-icon-svg {
+  display: block;
+  width: var(--file-tree-icon-size);
+  height: var(--file-tree-icon-size);
+  stroke-width: 1.9;
+}
+
+.file-tree-name {
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.file-tree-entry[data-variant="parent"],
+.file-tree-entry[data-ignored-entry] {
+  color: var(--muted-subtle);
+}
+
+.file-tree-entry[data-hidden-entry] {
+  color: var(--disabled-text);
+}
+
+.file-tree-group {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.5rem 0.75rem 0.25rem;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.file-tree-status {
+  --file-tree-status-name-depth: var(--tree-depth, 0);
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--file-tree-row-height);
+  align-items: center;
+  padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
+    var(--file-tree-padding-y)
+    calc(
+      0.1875rem + var(--file-tree-padding-left) + var(--file-tree-icon-slot-size) +
+        var(--file-tree-column-gap) +
+        var(--file-tree-status-name-depth) * var(--file-tree-indent)
     );
-    grid-template-columns: var(--file-tree-status-slot-size) minmax(0, max-content);
-    gap: var(--file-tree-status-gap);
-  }
+  color: var(--muted);
+  font-size: var(--file-tree-font-size);
+}
 
-  & .file-tree-guides {
-    position: absolute;
-    inset: 0;
-  }
+/* A message under a folder starts below the folder's name, a short step
+   past its branch guide. */
+.file-tree-status[data-file-tree-parent-key] {
+  --file-tree-status-name-depth: calc(var(--tree-depth, 0) - 1);
+}
 
-  & .file-tree-guide {
-    position: absolute;
-    inset-block: 0;
-    left: calc(
-      var(--file-tree-guide-origin) + var(--tree-guide-depth) * var(--file-tree-indent)
-    );
-    width: 1px;
-    background: var(--tree-indent-guide);
-  }
-
-  & [data-file-tree-parent-key] .file-tree-guides::before,
-  & [data-file-tree-parent-key] .file-tree-guides::after {
-    position: absolute;
-    background: var(--tree-indent-guide);
-    content: "";
-  }
-
-  & [data-file-tree-parent-key] .file-tree-guides::before {
-    inset-block: 0;
-    left: calc(
-      var(--file-tree-guide-origin) + (var(--tree-depth, 0) - 1) * var(--file-tree-indent)
-    );
-    width: 1px;
-  }
-
-  & [data-file-tree-first-sibling] .file-tree-guides::before {
-    top: calc(var(--file-tree-icon-size) / 2 - 50%);
-  }
-
-  & [data-file-tree-last-sibling] .file-tree-guides::before {
-    bottom: calc(50% - 1px);
-  }
-
-  & [data-file-tree-parent-key] .file-tree-guides::after {
-    top: 50%;
-    left: calc(
-      var(--file-tree-guide-origin) + (var(--tree-depth, 0) - 1) * var(--file-tree-indent) +
-        1px
-    );
-    width: calc(var(--file-tree-indent) - var(--file-tree-icon-size) / 2 - 1px);
-    height: 1px;
-  }
-
-  & .file-tree-entry:hover,
-  & .file-tree-entry:focus-visible {
-    background: var(--row-hover-bg);
-    outline: none;
-  }
-
-  & .file-tree-entry:disabled {
-    cursor: not-allowed;
-    opacity: 0.58;
-  }
-
-  & .file-tree-entry[aria-current="true"],
-  & .file-tree-entry[aria-selected="true"] {
-    background: var(--selection-bg);
-  }
-
-  & .file-tree-status-code {
-    display: none;
-    align-self: center;
-    width: 100%;
-    color: var(--file-status-unknown-fg);
-    font-size: var(--file-tree-font-size);
-    justify-self: center;
-    text-align: center;
-    white-space: nowrap;
-  }
-
-  &[data-status-column="true"] .file-tree-status-code {
-    display: block;
-  }
-
-  & .file-tree-entry[data-file-tree-status-tone="added"] .file-tree-status-code {
-    color: var(--file-status-added-fg);
-  }
-
-  & .file-tree-entry[data-file-tree-status-tone="modified"] .file-tree-status-code {
-    color: var(--file-status-modified-fg);
-  }
-
-  & .file-tree-entry[data-file-tree-status-tone="deleted"] .file-tree-status-code {
-    color: var(--file-status-deleted-fg);
-  }
-
-  & .file-tree-entry[data-file-tree-status-tone="renamed"] .file-tree-status-code {
-    color: var(--file-status-renamed-fg);
-  }
-
-  & .file-tree-entry[data-file-tree-status-tone="copied"] .file-tree-status-code {
-    color: var(--file-status-copied-fg);
-  }
-
-  & .file-tree-entry[data-file-tree-status-tone="type-changed"] .file-tree-status-code {
-    color: var(--file-status-type-changed-fg);
-  }
-
-  & .file-tree-entry[data-file-tree-status-tone="unmerged"] .file-tree-status-code {
-    color: var(--file-status-unmerged-fg);
-  }
-
-  & .file-tree-node-label {
-    display: grid;
-    grid-template-columns: var(--file-tree-icon-slot-size) max-content;
-    gap: var(--file-tree-column-gap);
-    align-items: center;
-    min-width: 0;
-    margin-left: calc(var(--tree-depth, 0) * var(--file-tree-indent));
-  }
-
-  & .file-tree-icon {
-    position: relative;
-    display: inline-grid;
-    width: var(--file-tree-icon-slot-size);
-    height: var(--file-tree-icon-slot-size);
-    place-items: center;
-    justify-self: center;
-  }
-
-  & .entry-icon {
-    display: inline-grid;
-    width: var(--file-tree-icon-slot-size);
-    height: var(--file-tree-icon-slot-size);
-    place-items: center;
-  }
-
-  & .entry-icon-svg {
-    display: block;
-    width: var(--file-tree-icon-size);
-    height: var(--file-tree-icon-size);
-    stroke-width: 1.9;
-  }
-
-  & .file-tree-name {
-    min-width: 0;
-    overflow: visible;
-    text-overflow: clip;
-    white-space: nowrap;
-  }
-
-  & .file-tree-entry[data-variant="parent"],
-  & .file-tree-entry[data-ignored-entry] {
-    color: var(--muted-subtle);
-  }
-
-  & .file-tree-entry[data-hidden-entry] {
-    color: var(--disabled-text);
-  }
-
-  & .file-tree-group {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    padding: 0.5rem 0.75rem 0.25rem;
-    background: var(--surface);
-    color: var(--muted);
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: uppercase;
-  }
-
-  & .file-tree-status {
-    --file-tree-status-name-depth: var(--tree-depth, 0);
-    position: relative;
-    display: flex;
-    width: 100%;
-    min-width: 0;
-    min-height: var(--file-tree-row-height);
-    align-items: center;
-    padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
-      var(--file-tree-padding-y)
-      calc(
-        0.1875rem + var(--file-tree-padding-left) + var(--file-tree-icon-slot-size) +
-          var(--file-tree-column-gap) +
-          var(--file-tree-status-name-depth) * var(--file-tree-indent)
-      );
-    color: var(--muted);
-    font-size: var(--file-tree-font-size);
-  }
-
-  /* A message under a folder starts below the folder's name, a short step
-     past its branch guide. */
-  & .file-tree-status[data-file-tree-parent-key] {
-    --file-tree-status-name-depth: calc(var(--tree-depth, 0) - 1);
-  }
-
-  & .file-tree-status.is-error {
-    color: var(--danger);
-  }
+.file-tree-status.is-error {
+  color: var(--danger);
 }

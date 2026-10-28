@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -6,10 +6,15 @@ import {
   ActionHints,
 } from "#app/action-hints.js";
 import type { GitRef } from "#app/api.js";
-import { busySpin, compactIconButton } from "#app/component-styles.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import type { FetchState } from "../(log)/layout.js";
+
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import busySpin from "#app/pages/component-styles/busy-spin.css.js";
+import styles from "./controls.css.js";
 
 export interface ChangeCompareRefsDetail {
   baseRef: string;
@@ -37,19 +42,19 @@ export const IDLE_CONTROLS: GitControlsSnapshot = {
   refreshState: "idle",
 };
 
-await compactIconButton.register(
-  "caffold-git-review-controls",
-  "> .git-review-controls > .git-review-refresh",
-);
-await busySpin.register(
-  "caffold-git-review-controls",
-  "> .git-review-controls > .git-review-refresh.is-refreshing > .git-review-refresh-icon",
-);
-
 @customElement("caffold-git-review-controls")
-export class CaffoldGitReviewControls extends LitElement {
+export class CaffoldGitReviewControls extends CaffoldElement {
   @property({ attribute: false })
   accessor snapshot: GitControlsSnapshot = IDLE_CONTROLS;
+
+  static override styles = [
+    scopedStyle(compactIconButton, ".git-review-refresh"),
+    scopedStyle(
+      busySpin,
+      ".git-review-refresh.is-refreshing > .git-review-refresh-icon",
+    ),
+    styles,
+  ];
 
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this, {
@@ -57,10 +62,6 @@ export class CaffoldGitReviewControls extends LitElement {
   });
   private readonly baseRefSelect = new DrawnRef<HTMLSelectElement>(this);
   private readonly headRefSelect = new DrawnRef<HTMLSelectElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -179,6 +180,7 @@ export class CaffoldGitReviewControls extends LitElement {
     this.dispatchEvent(
       new CustomEvent<ChangeCompareRefsDetail>("caffold:change-compare-refs", {
         bubbles: true,
+        composed: true,
         detail: {
           baseRef: this.baseRefSelect.value?.value ?? "",
           headRef: this.headRefSelect.value?.value ?? "",
@@ -193,7 +195,7 @@ export class CaffoldGitReviewControls extends LitElement {
         this.snapshot.action === "fetch"
           ? "caffold:fetch-git-remote"
           : "caffold:refresh-git-review",
-        { bubbles: true },
+        { bubbles: true, composed: true },
       ),
     );
   }

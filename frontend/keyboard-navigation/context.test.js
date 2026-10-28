@@ -103,6 +103,18 @@ test("accepts each context once, its lists without repeats", () => {
     null,
     "a presentation outside the root",
   );
+  const host = element();
+  root.append(host);
+  const drawnInHost = element({
+    getRootNode: () => Object.assign(new ShadowRoot(), { host }),
+  });
+  assert.equal(
+    normalizeKeyboardNavigationContexts([
+      { ...context, presentation: drawnInHost },
+    ]).length,
+    1,
+    "a presentation in the shadow root of a component under the root",
+  );
   assert.equal(
     normalizeKeyboardNavigationContexts([
       {
@@ -272,6 +284,9 @@ function element(properties = {}) {
     },
     contains(candidate) {
       return candidate === this || children.has(candidate);
+    },
+    getRootNode() {
+      return this;
     },
     getBoundingClientRect: () => ({
       left: 0,

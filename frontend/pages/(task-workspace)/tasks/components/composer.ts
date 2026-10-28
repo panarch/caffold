@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -7,7 +7,6 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hints.js";
 import { getVoiceStatus, transcribeVoice, type VoiceStatus } from "#app/api.js";
-import { busySpin } from "#app/component-styles.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import { cleanLogicalPath } from "../task-format.js";
@@ -27,12 +26,17 @@ import {
   voiceCaptureSupport,
 } from "./composer/voice-recorder.js";
 import "./task-turn-options.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import type {
   CaffoldTaskTurnOptions,
   TurnOptionsContext,
   TurnOptionsSnapshot,
   TurnSubmissionOptions,
 } from "./task-turn-options.js";
+
+import busySpin from "#app/pages/component-styles/busy-spin.css.js";
+import styles from "./composer.css.js";
 
 export interface OpenSettingsDetail {
   section: string;
@@ -173,11 +177,6 @@ const IMAGE_INPUT_TYPES = new Set([
   "image/webp",
 ]);
 
-await busySpin.register(
-  "caffold-task-composer",
-  "> .task-composer > .task-composer-panel > .task-composer-toolbar > .task-composer-actions > .task-composer-render-region > .task-voice-button.is-busy > .task-voice-icon",
-);
-
 /**
  * The prompt field, its attachments, voice input, the turn options, and the
  * action that sends or stops.
@@ -189,7 +188,12 @@ await busySpin.register(
  * when its draft says otherwise, and not while an input method is composing.
  */
 @customElement("caffold-task-composer")
-export class CaffoldTaskComposer extends LitElement {
+export class CaffoldTaskComposer extends CaffoldElement {
+  static override styles = [
+    scopedStyle(busySpin, ".task-voice-button.is-busy > .task-voice-icon"),
+    styles,
+  ];
+
   // Whether files are being dragged over the Composer.
   @state()
   private accessor dropTarget = false;
@@ -260,10 +264,6 @@ export class CaffoldTaskComposer extends LitElement {
   private readonly drop = (event: DragEvent) => {
     void this.handleDrop(event);
   };
-
-  override createRenderRoot() {
-    return this;
-  }
 
   // A drop anywhere on the Composer, its padding included, attaches.
   override connectedCallback() {
@@ -929,7 +929,7 @@ export class CaffoldTaskComposer extends LitElement {
     if (textarea.value === this.state.prompt) {
       return;
     }
-    const focused = document.activeElement === textarea;
+    const focused = this.shadowRoot?.activeElement === textarea;
     const { selectionStart, selectionEnd } = textarea;
     textarea.value = this.state.prompt;
     if (focused) {
@@ -957,6 +957,7 @@ export class CaffoldTaskComposer extends LitElement {
       },
       locked: requestLocked || this.context.settingsLocked,
       placement: this.context.mode === "follow-up" ? "above" : "below",
+      voiceInput: VOICE_BUSY_PHASES.has(this.voice.phase),
     };
   }
 
@@ -1177,7 +1178,7 @@ export class CaffoldTaskComposer extends LitElement {
       return;
     }
     this.state.prompt = textarea.value;
-    if (document.activeElement === textarea) {
+    if (this.shadowRoot?.activeElement === textarea) {
       this.state.selectionStart = textarea.selectionStart;
       this.state.selectionEnd = textarea.selectionEnd;
     }
@@ -1524,7 +1525,7 @@ export class CaffoldTaskComposer extends LitElement {
     };
     const textarea = this.promptField.value;
     const restorePromptFocusOnRejection =
-      !event.submitter && document.activeElement === textarea;
+      !event.submitter && this.shadowRoot?.activeElement === textarea;
     const submission: Submission = {
       id: submissionId,
       prompt,

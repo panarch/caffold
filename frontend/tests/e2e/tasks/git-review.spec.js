@@ -14,6 +14,7 @@ import {
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
+import { elementHandles } from "../support/element-handles.js";
 import {
   activeTaskProjection,
   activeWatchSubscriptionId,
@@ -543,9 +544,10 @@ test("clamps the Compare tree when the window narrows so the viewer keeps its mi
     Number(await separator.getAttribute("aria-valuenow"))
   ).toBeLessThan(widened);
   const split = await compareBrowser.evaluate((browser) => {
-    const tree = browser.querySelector(":scope > caffold-git-compare-tree").getBoundingClientRect();
-    const resizer = browser.querySelector(":scope > caffold-pane-resizer").getBoundingClientRect();
-    const viewer = browser.querySelector(":scope > caffold-review-file-viewer").getBoundingClientRect();
+    const part = (name) => browser.shadowRoot.querySelector(name).getBoundingClientRect();
+    const tree = part("caffold-git-compare-tree");
+    const resizer = part("caffold-pane-resizer");
+    const viewer = part("caffold-review-file-viewer");
     return {
       treeEnd: tree.right,
       separatorCenter: resizer.left + resizer.width / 2,
@@ -771,13 +773,7 @@ test("uses Log actions and scrolls the exact visible Commit tree and diff from t
   await expect(generatedDirectory).toHaveAccessibleName("Expand generated");
   await expect(generatedDirectory).toHaveAttribute("aria-expanded", "false");
   await expect(generatedFile).toHaveCount(0);
-  await expect
-    .poll(() =>
-      generatedDirectory.evaluate(
-        (element) => document.activeElement === element,
-      )
-    )
-    .toBe(true);
+  await expect(generatedDirectory).toBeFocused();
   await expect
     .poll(() =>
       generatedDirectory.evaluate(
@@ -915,7 +911,7 @@ test("reloads Task-scoped Compare and releases its refs watch while inactive", {
   await expect(page.locator("caffold-git-compare-page")).toContainText("example.rs");
   const compareHeaderGeometry = await layout
     .locator(":scope > .task-git-surface > .task-domain-header")
-    .evaluate((header) => {
+    .evaluate((header, [taskHeader, taskTitle]) => {
       const title = header.querySelector(".task-domain-title").getBoundingClientRect();
       const titleStyle = getComputedStyle(
         header.querySelector(".task-domain-title"),
@@ -927,16 +923,13 @@ test("reloads Task-scoped Compare and releases its refs watch while inactive", {
       const headerStyle = getComputedStyle(header);
       const paddingLeft = Number.parseFloat(headerStyle.paddingLeft);
       const paddingRight = Number.parseFloat(headerStyle.paddingRight);
-      const taskHeader = document.querySelector(".detail-layout-summary");
       const taskHeaderStyle = getComputedStyle(taskHeader);
       const domainTitleStyle = getComputedStyle(
         header.querySelector(".task-domain-title h2"),
       );
-      const taskTitleStyle = getComputedStyle(
-        taskHeader.querySelector(".task-detail-heading > h2"),
-      );
+      const taskTitleStyle = getComputedStyle(taskTitle);
       const visibleControlRects = [
-        ...header.querySelectorAll(
+        ...header.querySelector("caffold-git-review-controls").shadowRoot.querySelectorAll(
           ".review-compare-ref-controls label, .review-compare-ref-controls select, .review-compare-ref-separator, .git-review-refresh",
         ),
       ]
@@ -974,7 +967,10 @@ test("reloads Task-scoped Compare and releases its refs watch while inactive", {
         controlsAtTrailingEdge:
           Math.abs(bounds.right - paddingRight - controls.right) <= 1,
       };
-    });
+    }, await elementHandles(page.locator("caffold-detail-layout"), [
+      ".detail-layout-summary",
+      ".task-detail-heading > h2",
+    ]));
   expect(compareHeaderGeometry.height).toBeCloseTo(
     compareHeaderGeometry.minimumHeight,
     0,
@@ -1116,8 +1112,10 @@ test("collapses the Compare and Commit trees from the corner toggle, each rememb
   const viewerFills = (host) =>
     host.evaluate((element) => {
       const bounds = element.getBoundingClientRect();
-      const viewer = element
-        .querySelector(":scope > caffold-review-file-viewer")
+      // Compare draws its viewer in its shadow root; the commit page draws it
+      // as a child of its own element.
+      const viewer = [...(element.shadowRoot ?? element).children]
+        .find((child) => child.localName === "caffold-review-file-viewer")
         .getBoundingClientRect();
       return Math.abs(viewer.left - bounds.left) <= 1 &&
         Math.abs(viewer.width - bounds.width) <= 1;
@@ -1213,7 +1211,8 @@ test("navigates Compare files and Log commits with deterministic domain Back", {
     const countBounds = count.getBoundingClientRect();
     const branchBounds = branch.getBoundingClientRect();
     const refreshBounds = header
-      .querySelector(".git-review-refresh")
+      .querySelector("caffold-git-review-controls")
+      .shadowRoot.querySelector(".git-review-refresh")
       .getBoundingClientRect();
     const bounds = header.getBoundingClientRect();
     const paddingRight = Number.parseFloat(getComputedStyle(header).paddingRight);

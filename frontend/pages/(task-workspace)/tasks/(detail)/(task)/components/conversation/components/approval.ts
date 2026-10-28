@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
@@ -7,12 +7,17 @@ import {
   ActionHints,
 } from "#app/action-hints.js";
 import type { ApprovalTool, TaskEventPayload } from "#app/api.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import {
   emptyScrollSurfaceScope,
   type ScrollSurfacePull,
   ScrollSurfaces,
 } from "#app/scroll-scope.js";
 import { formatDecision } from "#tasks/task-format.js";
+
+import secondaryButton from "#app/component-styles/secondary-button.css.js";
+import styles from "./approval.css.js";
 
 export interface ApprovalIntentDetail {
   threadId: string;
@@ -31,7 +36,7 @@ interface DefinitionRow {
 // intent; the Task API owner reports a request error, which the card shows
 // until it is handed a different approval.
 @customElement("caffold-task-approval")
-export class CaffoldTaskApproval extends LitElement {
+export class CaffoldTaskApproval extends CaffoldElement {
   @property({ attribute: false })
   accessor threadId = "";
   @property({ attribute: false })
@@ -43,14 +48,15 @@ export class CaffoldTaskApproval extends LitElement {
   @state()
   accessor errorMessage = "";
 
+  static override styles = [
+    scopedStyle(secondaryButton, ".task-secondary-button"),
+    styles,
+  ];
+
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
   private readonly surfaces = new ScrollSurfaces(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   get approvalId() {
     return this.request.approvalId ?? "";

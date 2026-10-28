@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
@@ -12,8 +12,11 @@ import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/loading-text.js";
 import "#components/pagination.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { ChangePageDetail } from "#components/pagination/components/button.js";
 import type { CaffoldPagination } from "#components/pagination.js";
+
+import styles from "./page.css.js";
 
 export interface OpenGithubIssueDetail {
   number: number;
@@ -31,11 +34,13 @@ type IssuesState =
   | { status: "error"; error: Error };
 
 @customElement("caffold-github-issues-list-page")
-export class CaffoldGithubIssuesListPage extends LitElement {
+export class CaffoldGithubIssuesListPage extends CaffoldElement {
   @state()
   private accessor state: IssuesState = { status: "idle" };
   @state()
   private accessor selectedIssueNumber: number | null = null;
+
+  static override styles = styles;
 
   private readonly list = new DrawnRef<HTMLOListElement>(this);
   private readonly pagination = new DrawnRef<CaffoldPagination>(this);
@@ -43,10 +48,6 @@ export class CaffoldGithubIssuesListPage extends LitElement {
     clipRoots: () => [this, this.list.value],
   });
   private readonly surfaces = new ScrollSurfaces(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     const state = this.state;
@@ -219,6 +220,7 @@ export class CaffoldGithubIssuesListPage extends LitElement {
     this.dispatchEvent(
       new CustomEvent<OpenGithubIssueDetail>("caffold:open-github-issue", {
         bubbles: true,
+        composed: true,
         detail: { number },
       }),
     );
@@ -231,6 +233,7 @@ export class CaffoldGithubIssuesListPage extends LitElement {
         "caffold:change-github-issues-page",
         {
           bubbles: true,
+          composed: true,
           detail: { page: event.detail.page },
         },
       ),

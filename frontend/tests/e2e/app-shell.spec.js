@@ -44,9 +44,9 @@ test("serves one Task workspace shell and only active static assets", { tag: "@a
     "/assets/pages/pwa-update-lifecycle.js",
     "/assets/pages/pwa-update-lifecycle/machine.js",
     "/assets/pages/pwa-update-lifecycle/runtime.js",
-    "/assets/pages/components/build-mismatch-alert.css",
+    "/assets/pages/components/build-mismatch-alert.css.js",
     "/assets/pages/components/build-mismatch-alert.js",
-    "/assets/pages/components/update-dialog.css",
+    "/assets/pages/components/update-dialog.css.js",
     "/assets/pages/components/update-dialog.js",
     "/assets/action-hints.js",
     "/assets/action-hints/components/dialog.js",
@@ -64,7 +64,7 @@ test("serves one Task workspace shell and only active static assets", { tag: "@a
     "/assets/pages/(task-workspace)/codex-status/runtime-update-lifecycle.js",
     "/assets/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
     "/assets/pages/(task-workspace)/codex-status/components/runtime-update-dialog.js",
-    "/assets/pages/(task-workspace)/settings/components/detail-list.css",
+    "/assets/pages/(task-workspace)/settings/components/detail-list.css.js",
     "/assets/pages/(task-workspace)/settings/components/detail-list.js",
     "/assets/components/file-navigator/components/list.js",
   ]) {
@@ -182,15 +182,8 @@ test("returns a workspace tab to the screen it last showed", { tag: "@viewport-i
 test("puts the screens under a request into another tab's page", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
-  const stylesRequested = Promise.withResolvers();
-  const releaseStyles = Promise.withResolvers();
   const healthRequested = Promise.withResolvers();
   const releaseHealth = Promise.withResolvers();
-  await page.route("**/assets/component-styles/compact-icon-button.css", async (route) => {
-    stylesRequested.resolve();
-    await releaseStyles.promise;
-    await route.continue();
-  });
   await page.route(/\/api\/health(?:\?|$)/, async (route) => {
     healthRequested.resolve();
     await releaseHealth.promise;
@@ -200,9 +193,6 @@ test("puts the screens under a request into another tab's page", { tag: "@viewpo
   // the Settings list belongs under it just as it would after a tab change.
   try {
     await page.goto("/");
-    await stylesRequested.promise;
-    expect(await page.evaluate(() => Boolean(customElements.get("caffold-app-shell")))).toBe(false);
-    releaseStyles.resolve();
     await healthRequested.promise;
     // Component definition precedes bootstrap: health still owns the initial route.
     await Promise.all([
@@ -223,7 +213,6 @@ test("puts the screens under a request into another tab's page", { tag: "@viewpo
       );
     });
   } finally {
-    releaseStyles.resolve();
     releaseHealth.resolve();
   }
   await expect(page).toHaveURL("/settings/voice");
@@ -372,9 +361,9 @@ test("keeps exceptional build mismatch outside application layout", { tag: "@all
   await page.keyboard.press("Escape");
 
   const layout = await shell.evaluate((element) => {
-    const main = element.querySelector(".app-main").getBoundingClientRect();
+    const main = element.shadowRoot.querySelector(".app-main").getBoundingClientRect();
     const shellRect = element.getBoundingClientRect();
-    const alertElement = element.querySelector("caffold-build-mismatch-alert");
+    const alertElement = element.shadowRoot.querySelector("caffold-build-mismatch-alert");
     const alertRect = alertElement.getBoundingClientRect();
     const style = getComputedStyle(alertElement);
     return {

@@ -1,12 +1,15 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import { deleteTask, getTask, type TaskResponseError } from "#app/api.js";
 import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import type { BrokenTaskDeleteIntent } from "../../task-detail-intent-event.js";
 import { TASK_DETAIL_INTENT_EVENT } from "../../task-detail-intent-event.js";
+
+import styles from "./broken-delete-dialog.css.js";
 
 // The Task a broken worktree keeps from opening, as its Task screen holds it.
 export interface BrokenTaskContext {
@@ -43,7 +46,7 @@ const EDGES: Readonly<Record<Phase, Partial<Record<PhaseEvent, Phase>>>> = {
  * deletes it with the worktree its diagnosis named.
  */
 @customElement("caffold-broken-task-delete-dialog")
-export class CaffoldBrokenTaskDeleteDialog extends LitElement {
+export class CaffoldBrokenTaskDeleteDialog extends CaffoldElement {
   @state()
   private accessor phase: Phase = "idle";
   @state()
@@ -51,15 +54,13 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
   @state()
   private accessor failure: Error | null = null;
 
+  static override styles = styles;
+
   private generation = 0;
   private context: BrokenTaskContext | null = null;
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override disconnectedCallback() {
     super.disconnectedCallback();

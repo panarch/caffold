@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import type { ActionHintPull } from "#app/action-hints.js";
 import { type GitDiff, readFile } from "#app/api.js";
@@ -7,8 +7,12 @@ import type { ScrollSurfacePull } from "#app/scroll-scope.js";
 import { fileNameFromPath, imageTypeLabel } from "#components/dom.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/file-viewer.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { ScrollPosition } from "#components/file-viewer/components/code-viewer.js";
-import type { CaffoldReviewFileViewer } from "#components/file-viewer.js";
+import type {
+  CaffoldReviewFileViewer,
+  FileViewerNoticeActionDetail,
+} from "#components/file-viewer.js";
 import {
   diffViewerPresentation,
   sourceViewerPresentation,
@@ -18,6 +22,8 @@ import {
   type ReviewChange,
   type ReviewView,
 } from "./selected-file/content.js";
+
+import styles from "./selected-file.css.js";
 
 export interface ReviewRepresentationIntentDetail {
   representation: string;
@@ -29,7 +35,9 @@ interface ViewPosition {
 }
 
 @customElement("caffold-review-selected-file")
-export class CaffoldReviewSelectedFile extends LitElement {
+export class CaffoldReviewSelectedFile extends CaffoldElement {
+  static override styles = styles;
+
   private rootPath = "";
   private worktreeRootPath = "";
   private view: ReviewView | null = null;
@@ -38,10 +46,6 @@ export class CaffoldReviewSelectedFile extends LitElement {
   private readonly positions = new Map<string, ViewPosition>();
   private readonly viewerElement = new DrawnRef<CaffoldReviewFileViewer>(this);
   private readonly pendingLines = new Map<string, number>();
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
@@ -52,7 +56,7 @@ export class CaffoldReviewSelectedFile extends LitElement {
     return html`<caffold-review-file-viewer
       ${drawn(this.viewerElement)}
       compact-chrome
-      @click=${this.chooseRepresentation}
+      @caffold:file-viewer-notice-action=${this.chooseRepresentation}
     ></caffold-review-file-viewer>`;
   }
 
@@ -127,25 +131,20 @@ export class CaffoldReviewSelectedFile extends LitElement {
     return this.viewer.keyboardNavigationContexts(options);
   }
 
-  private chooseRepresentation(event: Event) {
-    const action =
-      event.target instanceof Element
-        ? event.target.closest<HTMLElement>(
-            '[data-action="view-source"], [data-action="view-preview"]',
-          )
-        : null;
-    if (!action || !this.contains(action)) {
+  private chooseRepresentation(
+    event: CustomEvent<FileViewerNoticeActionDetail>,
+  ) {
+    const { action } = event.detail;
+    if (action !== "view-source" && action !== "view-preview") {
       return;
     }
-    event.stopPropagation();
     this.dispatchEvent(
       new CustomEvent<ReviewRepresentationIntentDetail>(
         "caffold:review-representation-intent",
         {
           bubbles: true,
           detail: {
-            representation:
-              action.dataset.action === "view-preview" ? "preview" : "source",
+            representation: action === "view-preview" ? "preview" : "source",
           },
         },
       ),

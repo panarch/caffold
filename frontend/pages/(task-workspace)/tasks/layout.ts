@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   type ActionHintScope,
@@ -41,6 +41,7 @@ import type { CaffoldTaskStoreRecovery } from "./components/task-store-recovery.
 import "./new/page.js";
 import type { CaffoldTaskNew } from "./new/page.js";
 import "./recovery/page.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { RequestTasksRouteDetail } from "../../layout.js";
 import type { TaskStartIntent } from "../task-create-intent-event.js";
 import { TASK_CREATE_INTENT_EVENT } from "../task-create-intent-event.js";
@@ -57,6 +58,8 @@ import { TASK_TRANSPORT_STATE } from "./runtime-state.js";
 import { taskDetailThreadId } from "./task-list-model.js";
 import type { TaskNavigatorIntentDetail } from "./task-navigator-intent-event.js";
 import { TASK_NAVIGATOR_INTENT_EVENT } from "./task-navigator-intent-event.js";
+
+import styles from "./layout.css.js";
 
 export interface TaskTransportStatusDetail {
   targets: {
@@ -121,7 +124,9 @@ interface ForegroundProgress {
  * It owns a Task being created until that Task's Detail holds it.
  */
 @customElement("caffold-tasks-page")
-export class CaffoldTasksPage extends LitElement {
+export class CaffoldTasksPage extends CaffoldElement {
+  static override styles = styles;
+
   selectedThreadId = "";
   private view: TasksView = "home";
   private detailView = "conversation";
@@ -222,10 +227,6 @@ export class CaffoldTasksPage extends LitElement {
       event.stopPropagation();
       this.imagePreviewDialog.value?.openImage(event.detail);
     });
-  }
-
-  override createRenderRoot() {
-    return this;
   }
 
   // The first drawing also tells the workspace what Tasks shows.
@@ -981,6 +982,7 @@ export class CaffoldTasksPage extends LitElement {
     this.dispatchEvent(
       new CustomEvent<RequestTasksRouteDetail>("caffold:request-tasks-route", {
         bubbles: true,
+        composed: true,
         detail: {
           route: { ...route },
           correction: Boolean(options.correction),

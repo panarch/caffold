@@ -1,12 +1,15 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import type { CaffoldUpdateSnapshot } from "../settings/about/page.js";
+
+import styles from "./navigation.css.js";
 
 export interface WorkspaceNavigationIntentDetail {
   mode: WorkspaceMode | undefined;
@@ -25,7 +28,7 @@ const MODES: readonly { mode: WorkspaceMode; label: string; icon: string }[] = [
  * marked current and Settings marked while an update waits.
  */
 @customElement("caffold-task-workspace-navigation")
-export class CaffoldTaskWorkspaceNavigation extends LitElement {
+export class CaffoldTaskWorkspaceNavigation extends CaffoldElement {
   @state()
   private accessor mode: WorkspaceMode = "tasks";
   @state()
@@ -33,12 +36,10 @@ export class CaffoldTaskWorkspaceNavigation extends LitElement {
   @state()
   private accessor reloadReady = false;
 
+  static override styles = styles;
+
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

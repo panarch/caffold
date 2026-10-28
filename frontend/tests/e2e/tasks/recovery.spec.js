@@ -454,12 +454,10 @@ test("preserves Recovery focus and scroll position when icons finish loading", {
   try {
     await openRecovery(page, recovery, { iconsPending: true });
     await icons.requested;
-    await page.addStyleTag({
-      content: `
-        caffold-task-recovery .task-recovery-content { min-height: 800px; }
-        caffold-task-recovery .task-recovery-body { height: 120px; max-height: 120px; }
-      `,
-    });
+    await adoptRecoveryStyles(page, `
+      .task-recovery-content { min-height: 800px; }
+      .task-recovery-body { height: 120px; max-height: 120px; }
+    `);
     const button = page.getByRole("button", { name: /Move to Archived/ });
     await button.evaluate((element) => element.focus({ preventScroll: true }));
     await expect(button).toBeFocused();
@@ -508,17 +506,15 @@ test("recheck uses the explicit recovery endpoint without rewriting the cached l
   });
 
   await openRecovery(page, recovery);
-  await page.addStyleTag({
-    content: `
-      caffold-task-recovery .task-recovery-content {
-        min-height: 360px !important;
-      }
-      caffold-task-recovery .task-recovery-body {
-        height: 120px !important;
-        max-height: 120px !important;
-      }
-    `,
-  });
+  await adoptRecoveryStyles(page, `
+    .task-recovery-content {
+      min-height: 360px !important;
+    }
+    .task-recovery-body {
+      height: 120px !important;
+      max-height: 120px !important;
+    }
+  `);
   const recoveryScroll = page.locator(".task-recovery-body");
   await expect.poll(() => recoveryScroll.evaluate(
     (element) => element.scrollHeight > element.clientHeight + 1,
@@ -725,3 +721,16 @@ test("a recovery Task archived elsewhere shows the archived notice and restores 
   await emitTaskDetailBootstrap(page, taskDetail(restored));
   await expect(page.locator("caffold-task-recovery")).toBeHidden();
 });
+
+// The Recovery screen draws in its own root, which a document stylesheet does
+// not reach.
+function adoptRecoveryStyles(page, css) {
+  return page.locator("caffold-task-recovery").evaluate((element, text) => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(text);
+    element.shadowRoot.adoptedStyleSheets = [
+      ...element.shadowRoot.adoptedStyleSheets,
+      sheet,
+    ];
+  }, css);
+}

@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, type LitElement, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
 import { repeat } from "lit/directives/repeat.js";
@@ -53,6 +53,9 @@ import type {
   OlderHistoryIntentDetail,
 } from "./conversation/components/older-history.js";
 import "./conversation/components/user-message.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
+import { containsAcrossShadowRoots } from "#app/shadow-roots.js";
 import type { UploadProgress } from "./conversation/components/user-message.js";
 import {
   CaffoldTaskWorkDetails,
@@ -63,6 +66,9 @@ import {
   conversationEntries,
   type ThinkingEntry,
 } from "./conversation/entries.js";
+
+import secondaryButton from "#app/component-styles/secondary-button.css.js";
+import styles from "./conversation.css.js";
 
 // What the Task screen hands the conversation: the Task, its events, how far
 // its history has been read, and how the last change arrived. `updateKind`
@@ -151,7 +157,12 @@ interface EntryPart {
  * to draw later.
  */
 @customElement("caffold-task-conversation")
-export class CaffoldTaskConversation extends LitElement {
+export class CaffoldTaskConversation extends CaffoldElement {
+  static override styles = [
+    scopedStyle(secondaryButton, ".task-secondary-button"),
+    styles,
+  ];
+
   snapshot: ConversationSnapshot = {
     threadId: "",
     task: null,
@@ -189,10 +200,6 @@ export class CaffoldTaskConversation extends LitElement {
     clipRoots: () => [this, this.scrollerElement.value],
   });
   private readonly surfaces = new ScrollSurfaces(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -801,9 +808,9 @@ export class CaffoldTaskConversation extends LitElement {
   }
 
   private waitingComponents() {
-    return Array.from(
-      this.querySelectorAll<LitElement>(CONVERSATION_COMPONENTS),
-    ).filter((component) => component.isUpdatePending);
+    return componentsBelow(this.renderRoot).filter(
+      (component) => component.isUpdatePending,
+    );
   }
 
   private thinkingOpen(entry: ThinkingEntry) {
@@ -908,9 +915,12 @@ export class CaffoldTaskConversation extends LitElement {
   }
 
   private openCommandOutput(event: CustomEvent<CommandIntentDetail>) {
+    // The element that sent it: a command in Work details' root reaches this
+    // root with Work details as its target.
+    const owner = event.composedPath()[0];
     if (
-      !(event.target instanceof CaffoldTaskCommand) ||
-      !this.contains(event.target)
+      !(owner instanceof CaffoldTaskCommand) ||
+      !containsAcrossShadowRoots(this, owner)
     ) {
       return;
     }
@@ -930,8 +940,11 @@ export class CaffoldTaskConversation extends LitElement {
   }
 
   private holdCommandAnchor(event: CustomEvent<CommandDisclosureIntentDetail>) {
-    const owner = event.target;
-    if (!(owner instanceof CaffoldTaskCommand) || !this.contains(owner)) {
+    const owner = event.composedPath()[0];
+    if (
+      !(owner instanceof CaffoldTaskCommand) ||
+      !containsAcrossShadowRoots(this, owner)
+    ) {
       return;
     }
     event.stopPropagation();
@@ -948,8 +961,11 @@ export class CaffoldTaskConversation extends LitElement {
   private holdGroupAnchor(
     event: CustomEvent<CommandGroupDisclosureIntentDetail>,
   ) {
-    const owner = event.target;
-    if (!(owner instanceof CaffoldTaskCommandGroup) || !this.contains(owner)) {
+    const owner = event.composedPath()[0];
+    if (
+      !(owner instanceof CaffoldTaskCommandGroup) ||
+      !containsAcrossShadowRoots(this, owner)
+    ) {
       return;
     }
     event.stopPropagation();
@@ -966,8 +982,11 @@ export class CaffoldTaskConversation extends LitElement {
   private holdWorkAnchor(
     event: CustomEvent<WorkDetailsDisclosureIntentDetail>,
   ) {
-    const owner = event.target;
-    if (!(owner instanceof CaffoldTaskWorkDetails) || !this.contains(owner)) {
+    const owner = event.composedPath()[0];
+    if (
+      !(owner instanceof CaffoldTaskWorkDetails) ||
+      !containsAcrossShadowRoots(this, owner)
+    ) {
       return;
     }
     event.stopPropagation();
@@ -1179,7 +1198,7 @@ export class CaffoldTaskConversation extends LitElement {
     if (
       !scroller ||
       !threadId ||
-      !scroller.contains(owner) ||
+      !containsAcrossShadowRoots(scroller, owner) ||
       anchorTop === null ||
       !Number.isFinite(anchorTop)
     ) {
@@ -1229,10 +1248,12 @@ export class CaffoldTaskConversation extends LitElement {
   }
 
   private hasPendingMarkdownRender() {
+    const list = this.conversationList();
     return Boolean(
-      this.conversationList()?.querySelector(
-        'caffold-task-markdown[data-render-state="loading"]',
-      ),
+      list &&
+        componentsNamed(list, "caffold-task-markdown").some(
+          (markdown) => markdown.dataset.renderState === "loading",
+        ),
     );
   }
 
@@ -1285,9 +1306,9 @@ export class CaffoldTaskConversation extends LitElement {
 // stands, or `null` once it is gone.
 function disclosureState(scroller: HTMLElement, pending: DisclosureAnchor) {
   if (pending.owner === "work-details") {
-    const owner = [
-      ...scroller.querySelectorAll("caffold-task-work-details"),
-    ].find((entry) => entry.identity === pending.identity);
+    const owner = componentsNamed(scroller, "caffold-task-work-details").find(
+      (entry) => entry.identity === pending.identity,
+    );
     return owner
       ? {
           open: owner.disclosureOpen(pending.key),
@@ -1296,7 +1317,7 @@ function disclosureState(scroller: HTMLElement, pending: DisclosureAnchor) {
       : null;
   }
   if (pending.owner === "command") {
-    const owner = [...scroller.querySelectorAll("caffold-task-command")].find(
+    const owner = componentsNamed(scroller, "caffold-task-command").find(
       (entry) => entry.commandKey === pending.commandKey,
     );
     return owner
@@ -1304,9 +1325,9 @@ function disclosureState(scroller: HTMLElement, pending: DisclosureAnchor) {
       : null;
   }
   if (pending.owner === "command-group") {
-    const owner = [
-      ...scroller.querySelectorAll("caffold-task-command-group"),
-    ].find((entry) => entry.identity === pending.identity);
+    const owner = componentsNamed(scroller, "caffold-task-command-group").find(
+      (entry) => entry.identity === pending.identity,
+    );
     return owner
       ? { open: owner.disclosureOpen(), top: owner.disclosureAnchorTop() }
       : null;
@@ -1324,6 +1345,26 @@ function disclosureState(scroller: HTMLElement, pending: DisclosureAnchor) {
             .top ?? null,
       }
     : null;
+}
+
+// The conversation's components below `root`, in that root and in their own.
+function componentsBelow(root: ParentNode): LitElement[] {
+  return [
+    ...root.querySelectorAll<LitElement>(CONVERSATION_COMPONENTS),
+  ].flatMap((component) => [
+    component,
+    ...(component.shadowRoot ? componentsBelow(component.shadowRoot) : []),
+  ]);
+}
+
+function componentsNamed<K extends keyof HTMLElementTagNameMap>(
+  root: ParentNode,
+  name: K,
+) {
+  return componentsBelow(root).filter(
+    (component): component is LitElement & HTMLElementTagNameMap[K] =>
+      component.localName === name,
+  );
 }
 
 // The name an entry's keyboard and scroll actions are known by.

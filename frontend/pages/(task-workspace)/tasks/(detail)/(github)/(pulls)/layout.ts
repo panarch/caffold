@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import type { ActionHintPull } from "#app/action-hints.js";
 import {
@@ -15,7 +15,10 @@ import type { CaffoldGithubPullDetailPage } from "./detail/page.js";
 import "./files/page.js";
 import type { CaffoldGithubPullFilesPage } from "./files/page.js";
 import "./list/page.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { CaffoldGithubPullsListPage } from "./list/page.js";
+
+import styles from "./layout.css.js";
 
 const GITHUB_PULLS_PER_PAGE = 50;
 const LOADING_DELAY_MS = 180;
@@ -29,7 +32,9 @@ interface GithubContext {
 }
 
 @customElement("caffold-github-pulls-layout")
-export class CaffoldGithubPullsLayout extends LitElement {
+export class CaffoldGithubPullsLayout extends CaffoldElement {
+  static override styles = styles;
+
   // What the GitHub layout reads back.
   page = 1;
   view: PullsView = "list";
@@ -43,10 +48,6 @@ export class CaffoldGithubPullsLayout extends LitElement {
   private readonly list = new DrawnRef<CaffoldGithubPullsListPage>(this);
   private readonly detail = new DrawnRef<CaffoldGithubPullDetailPage>(this);
   private readonly files = new DrawnRef<CaffoldGithubPullFilesPage>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

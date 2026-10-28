@@ -41,10 +41,11 @@ test("offers each suggested request as a button of its own under the answer", { 
   }
 
   const layout = await answer.evaluate((message) => {
-    const body = message.querySelector(":scope > .task-assistant-message-body");
-    const controls = [...message.querySelectorAll(
-      ":scope > caffold-task-assistant-message-suggested-prompts > button",
-    )];
+    // The message draws in its own root, and the requests in theirs.
+    const body = message.shadowRoot.querySelector(".task-assistant-message-body");
+    const controls = [...message.shadowRoot
+      .querySelector("caffold-task-assistant-message-suggested-prompts")
+      .shadowRoot.querySelectorAll("button")];
     // The approval card's button in the same conversation, from its tokens.
     const reference = document.createElement("span");
     reference.style.cssText = [
@@ -56,7 +57,7 @@ test("offers each suggested request as a button of its own under the answer", { 
       "font-size: var(--interface-meta-font-size)",
       "min-height: var(--interface-compact-visual-size)",
     ].join(";");
-    message.append(reference);
+    message.shadowRoot.append(reference);
     const look = (element) => {
       const style = getComputedStyle(element);
       return {

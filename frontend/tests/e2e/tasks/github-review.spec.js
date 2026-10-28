@@ -11,6 +11,7 @@ import {
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { TASK_PERMISSION_FIXTURE } from "../support/task-api-fixture.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
+import { elementHandles } from "../support/element-handles.js";
 import {
   AGENT_MODELS_FIXTURE,
   activeTaskProjection,
@@ -615,29 +616,38 @@ async function activatePopupActionHint(page, control, accessibleName, url) {
 }
 
 async function taskGithubPaneGeometry(page, options = {}) {
-  return page.locator("caffold-task-github-layout").evaluate((layout, geometryOptions) => {
-    const detailPane = document.querySelector(".task-workspace-detail-pane");
-    const navigationPane = document.querySelector(".task-workspace-master-pane");
+  const [detailPane, navigationPane] = await elementHandles(page.locator("caffold-task-workspace"), [
+    ".task-workspace-detail-pane",
+    ".task-workspace-master-pane",
+  ]);
+  return page.locator("caffold-task-github-layout").evaluate((layout, { geometryOptions, detailPane, navigationPane }) => {
     const detailBounds = detailPane.getBoundingClientRect();
+    // The layout, the Issues or Pull Requests layout its mode shows, and the
+    // page each draw into a shadow root of their own.
+    const layoutRoot = layout.shadowRoot;
+    const mode = layoutRoot.querySelector(".github-review-view:not([hidden])");
+    const modeLayout = mode.querySelector(
+      "caffold-github-issues-layout, caffold-github-pulls-layout",
+    );
+    const pageElement = modeLayout.shadowRoot.querySelector(geometryOptions.pageSelector);
+    const roots = [layoutRoot, modeLayout.shadowRoot, pageElement.shadowRoot];
     const elements = [
       ["layout", layout],
-      ["surface", layout.querySelector(":scope > .task-github-surface")],
-      ["domain header", layout.querySelector(".task-domain-header")],
-      ["domain title", layout.querySelector(".task-domain-title")],
-      ["domain subtitle", layout.querySelector(".task-domain-subtitle")],
-      ["domain body", layout.querySelector(".task-domain-body")],
-      ["mode", layout.querySelector(".github-review-view:not([hidden])")],
-      ["page", layout.querySelector(geometryOptions.pageSelector)],
+      ["surface", layoutRoot.querySelector(".task-github-surface")],
+      ["domain header", layoutRoot.querySelector(".task-domain-header")],
+      ["domain title", layoutRoot.querySelector(".task-domain-title")],
+      ["domain subtitle", layoutRoot.querySelector(".task-domain-subtitle")],
+      ["domain body", layoutRoot.querySelector(".task-domain-body")],
+      ["mode", mode],
+      ["page", pageElement],
       ...geometryOptions.descendantSelectors.flatMap((selector) => {
-        const matches = [...layout.querySelectorAll(selector)];
+        const matches = roots.flatMap((root) => [...root.querySelectorAll(selector)]);
         return matches.length
           ? matches.map((element, index) => [`${selector} ${index}`, element])
           : [[`${selector} missing`, null]];
       }),
     ];
-    const markdown = layout.querySelector(
-      `${geometryOptions.pageSelector} caffold-github-markdown`,
-    );
+    const markdown = pageElement.shadowRoot.querySelector("caffold-github-markdown");
     const markdownRoot = markdown?.shadowRoot;
     const ordinaryMarkdownElements = [
       ...(markdownRoot?.querySelectorAll(".markdown-body, h1, p, ul") ?? []),
@@ -667,8 +677,8 @@ async function taskGithubPaneGeometry(page, options = {}) {
         );
       })
       .map(([name]) => name);
-    const title = layout.querySelector(geometryOptions.titleSelector);
-    const domainSubtitle = layout.querySelector(".task-domain-subtitle");
+    const title = pageElement.shadowRoot.querySelector(geometryOptions.titleSelector);
+    const domainSubtitle = layoutRoot.querySelector(".task-domain-subtitle");
 
     return {
       detailWidth: detailBounds.width,
@@ -688,7 +698,7 @@ async function taskGithubPaneGeometry(page, options = {}) {
         tableScroll && tableScroll.scrollWidth > tableScroll.clientWidth + 1,
       ),
     };
-  }, options);
+  }, { geometryOptions: options, detailPane, navigationPane });
 }
 
 test("opens direct and rendered Issue links through the Issue owner", { tag: "@all-viewports" }, async ({
@@ -1131,6 +1141,7 @@ test("scrolls a retained GitHub Issue body through its public Shadow DOM host", 
   const consumed = await workspace.evaluate((element) => {
     const event = new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "KeyS",
       key: "s",
@@ -1537,11 +1548,7 @@ test("toggles retained Pull Files directories through the GitHub owner", { tag: 
   await expect(actionHintDialog(page)).toBeHidden();
   await expect(srcDirectory).toHaveAccessibleName("Expand src");
   await expect(srcFile).toHaveCount(0);
-  await expect
-    .poll(() =>
-      srcDirectory.evaluate((element) => document.activeElement === element)
-    )
-    .toBe(true);
+  await expect(srcDirectory).toBeFocused();
   await activateActionHint(page, /Expand src$/);
   await expect(srcDirectory).toHaveAccessibleName("Collapse src");
   await expect(srcFile).toBeVisible();
@@ -1718,7 +1725,7 @@ test("holds Start Task while the chosen model's permission modes are still arriv
   const submit = () =>
     dialog.evaluate((element) => {
       element.querySelector("form").requestSubmit();
-      return element.parentElement.pending;
+      return element.getRootNode().host.pending;
     });
   expect(await submit()).toBe(false);
 
@@ -1847,7 +1854,7 @@ test("owns Issue Task Start Hint, native select, Editing Escape, and Scroll cont
   await expect(select).toHaveValue("origin/main");
   const body = dialog.locator(".github-task-start-body");
   const hud = dialog.locator(
-    ":scope > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud",
+    ":scope > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   );
   await expect.poll(() => body.evaluate(
     (element) => element.scrollHeight <= element.clientHeight + 1,
@@ -2346,16 +2353,13 @@ test("reloads a Task-scoped GitHub route from canonical Task context", { tag: "@
   await expect(domainHeader.locator(".task-domain-subtitle")).toHaveText(
     "gluesql/gluesql · 53 PRs",
   );
-  const domainHeaderGeometry = await domainHeader.evaluate((header) => {
+  const domainHeaderGeometry = await domainHeader.evaluate((header, [taskHeader, taskTitle]) => {
     const headerStyle = getComputedStyle(header);
-    const taskHeader = document.querySelector(".detail-layout-summary");
     const taskHeaderStyle = getComputedStyle(taskHeader);
     const domainTitleStyle = getComputedStyle(
       header.querySelector(".task-domain-title h2"),
     );
-    const taskTitleStyle = getComputedStyle(
-      taskHeader.querySelector(".task-detail-heading > h2"),
-    );
+    const taskTitleStyle = getComputedStyle(taskTitle);
     return {
       height: header.getBoundingClientRect().height,
       minimumHeight: Number.parseFloat(headerStyle.minHeight),
@@ -2375,7 +2379,10 @@ test("reloads a Task-scoped GitHub route from canonical Task context", { tag: "@
             Number.parseFloat(taskTitleStyle.fontSize),
         ) <= 0.1,
     };
-  });
+  }, await elementHandles(page.locator("caffold-detail-layout"), [
+    ".detail-layout-summary",
+    ".task-detail-heading > h2",
+  ]));
   expect(domainHeaderGeometry.height).toBeCloseTo(
     domainHeaderGeometry.minimumHeight,
     0,
@@ -2421,8 +2428,8 @@ test("collapses the PR file tree from the corner toggle only while a diff is ope
   await expect(tree).toBeHidden();
   const fills = await files.evaluate((element) => {
     const bounds = element.getBoundingClientRect();
-    const viewer = element
-      .querySelector(":scope > caffold-review-file-viewer")
+    const viewer = element.shadowRoot
+      .querySelector("caffold-review-file-viewer")
       .getBoundingClientRect();
     return Math.abs(viewer.left - bounds.left) <= 1 &&
       Math.abs(viewer.width - bounds.width) <= 1;
@@ -2687,19 +2694,29 @@ for (const list of [
     await page.route(list.route, (route) => {
       pendingRoutes.push(route);
     });
-    await page.goto(`/tasks/${THREAD_ID}`);
-    // Fast-forwarding moves past the list's own wait without racing it.
-    await page.clock.install();
-    await page.evaluate((selector) => {
+    // The list draws its phrase into its shadow root, which a document observer
+    // does not see, so every root is observed as it is attached.
+    await page.addInitScript((selector) => {
       window.listLoadingPhrases = [];
-      new MutationObserver(() => {
-        for (const phrase of document.querySelectorAll(`${selector} caffold-loading-text`)) {
+      const observer = new MutationObserver(() => {
+        const list = window.listLoadingPhraseOwner;
+        for (const phrase of list?.shadowRoot?.querySelectorAll("caffold-loading-text") ?? []) {
           if (!window.listLoadingPhrases.includes(phrase)) {
             window.listLoadingPhrases.push(phrase);
           }
         }
-      }).observe(document.body, { childList: true, subtree: true });
+      });
+      const attachShadow = Element.prototype.attachShadow;
+      Element.prototype.attachShadow = function (init) {
+        const root = attachShadow.call(this, init);
+        if (this.matches(selector)) window.listLoadingPhraseOwner = this;
+        observer.observe(root, { childList: true, subtree: true });
+        return root;
+      };
     }, list.element);
+    await page.goto(`/tasks/${THREAD_ID}`);
+    // Fast-forwarding moves past the list's own wait without racing it.
+    await page.clock.install();
     const shownPhrases = () => page.evaluate(() => window.listLoadingPhrases.length);
 
     await chooseLinkedWorktreeGithubList(page, list.kind);
@@ -2738,6 +2755,38 @@ for (const list of [
     await expect(phrase).toHaveCount(0);
   });
 }
+
+test("Action Hints reach the issue list's page buttons in the pagination's shadow roots and leave focus where it was", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await installLinkedWorktreeGithubFixture(page);
+  await page.unroute(/\/api\/github\/issues(?:\?|$)/);
+  await page.route(/\/api\/github\/issues(?:\?|$)/, (route) => {
+    const requested = Number(new URL(route.request().url()).searchParams.get("page"));
+    return route.fulfill({
+      json: pagedGithubListResponse(githubIssuesResponse(`Issue on page ${requested}`), requested, 3),
+    });
+  });
+  await page.goto(`/tasks/${THREAD_ID}`);
+  await chooseLinkedWorktreeGithubList(page, "issues");
+  const listPage = page.locator("caffold-github-issues-list-page");
+  const firstRow = listPage.locator("button[data-issue-number]").first();
+  await expect(firstRow).toContainText("on page 1");
+
+  const older = listPage.getByRole("button", { name: "Older issue page" });
+  await waitForActionHintTarget(page, "Older issue page");
+  await older.focus();
+  await page.keyboard.press("f");
+  const dialog = actionHintDialog(page);
+  await expect(dialog.getByLabel("Older issue page")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(older).toBeFocused();
+
+  await activateActionHint(page, "Older issue page");
+  await expect(listPage.locator("caffold-pagination")).toHaveAttribute("page", "2");
+  await expect(firstRow).toContainText("on page 2");
+});
 
 function githubStatusResponse(repository, github) {
   return {

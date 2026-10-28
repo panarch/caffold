@@ -1,11 +1,14 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
+
+import styles from "./copy-button.css.js";
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
 
@@ -20,11 +23,13 @@ type CopyState = "idle" | "copying" | "copied" | "failed";
  * flight, and text arriving for a different message retires one.
  */
 @customElement("caffold-task-assistant-message-copy-button")
-export class CaffoldTaskAssistantMessageCopyButton extends LitElement {
+export class CaffoldTaskAssistantMessageCopyButton extends CaffoldElement {
   @property({ attribute: false })
   accessor text = "";
   @state()
   accessor copyState: CopyState = "idle";
+
+  static override styles = styles;
 
   private generation = 0;
   private feedbackTimer: number | undefined;
@@ -32,10 +37,6 @@ export class CaffoldTaskAssistantMessageCopyButton extends LitElement {
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

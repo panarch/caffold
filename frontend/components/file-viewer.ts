@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type TemplateResult } from "lit";
+import { html, nothing, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import type { ActionHintScope } from "../action-hint-scope.js";
 import {
@@ -9,11 +9,7 @@ import {
 } from "../action-hints.js";
 import { documentUrl, downloadUrl, imageUrl } from "../api.js";
 import { type FetchedFile, fetchInChunks } from "../chunked-fetch.js";
-import { compactIconButton } from "../component-styles.js";
-import {
-  KEYBOARD_SESSION_DISMISS_EVENT,
-  KeyboardContexts,
-} from "../keyboard-navigation.js";
+import { KeyboardContexts } from "../keyboard-navigation.js";
 import "../keyboard-navigation/components/presentation.js";
 import {
   mergeScrollSurfaceScopes,
@@ -56,7 +52,14 @@ import type { CaffoldMarkdownPreview } from "./markdown-preview.js";
 import "./pdf-viewer.js";
 import "./pptx-viewer.js";
 import "./xlsx-viewer.js";
+import { returnPopoverFocus } from "#app/popover-focus.js";
+import { scopedStyle } from "#app/scoped-style.js";
+import { CaffoldElement } from "../caffold-element.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
+
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import secondaryButton from "#app/component-styles/secondary-button.css.js";
+import styles from "./file-viewer.css.js";
 
 // How long switching to another file keeps showing the previous one before
 // the loading state replaces it.
@@ -177,6 +180,11 @@ interface DocumentViewer extends HTMLElement {
   actionHintScope?(pull: ActionHintPull): ActionHintScope;
 }
 
+// The action a notice offers, which its owner carries out.
+export interface FileViewerNoticeActionDetail {
+  action: string;
+}
+
 type ViewerState =
   | { status: "empty" }
   | {
@@ -219,17 +227,8 @@ interface RetainedContent {
 
 let viewerInstanceId = 0;
 
-await compactIconButton.register(
-  "caffold-review-file-viewer",
-  "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-actions > .viewer-refresh-button",
-);
-await compactIconButton.register(
-  "caffold-review-file-viewer",
-  "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-close-button",
-);
-
 @customElement("caffold-review-file-viewer")
-export class CaffoldReviewFileViewer extends LitElement {
+export class CaffoldReviewFileViewer extends CaffoldElement {
   @state()
   private accessor state: ViewerState = { status: "empty" };
   @state()
@@ -245,6 +244,13 @@ export class CaffoldReviewFileViewer extends LitElement {
   private accessor imageSource = "";
   @state()
   private accessor documentFile: DocumentPreviewFile | null = null;
+
+  static override styles = [
+    scopedStyle(compactIconButton, ".viewer-refresh-button"),
+    scopedStyle(compactIconButton, ".viewer-close-button"),
+    scopedStyle(secondaryButton, ".task-secondary-button"),
+    styles,
+  ];
 
   private readonly detailsPopoverId: string;
   private previewFile: PreviewFile | null = null;
@@ -265,15 +271,6 @@ export class CaffoldReviewFileViewer extends LitElement {
     super();
     viewerInstanceId += 1;
     this.detailsPopoverId = `caffold-viewer-details-${viewerInstanceId}`;
-    this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) => {
-      if (event.target === this.detailsPopover.value) {
-        this.closeDetailsPopover();
-      }
-    });
-  }
-
-  override createRenderRoot() {
-    return this;
   }
 
   override connectedCallback() {
@@ -415,7 +412,9 @@ export class CaffoldReviewFileViewer extends LitElement {
                 id=${this.detailsPopoverId}
                 class="viewer-meta-popover"
                 popover="auto"
+                @beforetoggle=${returnPopoverFocus}
                 aria-label="File details"
+                @caffold:keyboard-session-dismiss=${this.closeDetailsPopover}
               >
                 <dl>
                   ${metadata.map(
@@ -503,6 +502,7 @@ export class CaffoldReviewFileViewer extends LitElement {
                       type="button"
                       class="task-secondary-button"
                       data-action=${state.action}
+                      @click=${this.chooseNoticeAction}
                     >${state.actionLabel}</button>`
                   : nothing
               }
@@ -897,14 +897,31 @@ export class CaffoldReviewFileViewer extends LitElement {
 
   private close() {
     this.dispatchEvent(
-      new CustomEvent("caffold:close-file-viewer", { bubbles: true }),
+      new CustomEvent("caffold:close-file-viewer", {
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private chooseNoticeAction() {
+    if (this.state.status !== "notice") {
+      return;
+    }
+    this.dispatchEvent(
+      new CustomEvent<FileViewerNoticeActionDetail>(
+        "caffold:file-viewer-notice-action",
+        { detail: { action: this.state.action } },
+      ),
     );
   }
 
   private requestRefresh() {
     const eventName = this.refreshEventName();
     if (eventName) {
-      this.dispatchEvent(new CustomEvent(eventName, { bubbles: true }));
+      this.dispatchEvent(
+        new CustomEvent(eventName, { bubbles: true, composed: true }),
+      );
     }
   }
 
@@ -1085,5 +1102,9 @@ export class CaffoldReviewFileViewer extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-review-file-viewer": CaffoldReviewFileViewer;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:file-viewer-notice-action": CustomEvent<FileViewerNoticeActionDetail>;
   }
 }

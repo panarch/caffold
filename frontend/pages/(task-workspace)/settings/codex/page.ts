@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
@@ -40,7 +40,10 @@ import {
 import "../components/detail-list.js";
 import type { SettingsDetailRow } from "../components/detail-list.js";
 import "../components/refresh-button.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { CaffoldSettingsRefreshButton } from "../components/refresh-button.js";
+
+import styles from "./page.css.js";
 
 export interface RequestCodexResetCreditDetail {
   creditId: string | null;
@@ -84,7 +87,7 @@ const IDLE_RESET_CREDIT: ResetCreditState = {
 };
 
 @customElement("caffold-settings-codex-page")
-export class CaffoldSettingsCodexPage extends LitElement {
+export class CaffoldSettingsCodexPage extends CaffoldElement {
   @property({ attribute: false })
   accessor snapshot: CodexStatusSnapshot | null = null;
   @property({ attribute: false })
@@ -109,6 +112,8 @@ export class CaffoldSettingsCodexPage extends LitElement {
   @state()
   private accessor copyState: "idle" | "copied" | "failed" = "idle";
 
+  static override styles = styles;
+
   private active = false;
   private updatesOperation = 0;
   private readonly hints: ActionHints = new ActionHints(this, {
@@ -119,10 +124,6 @@ export class CaffoldSettingsCodexPage extends LitElement {
   private readonly refreshButton = new DrawnRef<CaffoldSettingsRefreshButton>(
     this,
   );
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
@@ -135,7 +136,10 @@ export class CaffoldSettingsCodexPage extends LitElement {
     }
     this.active = true;
     this.dispatchEvent(
-      new CustomEvent(CODEX_STATUS_REFRESH_REQUEST_EVENT, { bubbles: true }),
+      new CustomEvent(CODEX_STATUS_REFRESH_REQUEST_EVENT, {
+        bubbles: true,
+        composed: true,
+      }),
     );
     void this.reconcileUpdates();
   }
@@ -637,7 +641,10 @@ export class CaffoldSettingsCodexPage extends LitElement {
   private refresh(event: Event) {
     event.stopPropagation();
     this.dispatchEvent(
-      new CustomEvent(CODEX_STATUS_REFRESH_REQUEST_EVENT, { bubbles: true }),
+      new CustomEvent(CODEX_STATUS_REFRESH_REQUEST_EVENT, {
+        bubbles: true,
+        composed: true,
+      }),
     );
     void this.reconcileUpdates();
   }
@@ -652,6 +659,7 @@ export class CaffoldSettingsCodexPage extends LitElement {
         CODEX_RESET_CREDIT_REQUEST_EVENT,
         {
           bubbles: true,
+          composed: true,
           detail: {
             creditId: control.dataset.creditId || null,
             retry: control.dataset.retry === "true",
@@ -663,13 +671,19 @@ export class CaffoldSettingsCodexPage extends LitElement {
 
   private openRestart() {
     this.dispatchEvent(
-      new CustomEvent(CODEX_RUNTIME_RESTART_REQUEST_EVENT, { bubbles: true }),
+      new CustomEvent(CODEX_RUNTIME_RESTART_REQUEST_EVENT, {
+        bubbles: true,
+        composed: true,
+      }),
     );
   }
 
   private openUpdate() {
     this.dispatchEvent(
-      new CustomEvent(CODEX_RUNTIME_UPDATE_REQUEST_EVENT, { bubbles: true }),
+      new CustomEvent(CODEX_RUNTIME_UPDATE_REQUEST_EVENT, {
+        bubbles: true,
+        composed: true,
+      }),
     );
   }
 

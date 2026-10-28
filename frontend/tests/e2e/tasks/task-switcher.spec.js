@@ -297,15 +297,12 @@ test("brings the chosen Task into view in the Task list", { tag: "@desktop" }, a
   await page.keyboard.type(code.toLowerCase());
   await expect(dialog).toBeHidden();
 
-  await expect.poll(() => listScroll.evaluate((element) => {
-    const row = element.querySelector('.task-row[aria-current="true"]');
-    if (!row) {
-      return null;
-    }
+  const currentRow = page.locator('caffold-task-navigator .task-row[aria-current="true"]');
+  await expect.poll(async () => (await currentRow.count()) ? listScroll.evaluate((element, row) => {
     const view = element.getBoundingClientRect();
     const box = row.getBoundingClientRect();
     return box.top >= view.top - 1 && box.bottom <= view.bottom + 1;
-  })).toBe(true);
+  }, await currentRow.elementHandle()) : null).toBe(true);
 });
 
 test("shows each row the time the list is ordered by", { tag: "@viewport-independent" }, async ({
@@ -494,16 +491,14 @@ test("stands beside Back the way the Task list header spaces its own buttons", {
   await expect(page.locator("caffold-task-detail")).toBeVisible();
   await expect(routeSwitcherOpener(page)).toBeVisible();
   const layout = await page.locator("caffold-task-workspace").evaluate(
-    (workspace) => {
-      const back = workspace
+    (workspace, titleElement) => {
+      const back = workspace.shadowRoot
         .querySelector(".task-workspace-back")
         .getBoundingClientRect();
-      const switcher = workspace
+      const switcher = workspace.shadowRoot
         .querySelector(".task-workspace-switcher")
         .getBoundingClientRect();
-      const title = workspace
-        .querySelector("caffold-task-detail-summary h2")
-        .getBoundingClientRect();
+      const title = titleElement.getBoundingClientRect();
       const center = (box) => box.top + box.height / 2;
       return {
         gap: switcher.left - back.right,
@@ -513,6 +508,7 @@ test("stands beside Back the way the Task list header spaces its own buttons", {
         titleClearance: title.left - switcher.right,
       };
     },
+    await page.locator("caffold-task-detail-summary h2").elementHandle(),
   );
 
   expect(layout.gap).toBeCloseTo(headerGap, 1);
@@ -777,7 +773,7 @@ function manySwitcherTasks(count) {
 function switcherHud(page) {
   return page.locator(
     "caffold-task-switcher-dialog > dialog > " +
-      "caffold-keyboard-navigation-presentation caffold-scroll-mode-hud",
+      "caffold-keyboard-navigation-presentation caffold-scroll-mode-hud .scroll-mode-status",
   );
 }
 

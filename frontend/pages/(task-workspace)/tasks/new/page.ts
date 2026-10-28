@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import { mergeActionHintScopes } from "#app/action-hints.js";
 import {
@@ -9,11 +9,14 @@ import {
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import type { TaskStoreStatusSnapshot } from "../../task-store-status.js";
 import "../components/task-create.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { ParsedRoute } from "#app/navigation-routes.js";
 import type { TaskCreateIntentDetail } from "../../task-create-intent-event.js";
 import type { ServerPaths } from "../components/task-create/directory-path.js";
 import type { CaffoldTaskCreate } from "../components/task-create.js";
 import { cleanLogicalPath } from "../task-format.js";
+
+import styles from "./page.css.js";
 
 export interface TaskNewRouteIntentDetail {
   route: ParsedRoute;
@@ -35,7 +38,9 @@ const MOVE_CHANGES_NOTE =
  * chosen here becomes the screen's route.
  */
 @customElement("caffold-task-new")
-export class CaffoldTaskNew extends LitElement {
+export class CaffoldTaskNew extends CaffoldElement {
+  static override styles = styles;
+
   private cwd = ".";
   private server: ServerPaths = {};
   private transportAvailable = true;
@@ -43,10 +48,6 @@ export class CaffoldTaskNew extends LitElement {
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly workspace = new DrawnRef<HTMLElement>(this);
   private readonly create = new DrawnRef<CaffoldTaskCreate>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override disconnectedCallback() {
     super.disconnectedCallback();

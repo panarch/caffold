@@ -153,9 +153,8 @@ test("uses one SSE snapshot for initial detail, reconnect, and cursor history", 
   await activeDetailSource(page, threadId);
   await expect.poll(() => initialDetailReads).toBe(0);
 
-  const bootstrapAppliedOnce = await page.evaluate(({ threadId: id, detail }) => {
+  const bootstrapAppliedOnce = await tasksPage.locator("caffold-task-detail").evaluate((taskDetail, { threadId: id, detail }) => {
     const source = window.__caffoldTaskSse.source(id);
-    const taskDetail = document.querySelector("caffold-tasks-page caffold-task-detail");
     const message = {
       threadId: id,
       revision: detail.revision,
@@ -507,8 +506,8 @@ test("rejects a late REST fallback after the session switches Tasks", { tag: "@a
   await page.goto(`/tasks/${taskA.threadId}?cwd=src`);
   await taskAStarted;
   const tasksPage = page.locator("caffold-tasks-page");
-  await tasksPage.evaluate(async (element, threadId) => {
-    await element.querySelector("caffold-task-detail").open(threadId);
+  await tasksPage.locator("caffold-task-detail").evaluate(async (detail, threadId) => {
+    await detail.open(threadId);
   }, taskB.threadId);
   await expect(tasksPage).toContainText("Current Task B fallback remains visible.");
 

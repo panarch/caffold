@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -13,7 +13,6 @@ import {
   sendForegroundRecoveryDiagnostics,
 } from "#app/api.js";
 import { BUILD_INFO } from "#app/build-info.js";
-import { busySpin } from "#app/component-styles.js";
 import {
   KeyboardContexts,
   KeyboardNavigationController,
@@ -30,6 +29,7 @@ import {
 } from "#app/navigation-routes.js";
 import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "#app/origin-reachability.js";
 import { getSettings } from "#app/settings.js";
+import { containsAcrossShadowRoots } from "#app/shadow-roots.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "./(task-workspace)/layout.js";
@@ -49,6 +49,8 @@ import {
   type CaffoldUpdateDialog,
 } from "./components/update-dialog.js";
 import "./components/update-result-dialog.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import type { CaffoldUpdateResultDialog } from "./components/update-result-dialog.js";
 import {
   FOREGROUND_RECOVERY_PRESENTATION,
@@ -62,6 +64,9 @@ import {
   NavigationHistory,
 } from "./navigation-history.js";
 import { PwaUpdateLifecycle } from "./pwa-update-lifecycle.js";
+
+import busySpin from "#app/pages/component-styles/busy-spin.css.js";
+import styles from "./layout.css.js";
 
 export interface RequestTasksRouteDetail {
   route: ParsedRoute;
@@ -100,11 +105,6 @@ interface PwaUpdateStatus {
 /** Which failed update this browser has told, so it tells each one once. */
 const SEEN_UPDATE_RESULT_KEY = "caffold:update-result-seen";
 
-await busySpin.register(
-  "caffold-app-shell",
-  "> .app-foreground-recovery > .app-foreground-recovery-spinner",
-);
-
 /**
  * The application: the workspace, the bootstrap failure that stands in for
  * it, the foreground recovery notice, the Caffold update and build mismatch
@@ -112,7 +112,15 @@ await busySpin.register(
  * history and routes every navigation into the workspace.
  */
 @customElement("caffold-app-shell")
-export class CaffoldAppShell extends LitElement {
+export class CaffoldAppShell extends CaffoldElement {
+  static override styles = [
+    scopedStyle(
+      busySpin,
+      ".app-foreground-recovery > .app-foreground-recovery-spinner",
+    ),
+    styles,
+  ];
+
   pwaUpdateLifecycle!: PwaUpdateLifecycle;
   foregroundRecoveryLifecycle!: ForegroundRecoveryLifecycle;
   foregroundRecoverySnapshot: ForegroundRecoverySnapshot | null = null;
@@ -156,10 +164,6 @@ export class CaffoldAppShell extends LitElement {
   private readonly originReachable = () => {
     void this.foregroundRecoveryLifecycle.reportOriginReachable();
   };
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -362,7 +366,7 @@ export class CaffoldAppShell extends LitElement {
         scroll: () => this.taskWorkspace.scrollSurfaceScope(),
         editing: {
           escapeTarget: (editable: Element | null) =>
-            this.taskWorkspace.contains(editable)
+            containsAcrossShadowRoots(this.taskWorkspace, editable)
               ? this.taskWorkspace.actionHintEditingEscapeTarget(editable)
               : null,
         },

@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -11,7 +11,10 @@ import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/markdown-preview.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { CaffoldMarkdownPreview } from "#components/markdown-preview.js";
+
+import styles from "./markdown-preview-dialog.css.js";
 
 // What a Markdown preview opens with: the Markdown, and the control focus
 // returns to when the preview closes.
@@ -25,9 +28,11 @@ export interface MarkdownPreviewRequest {
  * one Task and closes when another Task opens.
  */
 @customElement("caffold-task-markdown-preview-dialog")
-export class CaffoldTaskMarkdownPreviewDialog extends LitElement {
+export class CaffoldTaskMarkdownPreviewDialog extends CaffoldElement {
   @state()
   private accessor threadId = "";
+
+  static override styles = styles;
 
   private opener: HTMLElement | null = null;
   private readonly iconsReady = () => this.requestUpdate();
@@ -35,10 +40,6 @@ export class CaffoldTaskMarkdownPreviewDialog extends LitElement {
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
   private readonly preview = new DrawnRef<CaffoldMarkdownPreview>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

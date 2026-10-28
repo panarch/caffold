@@ -1,67 +1,67 @@
-caffold-settings-navigator-item {
+:host {
   display: grid;
+}
 
-  & > button {
-    display: grid;
-    grid-template-columns: var(--interface-icon-size) minmax(0, 1fr);
-    align-items: center;
-    gap: var(--interface-space-5);
-    min-height: var(--interface-row-size);
-    border: 0;
-    background: transparent;
-    color: var(--text);
-    padding: var(--interface-space-3) var(--interface-space-7);
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-  }
+button {
+  display: grid;
+  grid-template-columns: var(--interface-icon-size) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--interface-space-5);
+  min-height: var(--interface-row-size);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: var(--interface-space-3) var(--interface-space-7);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
 
-  & > button:hover,
-  & > button:focus-visible {
-    background: var(--row-hover-bg);
-    outline: none;
-  }
+button:hover,
+button:focus-visible {
+  background: var(--row-hover-bg);
+  outline: none;
+}
 
-  & > button[aria-current] {
-    background: var(--selection-bg);
-  }
+button[aria-current] {
+  background: var(--selection-bg);
+}
 
-  & .settings-navigator-item-icon-slot {
-    position: relative;
-  }
+.settings-navigator-item-icon-slot {
+  position: relative;
+}
 
-  /* A newer Caffold: the same dot as the workspace navigation's Settings
-     button, drawn by the icon slot because the slot is re-rendered. */
-  & > button[data-update-available] .settings-navigator-item-icon-slot::after {
-    position: absolute;
-    top: 0;
-    right: 0;
-    width: var(--interface-space-3);
-    height: var(--interface-space-3);
-    border-radius: 50%;
-    background: var(--success);
-    box-shadow: 0 0 0 1.5px var(--surface);
-    content: "";
-    transform: translateY(-40%);
-  }
+/* A newer Caffold: the same dot as the workspace navigation's Settings
+   button, drawn by the icon slot because the slot is re-rendered. */
+button[data-update-available] .settings-navigator-item-icon-slot::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--interface-space-3);
+  height: var(--interface-space-3);
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 1.5px var(--surface);
+  content: "";
+  transform: translateY(-40%);
+}
 
-  & .settings-navigator-item-icon-slot,
-  & .settings-navigator-item-icon,
-  & .settings-navigator-item-brand {
-    display: block;
-    width: var(--interface-icon-size);
-    height: var(--interface-icon-size);
-  }
+.settings-navigator-item-icon-slot,
+.settings-navigator-item-icon,
+.settings-navigator-item-brand {
+  display: block;
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
+}
 
-  & .settings-navigator-item-brand {
-    filter: var(--brand-monochrome-filter);
-    object-fit: contain;
-  }
+.settings-navigator-item-brand {
+  filter: var(--brand-monochrome-filter);
+  object-fit: contain;
+}
 
-  & .settings-navigator-item-label {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+.settings-navigator-item-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

@@ -1,17 +1,19 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
-import { compactIconButton } from "#app/component-styles.js";
-import {
-  KEYBOARD_SESSION_DISMISS_EVENT,
-  KeyboardContexts,
-} from "#app/keyboard-navigation.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { returnPopoverFocus } from "#app/popover-focus.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
+
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import styles from "./github-menu.css.js";
 
 // What the menu asks the Detail layout to open.
 export interface GitHubMenuIntent {
@@ -21,36 +23,25 @@ export interface GitHubMenuIntent {
 
 let taskDetailGithubInstanceId = 0;
 
-await compactIconButton.register(
-  "caffold-task-detail-github",
-  "> .task-github-button",
-);
-
 /**
  * The Detail header's GitHub button, and the popover of GitHub work it
  * opens: Pull Requests and Issues.
  */
 @customElement("caffold-task-detail-github")
-export class CaffoldTaskDetailGithub extends LitElement {
+export class CaffoldTaskDetailGithub extends CaffoldElement {
   @state()
   private accessor available = false;
+
+  static override styles = [
+    scopedStyle(compactIconButton, ".task-github-button"),
+    styles,
+  ];
 
   private readonly popoverId =
     `task-github-actions-${++taskDetailGithubInstanceId}`;
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly githubPopover = new DrawnRef<HTMLDivElement>(this);
-
-  constructor() {
-    super();
-    this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) =>
-      this.handleDismiss(event),
-    );
-  }
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
@@ -118,6 +109,8 @@ export class CaffoldTaskDetailGithub extends LitElement {
         id=${this.popoverId}
         class="task-github-popover"
         popover="auto"
+        @beforetoggle=${returnPopoverFocus}
+        @caffold:keyboard-session-dismiss=${this.handleDismiss}
         role="group"
         aria-label="GitHub workspace actions"
       >

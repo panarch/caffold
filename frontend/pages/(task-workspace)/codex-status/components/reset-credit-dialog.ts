@@ -1,9 +1,12 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
+
+import styles from "./reset-credit-dialog.css.js";
 
 export interface CodexResetCreditConfirmedDetail {
   creditId: string | null;
@@ -20,17 +23,15 @@ type ResetCreditRequest = {
 };
 
 @customElement("caffold-codex-reset-credit-dialog")
-export class CaffoldCodexResetCreditDialog extends LitElement {
+export class CaffoldCodexResetCreditDialog extends CaffoldElement {
   @state()
   private accessor request: ResetCreditRequest = {};
+
+  static override styles = styles;
 
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     const { creditId, title, expiry, retry = false } = this.request;

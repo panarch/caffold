@@ -1,4 +1,4 @@
-import { html, LitElement, type PropertyValues } from "lit";
+import { html, type PropertyValues } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
 import {
@@ -7,7 +7,10 @@ import {
   ActionHints,
 } from "#app/action-hints.js";
 import type { TaskEventPayload } from "#app/api.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
+
+import styles from "./suggested-prompts.css.js";
 
 export interface SuggestedPromptIntentDetail {
   threadId: string;
@@ -28,7 +31,7 @@ interface SuggestedPrompt {
  * Composer they would go to is out of reach.
  */
 @customElement("caffold-task-assistant-message-suggested-prompts")
-export class CaffoldTaskAssistantMessageSuggestedPrompts extends LitElement {
+export class CaffoldTaskAssistantMessageSuggestedPrompts extends CaffoldElement {
   @property({ attribute: false })
   accessor threadId = "";
   @property({ attribute: false })
@@ -36,15 +39,13 @@ export class CaffoldTaskAssistantMessageSuggestedPrompts extends LitElement {
   @property({ attribute: false })
   accessor disabled = false;
 
+  static override styles = styles;
+
   private offered: SuggestedPrompt[] = [];
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

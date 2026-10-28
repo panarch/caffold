@@ -1,4 +1,4 @@
-import { html, LitElement, type PropertyValues } from "lit";
+import { html, type PropertyValues } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -6,6 +6,7 @@ import {
   ActionHints,
 } from "#app/action-hints.js";
 import type { TaskEvent } from "#app/api.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
@@ -13,6 +14,8 @@ import {
   type CommandPresentation,
   commandPresentation,
 } from "./command/model.js";
+
+import styles from "./command.css.js";
 
 const CHEVRON = "task-command-disclosure-chevron-icon";
 
@@ -31,9 +34,11 @@ export interface CommandDisclosureIntentDetail {
 // Inside a group of commands the group draws the frame, and the row keeps
 // everything else.
 @customElement("caffold-task-command")
-export class CaffoldTaskCommand extends LitElement {
+export class CaffoldTaskCommand extends CaffoldElement {
   @property({ attribute: false })
   accessor event: TaskEvent | null = null;
+
+  static override styles = styles;
 
   private presentation: CommandPresentation = commandPresentation(null);
   // Whether the person left the running command's output open. The summary
@@ -47,10 +52,6 @@ export class CaffoldTaskCommand extends LitElement {
   private readonly details = new DrawnRef<HTMLDetailsElement>(this);
   private readonly summary = new DrawnRef<HTMLElement>(this);
   private readonly chevron = new DrawnRef<HTMLElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

@@ -1,18 +1,19 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { TaskFilePath } from "#tasks/task-format.js";
+
+import styles from "./changed-files.css.js";
 
 // The files a change touched, one row each, kept by identity as the list
 // grows.
 @customElement("caffold-task-changed-files")
-export class CaffoldTaskChangedFiles extends LitElement {
+export class CaffoldTaskChangedFiles extends CaffoldElement {
   @property({ attribute: false, hasChanged: changedFileList })
   accessor files: TaskFilePath[] = [];
 
-  override createRenderRoot() {
-    return this;
-  }
+  static override styles = styles;
 
   override render() {
     return html`<ul aria-label="Changed files">${repeat(

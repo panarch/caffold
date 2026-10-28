@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -8,6 +8,7 @@ import {
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#app/keyboard-navigation/components/shortcut-list.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { SettingsChangeDetail } from "#app/settings.js";
 import {
   getSettings,
@@ -15,10 +16,14 @@ import {
   setActionHintsEnabled,
 } from "#app/settings.js";
 
+import styles from "./page.css.js";
+
 @customElement("caffold-settings-keyboard-page")
-export class CaffoldSettingsKeyboardPage extends LitElement {
+export class CaffoldSettingsKeyboardPage extends CaffoldElement {
   @state()
   private accessor settings: Settings = getSettings();
+
+  static override styles = styles;
 
   private readonly settingsChanged = (
     event: CustomEvent<SettingsChangeDetail>,
@@ -31,10 +36,6 @@ export class CaffoldSettingsKeyboardPage extends LitElement {
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly toggleLabel = new DrawnRef<HTMLLabelElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

@@ -1,10 +1,11 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
 } from "../action-hints.js";
+import { CaffoldElement } from "../caffold-element.js";
 import { warmIcons } from "./icons.js";
 import "./pagination/components/button.js";
 import { DrawnRefs, drawn } from "./drawn-refs.js";
@@ -13,10 +14,12 @@ import type {
   PageKind,
 } from "./pagination/components/button.js";
 
+import styles from "./pagination.css.js";
+
 const PAGE_KINDS: readonly PageKind[] = ["first", "previous", "next", "last"];
 
 @customElement("caffold-pagination")
-export class CaffoldPagination extends LitElement {
+export class CaffoldPagination extends CaffoldElement {
   @property({ type: Number })
   accessor page = 1;
   @property({ type: Number, attribute: "total-pages" })
@@ -34,13 +37,11 @@ export class CaffoldPagination extends LitElement {
   @property({ attribute: "last-label" })
   accessor lastLabel: string | null | undefined;
 
+  static override styles = styles;
+
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
   private readonly pageButtons = new DrawnRefs<CaffoldPaginationButton>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

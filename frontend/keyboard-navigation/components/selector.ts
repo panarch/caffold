@@ -1,8 +1,11 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { clampBadgePosition, type Rect } from "../../action-hints.js";
+import { CaffoldElement } from "../../caffold-element.js";
 import { DrawnRef, DrawnRefs, drawn } from "../../components/drawn-refs.js";
+
+import styles from "./selector.css.js";
 
 export interface ScrollSurfaceSelectDetail {
   code: string | undefined;
@@ -33,7 +36,9 @@ interface SelectorInput {
  * one: each surface outlined, with the code that chooses it.
  */
 @customElement("caffold-scroll-surface-selector")
-export class CaffoldScrollSurfaceSelector extends LitElement {
+export class CaffoldScrollSurfaceSelector extends CaffoldElement {
+  static override styles = styles;
+
   private surfaces: SelectableScrollSurface[] = [];
   private labels = new Map<string, string>();
   private viewportRect: Rect | null = null;
@@ -61,10 +66,6 @@ export class CaffoldScrollSurfaceSelector extends LitElement {
     },
     passive: false,
   };
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
@@ -160,10 +161,12 @@ export class CaffoldScrollSurfaceSelector extends LitElement {
   }
 
   allowsNativeActivation(event: KeyboardEvent) {
+    // A listener outside this root sees the host as the target.
+    const [target] = event.composedPath();
     return Boolean(
       (event.key === "Enter" || event.key === " ") &&
-        event.target instanceof HTMLButtonElement &&
-        this.dialog.value?.contains(event.target),
+        target instanceof HTMLButtonElement &&
+        this.dialog.value?.contains(target),
     );
   }
 
@@ -196,6 +199,7 @@ export class CaffoldScrollSurfaceSelector extends LitElement {
           SCROLL_SURFACE_SELECT_EVENT,
           {
             bubbles: true,
+            composed: true,
             detail: { code: badge.dataset.scrollSurfaceCode },
           },
         ),
@@ -216,6 +220,7 @@ export class CaffoldScrollSurfaceSelector extends LitElement {
     this.dispatchEvent(
       new CustomEvent<ScrollSurfaceCancelDetail>(SCROLL_SURFACE_CANCEL_EVENT, {
         bubbles: true,
+        composed: true,
         detail: { reason, originalEvent },
       }),
     );

@@ -156,49 +156,28 @@ test("keeps the stable Task shell while the Task list loads", { tag: "@all-viewp
 });
 
 test("waits for explicit route activation when readiness settles first", { tag: "@all-viewports" }, async ({ page }) => {
-  const stylesRequested = Promise.withResolvers();
-  const releaseStyles = Promise.withResolvers();
-  await page.route("**/assets/component-styles/compact-icon-button.css", async (route) => {
-    stylesRequested.resolve();
-    await releaseStyles.promise;
-    await route.continue();
-  });
-  let routeOpens;
-  try {
-    await page.goto("/");
-    await stylesRequested.promise;
-    [routeOpens] = await Promise.all([
-      page.evaluate(async (status) => {
-        const Workspace = await customElements.whenDefined("caffold-task-workspace");
-        // The shell defines itself after its own shared styles, and only a
-        // booted shell keeps this second workspace's route work in the page.
-        await customElements.whenDefined("caffold-app-shell");
-        const workspace = new Workspace();
-        workspace.codexRuntimeRestartDialog.close = () => {};
-        workspace.prepareRoute = () => {};
-        let opens = 0;
-        workspace.tasksPage.openRoute = async () => {
-          opens += 1;
-          return null;
-        };
+  await page.goto("/");
 
-        workspace.setCodexStatusSnapshot({
-          phase: "loaded",
-          status,
-          error: "",
-        });
-        const beforeActivation = opens;
-        await workspace.openRoute({ kind: "tasks" });
-        return { beforeActivation, afterActivation: opens };
-      }, mockCodexStatus()),
-      (async () => {
-        expect(await page.evaluate(() => Boolean(customElements.get("caffold-task-workspace")))).toBe(false);
-        releaseStyles.resolve();
-      })(),
-    ]);
-  } finally {
-    releaseStyles.resolve();
-  }
+  const routeOpens = await page.evaluate(async (status) => {
+    const Workspace = customElements.get("caffold-task-workspace");
+    const workspace = new Workspace();
+    workspace.codexRuntimeRestartDialog.close = () => {};
+    workspace.prepareRoute = () => {};
+    let opens = 0;
+    workspace.tasksPage.openRoute = async () => {
+      opens += 1;
+      return null;
+    };
+
+    workspace.setCodexStatusSnapshot({
+      phase: "loaded",
+      status,
+      error: "",
+    });
+    const beforeActivation = opens;
+    await workspace.openRoute({ kind: "tasks" });
+    return { beforeActivation, afterActivation: opens };
+  }, mockCodexStatus());
 
   expect(routeOpens).toEqual({
     beforeActivation: 0,
@@ -270,28 +249,26 @@ test("keeps the Task-store takeover on New Task below the compact Back", { tag: 
     page.locator('.task-store-recovery-card[data-task-store-state="failed"]'),
   ).toBeVisible();
   await expect(page.locator("caffold-task-workspace .task-workspace-back")).toBeVisible();
-  const layout = await page.evaluate(() => {
-    const workspace = document.querySelector("caffold-task-workspace");
+  const layout = await page.locator("caffold-task-workspace").evaluate((workspace, [paneElement, takeoverElement]) => {
     const probe = document.createElement("div");
     probe.style.position = "absolute";
     probe.style.height = "var(--task-workspace-header-size)";
-    workspace.append(probe);
+    workspace.shadowRoot.append(probe);
     const headerSize = probe.getBoundingClientRect().height;
     probe.remove();
-    const pane = document
-      .querySelector("caffold-tasks-page .tasks-detail-pane")
-      .getBoundingClientRect();
-    const takeover = document
-      .querySelector("caffold-task-store-recovery")
-      .getBoundingClientRect();
-    const back = workspace.querySelector(".task-workspace-back").getBoundingClientRect();
+    const pane = paneElement.getBoundingClientRect();
+    const takeover = takeoverElement.getBoundingClientRect();
+    const back = workspace.shadowRoot.querySelector(".task-workspace-back").getBoundingClientRect();
     return {
       headerSize,
       band: takeover.top - pane.top,
       takeoverTop: takeover.top,
       backBottom: back.bottom,
     };
-  });
+  }, [
+    await page.locator("caffold-tasks-page .tasks-detail-pane").elementHandle(),
+    await page.locator("caffold-task-store-recovery").elementHandle(),
+  ]);
   expect(Math.abs(layout.band - layout.headerSize)).toBeLessThanOrEqual(0.5);
   expect(layout.takeoverTop).toBeGreaterThanOrEqual(layout.backBottom);
 });
@@ -361,8 +338,8 @@ test("a blocking transition releases the Task list and disables existing actions
     )
     .toBe(true);
 
-  await page.evaluate((status) => {
-    document.querySelector("caffold-task-workspace").setCodexStatusSnapshot({
+  await page.locator("caffold-task-workspace").evaluate((workspace, status) => {
+    workspace.setCodexStatusSnapshot({
       phase: "loaded",
       status,
       error: "",
@@ -421,8 +398,8 @@ test("a Task-store takeover hands the open Task back when it clears", { tag: "@a
   const composer = page.locator(".task-follow-up-form textarea");
   await expect(composer).toBeVisible();
 
-  const setTaskStore = (readiness) => page.evaluate((value) => {
-    document.querySelector("caffold-task-workspace").setTaskStoreStatusSnapshot({
+  const setTaskStore = (readiness) => page.locator("caffold-task-workspace").evaluate((workspace, value) => {
+    workspace.setTaskStoreStatusSnapshot({
       readiness: value,
       retryAvailable: value.state === "failed",
     });
@@ -566,9 +543,8 @@ test("a blocked Codex found by Codex Settings marks no navigation", { tag: "@vie
   );
 
   await page.goto("/settings/codex");
-  await expect.poll(() => page.evaluate(() =>
-    document.querySelector("caffold-task-workspace")
-      ?.codexStatusSnapshotValue?.status?.readiness?.state ?? null,
+  await expect.poll(() => page.locator("caffold-task-workspace").evaluate((workspace) =>
+    workspace.codexStatusSnapshotValue?.status?.readiness?.state ?? null,
   )).toBe("signInRequired");
 
   const sections = page.locator("caffold-settings-navigator");

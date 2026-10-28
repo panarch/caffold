@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -31,15 +31,20 @@ import "#components/pane-resizer.js";
 import type { CaffoldPaneResizer } from "#components/pane-resizer.js";
 import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "#components/review-responsive.js";
 import "./components/tree.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { PaneResizeDetail } from "#components/pane-resizer.js";
 import type { CaffoldGithubPullFilesTree } from "./components/tree.js";
+
+import styles from "./page.css.js";
 
 const LOADING_DELAY_MS = 180;
 
 type DetailView = "list" | "viewer";
 
 @customElement("caffold-github-pull-files-page")
-export class CaffoldGithubPullFilesPage extends LitElement {
+export class CaffoldGithubPullFilesPage extends CaffoldElement {
+  static override styles = styles;
+
   // What the Pull Requests layout reads back.
   detailView: DetailView = "list";
   private currentPath = "";
@@ -53,10 +58,6 @@ export class CaffoldGithubPullFilesPage extends LitElement {
   private readonly filesList = new DrawnRef<CaffoldGithubPullFilesTree>(this);
   private readonly paneResizer = new DrawnRef<CaffoldPaneResizer>(this);
   private readonly viewer = new DrawnRef<CaffoldReviewFileViewer>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     return html`
@@ -480,7 +481,10 @@ export class CaffoldGithubPullFilesPage extends LitElement {
   private applySidePane() {
     this.toggleAttribute("data-side-pane-collapsed", this.sidePaneCollapsed());
     this.dispatchEvent(
-      new CustomEvent("caffold:side-pane-change", { bubbles: true }),
+      new CustomEvent("caffold:side-pane-change", {
+        bubbles: true,
+        composed: true,
+      }),
     );
   }
 

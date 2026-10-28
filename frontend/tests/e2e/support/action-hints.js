@@ -68,17 +68,22 @@ export function workspaceTargets(page, prefix) {
 
 // Independently classify the owner-declared controls from their actual painted
 // rectangles, so browser expectations do not call the production visibility model.
-export async function workspaceOcclusionTargets(page, ownerSelector) {
-  return page.evaluate((selector) => {
-    const owner = document.querySelector(selector);
-    const panel = document.querySelector("caffold-task-workspace-navigation").getBoundingClientRect();
+export async function workspaceOcclusionTargets(owner) {
+  const navigation = await owner.page().locator("caffold-task-workspace-navigation").elementHandle();
+  return owner.evaluate((owner, navigation) => {
+    const panel = navigation.getBoundingClientRect();
     const viewport = window.visualViewport;
     const bounds = { left: viewport?.offsetLeft ?? 0, top: viewport?.offsetTop ?? 0,
       right: (viewport?.offsetLeft ?? 0) + (viewport?.width ?? innerWidth),
       bottom: (viewport?.offsetTop ?? 0) + (viewport?.height ?? innerHeight) };
+    // A target may sit inside the shadow roots of the owner's components.
+    const inside = (node) => {
+      while (node && node !== owner) node = node.parentNode ?? node.host;
+      return node === owner;
+    };
     const result = { covered: [], clear: [] };
     for (const target of document.querySelector("caffold-app-shell").actionHintScope().targets) {
-      if (!owner.contains(target.anchor)) continue;
+      if (!inside(target.anchor)) continue;
       const anchor = target.anchor.getBoundingClientRect();
       const clips = [bounds, anchor, ...target.clipRoots.map((root) => root.getBoundingClientRect())];
       const left = Math.max(...clips.map((rect) => rect.left));
@@ -92,7 +97,7 @@ export async function workspaceOcclusionTargets(page, ownerSelector) {
       result[covered ? "covered" : "clear"].push(target.label);
     }
     return result;
-  }, ownerSelector);
+  }, navigation);
 }
 
 export async function activateActionHint(page, accessibleName) {

@@ -415,7 +415,7 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
       probe.remove();
       return {
         expected,
-        items: [...menu.querySelectorAll(".task-github-popover button")].map(
+        items: [...menu.shadowRoot.querySelectorAll(".task-github-popover button")].map(
           (button) => ({
             fontSize: getComputedStyle(button).fontSize,
             height: button.getBoundingClientRect().height,

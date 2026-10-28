@@ -132,15 +132,19 @@ test("preserves active-turn and spinner identity until the turn changes", { tag:
 
   expect(
     await page.evaluate(
-      ({ threadId, detail }) => {
-        const element = document.querySelector(".task-turn-active");
+      ({ threadId, detail, element }) => {
         const observer = new MutationObserver(() => {});
-        observer.observe(element, {
+        const options = {
           attributes: true,
           characterData: true,
           childList: true,
           subtree: true,
-        });
+        };
+        observer.observe(element, options);
+        observer.observe(
+          element.querySelector("caffold-task-active-turn").shadowRoot,
+          options,
+        );
         const source = window.__activeTurnEventSources.find((candidate) =>
           candidate.url.includes(`/api/tasks/${threadId}/stream`),
         );
@@ -161,6 +165,7 @@ test("preserves active-turn and spinner identity until the turn changes", { tag:
       {
         threadId,
         detail: taskDetail(initialTask, [started], 2),
+        element: await activeTurn.elementHandle(),
       },
     ),
   ).toBe(0);
@@ -298,7 +303,9 @@ test("preserves active-turn and spinner identity until the turn changes", { tag:
     await secondActiveTurn.evaluate(
       (element) =>
         element !== window.__activeTurnIdentity.element &&
-        element.querySelector(".task-active-turn-spinner") !==
+        element
+          .querySelector("caffold-task-active-turn")
+          .shadowRoot.querySelector(".task-active-turn-spinner") !==
           window.__activeTurnIdentity.spinner,
     ),
   ).toBe(true);
@@ -422,7 +429,9 @@ test("does not reuse active-turn state between tasks with the same turn id", { t
     await secondActiveTurn.evaluate(
       (element) =>
         element !== window.__activeTurnIdentity.element &&
-        element.querySelector(".task-active-turn-spinner") !==
+        element
+          .querySelector("caffold-task-active-turn")
+          .shadowRoot.querySelector(".task-active-turn-spinner") !==
           window.__activeTurnIdentity.spinner,
     ),
   ).toBe(true);
@@ -492,17 +501,21 @@ async function routeTaskList(page, tasks) {
 
 async function rememberActiveTurnIdentity(page) {
   await page.locator(".task-turn-active").evaluate((element) => {
+    const turn = element.querySelector("caffold-task-active-turn").shadowRoot;
     window.__activeTurnIdentity = {
       element,
-      spinner: element.querySelector(".task-active-turn-spinner"),
-      state: element.querySelector(".task-turn-active-state"),
+      spinner: turn.querySelector(".task-active-turn-spinner"),
+      state: turn.querySelector(".task-turn-active-state"),
     };
   });
 }
 
 async function expectActiveTurnIdentity(page, connected) {
+  const current = connected
+    ? await page.locator(".task-turn-active").first().elementHandle()
+    : null;
   expect(
-    await page.evaluate(({ connected }) => {
+    await page.evaluate(({ connected, current }) => {
       const identity = window.__activeTurnIdentity;
       if (!identity) {
         return false;
@@ -510,13 +523,13 @@ async function expectActiveTurnIdentity(page, connected) {
       if (!connected) {
         return !identity.element.isConnected && !identity.spinner.isConnected;
       }
-      const current = document.querySelector(".task-turn-active");
+      const turn = current.querySelector("caffold-task-active-turn").shadowRoot;
       return (
         current === identity.element &&
-        current?.querySelector(".task-active-turn-spinner") === identity.spinner &&
-        current?.querySelector(".task-turn-active-state") === identity.state
+        turn.querySelector(".task-active-turn-spinner") === identity.spinner &&
+        turn.querySelector(".task-turn-active-state") === identity.state
       );
-    }, { connected }),
+    }, { connected, current }),
   ).toBe(true);
 }
 

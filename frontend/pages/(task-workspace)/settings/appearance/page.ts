@@ -1,10 +1,11 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import type { SettingsChangeDetail } from "#app/settings.js";
 import {
@@ -27,6 +28,8 @@ import {
 } from "#app/settings.js";
 import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
+
+import styles from "./page.css.js";
 
 type TypefaceSetting = "uiTypefacePreset" | "codeTypefacePreset";
 
@@ -70,9 +73,11 @@ const RANGES = Object.keys(APPEARANCE_RANGE_SETTINGS) as AppearanceRangeName[];
 // The controls stay in place while settings change, so a range being dragged
 // keeps its element and focus while its value and preview follow it.
 @customElement("caffold-settings-appearance-page")
-export class CaffoldSettingsAppearancePage extends LitElement {
+export class CaffoldSettingsAppearancePage extends CaffoldElement {
   @state()
   private accessor settings: Settings = getSettings();
+
+  static override styles = styles;
 
   private readonly settingsChanged = (
     event: CustomEvent<SettingsChangeDetail>,
@@ -87,10 +92,6 @@ export class CaffoldSettingsAppearancePage extends LitElement {
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly themeLabels = new DrawnRefs<HTMLLabelElement>(this);
   private readonly typefaceSelects = new DrawnRefs<HTMLSelectElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

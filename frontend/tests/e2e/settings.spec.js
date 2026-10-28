@@ -34,19 +34,7 @@ test("excludes covered Settings items and preserves navigation Hint activation",
   );
   await page.setViewportSize({ width: testInfo.project.name === "phone" ? 390 : 933, height: 320 });
 
-  // Page load can precede the module's awaited component CSS registration.
-  // Release that response after load to exercise delayed initial rendering.
-  let releaseStyles;
-  const stylesReady = new Promise((resolve) => { releaseStyles = resolve; });
-  await page.route("**/assets/component-styles/compact-icon-button.css", async (route) => {
-    await stylesReady;
-    await route.continue();
-  });
-  try {
-    await page.goto("/settings");
-  } finally {
-    releaseStyles();
-  }
+  await page.goto("/settings");
 
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   await expect(page.locator('caffold-settings-navigator button[data-settings-section="appearance"]')).toBeVisible();
@@ -56,7 +44,7 @@ test("excludes covered Settings items and preserves navigation Hint activation",
     return snapshot?.lastTrigger === "bootstrap" ? snapshot.generation : 0;
   })).toBeGreaterThan(0);
 
-  const initial = await workspaceOcclusionTargets(page, "caffold-settings-navigator");
+  const initial = await workspaceOcclusionTargets(page.locator("caffold-settings-navigator"));
   expect(initial.clear.length).toBeGreaterThan(0);
   expect(initial.covered.length > 0).toBe(testInfo.project.name !== "phone");
   const dialog = await enterActionHints(page);
@@ -530,9 +518,11 @@ test("shows Codex versions and explicitly restarts an outdated runtime", { tag: 
     };
   });
   await expect(dialog).toBeVisible();
+  // The workspace draws the dialog at the top of its own root.
   expect(await dialogHostNode.evaluate((element) => (
     element.isConnected &&
-    element === document.querySelector("caffold-task-workspace > caffold-codex-runtime-restart-dialog")
+    element.parentNode === element.getRootNode() &&
+    element.getRootNode().host?.localName === "caffold-task-workspace"
   ))).toBe(true);
   expect(await scrollerNode.evaluate((element) => (
     element.isConnected && element.scrollTop
@@ -547,9 +537,11 @@ test("shows Codex versions and explicitly restarts an outdated runtime", { tag: 
   await settings.evaluate((element) => {
     element.snapshot = { ...element.snapshot };
   });
-  expect(await refreshNode.evaluate((element) => (
-    element.isConnected && document.activeElement === element
-  ))).toBe(true);
+  expect(await refreshNode.evaluate((element) => {
+    let focused = document.activeElement;
+    while (focused?.shadowRoot?.activeElement) focused = focused.shadowRoot.activeElement;
+    return element.isConnected && focused === element;
+  })).toBe(true);
 
   await settings.getByRole("button", { name: "Restart runtime…" }).click();
   await dialog.getByRole("button", { name: "Restart Codex" }).click();
@@ -1588,8 +1580,9 @@ test("rewrites only the Claude row whose value changed", { tag: "@viewport-indep
         window.claudeRunnerMutations[record.type] += 1;
       }
     });
+    // The runner's rows are drawn in its detail list's own shadow root.
     window.claudeRunnerObserver.observe(
-      element.querySelector("[data-claude-runner]"),
+      element.shadowRoot.querySelector("[data-claude-runner]").shadowRoot,
       { subtree: true, childList: true, attributes: true, characterData: true },
     );
   });
@@ -2272,7 +2265,7 @@ test("reflows Settings from the detail pane width at maximum Interface scale", {
     appearance.locator(".settings-range-control output").first(),
   ).toHaveCSS("font-size", settingsDetailFontSize);
   const appearanceMetrics = await settingsSurfaceMetrics(appearance, {
-    row: ".settings-interface-group .settings-field",
+    row: appearance.locator(".settings-interface-group .settings-field").first(),
     leading: ".settings-field-copy",
     trailing: ".settings-range-control",
     pageAction: ".settings-reset-all",
@@ -2284,7 +2277,7 @@ test("reflows Settings from the detail pane width at maximum Interface scale", {
   expectSettingsActionTiers(appearanceMetrics, true);
   const appearanceLayout = await appearance.evaluate((element) => {
     const rect = (selector) =>
-      element.querySelector(selector).getBoundingClientRect();
+      element.shadowRoot.querySelector(selector).getBoundingClientRect();
     const interfaceCopy = rect(
       ".settings-interface-group .settings-field-copy",
     );
@@ -2329,8 +2322,8 @@ test("reflows Settings from the detail pane width at maximum Interface scale", {
   await page.goto("/settings/files");
   const files = page.locator("caffold-settings-files-page");
   const filesMetrics = await files.evaluate((element) => {
-    const option = element.querySelector(".settings-files-options label");
-    const copy = element.querySelector(".settings-files-option-copy");
+    const option = element.shadowRoot.querySelector(".settings-files-options label");
+    const copy = element.shadowRoot.querySelector(".settings-files-option-copy");
     return {
       overflowX: element.scrollWidth > element.clientWidth,
       optionOverflowX: option.scrollWidth > option.clientWidth,
@@ -2352,8 +2345,8 @@ test("reflows Settings from the detail pane width at maximum Interface scale", {
   const voice = page.locator("caffold-settings-voice-page");
   await expect(voice.getByRole("radio", { name: /^Whisper/ })).toBeVisible();
   const voiceMetrics = await voice.evaluate((element) => {
-    const option = element.querySelector(".settings-voice-options label");
-    const copy = element.querySelector(".settings-voice-option-copy");
+    const option = element.shadowRoot.querySelector(".settings-voice-options label");
+    const copy = element.shadowRoot.querySelector(".settings-voice-option-copy");
     return {
       overflowX: element.scrollWidth > element.clientWidth,
       optionOverflowX: option.scrollWidth > option.clientWidth,
@@ -2374,7 +2367,7 @@ test("reflows Settings from the detail pane width at maximum Interface scale", {
   await page.goto("/settings/codex");
   const codex = page.locator("caffold-settings-codex-page");
   const codexMetrics = await settingsSurfaceMetrics(codex, {
-    row: "caffold-settings-detail-list > dl > div",
+    row: codex.locator("caffold-settings-detail-list").first().locator("dl > div").first(),
     leading: "dt",
     trailing: "dd",
     pageAction: ".settings-content-section > header > caffold-settings-refresh-button > button",
@@ -2399,7 +2392,7 @@ test("reflows Settings from the detail pane width at maximum Interface scale", {
   await page.goto("/settings/claude");
   const claude = page.locator("caffold-settings-claude-page");
   const claudeMetrics = await settingsSurfaceMetrics(claude, {
-    row: "[data-claude-agent] > dl > div",
+    row: claude.locator("[data-claude-agent]").locator("dl > div").first(),
     leading: "dt",
     trailing: "dd",
     pageAction: ".settings-content-section > header > caffold-settings-refresh-button > button",
@@ -2418,7 +2411,7 @@ test("reflows Settings from the detail pane width at maximum Interface scale", {
   await page.goto("/settings/about");
   const about = page.locator("caffold-settings-about-page");
   const aboutMetrics = await settingsSurfaceMetrics(about, {
-    row: "caffold-settings-detail-list > dl > div",
+    row: about.locator("caffold-settings-detail-list").first().locator("dl > div").first(),
     leading: "dt",
     trailing: "dd",
     pageAction: '[data-action="copy-diagnostics"]',
@@ -2738,6 +2731,7 @@ test("turns keyboard navigation off through its declared switch", { tag: "@all-v
     const dispatch = (key, code) => {
       const event = new KeyboardEvent("keydown", {
         bubbles: true,
+        composed: true,
         cancelable: true,
         code,
         key,
@@ -2818,9 +2812,9 @@ test("updates independent ranges live without replacing their DOM", { tag: "@all
       return value;
     };
     const height = (selector) =>
-      element.querySelector(selector).getBoundingClientRect().height;
+      element.shadowRoot.querySelector(selector).getBoundingClientRect().height;
     const visualHeight = (selector) => {
-      const control = element.querySelector(selector);
+      const control = element.shadowRoot.querySelector(selector);
       const box = control.getBoundingClientRect();
       const inset = Number.parseFloat(
         getComputedStyle(control, "::before").top,
@@ -2904,8 +2898,11 @@ test("updates independent ranges live without replacing their DOM", { tag: "@all
     const composer = document.createElement("caffold-task-composer");
     composer.setContext({ mode: "create", cwd: "." });
     document.body.append(composer);
-    const textarea = composer.querySelector("textarea");
-    const modelButton = composer.querySelector(".task-model-button");
+    // The Composer draws in its root, and its turn options in theirs.
+    const textarea = composer.shadowRoot.querySelector("textarea");
+    const modelButton = composer.shadowRoot
+      .querySelector("caffold-task-turn-options")
+      .shadowRoot.querySelector(".task-model-button");
 
     const result = {
       githubBody: getComputedStyle(githubBody).fontSize,
@@ -3240,19 +3237,16 @@ test("applies extreme values to the retained Review code viewer", { tag: "@all-v
     "text-size-adjust",
     "100%",
   );
-  const fileToolbarTiers = await page.evaluate(() => {
+  const fileToolbarTiers = await page.locator(
+    "caffold-review-file-viewer .viewer-info-button",
+  ).evaluate((info) => {
     const tokenProbe = document.createElement("div");
     tokenProbe.style.cssText =
       "position:fixed;height:var(--interface-compact-hit-size)";
     document.body.append(tokenProbe);
     const compact = tokenProbe.getBoundingClientRect().height;
     tokenProbe.remove();
-    const height = (selector) =>
-      document.querySelector(selector).getBoundingClientRect().height;
-    return {
-      compact,
-      info: height("caffold-review-file-viewer .viewer-info-button"),
-    };
+    return { compact, info: info.getBoundingClientRect().height };
   });
   expect(fileToolbarTiers.info).toBeCloseTo(fileToolbarTiers.compact, 1);
 
@@ -3348,11 +3342,12 @@ test("keeps mixed surfaces reflowed across appearance extremes", { tag: "@all-vi
     github.html = "<p>Long-form review <code>const value = 1;</code></p>";
     host.append(github);
     await github.updateComplete;
+    await approval.updateComplete;
 
-    const approvalText = approval.querySelector("p");
-    const approvalCode = approval.querySelector("pre");
-    const textarea = composer.querySelector("textarea");
-    const send = composer.querySelector(".task-primary-action-button");
+    const approvalText = approval.shadowRoot.querySelector("p");
+    const approvalCode = approval.shadowRoot.querySelector("pre");
+    const textarea = composer.shadowRoot.querySelector("textarea");
+    const send = composer.shadowRoot.querySelector(".task-primary-action-button");
     const githubText = github.shadowRoot.querySelector("p");
     const githubCode = github.shadowRoot.querySelector("code");
     const metric = (element) => {
@@ -3597,7 +3592,16 @@ async function installPushBrowserMock(
 }
 
 async function settingsSurfaceMetrics(surface, selectors) {
-  return surface.evaluate((element, requested) => {
+  const part = async (locator) => locator.first().elementHandle();
+  const row = selectors.row;
+  const parts = {
+    leading: await part(row.locator(selectors.leading)),
+    trailing: await part(row.locator(selectors.trailing)),
+    scroll: await part(surface.locator(".settings-scroll, .settings-content-scroll")),
+    pageAction: selectors.pageAction ? await part(surface.locator(selectors.pageAction)) : null,
+    contextAction: selectors.contextAction ? await part(surface.locator(selectors.contextAction)) : null,
+  };
+  return surface.evaluate((element, parts) => {
     const number = (value) => Number.parseFloat(value) || 0;
     const tokenHeight = (token) => {
       const probe = document.createElement("div");
@@ -3607,11 +3611,10 @@ async function settingsSurfaceMetrics(surface, selectors) {
       probe.remove();
       return height;
     };
-    const actionMetric = (selector) => {
-      if (!selector) {
+    const actionMetric = (action) => {
+      if (!action) {
         return null;
       }
-      const action = element.querySelector(selector);
       const box = action.getBoundingClientRect();
       const inset = number(getComputedStyle(action, "::before").top);
       return {
@@ -3619,12 +3622,9 @@ async function settingsSurfaceMetrics(surface, selectors) {
         visualHeight: box.height - inset * 2,
       };
     };
-    const row = element.querySelector(requested.row);
-    const leading = row.querySelector(requested.leading).getBoundingClientRect();
-    const trailing = row.querySelector(requested.trailing).getBoundingClientRect();
-    const scroll = element.querySelector(
-      ".settings-scroll, .settings-content-scroll",
-    );
+    const leading = parts.leading.getBoundingClientRect();
+    const trailing = parts.trailing.getBoundingClientRect();
+    const scroll = parts.scroll;
 
     return {
       overflowX:
@@ -3635,10 +3635,10 @@ async function settingsSurfaceMetrics(surface, selectors) {
       regularVisual: tokenHeight("--interface-control-visual-size"),
       compactHit: tokenHeight("--interface-compact-hit-size"),
       compactVisual: tokenHeight("--interface-compact-visual-size"),
-      pageAction: actionMetric(requested.pageAction),
-      contextAction: actionMetric(requested.contextAction),
+      pageAction: actionMetric(parts.pageAction),
+      contextAction: actionMetric(parts.contextAction),
     };
-  }, selectors);
+  }, parts);
 }
 
 function expectSettingsActionTiers(metrics, hasContextAction = false) {
@@ -3717,12 +3717,15 @@ function headedSectionLayout(content) {
 }
 
 async function modelPickerMetrics(composer) {
-  return composer.evaluate((element) => {
+  return composer.evaluate((host) => {
+    // The Composer draws in its root, and its turn options in theirs.
+    const element = host.shadowRoot;
+    const turnOptions = element.querySelector("caffold-task-turn-options").shadowRoot;
     const rootStyle = getComputedStyle(document.documentElement);
     const toolbar = element.querySelector(".task-composer-toolbar");
-    const modelButton = element.querySelector(".task-model-button");
-    const permissionButton = element.querySelector(".task-permission-button");
-    const popover = element.querySelector(".task-model-popover");
+    const modelButton = turnOptions.querySelector(".task-model-button");
+    const permissionButton = turnOptions.querySelector(".task-permission-button");
+    const popover = turnOptions.querySelector(".task-model-popover");
     const option = popover.querySelector(".task-model-option");
     const title = option.querySelector("strong");
     const toolbarStyle = getComputedStyle(toolbar);
@@ -3854,16 +3857,22 @@ async function expectThemeState(page, { mode, resolvedTheme }) {
 }
 
 async function representativeThemeStyles(page) {
-  return page.evaluate(async () => {
+  const appearance = page.locator("caffold-settings-appearance-page");
+  const parts = {
+    settings: await appearance.elementHandle(),
+    themeSelection: await appearance
+      .locator(".settings-theme-control label:has(input:checked) > span")
+      .elementHandle(),
+    code: await appearance.locator(".settings-code-preview").elementHandle(),
+  };
+  return page.evaluate(async (parts) => {
     await import("/assets/components/file-viewer/components/diff-viewer.js");
 
     const review = document.createElement("caffold-task-review");
     review.style.cssText =
       "position:fixed;inset:auto auto 0 -10000px;width:20rem;height:10rem";
     document.body.append(review);
-    review.innerHTML = `
-      <p class="task-review-error">Review error</p>
-    `;
+    await review.updateComplete;
 
     const diff = document.createElement("caffold-diff-viewer");
     diff.style.cssText =
@@ -3877,23 +3886,17 @@ async function representativeThemeStyles(page) {
       return `${style.color}|${style.backgroundColor}`;
     };
     const result = {
-      settings: colorPair(
-        document.querySelector("caffold-settings-appearance-page"),
-      ),
-      themeSelection: colorPair(
-        document.querySelector(
-          ".settings-theme-control label:has(input:checked) > span",
-        ),
-      ),
-      reviewDanger: colorPair(review.querySelector(".task-review-error")),
-      code: colorPair(document.querySelector(".settings-code-preview")),
-      diffAdded: colorPair(diff.querySelector(".diff-row-added")),
-      diffRemoved: colorPair(diff.querySelector(".diff-row-removed")),
+      settings: colorPair(parts.settings),
+      themeSelection: colorPair(parts.themeSelection),
+      reviewDanger: colorPair(review.shadowRoot.querySelector(".task-review-error")),
+      code: colorPair(parts.code),
+      diffAdded: colorPair(diff.shadowRoot.querySelector(".diff-row-added")),
+      diffRemoved: colorPair(diff.shadowRoot.querySelector(".diff-row-removed")),
     };
     review.remove();
     diff.remove();
     return result;
-  });
+  }, parts);
 }
 
 async function revealActionTarget(page, target) {

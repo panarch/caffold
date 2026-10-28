@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -12,6 +12,7 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "../components/detail-list.js";
 import type { SettingsDetailRow } from "../components/detail-list.js";
 import "../components/refresh-button.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { CaffoldSettingsRefreshButton } from "../components/refresh-button.js";
 import {
   onDemandValue,
@@ -19,6 +20,8 @@ import {
   usagePeriodLabel,
   usagePeriodValue,
 } from "./display.js";
+
+import styles from "./page.css.js";
 
 const GROK_SERVICE_STATUS_URL = "https://status.x.ai";
 
@@ -43,12 +46,14 @@ const CONNECTION_ROWS = Object.freeze([
 ]);
 
 @customElement("caffold-settings-grok-page")
-export class CaffoldSettingsGrokPage extends LitElement {
+export class CaffoldSettingsGrokPage extends CaffoldElement {
   @state()
   private accessor status: GrokStatus | null = null;
   @state()
   private accessor statusState: "idle" | "loading" | "loaded" | "unavailable" =
     "idle";
+
+  static override styles = styles;
 
   private operation = 0;
   private active = false;
@@ -60,10 +65,6 @@ export class CaffoldSettingsGrokPage extends LitElement {
   private readonly refreshButton = new DrawnRef<CaffoldSettingsRefreshButton>(
     this,
   );
-
-  override createRenderRoot() {
-    return this;
-  }
 
   activate() {
     if (this.active) {

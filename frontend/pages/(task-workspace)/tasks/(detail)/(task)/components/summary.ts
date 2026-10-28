@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   type ActionHintPull,
@@ -6,12 +6,15 @@ import {
 } from "#app/action-hints.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "./summary/components/info.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import {
   type CaffoldTaskDetailInfo,
   type TaskInfoIntent,
   type TaskInfoSnapshot,
   taskInfoSnapshot,
 } from "./summary/components/info.js";
+
+import styles from "./summary.css.js";
 
 export type { TaskInfoSnapshot };
 
@@ -22,15 +25,13 @@ export type TaskSummaryIntent = TaskInfoIntent;
  * The open Task's heading: its title, and Task Info beside it.
  */
 @customElement("caffold-task-detail-summary")
-export class CaffoldTaskDetailSummary extends LitElement {
+export class CaffoldTaskDetailSummary extends CaffoldElement {
   @state()
   private accessor snapshot: TaskInfoSnapshot = taskInfoSnapshot();
 
-  private readonly info = new DrawnRef<CaffoldTaskDetailInfo>(this);
+  static override styles = styles;
 
-  override createRenderRoot() {
-    return this;
-  }
+  private readonly info = new DrawnRef<CaffoldTaskDetailInfo>(this);
 
   override disconnectedCallback() {
     super.disconnectedCallback();

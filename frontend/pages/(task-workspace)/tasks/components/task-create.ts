@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   type ActionHintPull,
@@ -19,6 +19,7 @@ import { cleanLogicalPath } from "../task-format.js";
 import "./composer.js";
 import type { CaffoldTaskComposer, ComposerSubmitDetail } from "./composer.js";
 import "./task-create/components/directory-field.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type {
   TaskCreateIntentDetail,
   TaskStartIntent,
@@ -33,6 +34,8 @@ import {
   directoryPathDisplay,
   type ServerPaths,
 } from "./task-create/directory-path.js";
+
+import styles from "./task-create.css.js";
 
 // What a New Task surface last ran under, which a new Task starts from.
 export interface ComposerSettings {
@@ -58,7 +61,9 @@ type ComposerSettingsInput = {
  * Composer their context right after drawing them.
  */
 @customElement("caffold-task-create")
-export class CaffoldTaskCreate extends LitElement {
+export class CaffoldTaskCreate extends CaffoldElement {
+  static override styles = styles;
+
   private cwd = ".";
   private browseCwd = false;
   private server: ServerPaths = {};
@@ -73,10 +78,6 @@ export class CaffoldTaskCreate extends LitElement {
   private readonly directoryElement = new DrawnRef<CaffoldTaskDirectoryField>(
     this,
   );
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

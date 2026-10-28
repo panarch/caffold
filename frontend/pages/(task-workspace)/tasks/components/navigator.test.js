@@ -89,21 +89,6 @@ test("asks for the Task switcher without touching reorder mode or blocked Task o
   assert.equal(stopped, true);
 });
 
-test("closes the Reorder popover when its bound Action Hint session is dismissed", () => {
-  let hidden = 0;
-  const popover = {
-    matches: () => true,
-    hidePopover() {
-      hidden += 1;
-    },
-  };
-  const navigator = navigatorHost({ reorderPopover: popover });
-  navigator.handleDismiss({ target: {} });
-  assert.equal(hidden, 0);
-  navigator.handleDismiss({ target: popover });
-  assert.equal(hidden, 1);
-});
-
 test("exits active reorder only for an unclaimed Escape key", () => {
   let exits = 0;
   const navigator = navigatorHost({

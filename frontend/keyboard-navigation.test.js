@@ -7,14 +7,17 @@ import {
 
 const registry = installCustomElementUnitRegistry();
 const previousElement = globalThis.Element;
+const previousShadowRoot = globalThis.ShadowRoot;
 globalThis.Element = globalThis.HTMLElement;
 const { KeyboardNavigationController } = await import("./keyboard-navigation.js");
 const {
   KEYBOARD_NAVIGATION_EVENT,
   KEYBOARD_NAVIGATION_NODE,
 } = await import("./keyboard-navigation/control.js");
+globalThis.ShadowRoot = class TestShadowRoot {};
 after(() => {
   restoreGlobal("Element", previousElement);
+  restoreGlobal("ShadowRoot", previousShadowRoot);
   registry.restore();
 });
 
@@ -2057,6 +2060,7 @@ function keyboardShortcutDialog({ onOpen = () => {} } = {}) {
 function element(properties = {}) {
   return Object.assign(new HTMLElement(), {
     closest: () => null,
+    getRootNode: () => document,
     getBoundingClientRect: () => ({
       left: 0,
       top: 0,

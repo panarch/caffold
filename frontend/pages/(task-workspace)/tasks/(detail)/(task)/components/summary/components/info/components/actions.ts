@@ -1,16 +1,21 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import {
   isTaskTransportStale,
   type TaskTransportState,
   taskThreadStatusType,
 } from "#tasks/runtime-state.js";
 import { type ListedTask, taskThreadId } from "#tasks/task-list-model.js";
+
+import secondaryButton from "#app/component-styles/secondary-button.css.js";
+import styles from "./actions.css.js";
 
 /** The approval mode Caffold answers under, which is the one Jev judges for. */
 const REVIEWED_PERMISSION_MODE = "caffold:ask-jev-first";
@@ -54,15 +59,16 @@ export interface TaskInfoActionIntent {
  * now.
  */
 @customElement("caffold-task-detail-info-actions")
-export class CaffoldTaskDetailInfoActions extends LitElement {
+export class CaffoldTaskDetailInfoActions extends CaffoldElement {
   @property({ attribute: false })
   accessor snapshot: TaskInfoActionsSnapshot | null = null;
 
-  private readonly hints = new ActionHints(this);
+  static override styles = [
+    scopedStyle(secondaryButton, ".task-secondary-button"),
+    styles,
+  ];
 
-  override createRenderRoot() {
-    return this;
-  }
+  private readonly hints = new ActionHints(this);
 
   actionHintScope(pull: ActionHintPull = {}) {
     return this.hints.scope(pull);

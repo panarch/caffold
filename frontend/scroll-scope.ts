@@ -2,6 +2,7 @@ import {
   type DeclaredElement,
   ElementDeclarations,
 } from "./element-declarations.js";
+import { elementAndShadowRoot } from "./shadow-roots.js";
 
 export type ScrollAxis = "vertical" | "horizontal";
 
@@ -117,7 +118,7 @@ export function declaredScrollSurfaceScope(
   return {
     blocked: false,
     surfaces,
-    mutationRoots: [owner],
+    mutationRoots: elementAndShadowRoot(owner),
     resizeElements: [owner, ...scrollports],
     scrollRoots: scrollports,
   };

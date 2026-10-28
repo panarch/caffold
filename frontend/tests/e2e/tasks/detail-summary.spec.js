@@ -4,6 +4,7 @@ import {
   popoverActionHintDialog,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { elementHandles } from "../support/element-handles.js";
 import {
   activeTaskProjection,
   canonicalTaskState,
@@ -78,30 +79,42 @@ async function emitSummarySync(page, threadId, detail, reason) {
   );
 }
 
+// The summary and its Task details parts, each drawn in its own root.
+async function summaryNodes(summary) {
+  const [info, infoButton, infoPopover, infoActions, forkButton, archiveButton] =
+    await elementHandles(summary, [
+      "caffold-task-detail-info",
+      ".task-detail-info-button",
+      ".task-detail-popover",
+      "caffold-task-detail-info-actions",
+      '[data-task-info-action="fork"]',
+      '[data-task-info-action="archive"]',
+    ]);
+  return {
+    owner: await summary.elementHandle(),
+    info,
+    infoButton,
+    infoPopover,
+    infoActions,
+    forkButton,
+    archiveButton,
+  };
+}
+
 async function summaryNodeState(page) {
-  return page.evaluate(() => {
-    const summary = document.querySelector("caffold-task-detail-summary");
+  return page.evaluate((current) => {
     const nodes = window.__taskSummaryNodes;
     return {
-      owner: nodes.owner === summary,
-      info:
-        nodes.info === summary.querySelector("caffold-task-detail-info"),
-      infoButton:
-        nodes.infoButton === summary.querySelector(".task-detail-info-button"),
-      infoPopover:
-        nodes.infoPopover === summary.querySelector(".task-detail-popover"),
-      infoActions:
-        nodes.infoActions ===
-        summary.querySelector("caffold-task-detail-info-actions"),
-      forkButton:
-        nodes.forkButton ===
-        summary.querySelector('[data-task-info-action="fork"]'),
-      archiveButton:
-        nodes.archiveButton ===
-        summary.querySelector('[data-task-info-action="archive"]'),
+      owner: nodes.owner === current.owner,
+      info: nodes.info === current.info,
+      infoButton: nodes.infoButton === current.infoButton,
+      infoPopover: nodes.infoPopover === current.infoPopover,
+      infoActions: nodes.infoActions === current.infoActions,
+      forkButton: nodes.forkButton === current.forkButton,
+      archiveButton: nodes.archiveButton === current.archiveButton,
       infoOpen: nodes.infoPopover.matches(":popover-open"),
     };
-  });
+  }, await summaryNodes(page.locator("caffold-task-detail-summary")));
 }
 
 const stableSummaryNodes = {
@@ -149,7 +162,8 @@ test("keeps long Task titles clipped in the header and readable in Info", { tag:
   await emitTaskDetailBootstrap(page, summaryDetail(task));
   const summary = page.locator("caffold-task-detail-summary");
   const heading = summary.locator(".task-detail-heading > h2");
-  await expect(summary).toBeVisible();
+  // The summary lays its parts into the header and has no box of its own.
+  await expect(heading).toBeVisible();
   await expect(summary.locator(".task-detail-heading > *")).toHaveCount(1);
   await expect(heading).toHaveText(title);
   await expect
@@ -159,8 +173,8 @@ test("keeps long Task titles clipped in the header and readable in Info", { tag:
     .toBe(true);
 
   const headerLayout = await summary.evaluate((element) => {
-    const heading = element.querySelector(".task-detail-heading");
-    const right = element.querySelector(".task-detail-right");
+    const heading = element.shadowRoot.querySelector(".task-detail-heading");
+    const right = element.shadowRoot.querySelector(".task-detail-right");
     return {
       headingRight: heading.getBoundingClientRect().right,
       noHorizontalOverflow: element.scrollWidth <= element.clientWidth,
@@ -219,7 +233,7 @@ test("keeps the task info leaf and popover stable across canonical sync", { tag:
   await emitTaskDetailBootstrap(page, summaryDetail(task));
   const summary = page.locator("caffold-task-detail-summary");
   const detailHeader = page.locator(".detail-layout-summary");
-  await expect(summary).toBeVisible();
+  await expect(summary.locator(".task-detail-heading")).toBeVisible();
   await expect(
     detailHeader.locator("caffold-task-detail-git, caffold-task-detail-github"),
   ).toHaveCount(2);
@@ -227,19 +241,9 @@ test("keeps the task info leaf and popover stable across canonical sync", { tag:
     name: /Task details/,
   });
   const taskDetailsPopover = summary.locator(".task-detail-popover");
-  await summary.evaluate((element) => {
-    window.__taskSummaryNodes = {
-      owner: element,
-      info: element.querySelector("caffold-task-detail-info"),
-      infoButton: element.querySelector(".task-detail-info-button"),
-      infoPopover: element.querySelector(".task-detail-popover"),
-      infoActions: element.querySelector("caffold-task-detail-info-actions"),
-      forkButton: element.querySelector('[data-task-info-action="fork"]'),
-      archiveButton: element.querySelector(
-        '[data-task-info-action="archive"]',
-      ),
-    };
-  });
+  await page.evaluate((nodes) => {
+    window.__taskSummaryNodes = nodes;
+  }, await summaryNodes(summary));
 
   await taskDetailsButton.click();
   await expect(taskDetailsPopover).toBeVisible();
@@ -319,15 +323,14 @@ test("keeps the task info leaf and popover stable across canonical sync", { tag:
   expect(buttonBox.x + buttonBox.width / 2).toBeLessThanOrEqual(
     popoverBox.x + popoverBox.width + 1,
   );
-  const forkActionVisible = await taskDetailsPopover.evaluate((popover) => {
-    const action = popover.querySelector('[data-task-info-action="fork"]');
+  const forkActionVisible = await taskDetailsPopover.evaluate((popover, action) => {
     const actionBox = action.getBoundingClientRect();
     const popoverBox = popover.getBoundingClientRect();
     return {
       bottom: actionBox.bottom <= popoverBox.bottom + 1,
       top: actionBox.top >= popoverBox.top - 1,
     };
-  });
+  }, await taskDetailsPopover.locator('[data-task-info-action="fork"]').elementHandle());
   expect(forkActionVisible).toEqual({ bottom: true, top: true });
   await captureReviewScreenshot(page, testInfo, "tasks-summary-live-popover");
 });
@@ -601,11 +604,11 @@ test("uses light-dismiss review popovers and preserves them across same-Task syn
     const github = element.querySelector("caffold-task-detail-github");
     window.__taskReviewPopoverNodes = {
       git,
-      gitTrigger: git.querySelector(":scope > .task-git-button"),
-      gitPopover: git.querySelector(":scope > .task-git-popover"),
+      gitTrigger: git.shadowRoot.querySelector(".task-git-button"),
+      gitPopover: git.shadowRoot.querySelector(".task-git-popover"),
       github,
-      githubTrigger: github.querySelector(":scope > .task-github-button"),
-      githubPopover: github.querySelector(":scope > .task-github-popover"),
+      githubTrigger: github.shadowRoot.querySelector(".task-github-button"),
+      githubPopover: github.shadowRoot.querySelector(".task-github-popover"),
     };
     window.__taskReviewSummaryIntents = [];
     element.addEventListener("caffold:task-detail-summary-intent", (event) => {
@@ -621,6 +624,12 @@ test("uses light-dismiss review popovers and preserves them across same-Task syn
   await infoTrigger.click();
   await expect(githubPopover).toBeHidden();
   await expect(infoPopover).toBeVisible();
+  // On a phone Task details spreads under its button over the actions row, so
+  // it closes from its own button before Git opens.
+  if (testInfo.project.name === "phone") {
+    await infoTrigger.click();
+    await expect(infoPopover).toBeHidden();
+  }
   await gitTrigger.click();
   await expect(infoPopover).toBeHidden();
   await expect(gitPopover).toBeVisible();
@@ -649,16 +658,16 @@ test("uses light-dismiss review popovers and preserves them across same-Task syn
       return {
         git: nodes.git === git,
         gitTrigger:
-          nodes.gitTrigger === git.querySelector(":scope > .task-git-button"),
+          nodes.gitTrigger === git.shadowRoot.querySelector(".task-git-button"),
         gitPopover:
-          nodes.gitPopover === git.querySelector(":scope > .task-git-popover"),
+          nodes.gitPopover === git.shadowRoot.querySelector(".task-git-popover"),
         github: nodes.github === github,
         githubTrigger:
           nodes.githubTrigger ===
-          github.querySelector(":scope > .task-github-button"),
+          github.shadowRoot.querySelector(".task-github-button"),
         githubPopover:
           nodes.githubPopover ===
-          github.querySelector(":scope > .task-github-popover"),
+          github.shadowRoot.querySelector(".task-github-popover"),
       };
     }),
   ).toEqual({

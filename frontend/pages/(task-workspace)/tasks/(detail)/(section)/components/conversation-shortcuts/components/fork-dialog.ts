@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { live } from "lit/directives/live.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
@@ -14,8 +14,11 @@ import "#app/keyboard-navigation/components/presentation.js";
 import { ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/loading-text.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { TaskCreatedHandoff } from "#tasks/layout.js";
 import { formatDate } from "#tasks/task-format.js";
+
+import styles from "./fork-dialog.css.js";
 
 const CODEX_THREAD_URI_PREFIX = "codex://threads/";
 const DESCRIPTION =
@@ -40,7 +43,7 @@ const STALE_SOURCE_CODES = [
  * thread, previews it, and forks it.
  */
 @customElement("caffold-conversation-fork-dialog")
-export class CaffoldConversationForkDialog extends LitElement {
+export class CaffoldConversationForkDialog extends CaffoldElement {
   @state()
   private accessor context: { sectionId: string; sectionPath: string } = {
     sectionId: "",
@@ -57,6 +60,8 @@ export class CaffoldConversationForkDialog extends LitElement {
   @state()
   private accessor error: TaskResponseError | null = null;
 
+  static override styles = styles;
+
   private opener: HTMLElement | null = null;
   private previewRequestId = 0;
   private forkRequestId = 0;
@@ -69,10 +74,6 @@ export class CaffoldConversationForkDialog extends LitElement {
   private readonly body = new DrawnRef<HTMLDivElement>(this);
   private readonly threadIdInput = new DrawnRef<HTMLInputElement>(this);
   private readonly cancelButton = new DrawnRef<HTMLButtonElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override disconnectedCallback() {
     super.disconnectedCallback();

@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import type { ActionHintPull } from "#app/action-hints.js";
 import {
@@ -13,7 +13,10 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "./detail/page.js";
 import type { CaffoldGithubIssueDetailPage } from "./detail/page.js";
 import "./list/page.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { CaffoldGithubIssuesListPage } from "./list/page.js";
+
+import styles from "./layout.css.js";
 
 const GITHUB_ISSUES_PER_PAGE = 50;
 const LOADING_DELAY_MS = 180;
@@ -28,7 +31,9 @@ interface GithubContext {
 }
 
 @customElement("caffold-github-issues-layout")
-export class CaffoldGithubIssuesLayout extends LitElement {
+export class CaffoldGithubIssuesLayout extends CaffoldElement {
+  static override styles = styles;
+
   // What the GitHub layout reads back.
   page = 1;
   view: IssuesView = "list";
@@ -42,10 +47,6 @@ export class CaffoldGithubIssuesLayout extends LitElement {
   private issueDetailRequestId = 0;
   private readonly list = new DrawnRef<CaffoldGithubIssuesListPage>(this);
   private readonly detail = new DrawnRef<CaffoldGithubIssueDetailPage>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

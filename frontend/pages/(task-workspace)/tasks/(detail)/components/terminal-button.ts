@@ -1,12 +1,16 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
-import { compactIconButton } from "#app/component-styles.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import { inlineIcon } from "#components/icons.js";
+
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import styles from "./terminal-button.css.js";
 
 export interface TaskDetailTerminalIntentDetail {
   type: "toggle";
@@ -15,26 +19,22 @@ export interface TaskDetailTerminalIntentDetail {
 export const TERMINAL_BUTTON_INTENT_EVENT =
   "caffold:task-detail-terminal-intent";
 
-await compactIconButton.register(
-  "caffold-task-detail-terminal",
-  "> .task-terminal-button",
-);
-
 // The Detail header's terminal toggle. It only reports the press; the Detail
 // layout decides whether that enters the terminal or returns from it.
 @customElement("caffold-task-detail-terminal")
-export class CaffoldTaskDetailTerminal extends LitElement {
+export class CaffoldTaskDetailTerminal extends CaffoldElement {
   @state()
   private accessor available = false;
   @state()
   private accessor pressed = false;
 
+  static override styles = [
+    scopedStyle(compactIconButton, ".task-terminal-button"),
+    styles,
+  ];
+
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
