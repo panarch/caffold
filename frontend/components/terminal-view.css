@@ -23,7 +23,8 @@
   height: 100%;
 }
 
-/* xterm.js paints its scroll area black; the rows below the last full one show it. */
-.xterm .xterm-viewport {
-  background-color: var(--terminal-background);
+/* Let the host's themed background show below the last full row. This rule
+   must outrank xterm.js's black background even when its stylesheet loads last. */
+.terminal-view-screen .xterm .xterm-viewport {
+  background-color: transparent;
 }
