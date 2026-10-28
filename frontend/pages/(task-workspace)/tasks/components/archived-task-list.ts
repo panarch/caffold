@@ -9,6 +9,7 @@ import {
 import {
   type ActiveTask,
   type ActiveTaskTopPlacement,
+  type ArchivedTask,
   deleteTask,
   getArchivedTasks,
   restoreTask,
@@ -84,7 +85,7 @@ export class CaffoldArchivedTaskList extends CaffoldElement {
     styles,
   ];
 
-  private archivedTasks: Task[] = [];
+  private archivedTasks: ArchivedTask[] = [];
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
@@ -96,7 +97,7 @@ export class CaffoldArchivedTaskList extends CaffoldElement {
   private nextCursor: string | null = null;
   private requestId = 0;
   private loadPromise: Promise<{
-    tasks: Task[];
+    tasks: ArchivedTask[];
     nextCursor: string | null;
   } | null> | null = null;
   private settled = false;

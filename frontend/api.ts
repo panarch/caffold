@@ -312,7 +312,7 @@ export async function getTasks() {
 }
 
 export async function getArchivedTasks(cursor: string | null = null) {
-  return requestJson<{ tasks: Task[]; nextCursor: string | null }>(
+  return requestJson<{ tasks: ArchivedTask[]; nextCursor: string | null }>(
     "/api/tasks/archived",
     {
       ...(cursor ? { cursor } : {}),
@@ -1448,6 +1448,12 @@ export interface Task {
   recencyMs: number | null;
   lastCompletedMs: number | null;
   unseen: boolean;
+}
+
+// The Archived listing can name the original repository after its worktree
+// directory is removed. A Task received directly from Archive may omit it.
+export interface ArchivedTask extends Task {
+  repositoryPath?: string | null;
 }
 
 // What the agent is doing for a Task. An active Task with no flags is working.

@@ -1,10 +1,15 @@
 use super::membership::{task_described_as, task_provider_driver, unavailable_archived_task};
 use super::store::task_store_list_archived;
-use super::{TASK_CANONICAL_READ_CONCURRENCY, TASK_LIST_PAGE_SIZE, TaskListResponse, TasksQuery};
+use super::{
+    ArchivedTaskRecord, TASK_CANONICAL_READ_CONCURRENCY, TASK_LIST_PAGE_SIZE, TaskListResponse,
+    TasksQuery,
+};
 use crate::app::error::ApiError;
 use crate::app::tasks::active_list;
 use crate::app::tasks::{TaskRecord, TaskState, task_activity_ms};
-use crate::task_store::ManagedThread;
+use crate::task_store::{ManagedThread, ManagedWorktreeState};
+use std::path::Path;
+
 use axum::Json;
 use axum::extract::{Query, State};
 use futures_util::StreamExt;
@@ -30,8 +35,15 @@ pub(super) async fn list_archived_tasks(
             let state = state.clone();
             async move {
                 let task = archived_task(&state, &managed).await?;
+                let repository_path = archived_repository_path(&state, &managed.thread_id).await?;
                 let activity_ms = task_activity_ms(&task);
-                Ok::<_, ApiError>((task, activity_ms))
+                Ok::<_, ApiError>((
+                    ArchivedTaskRecord {
+                        task,
+                        repository_path,
+                    },
+                    activity_ms,
+                ))
             }
         })
         .buffer_unordered(TASK_CANONICAL_READ_CONCURRENCY)
@@ -39,12 +51,44 @@ pub(super) async fn list_archived_tasks(
         .await;
     let mut tasks = reads.into_iter().collect::<Result<Vec<_>, ApiError>>()?;
     tasks.sort_by(|(left, _), (right, _)| {
-        task_activity_ms(right)
-            .cmp(&task_activity_ms(left))
-            .then_with(|| left.thread_id.cmp(&right.thread_id))
+        task_activity_ms(&right.task)
+            .cmp(&task_activity_ms(&left.task))
+            .then_with(|| left.task.thread_id.cmp(&right.task.thread_id))
     });
     let tasks = tasks.into_iter().map(|(task, _)| task).collect();
     Ok(Json(TaskListResponse { tasks, next_cursor }))
+}
+
+/// Caffold keeps the original common Git directory after removing a checkout.
+/// Use that ownership record for the listing, without inventing live Git context
+/// at the removed cwd. Nonstandard Git directories keep the ordinary fallback.
+async fn archived_repository_path(
+    state: &TaskState,
+    thread_id: &str,
+) -> Result<Option<String>, ApiError> {
+    let store = state.task_store.clone();
+    let fs = state.fs.clone();
+    let thread_id = thread_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        let worktree = store
+            .worktree_for_thread(&thread_id)
+            .map_err(|error| ApiError::Internal(error.to_string()))?;
+        let Some(worktree) =
+            worktree.filter(|worktree| worktree.state == ManagedWorktreeState::Archived)
+        else {
+            return Ok(None);
+        };
+        let common_dir = Path::new(&worktree.repository_git_dir);
+        if common_dir.file_name().is_none_or(|name| name != ".git") {
+            return Ok(None);
+        }
+        Ok(common_dir
+            .parent()
+            .filter(|root| root.is_dir())
+            .and_then(|root| fs.logical_path_for_absolute(root).ok()))
+    })
+    .await
+    .map_err(|error| ApiError::Internal(format!("archived repository worker failed: {error}")))?
 }
 
 /// One row of the archived list, described by the agent that runs it when the
@@ -109,6 +153,271 @@ mod tests {
         app::tasks::{projection::*, test_support::*},
         fs::RootedFs,
     };
+
+    #[tokio::test]
+    async fn archived_worktrees_keep_their_repository_after_normal_archive() {
+        use super::super::{router, test_support::initialize_git_repository};
+        use crate::{
+            git,
+            task_store::{ManagedWorktree, ManagedWorktreeState},
+        };
+        use axum::{
+            body::{Body, to_bytes},
+            http::Request,
+        };
+        use tower::ServiceExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let alpha = root.path().join("alpha");
+        let beta = root.path().join("beta");
+        initialize_git_repository(&alpha);
+        initialize_git_repository(&beta);
+        let cases = [
+            ("alpha-one", &alpha, "00000000-0000-4000-8000-000000000001"),
+            ("alpha-two", &alpha, "00000000-0000-4000-8000-000000000002"),
+            ("beta-one", &beta, "00000000-0000-4000-8000-000000000003"),
+        ];
+        let worktree_root = root
+            .path()
+            .canonicalize()
+            .unwrap()
+            .join(".caffold-test/worktrees");
+        let mut responses = Vec::new();
+        for (id, _, worktree_id) in cases {
+            let thread = task_thread_list(id, &worktree_root.join(worktree_id))["data"][0].clone();
+            for _ in 0..2 {
+                responses.push(MockCodexResponse::ok_for(
+                    "thread/read",
+                    json!({"threadId": id, "includeTurns": false}),
+                    json!({"thread": thread}),
+                ));
+            }
+            responses.push(MockCodexResponse::ok_for(
+                "thread/archive",
+                json!({"threadId": id}),
+                json!({}),
+            ));
+        }
+        let client = CodexThreadClient::mock(responses);
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        let app = router(state.clone());
+        for (id, source, worktree_id) in cases {
+            manage_test_thread(&state, id, source).await;
+            let path = worktree_root.join(worktree_id);
+            let checkout = git::create_attached_worktree(source, &path, id, None).unwrap();
+            state
+                .task_store
+                .create_worktree(ManagedWorktree {
+                    worktree_id: worktree_id.to_string(),
+                    thread_id: Some(id.to_string()),
+                    repository_git_dir: checkout.common_dir.display().to_string(),
+                    worktree_path: path.display().to_string(),
+                    state: ManagedWorktreeState::Ready,
+                    checkout_anchor: None,
+                    created_at_ms: 1,
+                    updated_at_ms: 1,
+                })
+                .unwrap();
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::post(format!("/api/tasks/{id}/archive"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let status = response.status();
+            let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            assert!(
+                status.is_success(),
+                "archive {id}: {status} {}",
+                String::from_utf8_lossy(&body)
+            );
+            assert!(!path.exists());
+        }
+        let before = state
+            .task_store
+            .read(|tables| tables.managed_worktrees())
+            .unwrap();
+        let response = app
+            .oneshot(
+                Request::get("/api/tasks/archived")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(response.status().is_success());
+        let body: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                .unwrap();
+        for (id, source, worktree_id) in cases {
+            let row = body["tasks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["threadId"] == id)
+                .unwrap();
+            assert_eq!(
+                row["repositoryPath"],
+                state.fs.logical_path_for_absolute(source).unwrap(),
+                "archived group must survive worktree removal"
+            );
+            assert!(
+                row["worktree"].is_null(),
+                "removed worktrees have no live Git context"
+            );
+            assert!(row["cwdPath"].is_null());
+            assert_eq!(row["conversationAvailable"], true);
+            assert!(!worktree_root.join(worktree_id).exists());
+        }
+        assert_eq!(
+            state
+                .task_store
+                .read(|tables| tables.managed_worktrees())
+                .unwrap(),
+            before
+        );
+    }
+
+    #[tokio::test]
+    async fn archived_repository_listing_keeps_unknown_or_outside_roots_unresolved() {
+        use crate::task_store::{CheckoutAnchor, ManagedWorktree};
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let state = task_state_with_codex_client(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        for (id, common_dir, status) in [
+            (
+                "outside",
+                outside.path().join(".git"),
+                ManagedWorktreeState::Archived,
+            ),
+            (
+                "missing",
+                root.path().join("missing/.git"),
+                ManagedWorktreeState::Archived,
+            ),
+            (
+                "nonstandard",
+                root.path().join("git-store"),
+                ManagedWorktreeState::Archived,
+            ),
+            (
+                "ready",
+                root.path().join(".git"),
+                ManagedWorktreeState::Ready,
+            ),
+        ] {
+            state
+                .task_store
+                .create_worktree(ManagedWorktree {
+                    worktree_id: id.to_string(),
+                    thread_id: Some(id.to_string()),
+                    repository_git_dir: common_dir.display().to_string(),
+                    worktree_path: root.path().join(id).display().to_string(),
+                    state: status,
+                    checkout_anchor: (status == ManagedWorktreeState::Archived).then(|| {
+                        CheckoutAnchor {
+                            branch_name: "task".to_string(),
+                            head_sha: "0123456789abcdef".to_string(),
+                        }
+                    }),
+                    created_at_ms: 1,
+                    updated_at_ms: 1,
+                })
+                .unwrap();
+            assert_eq!(
+                archived_repository_path(&state, id).await.unwrap(),
+                None,
+                "{id}"
+            );
+        }
+        assert_eq!(
+            archived_repository_path(&state, "unmanaged").await.unwrap(),
+            None
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn archived_repository_listing_rejects_a_symlink_outside_the_filesystem_root() {
+        use crate::task_store::{CheckoutAnchor, ManagedWorktree};
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.path().join("escaped")).unwrap();
+        let state = task_state_with_codex_client(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        state
+            .task_store
+            .create_worktree(ManagedWorktree {
+                worktree_id: "escaped".to_string(),
+                thread_id: Some("escaped".to_string()),
+                repository_git_dir: root.path().join("escaped/.git").display().to_string(),
+                worktree_path: root.path().join("removed").display().to_string(),
+                state: ManagedWorktreeState::Archived,
+                checkout_anchor: Some(CheckoutAnchor {
+                    branch_name: "task".to_string(),
+                    head_sha: "0123456789abcdef".to_string(),
+                }),
+                created_at_ms: 1,
+                updated_at_ms: 1,
+            })
+            .unwrap();
+        assert_eq!(
+            archived_repository_path(&state, "escaped").await.unwrap(),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn archived_repository_listing_does_not_promise_an_unavailable_conversation() {
+        use super::super::test_support::initialize_git_repository;
+        use crate::task_store::{CheckoutAnchor, ManagedWorktree};
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        initialize_git_repository(&source);
+        let id = "provider-unavailable-worktree";
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::error_for(
+            "thread/read",
+            json!({"threadId": id, "includeTurns": false}),
+            CodexThreadError::ProcessUnavailable,
+        )]);
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        manage_test_thread(&state, id, &source).await;
+        task_store_archive(&state, id).await.unwrap().unwrap();
+        let repository = crate::git::managed_repository(&source).unwrap();
+        state
+            .task_store
+            .create_worktree(ManagedWorktree {
+                worktree_id: "archived".to_string(),
+                thread_id: Some(id.to_string()),
+                repository_git_dir: repository.common_dir.display().to_string(),
+                worktree_path: root.path().join("removed").display().to_string(),
+                state: ManagedWorktreeState::Archived,
+                checkout_anchor: Some(CheckoutAnchor {
+                    branch_name: "task".to_string(),
+                    head_sha: repository.head_sha,
+                }),
+                created_at_ms: 1,
+                updated_at_ms: 1,
+            })
+            .unwrap();
+        let response = list_archived_tasks(State(state), Query(TasksQuery { cursor: None }))
+            .await
+            .unwrap()
+            .0;
+        assert_eq!(response.tasks[0].repository_path.as_deref(), Some("source"));
+        assert!(!response.tasks[0].task.conversation_available);
+        assert!(response.tasks[0].task.worktree.is_none());
+    }
 
     #[tokio::test]
     async fn managed_list_never_projects_pending_approval_onto_thread_status() {
@@ -203,7 +512,8 @@ mod tests {
                 .await
                 .expect("archived list succeeds");
 
-        assert_eq!(response.0.tasks[0].title, "Stable cached name");
+        assert_eq!(response.0.tasks[0].task.title, "Stable cached name");
+        assert_eq!(response.0.tasks[0].repository_path, None);
         assert_eq!(
             task_store_get_archived(&state, thread_id)
                 .await
@@ -233,13 +543,13 @@ mod tests {
             .0;
 
         assert_eq!(response.tasks.len(), 1);
-        assert_eq!(response.tasks[0].thread_id, thread_id);
+        assert_eq!(response.tasks[0].task.thread_id, thread_id);
         assert!(
-            !response.tasks[0].conversation_available,
+            !response.tasks[0].task.conversation_available,
             "an unaskable agent cannot promise the conversation is there: {:?}",
             response.tasks[0]
         );
-        assert_eq!(response.tasks[0].preview, "Conversation unavailable");
+        assert_eq!(response.tasks[0].task.preview, "Conversation unavailable");
     }
 
     #[tokio::test]
@@ -285,16 +595,16 @@ mod tests {
         let good = response
             .tasks
             .iter()
-            .find(|task| task.thread_id == good_id)
+            .find(|row| row.task.thread_id == good_id)
             .expect("readable row remains present");
-        assert!(good.conversation_available);
+        assert!(good.task.conversation_available);
         let unavailable = response
             .tasks
             .iter()
-            .find(|task| task.thread_id == failed_id)
+            .find(|row| row.task.thread_id == failed_id)
             .expect("provider-unavailable row remains present");
-        assert!(!unavailable.conversation_available);
-        assert_eq!(unavailable.preview, "Conversation unavailable");
+        assert!(!unavailable.task.conversation_available);
+        assert_eq!(unavailable.task.preview, "Conversation unavailable");
         assert_eq!(
             task_store_get_archived(&state, good_id)
                 .await

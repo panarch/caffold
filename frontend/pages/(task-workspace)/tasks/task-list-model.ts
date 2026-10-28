@@ -1,4 +1,9 @@
-import type { ActiveTask, ActiveTaskRecovery, Task } from "#app/api.js";
+import type {
+  ActiveTask,
+  ActiveTaskRecovery,
+  ArchivedTask,
+  Task,
+} from "#app/api.js";
 import {
   cleanLogicalPath,
   cleanRelativeTaskPath,
@@ -57,13 +62,14 @@ export function taskRepositoryPath(task: Task | null | undefined) {
   );
 }
 
-export function taskRepositoryKey(task: Task) {
-  const prefix = task?.worktree ? "repository" : "cwd";
-  return `${prefix}:${taskRepositoryPath(task)}`;
+export function taskRepositoryKey(task: ArchivedTask) {
+  const prefix =
+    task.repositoryPath != null || task.worktree ? "repository" : "cwd";
+  return `${prefix}:${task.repositoryPath ?? taskRepositoryPath(task)}`;
 }
 
-export function taskRepositoryLabel(task: Task) {
-  const path = taskRepositoryPath(task);
+export function taskRepositoryLabel(task: ArchivedTask) {
+  const path = task.repositoryPath ?? taskRepositoryPath(task);
   return path.split("/").filter(Boolean).at(-1) ?? "Directory";
 }
 
@@ -82,7 +88,7 @@ export function mergeTaskListPage(current: Task[], incoming: Task[]) {
   return [...tasks.values()];
 }
 
-export function groupTasksByRepository(tasks: Task[]) {
+export function groupTasksByRepository(tasks: ArchivedTask[]) {
   const groupsByKey = new Map<string, TaskRepositoryGroup>();
   for (const task of tasks) {
     const key = taskRepositoryKey(task);
@@ -92,12 +98,12 @@ export function groupTasksByRepository(tasks: Task[]) {
       existing.updatedMs = Math.max(existing.updatedMs, taskUpdatedMs(task));
       continue;
     }
-    const rootPath = taskRepositoryPath(task);
+    const rootPath = task.repositoryPath ?? taskRepositoryPath(task);
     groupsByKey.set(key, {
       key,
       label: taskRepositoryLabel(task),
       rootPath,
-      repository: Boolean(task?.worktree),
+      repository: task.repositoryPath != null || Boolean(task.worktree),
       updatedMs: taskUpdatedMs(task),
       tasks: [task],
     });
