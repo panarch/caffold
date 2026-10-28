@@ -1501,15 +1501,15 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   const workspaceHeaderMetrics = await tasksPage.evaluate((element, [
     [summary, heading, actions, title],
     actionControls,
+    close,
   ]) => {
-    const close = document.querySelector(".task-workspace-back");
     const summaryBounds = summary.getBoundingClientRect();
     const headingBounds = heading.getBoundingClientRect();
     const actionBounds = actions.getBoundingClientRect();
     const closeBounds = close.getBoundingClientRect();
     const titleBounds = title.getBoundingClientRect();
     return {
-      appHeaderCount: element.querySelectorAll(".tasks-header").length,
+      appHeaderCount: element.shadowRoot.querySelectorAll(".tasks-header").length,
       closeSize: closeBounds.width,
       closeTitleCenterDelta: Math.abs(
         closeBounds.top + closeBounds.height / 2 -
@@ -1544,6 +1544,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     await detailLayout
       .locator(".detail-layout-actions > *, .task-detail-info-button")
       .elementHandles(),
+    await page.locator(".task-workspace-back").elementHandle(),
   ]);
   expect(workspaceHeaderMetrics.appHeaderCount).toBe(0);
   expect(workspaceHeaderMetrics.summaryTop).toBe(workspaceHeaderMetrics.surfaceTop);
@@ -1553,7 +1554,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       .locator("caffold-task-workspace")
       .evaluate((element, summaryElement) => {
         // The header is the navigator's, drawn in its root.
-        const navigator = element.querySelector("caffold-task-navigator").shadowRoot;
+        const navigator = element.shadowRoot.querySelector("caffold-task-navigator").shadowRoot;
         const brand = navigator
           .querySelector(".task-list-primary-header caffold-workspace-brand")
           .getBoundingClientRect();
@@ -1593,13 +1594,11 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   }
   if (testInfo.project.name === "foldable") {
     await page.setViewportSize({ width: 800, height: 1100 });
-    const compactFoldableHeader = await page.evaluate(([summary, headingElement, actionsElement]) => {
+    const compactFoldableHeader = await page.evaluate(([summary, headingElement, actionsElement, close]) => {
       const heading = headingElement.getBoundingClientRect();
       const actions = actionsElement.getBoundingClientRect();
       return {
-        closeVisible:
-          getComputedStyle(document.querySelector(".task-workspace-back"))
-            .display !== "none",
+        closeVisible: getComputedStyle(close).display !== "none",
         sameRow:
           Math.abs(
             heading.top + heading.height / 2 -
@@ -1607,11 +1606,14 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
           ) <= 1,
         summaryHeight: summary.getBoundingClientRect().height,
       };
-    }, await elementHandles(detailLayout, [
-      ".task-detail-summary",
-      ".task-detail-heading",
-      ".detail-layout-actions",
-    ]));
+    }, [
+      ...(await elementHandles(detailLayout, [
+        ".task-detail-summary",
+        ".task-detail-heading",
+        ".detail-layout-actions",
+      ])),
+      await page.locator(".task-workspace-back").elementHandle(),
+    ]);
     expect(compactFoldableHeader.closeVisible).toBe(true);
     expect(compactFoldableHeader.sameRow).toBe(true);
     expect(compactFoldableHeader.summaryHeight).toBeLessThanOrEqual(64);

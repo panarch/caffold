@@ -118,7 +118,10 @@ export class CaffoldTaskStoreRecovery extends CaffoldElement {
 
   private requestRetry() {
     this.dispatchEvent(
-      new CustomEvent(TASK_STORE_RETRY_REQUEST_EVENT, { bubbles: true }),
+      new CustomEvent(TASK_STORE_RETRY_REQUEST_EVENT, {
+        bubbles: true,
+        composed: true,
+      }),
     );
   }
 }

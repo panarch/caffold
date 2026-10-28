@@ -418,21 +418,15 @@ test("busy elements turn through one registered spin with reduced-motion fallbac
     /@media \(prefers-reduced-motion: reduce\) \{\s*:scope \{\s*animation: none;\s*\}\s*\}/,
   );
 
-  const consumers = [
-    ["pages/layout", "caffold-app-shell", "> .app-foreground-recovery > .app-foreground-recovery-spinner"],
-  ];
   const declarations = [];
-  const shadowDeclarations = [];
   for (const [path, source] of frontendSources()) {
     if (!/\.(?:js|ts)$/.test(path)) continue;
-    for (const [helper, ...args] of sharedStyleApplications(source, "busy-spin.css")) {
-      (helper === "adoptScopedStyle" ? declarations : shadowDeclarations)
-        .push([path.replace(/\.(?:js|ts)$/, ""), ...args]);
+    for (const target of sharedStyleApplications(source, "busy-spin.css")) {
+      declarations.push(`${path.replace(/\.(?:js|ts)$/, "")} ${target}`);
     }
   }
-  assert.deepEqual(declarations.map((entry) => entry.join(" ")).sort(), consumers.map((entry) => entry.join(" ")).sort());
-  // Components that render into a shadow root name the target in that root.
-  assert.deepEqual(shadowDeclarations.map((entry) => entry.join(" ")).sort(), [
+  // Each component names the target in its own root.
+  assert.deepEqual(declarations.sort(), [
     "pages/(task-workspace)/settings/components/refresh-button button.is-refreshing > span > .settings-refresh-icon",
     "pages/(task-workspace)/tasks/(detail)/(git)/components/controls .git-review-refresh.is-refreshing > .git-review-refresh-icon",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn .task-active-turn-spinner",
@@ -440,6 +434,7 @@ test("busy elements turn through one registered spin with reduced-motion fallbac
     "pages/(task-workspace)/tasks/components/composer .task-voice-button.is-busy > .task-voice-icon",
     "pages/(task-workspace)/tasks/components/task-status-chip .task-status-spinner",
     "pages/(task-workspace)/tasks/components/task-turn-options .task-picker-spinner",
+    "pages/layout .app-foreground-recovery > .app-foreground-recovery-spinner",
   ]);
 
   for (const [path, source] of frontendSources()) {
@@ -944,16 +939,9 @@ test("icon-only controls use square slots from their semantic control tier", () 
 });
 
 test("compact icon controls declare shared styles at their own component boundary", () => {
-  const consumers = [
-    ["pages/(task-workspace)/layout", "caffold-task-workspace", "> .task-workspace-route-controls > .task-workspace-route-control"],
-  ];
-  for (const [path, owner, target] of consumers) {
-    const declarations = sharedStyleApplications(readFrontendModule(path), "compact-icon-button.css");
-    assert.ok(declarations.some(([helper, name, selector]) =>
-      helper === "adoptScopedStyle" && name === owner && selector === target), path);
-  }
-  // Components that render into a shadow root name the target in that root.
+  // Each component names the target in its own root.
   for (const [path, target] of [
+    ["pages/(task-workspace)/layout", ".task-workspace-route-controls > .task-workspace-route-control"],
     ["components/pagination/components/button", ".pagination-button"],
     ["components/file-navigator/components/list", ".file-refresh-button"],
     ["components/file-viewer", ".viewer-refresh-button"],
@@ -973,8 +961,10 @@ test("compact icon controls declare shared styles at their own component boundar
     ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info", ".task-detail-info-button"],
     ["pages/(task-workspace)/tasks/(detail)/terminal/page", ".terminal-page-bar > .terminal-page-button"],
   ]) {
-    const declarations = sharedStyleApplications(readFrontendModule(path), "compact-icon-button.css");
-    assert.ok(declarations.some(([helper, selector]) => helper === "scopedStyle" && selector === target), path);
+    assert.ok(
+      sharedStyleApplications(readFrontendModule(path), "compact-icon-button.css").includes(target),
+      path,
+    );
   }
   const compact = readFrontend("component-styles/compact-icon-button.css");
   assert.match(compact, /width: var\(--interface-compact-hit-size\)/);
@@ -1431,16 +1421,15 @@ function tokenConsumers(sources, pattern) {
     .sort();
 }
 
-// Each application of the shared style `stylesheet` in a module: the helper
-// and the arguments after the style.
+// The target of each application of the shared style `stylesheet` in a module.
 function sharedStyleApplications(source, stylesheet) {
   const name = source.match(
     new RegExp(`^import (\\w+) from "[^"]*/component-styles/${stylesheet.replace(".", "\\.")}\\.js";$`, "m"),
   )?.[1];
   if (!name) return [];
   return [...source.matchAll(
-    new RegExp(`\\b(scopedStyle|adoptScopedStyle)\\(\\s*${name},((?:\\s*"[^"]+",?)+)\\s*\\)`, "g"),
-  )].map(([, helper, args]) => [helper, ...[...args.matchAll(/"([^"]+)"/g)].map(([, arg]) => arg)]);
+    new RegExp(`\\bscopedStyle\\(\\s*${name},\\s*"([^"]+)",?\\s*\\)`, "g"),
+  )].map(([, target]) => target);
 }
 
 function frontendSources() {

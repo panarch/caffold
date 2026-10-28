@@ -81,6 +81,7 @@ test("selects and scrolls only the registered surface", { tag: "@all-viewports" 
     const repeated = await entryOwner.evaluate((element) => {
       const event = new KeyboardEvent("keydown", {
         bubbles: true,
+        composed: true,
         cancelable: true,
         code: "KeyJ",
         key: "j",
@@ -109,6 +110,7 @@ test("selects and scrolls only the registered surface", { tag: "@all-viewports" 
     const boundary = await entryOwner.evaluate((element) => {
       const event = new KeyboardEvent("keydown", {
         bubbles: true,
+        composed: true,
         cancelable: true,
         code: "KeyD",
         key: "d",
@@ -1025,6 +1027,7 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
   const consumed = await dialog.evaluate((element) => {
     const event = new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "KeyS",
       key: "s",
@@ -1046,6 +1049,7 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
   const shortPlanConsumed = await dialog.evaluate((element) => {
     const event = new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "KeyS",
       key: "s",
@@ -1072,10 +1076,12 @@ test("leaves editing, composition, modifiers, settings Off, and external owners 
   await prompt.evaluate((textarea) => {
     textarea.dispatchEvent(new CompositionEvent("compositionstart", {
       bubbles: true,
+      composed: true,
       data: "ㅎ",
     }));
     textarea.dispatchEvent(new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "KeyS",
       isComposing: true,
@@ -1083,6 +1089,7 @@ test("leaves editing, composition, modifiers, settings Off, and external owners 
     }));
     textarea.dispatchEvent(new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "Escape",
       isComposing: true,
@@ -1093,6 +1100,7 @@ test("leaves editing, composition, modifiers, settings Off, and external owners 
   await prompt.evaluate((textarea) => {
     textarea.dispatchEvent(new CompositionEvent("compositionend", {
       bubbles: true,
+      composed: true,
       data: "ㅎ",
     }));
   });
@@ -1103,6 +1111,7 @@ test("leaves editing, composition, modifiers, settings Off, and external owners 
   const modified = await owner.evaluate((element) => {
     const event = new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "KeyS",
       ctrlKey: true,
@@ -1116,6 +1125,7 @@ test("leaves editing, composition, modifiers, settings Off, and external owners 
   await owner.evaluate((element) => {
     element.dispatchEvent(new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "KeyS",
       key: "ㄴ",

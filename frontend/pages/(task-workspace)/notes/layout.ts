@@ -464,6 +464,7 @@ export class CaffoldNotesWorkspace extends CaffoldElement {
         "caffold:request-workspace-route",
         {
           bubbles: true,
+          composed: true,
           detail: {
             route: {
               kind: "notes",

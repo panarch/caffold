@@ -1,4 +1,4 @@
-caffold-task-workspace {
+:host {
   --task-workspace-master-width: 380px;
   --task-workspace-navigation-inset: var(--interface-space-4);
   --task-workspace-navigation-height: max(
@@ -28,7 +28,6 @@ caffold-task-workspace {
   --task-header-leading-space: 0rem;
   --task-header-block-space: 0rem;
   position: relative;
-  container: task-workspace / inline-size;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   height: 100%;
@@ -36,274 +35,297 @@ caffold-task-workspace {
   min-height: 0;
   overflow: hidden;
   background: var(--surface);
+}
 
-  & .task-workspace-surface,
-  & .task-workspace-master-detail,
-  & .task-workspace-master-pane,
-  & .task-workspace-detail-pane,
-  & .task-workspace-detail-pane > caffold-tasks-page,
-  & .task-workspace-detail-pane > caffold-notes-workspace,
-  & .task-workspace-detail-pane > caffold-settings-workspace {
-    min-width: 0;
-    min-height: 0;
-    height: 100%;
-  }
+.task-workspace-surface,
+.task-workspace-master-detail,
+.task-workspace-master-pane,
+.task-workspace-detail-pane,
+.task-workspace-detail-pane > caffold-tasks-page,
+.task-workspace-detail-pane > caffold-notes-workspace,
+.task-workspace-detail-pane > caffold-settings-workspace {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
 
-  & .task-workspace-master-detail {
-    position: relative;
-    display: grid;
-    grid-template-columns:
-      var(--task-workspace-master-width, 380px)
-      minmax(520px, 1fr);
-    overflow: hidden;
-  }
+/* Named here rather than on `:host`: WebKit hides a container named on a
+   host from the shadow roots of the components drawn inside it. */
+.task-workspace-surface {
+  container: task-workspace / inline-size;
+}
 
-  & .task-workspace-master-pane {
-    --task-navigator-top-header-size: var(--task-workspace-header-size);
-    --task-navigator-scroll-padding-top: var(--interface-space-3);
+.task-workspace-master-detail {
+  position: relative;
+  display: grid;
+  grid-template-columns:
+    var(--task-workspace-master-width, 380px)
+    minmax(520px, 1fr);
+  overflow: hidden;
+}
 
-    container: task-workspace-navigation / inline-size;
-    position: relative;
-    z-index: 2;
-    display: grid;
-    grid-template-rows: minmax(0, 1fr) auto;
-    overflow: visible;
-    border-right: 1px solid var(--border);
-    background: var(--surface);
-  }
+.task-workspace-master-pane {
+  --task-navigator-top-header-size: var(--task-workspace-header-size);
+  --task-navigator-scroll-padding-top: var(--interface-space-3);
 
-  & .task-workspace-master-pane > caffold-task-navigator,
-  & .task-workspace-master-pane > caffold-notes-navigator,
-  & .task-workspace-master-pane > caffold-settings-navigator {
-    min-height: 0;
-    height: auto;
-  }
+  container: task-workspace-navigation / inline-size;
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  overflow: visible;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
 
-  & .notes-primary-slot {
-    display: none;
-    grid-row: 1;
-    min-width: 0;
-    min-height: 0;
-    height: 100%;
-    overflow: hidden;
-  }
+.task-workspace-master-pane > caffold-task-navigator,
+.task-workspace-master-pane > caffold-notes-navigator,
+.task-workspace-master-pane > caffold-settings-navigator {
+  min-height: 0;
+  height: auto;
+}
 
-  & .task-workspace-master-pane::after {
-    position: absolute;
-    inset: 0 -1.125rem 0 auto;
-    width: 1.125rem;
-    background: var(--structural-shadow-inline-end);
-    content: "";
-    pointer-events: none;
-  }
+.notes-primary-slot {
+  display: none;
+  grid-row: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
 
-  & .task-workspace-master-detail > caffold-pane-resizer {
-    left: var(--task-workspace-master-width, 380px);
-  }
+.task-workspace-master-pane::after {
+  position: absolute;
+  inset: 0 -1.125rem 0 auto;
+  width: 1.125rem;
+  background: var(--structural-shadow-inline-end);
+  content: "";
+  pointer-events: none;
+}
 
-  &.is-resizing-navigation-pane {
-    cursor: col-resize;
-    user-select: none;
-  }
+.task-workspace-master-detail > caffold-pane-resizer {
+  left: var(--task-workspace-master-width, 380px);
+}
 
-  &[data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-presentation="code"]
-    .task-workspace-master-pane,
-  &[data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-presentation="code"]
-    .task-workspace-master-detail > caffold-pane-resizer {
-    display: none;
-  }
+:host(.is-resizing-navigation-pane) {
+  cursor: col-resize;
+  user-select: none;
+}
 
-  &[data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-presentation="code"]
-    .task-workspace-master-detail {
-    grid-template-columns: minmax(0, 1fr);
-  }
+:host([data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-presentation="code"]) .task-workspace-master-pane,
+:host([data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-presentation="code"]) .task-workspace-master-detail > caffold-pane-resizer {
+  display: none;
+}
 
-  &[data-side-pane-collapsed] .task-workspace-master-pane,
-  &[data-side-pane-collapsed] .task-workspace-master-detail > caffold-pane-resizer {
-    display: none;
-  }
+:host([data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-presentation="code"]) .task-workspace-master-detail {
+  grid-template-columns: minmax(0, 1fr);
+}
 
-  &[data-side-pane-collapsed] .task-workspace-master-detail {
-    grid-template-columns: minmax(0, 1fr);
-  }
+:host([data-side-pane-collapsed]) .task-workspace-master-pane,
+:host([data-side-pane-collapsed]) .task-workspace-master-detail > caffold-pane-resizer {
+  display: none;
+}
 
-  /* The side pane toggle sits over whichever header starts at the corner, and
-     only that header makes room for it. The room follows the toggle's visible
-     box, so the touch target's extra reach does not widen the gap on touch. */
-  &[data-side-pane-toggle="navigation"] .task-workspace-master-pane,
-  &[data-side-pane-toggle="detail"] .task-workspace-detail-pane {
-    --task-header-leading-space: calc(
-      var(--interface-compact-visual-size) +
-        var(--task-workspace-route-control-clearance)
-    );
-    --task-header-block-space: var(--task-workspace-header-size);
-  }
+:host([data-side-pane-collapsed]) .task-workspace-master-detail {
+  grid-template-columns: minmax(0, 1fr);
+}
 
-  & .task-workspace-detail-pane {
-    overflow: hidden;
-  }
+/* The side pane toggle sits over whichever header starts at the corner, and
+   only that header makes room for it. The room follows the toggle's visible
+   box, so the touch target's extra reach does not widen the gap on touch. */
+:host([data-side-pane-toggle="navigation"]) .task-workspace-master-pane,
+:host([data-side-pane-toggle="detail"]) .task-workspace-detail-pane {
+  --task-header-leading-space: calc(
+    var(--interface-compact-visual-size) +
+      var(--task-workspace-route-control-clearance)
+  );
+  --task-header-block-space: var(--task-workspace-header-size);
+}
 
-  &[data-workspace-route-control-visible] {
-    --task-header-leading-space: calc(
+.task-workspace-detail-pane {
+  overflow: hidden;
+}
+
+:host([data-workspace-route-control-visible]) {
+  --task-header-leading-space: calc(
+    var(--interface-compact-hit-size) +
+      var(--task-workspace-route-control-gap) +
       var(--interface-compact-hit-size) +
-        var(--task-workspace-route-control-gap) +
-        var(--interface-compact-hit-size) +
-        var(--task-workspace-route-control-clearance)
-    );
-    --task-header-block-space: var(--task-workspace-header-size);
-  }
+      var(--task-workspace-route-control-clearance)
+  );
+  --task-header-block-space: var(--task-workspace-header-size);
+}
 
-  & .task-workspace-route-controls {
-    position: absolute;
-    top: calc(var(--interface-space-4) - var(--interface-compact-hit-outset));
-    left: calc(var(--interface-space-6) - var(--interface-compact-hit-outset));
-    z-index: 6;
-    display: flex;
-    gap: var(--task-workspace-route-control-gap);
-  }
+.task-workspace-route-controls {
+  position: absolute;
+  top: calc(var(--interface-space-4) - var(--interface-compact-hit-outset));
+  left: calc(var(--interface-space-6) - var(--interface-compact-hit-outset));
+  z-index: 6;
+  display: flex;
+  gap: var(--task-workspace-route-control-gap);
+}
 
-  /* They stand on the Detail header, so they leave when the terminal takes its
-     height. */
-  &[data-workspace-mode="tasks"][data-task-detail-header-hidden] > .task-workspace-route-controls {
-    display: none;
-  }
+/* They stand on the Detail header, so they leave when the terminal takes its
+   height. */
+:host([data-workspace-mode="tasks"][data-task-detail-header-hidden]) > .task-workspace-route-controls {
+  display: none;
+}
 
-  & .task-workspace-route-control {
-    margin-block: 0;
-    color: var(--control-fg);
-    font: inherit;
-  }
+.task-workspace-route-control {
+  margin-block: 0;
+  color: var(--control-fg);
+  font: inherit;
+}
 
-  & .task-workspace-route-control:hover::before,
-  & .task-workspace-route-control:focus-visible::before {
-    background: var(--surface);
-  }
+.task-workspace-route-control:hover::before,
+.task-workspace-route-control:focus-visible::before {
+  background: var(--surface);
+}
 
-  & .task-workspace-route-control:disabled {
-    color: var(--disabled-text);
-    cursor: default;
-    opacity: 0.55;
-  }
+.task-workspace-route-control:disabled {
+  color: var(--disabled-text);
+  cursor: default;
+  opacity: 0.55;
+}
 
-  & .task-workspace-route-control:disabled::before,
-  & .task-workspace-route-control:disabled:hover::before {
-    border-color: var(--border);
-  }
+.task-workspace-route-control:disabled::before,
+.task-workspace-route-control:disabled:hover::before {
+  border-color: var(--border);
+}
 
-  & .task-workspace-route-control-icon {
-    position: relative;
-    display: block;
-    width: var(--interface-icon-size);
-    height: var(--interface-icon-size);
-    stroke-width: 2;
-  }
+.task-workspace-route-control-icon {
+  position: relative;
+  display: block;
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
+  stroke-width: 2;
 }
 
 @container task-workspace (min-width: 641px) {
-  caffold-task-workspace {
-    & .task-workspace-master-pane {
-      grid-template-rows: minmax(0, 1fr);
-      --task-workspace-navigation-clearance: calc(
-        var(--task-workspace-navigation-height) +
-          var(--task-workspace-navigation-inset) +
-          env(safe-area-inset-bottom) + var(--interface-space-4)
-      );
-    }
-
-    & .task-workspace-master-pane > caffold-task-workspace-navigation {
-      position: absolute;
-      z-index: 4;
-      left: var(--task-workspace-navigation-inset);
-      bottom: calc(
-        var(--task-workspace-navigation-inset) + env(safe-area-inset-bottom)
-      );
-      width: max-content;
-      max-width: calc(100% - 2 * var(--task-workspace-navigation-inset));
-    }
+  .task-workspace-master-pane {
+    grid-template-rows: minmax(0, 1fr);
+    --task-workspace-navigation-clearance: calc(
+      var(--task-workspace-navigation-height) +
+        var(--task-workspace-navigation-inset) +
+        env(safe-area-inset-bottom) + var(--interface-space-4)
+    );
   }
 
-  caffold-task-workspace[data-workspace-mode="notes"][data-notes-view="split"] {
-    & .task-workspace-master-detail {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: var(--task-workspace-divider-width);
-      background: var(--border);
-    }
-    & .task-workspace-master-pane {
-      display: grid;
-      border-right: 0;
-    }
-    & .task-workspace-detail-pane { display: block; }
-    & .task-workspace-master-detail > caffold-pane-resizer { display: none; }
-    & .notes-primary-slot { display: block; }
-    & .task-workspace-master-pane > caffold-notes-navigator { display: none; }
-    &[data-notes-picker="primary"] .notes-primary-slot { display: none; }
-    &[data-notes-picker="primary"] .task-workspace-master-pane > caffold-notes-navigator { display: grid; }
+  .task-workspace-master-pane > caffold-task-workspace-navigation {
+    position: absolute;
+    z-index: 4;
+    left: var(--task-workspace-navigation-inset);
+    bottom: calc(
+      var(--task-workspace-navigation-inset) + env(safe-area-inset-bottom)
+    );
+    width: max-content;
+    max-width: calc(100% - 2 * var(--task-workspace-navigation-inset));
+  }
+
+  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-master-detail {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--task-workspace-divider-width);
+    background: var(--border);
+  }
+
+  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-master-pane {
+    display: grid;
+    border-right: 0;
+  }
+
+  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-detail-pane {
+    display: block;
+  }
+
+  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-master-detail > caffold-pane-resizer {
+    display: none;
+  }
+
+  :host([data-workspace-mode="notes"][data-notes-view="split"]) .notes-primary-slot {
+    display: block;
+  }
+
+  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-master-pane > caffold-notes-navigator {
+    display: none;
+  }
+
+  :host([data-workspace-mode="notes"][data-notes-view="split"][data-notes-picker="primary"]) .notes-primary-slot {
+    display: none;
+  }
+
+  :host([data-workspace-mode="notes"][data-notes-view="split"][data-notes-picker="primary"]) .task-workspace-master-pane > caffold-notes-navigator {
+    display: grid;
   }
 }
 
 @container task-workspace (max-width: 640px) {
-  caffold-task-workspace[data-workspace-mode="notes"][data-notes-view="split"] {
-    & .task-workspace-master-detail { grid-template-columns: minmax(0, 1fr); }
-    & .task-workspace-master-pane { display: grid; }
-    & .notes-primary-slot { display: block; }
-    & .task-workspace-detail-pane,
-    & .task-workspace-master-detail > caffold-pane-resizer,
-    & .task-workspace-master-pane > caffold-notes-navigator,
-    & .task-workspace-master-pane > caffold-task-workspace-navigation { display: none; }
+  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-master-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-master-pane {
+    display: grid;
+  }
+
+  :host([data-workspace-mode="notes"][data-notes-view="split"]) .notes-primary-slot {
+    display: block;
+  }
+
+  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-detail-pane,
+  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-master-detail > caffold-pane-resizer,
+  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-master-pane > caffold-notes-navigator,
+  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-master-pane > caffold-task-workspace-navigation {
+    display: none;
   }
 }
 
 @media (max-width: 899px) {
-  caffold-task-workspace {
-    & .task-workspace-master-detail {
-      grid-template-columns: minmax(0, 1fr);
-    }
+  .task-workspace-master-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
 
-    & .task-workspace-master-detail > caffold-pane-resizer {
-      display: none;
-    }
+  .task-workspace-master-detail > caffold-pane-resizer {
+    display: none;
+  }
 
-    & .task-workspace-master-pane {
-      border-right: 0;
-    }
+  .task-workspace-master-pane {
+    border-right: 0;
+  }
 
-    & .task-workspace-master-pane::after {
-      display: none;
-    }
+  .task-workspace-master-pane::after {
+    display: none;
+  }
 
-    &:not([data-workspace-detail-open]) .task-workspace-detail-pane,
-    &[data-workspace-detail-open] .task-workspace-master-pane {
-      display: none;
-    }
+  :host(:not([data-workspace-detail-open])) .task-workspace-detail-pane,
+  :host([data-workspace-detail-open]) .task-workspace-master-pane {
+    display: none;
   }
 }
 
 @media (max-width: 520px) {
-  caffold-task-workspace {
-    &[data-workspace-route-control-visible] {
-      --task-header-leading-space: calc(
+  :host([data-workspace-route-control-visible]) {
+    --task-header-leading-space: calc(
+      var(--interface-compact-hit-size) +
+        var(--task-workspace-route-control-gap) +
         var(--interface-compact-hit-size) +
-          var(--task-workspace-route-control-gap) +
-          var(--interface-compact-hit-size) +
-          0.5rem
-      );
-    }
+        0.5rem
+    );
+  }
 
-    & .task-workspace-route-controls {
-      top: calc(0.4375rem - var(--interface-compact-hit-outset));
-      left: calc(var(--interface-space-4) - var(--interface-compact-hit-outset));
-    }
+  .task-workspace-route-controls {
+    top: calc(0.4375rem - var(--interface-compact-hit-outset));
+    left: calc(var(--interface-space-4) - var(--interface-compact-hit-outset));
   }
 }
 
 @media (min-width: 900px) {
-  caffold-task-workspace[data-workspace-route-control-visible] {
+  :host([data-workspace-route-control-visible]) {
     --task-header-leading-space: 0rem;
     --task-header-block-space: 0rem;
+  }
 
-    & .task-workspace-back,
-    & .task-workspace-switcher {
-      display: none;
-    }
+  :host([data-workspace-route-control-visible]) .task-workspace-back,
+  :host([data-workspace-route-control-visible]) .task-workspace-switcher {
+    display: none;
   }
 }

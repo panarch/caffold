@@ -409,8 +409,7 @@ test("rejects a late file navigator response while Review is inactive", { tag: "
 
     await expect
       .poll(() =>
-        tasksPage.evaluate((element, threadId) => {
-          const detail = element.querySelector("caffold-detail-layout");
+        tasksPage.locator("caffold-detail-layout").evaluate((detail, threadId) => {
           const review = detail.reviewComponents.get(`task:${threadId}`);
           return review.fileNavigator.loadedDirectoryPath;
         }, taskScenario.threadId),

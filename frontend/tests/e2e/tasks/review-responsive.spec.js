@@ -114,8 +114,7 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
     await expect(reviewSeparator).toBeVisible();
   }
 
-  const summaryClearance = await page.evaluate((headingElement) => {
-    const closeButton = document.querySelector(".task-workspace-back");
+  const summaryClearance = await page.evaluate(([headingElement, closeButton]) => {
     const close = closeButton.getBoundingClientRect();
     const heading = headingElement.getBoundingClientRect();
     return {
@@ -132,7 +131,10 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
       headingWidth: heading.width,
       usesCollapsedWorkspace: window.matchMedia("(max-width: 899px)").matches,
     };
-  }, await page.locator("caffold-task-detail-summary .task-detail-heading h2").elementHandle());
+  }, [
+    await page.locator("caffold-task-detail-summary .task-detail-heading h2").elementHandle(),
+    await page.locator(".task-workspace-back").elementHandle(),
+  ]);
   expect(summaryClearance.closeVisible).toBe(
     summaryClearance.usesCollapsedWorkspace,
   );

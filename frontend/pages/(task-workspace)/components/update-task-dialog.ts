@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -15,12 +15,15 @@ import { ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#tasks/components/task-turn-options.js";
 import type { CaffoldUpdateStatus } from "#app/api.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type {
   CaffoldTaskTurnOptions,
   TurnOptionsSelection,
 } from "#tasks/components/task-turn-options.js";
 import type { TaskStartIntent } from "../task-create-intent-event.js";
 import { TASK_CREATE_INTENT_EVENT } from "../task-create-intent-event.js";
+
+import styles from "./update-task-dialog.css.js";
 
 const RESTART_NOTICE =
   "Running Tasks keep going while Caffold restarts. Claude sessions stop if it takes more than 10 minutes. Open terminals close.";
@@ -43,7 +46,9 @@ export interface UpdateTask {
  * The workspace opens it and shows it at once, so it draws in place.
  */
 @customElement("caffold-update-task-dialog")
-export class CaffoldUpdateTaskDialog extends LitElement {
+export class CaffoldUpdateTaskDialog extends CaffoldElement {
+  static override styles = styles;
+
   private updateTask: UpdateTask | null = null;
   // Turn options load the agents' models as soon as they connect, so they
   // exist only while the dialog is open.
@@ -59,10 +64,6 @@ export class CaffoldUpdateTaskDialog extends LitElement {
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
   private readonly body = new DrawnRef<HTMLDivElement>(this);
   private readonly turnOptions = new DrawnRef<CaffoldTaskTurnOptions>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   /**
    * Opens for an update the server offers: `status` is its update status with

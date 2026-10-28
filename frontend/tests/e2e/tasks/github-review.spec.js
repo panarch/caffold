@@ -616,9 +616,11 @@ async function activatePopupActionHint(page, control, accessibleName, url) {
 }
 
 async function taskGithubPaneGeometry(page, options = {}) {
-  return page.locator("caffold-task-github-layout").evaluate((layout, geometryOptions) => {
-    const detailPane = document.querySelector(".task-workspace-detail-pane");
-    const navigationPane = document.querySelector(".task-workspace-master-pane");
+  const [detailPane, navigationPane] = await elementHandles(page.locator("caffold-task-workspace"), [
+    ".task-workspace-detail-pane",
+    ".task-workspace-master-pane",
+  ]);
+  return page.locator("caffold-task-github-layout").evaluate((layout, { geometryOptions, detailPane, navigationPane }) => {
     const detailBounds = detailPane.getBoundingClientRect();
     // The layout, the Issues or Pull Requests layout its mode shows, and the
     // page each draw into a shadow root of their own.
@@ -696,7 +698,7 @@ async function taskGithubPaneGeometry(page, options = {}) {
         tableScroll && tableScroll.scrollWidth > tableScroll.clientWidth + 1,
       ),
     };
-  }, options);
+  }, { geometryOptions: options, detailPane, navigationPane });
 }
 
 test("opens direct and rendered Issue links through the Issue owner", { tag: "@all-viewports" }, async ({
@@ -1139,6 +1141,7 @@ test("scrolls a retained GitHub Issue body through its public Shadow DOM host", 
   const consumed = await workspace.evaluate((element) => {
     const event = new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "KeyS",
       key: "s",

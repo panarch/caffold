@@ -1,22 +1,23 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
+
+import styles from "./runtime-restart-dialog.css.js";
 
 export const CODEX_RUNTIME_RESTART_CONFIRMED_EVENT =
   "caffold:codex-runtime-restart-confirmed";
 
 @customElement("caffold-codex-runtime-restart-dialog")
-export class CaffoldCodexRuntimeRestartDialog extends LitElement {
+export class CaffoldCodexRuntimeRestartDialog extends CaffoldElement {
+  static override styles = styles;
+
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     return html`

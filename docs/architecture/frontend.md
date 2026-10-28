@@ -103,9 +103,9 @@ for the browser globals Node lacks.
 
 ## Rendering
 
-A component that renders through Lit extends `LitElement` and renders into its
-own Light DOM, or extends `CaffoldElement` and renders into an open shadow root
-([Styling and assets](#styling-and-assets)); `@customElement()` registers it.
+A component that renders through Lit extends `CaffoldElement` and renders into
+an open shadow root ([Styling and assets](#styling-and-assets));
+`@customElement()` registers it.
 The state it shows lives in reactive properties, `accessor` fields that
 `@property()` or `@state()` declares, and an owner hands a child what it shows
 through property bindings in its template. When one changes, Lit calls
@@ -2136,24 +2136,18 @@ finishing never starts another Hint session automatically.
 
 ## Styling and assets
 
-The shared components in `frontend/components/`, the keyboard mode's
-presentation, Scroll selector, Scroll HUD, and shortcut help in
-`keyboard-navigation/components/`, the Action Hint dialog, pagination with its
-page button, Settings and Notes, the Caffold mark at the head of the left pane
-(`caffold-workspace-brand`), the Tasks components in `tasks/components/`,
-`tasks/new/`, and `tasks/recovery/` (the Task list, the Composer, New Task, the
-recovery screens, and the Task dialogs), and Task Detail in `tasks/(detail)/`
-(its layout and header controls, the Task screen with its conversation, the
-Section screen, Integrated Review, Git, GitHub, and the terminal) extend
-`CaffoldElement` (`frontend/caffold-element.ts`) and render into open shadow
-roots. Their stylesheets style the host as `:host` and the rest by local class,
-and reach the component as a module: beside each stylesheet the server build
-writes `name.css.js`, whose default export is the stylesheet as a
-`CSSStyleSheet`, the shape a CSS module script has, which Safari does not load.
-The component lists that sheet in its `static styles`, and Lit adopts it into
-every instance's shadow root. The document's stylesheets do not reach inside
-those roots, and their sheets do not reach out. A parent names a child it draws
-only to place, size, or hide its host.
+Every component extends `CaffoldElement` (`frontend/caffold-element.ts`) and
+renders into an open shadow root. Its stylesheet styles the host as `:host` and
+the rest by local class, and reaches the component as a module: beside each
+stylesheet the server build writes `name.css.js`, whose default export is the
+stylesheet as a `CSSStyleSheet`, the shape a CSS module script has, which Safari
+does not load. The component lists that sheet in its `static styles`, and Lit
+adopts it into every instance's shadow root. The document's stylesheet does not
+reach inside those roots, and their sheets do not reach out. A parent names a
+child it draws only to place, size, or hide its host. A container that the
+components inside a root query is named on an element in that root rather than
+on `:host`: WebKit hides a host's container name from the shadow roots of the
+components drawn inside it.
 
 An event heard outside the root it starts in is `composed`, such as
 `caffold:change-page`, the Scroll selector's choice, and the File Viewer's
@@ -2176,19 +2170,17 @@ takes `returnPopoverFocus` from `frontend/popover-focus.ts` as its
 `beforetoggle` listener: closing with focus inside, it hands focus back to what
 had it as it opened, as the browser does for a popover in the document.
 
-The other components render in Light DOM, where CSS is one cascade:
-`styles.css` imports each component's stylesheet, and each stylesheet scopes
-internal selectors below the owning custom element. A parent may size or hide a
-child host, but descendant styling belongs to the child.
+The document's own stylesheet, `styles.css`, holds the theme tokens, the fonts,
+and the rules for the page itself; it imports no component's stylesheet.
 
 `caffold-element/base.css` holds the rules every component's elements take: box
 sizing, form control and code fonts, `[hidden]`, `.surface-message`, and
-`.sr-only`. `styles.css` imports it first, and `CaffoldElement` puts it before
-the `static styles` of every component that extends it, so such a component
-lists only its own. The box sizing and font rules sit in its `base` layer,
-beneath the shared styles' `component-styles` layer, so a shared style sets the
-font of a control it draws. Theme tokens and inherited text properties reach a
-shadow root from the document.
+`.sr-only`. `styles.css` imports it, and `CaffoldElement` puts it before the
+`static styles` of every component, so a component lists only its own. The box
+sizing and font rules sit in its `base` layer, beneath the shared styles'
+`component-styles` layer, so a shared style sets the font of a control it
+draws. Theme tokens and inherited text properties reach a shadow root from the
+document.
 
 A shared style is a stylesheet directly under a `component-styles/` directory
 at the nearest common owner of the components that use it.
@@ -2198,19 +2190,11 @@ holds `busy-spin.css`; `pages/(task-workspace)/tasks/component-styles/` holds
 `action-icon.css`, the icon in a Tasks action. A shared style's rules start at
 `:scope`, name no consumer, and may define their own keyframes; its head
 comment says what it draws. `frontend/scoped-style.ts` applies any of them and
-names none. A component in a shadow root imports the stylesheet's module and
-puts `scopedStyle(style, target)` in its `static styles`, `target` being the
-class path to its element in that root; every instance shares the one sheet
-for that target. A component in Light DOM calls `adoptScopedStyle(style, owner, target)`
-above the class `@customElement()` registers, declaring the explicit child path
-from the owner to its own local class; a step in that path may add the owner's
-state classes, and the document adopts one native `@scope` sheet for each owner
-and path. Either way the sheet comes from the stylesheet's module, so neither
-requests the stylesheet. `secondary-button.css` and `action-icon.css` are
-applied only in shadow roots. Shared defaults use the `component-styles` layer;
-unlayered owner rules retain local overrides.
-Adoption lasts for the document, while components retain their native state
-and Action Hint providers.
+names none. A component imports the stylesheet's module and puts
+`scopedStyle(style, target)` in its `static styles`, `target` being the class
+path to its element in its root; every instance shares the one sheet for that
+target, and no component requests the stylesheet itself. Shared defaults use
+the `component-styles` layer; unlayered owner rules retain local overrides.
 
 `compact-icon-button.css` covers Task list/header actions, workspace and
 Git/GitHub Back controls, terminal and file refresh controls, pagination, and
@@ -2300,9 +2284,9 @@ start pane and separator itself. Each kind of pane has its own
 Every production JavaScript/CSS asset must be registered consistently in:
 
 - module imports;
-- `frontend/styles.css`, or the consuming component's explicit style declaration
-  for reusable `:scope` sources and for the stylesheets of a component in a
-  shadow root;
+- the consuming component's `static styles`, which take its stylesheet module
+  and the shared styles it applies (`frontend/styles.css` takes only the base
+  rules);
 - `frontend/service-worker.ts`;
 - `caffold/src/static_assets.rs`;
 - static asset and CSS ownership tests.

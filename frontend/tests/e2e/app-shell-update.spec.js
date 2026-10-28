@@ -1698,7 +1698,7 @@ async function reconcileServiceWorkerDiagnostics(page) {
 
 async function appShellLayout(page) {
   return await page.locator("caffold-app-shell").evaluate((shell) => {
-    const main = shell.querySelector(".app-main").getBoundingClientRect();
+    const main = shell.shadowRoot.querySelector(".app-main").getBoundingClientRect();
     const shellRect = shell.getBoundingClientRect();
     return {
       mainBottom: Math.round(main.bottom),

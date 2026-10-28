@@ -365,7 +365,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "brand/grok-template.png" => Some(png(include_bytes!(
             "../../frontend/assets/brand/grok-template.png"
         ))),
-        "pages/layout.css" => Some(css(include_str!("../../frontend/pages/layout.css"))),
+        "pages/layout.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/layout.css.js"
+        )))),
         "pages/component-styles/busy-spin.css.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/pages/component-styles/busy-spin.css.js"
@@ -410,23 +413,26 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/pages/pwa-update-lifecycle/runtime.js"
         )))),
-        "pages/components/build-mismatch-alert.css" => Some(css(include_str!(
-            "../../frontend/pages/components/build-mismatch-alert.css"
-        ))),
+        "pages/components/build-mismatch-alert.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/components/build-mismatch-alert.css.js"
+        )))),
         "pages/components/build-mismatch-alert.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/pages/components/build-mismatch-alert.js"
         )))),
-        "pages/components/update-dialog.css" => Some(css(include_str!(
-            "../../frontend/pages/components/update-dialog.css"
-        ))),
+        "pages/components/update-dialog.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/components/update-dialog.css.js"
+        )))),
         "pages/components/update-dialog.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/pages/components/update-dialog.js"
         )))),
-        "pages/components/update-result-dialog.css" => Some(css(include_str!(
-            "../../frontend/pages/components/update-result-dialog.css"
-        ))),
+        "pages/components/update-result-dialog.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/components/update-result-dialog.css.js"
+        )))),
         "pages/components/update-result-dialog.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/pages/components/update-result-dialog.js"
@@ -733,9 +739,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/settings/about/page.js"
         )))),
-        "pages/(task-workspace)/layout.css" => Some(css(include_str!(
-            "../../frontend/pages/(task-workspace)/layout.css"
-        ))),
+        "pages/(task-workspace)/layout.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/layout.css.js"
+        )))),
         "pages/(task-workspace)/layout.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/layout.js"
@@ -840,16 +847,20 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/live-updates/lifecycle.js"
         )))),
-        "pages/(task-workspace)/components/navigation.css" => Some(css(include_str!(
-            "../../frontend/pages/(task-workspace)/components/navigation.css"
-        ))),
+        "pages/(task-workspace)/components/navigation.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/components/navigation.css.js"
+        )))),
         "pages/(task-workspace)/components/navigation.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/components/navigation.js"
         )))),
-        "pages/(task-workspace)/components/update-task-dialog.css" => Some(css(include_str!(
-            "../../frontend/pages/(task-workspace)/components/update-task-dialog.css"
-        ))),
+        "pages/(task-workspace)/components/update-task-dialog.css.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/components/update-task-dialog.css.js"
+            ))))
+        }
         "pages/(task-workspace)/components/update-task-dialog.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
@@ -896,10 +907,11 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js"
             ))))
         }
-        "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css" => {
-            Some(css(include_str!(
-                "../../frontend/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css"
-            )))
+        "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css.js"
+            ))))
         }
         "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js" => {
             Some(js(include_str!(concat!(
@@ -907,10 +919,11 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js"
             ))))
         }
-        "pages/(task-workspace)/codex-status/components/reset-credit-dialog.css" => {
-            Some(css(include_str!(
-                "../../frontend/pages/(task-workspace)/codex-status/components/reset-credit-dialog.css"
-            )))
+        "pages/(task-workspace)/codex-status/components/reset-credit-dialog.css.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/codex-status/components/reset-credit-dialog.css.js"
+            ))))
         }
         "pages/(task-workspace)/codex-status/components/reset-credit-dialog.js" => {
             Some(js(include_str!(concat!(
@@ -924,10 +937,11 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/codex-status/runtime-update-lifecycle.js"
             ))))
         }
-        "pages/(task-workspace)/codex-status/components/runtime-update-dialog.css" => {
-            Some(css(include_str!(
-                "../../frontend/pages/(task-workspace)/codex-status/components/runtime-update-dialog.css"
-            )))
+        "pages/(task-workspace)/codex-status/components/runtime-update-dialog.css.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/codex-status/components/runtime-update-dialog.css.js"
+            ))))
         }
         "pages/(task-workspace)/codex-status/components/runtime-update-dialog.js" => {
             Some(js(include_str!(concat!(
@@ -935,9 +949,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/codex-status/components/runtime-update-dialog.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/layout.css" => Some(css(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/layout.css"
-        ))),
+        "pages/(task-workspace)/tasks/layout.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/tasks/layout.css.js"
+        )))),
         "pages/(task-workspace)/tasks/layout.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/tasks/layout.js"
@@ -2485,7 +2500,13 @@ mod tests {
             "keyboard-navigation/components/selector.css",
             "keyboard-navigation/components/shortcut-dialog.css",
             "keyboard-navigation/components/shortcut-list.css",
+            "pages/(task-workspace)/codex-status/components/reset-credit-dialog.css",
+            "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css",
+            "pages/(task-workspace)/codex-status/components/runtime-update-dialog.css",
+            "pages/(task-workspace)/components/navigation.css",
+            "pages/(task-workspace)/components/update-task-dialog.css",
             "pages/(task-workspace)/components/workspace-brand.css",
+            "pages/(task-workspace)/layout.css",
             "pages/(task-workspace)/notes/components/document.css",
             "pages/(task-workspace)/notes/components/info.css",
             "pages/(task-workspace)/notes/components/info/components/copy-markdown.css",
@@ -2527,8 +2548,13 @@ mod tests {
             "pages/(task-workspace)/tasks/components/task-store-recovery.css",
             "pages/(task-workspace)/tasks/components/task-switcher-dialog.css",
             "pages/(task-workspace)/tasks/components/task-turn-options.css",
+            "pages/(task-workspace)/tasks/layout.css",
             "pages/(task-workspace)/tasks/new/page.css",
             "pages/(task-workspace)/tasks/recovery/page.css",
+            "pages/components/build-mismatch-alert.css",
+            "pages/components/update-dialog.css",
+            "pages/components/update-result-dialog.css",
+            "pages/layout.css",
         ] {
             let module = get(&format!("{path}.js"))
                 .unwrap_or_else(|| panic!("missing stylesheet module {path}.js"));
@@ -2636,12 +2662,6 @@ mod tests {
             assert!(task_button_js.body.starts_with(b"import "));
         }
 
-        for (path, owner) in [] {
-            let task_button_css = get(path).expect("Task button css asset");
-            assert_eq!(task_button_css.content_type, "text/css; charset=utf-8");
-            assert!(task_button_css.body.starts_with(owner));
-        }
-
         assert!(get("pages/components/header-actions.js").is_none());
         assert!(get("pages/components/app-menu.js").is_none());
         assert!(get("pages/components/pathbar.js").is_none());
@@ -2681,13 +2701,6 @@ mod tests {
         ] {
             let dialog = get(path).expect("update dialog js asset");
             assert_eq!(dialog.content_type, "text/javascript; charset=utf-8");
-        }
-        for path in [
-            "pages/components/update-result-dialog.css",
-            "pages/(task-workspace)/components/update-task-dialog.css",
-        ] {
-            let dialog = get(path).expect("update dialog css asset");
-            assert_eq!(dialog.content_type, "text/css; charset=utf-8");
         }
 
         assert!(get("pages/components/about-dialog.js").is_none());
@@ -2833,15 +2846,6 @@ mod tests {
         assert_eq!(scroll_scope.content_type, "text/javascript; charset=utf-8");
         assert!(scroll_scope.body.starts_with(b"import {"));
 
-        let reset_credit_dialog_css =
-            get("pages/(task-workspace)/codex-status/components/reset-credit-dialog.css")
-                .expect("reset credit dialog css");
-        assert_eq!(
-            reset_credit_dialog_css.content_type,
-            "text/css; charset=utf-8"
-        );
-        assert!(reset_credit_dialog_css.body.starts_with(b"caffold-"));
-
         let notification_lifecycle =
             get("pages/(task-workspace)/settings/notifications/lifecycle.js")
                 .expect("settings notification lifecycle asset");
@@ -2979,17 +2983,6 @@ mod tests {
                     .any(|window| window == marker)
             );
         }
-        let task_workspace_layout_css =
-            get("pages/(task-workspace)/layout.css").expect("task workspace layout css");
-        assert_eq!(
-            task_workspace_layout_css.content_type,
-            "text/css; charset=utf-8"
-        );
-        assert!(
-            task_workspace_layout_css
-                .body
-                .starts_with(b"caffold-task-workspace")
-        );
         let task_workspace_navigation = get("pages/(task-workspace)/components/navigation.js")
             .expect("task workspace navigation js");
         assert_eq!(
@@ -3001,17 +2994,6 @@ mod tests {
                 .body
                 .windows(b"caffold-task-workspace-navigation".len())
                 .any(|window| window == b"caffold-task-workspace-navigation")
-        );
-        let task_workspace_navigation_css = get("pages/(task-workspace)/components/navigation.css")
-            .expect("task workspace navigation css");
-        assert_eq!(
-            task_workspace_navigation_css.content_type,
-            "text/css; charset=utf-8"
-        );
-        assert!(
-            task_workspace_navigation_css
-                .body
-                .starts_with(b"caffold-task-workspace-navigation")
         );
         let workspace_brand = get("pages/(task-workspace)/components/workspace-brand.js")
             .expect("workspace brand js");
@@ -3052,10 +3034,6 @@ mod tests {
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
             assert!(asset.body.starts_with(b"export ") || asset.body.starts_with(b"import "));
         }
-        let tasks_page_css =
-            get("pages/(task-workspace)/tasks/layout.css").expect("tasks layout css");
-        assert_eq!(tasks_page_css.content_type, "text/css; charset=utf-8");
-        assert!(tasks_page_css.body.starts_with(b"caffold-tasks-page"));
         let tasks_markdown =
             get("pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js")
                 .expect("tasks markdown component js");

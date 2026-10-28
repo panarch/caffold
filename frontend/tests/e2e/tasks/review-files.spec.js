@@ -1298,9 +1298,7 @@ test("keeps the shared Review panes inside the task workspace", { tag: "@all-vie
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
 
-  const layout = await taskReview.evaluate((review) => {
-    const codex = document.querySelector("caffold-task-workspace");
-    const appMain = document.querySelector("caffold-app-shell .app-main");
+  const layout = await taskReview.evaluate((review, [codex, appMain]) => {
     const reviewRect = review.getBoundingClientRect();
     const codexRect = codex.getBoundingClientRect();
     return {
@@ -1316,7 +1314,10 @@ test("keeps the shared Review panes inside the task workspace", { tag: "@all-vie
       navigatorWidth: review.shadowRoot.querySelector(".task-review-navigator-pane").getBoundingClientRect().width,
       overflow: review.scrollWidth > review.clientWidth,
     };
-  });
+  }, [
+    await page.locator("caffold-task-workspace").elementHandle(),
+    await page.locator("caffold-app-shell .app-main").elementHandle(),
+  ]);
 
   expect(Math.abs(layout.codexTop - layout.appMainTop)).toBeLessThanOrEqual(1);
   expect(Math.abs(layout.left - layout.codexLeft)).toBeLessThanOrEqual(1);

@@ -15,36 +15,37 @@ test("components take shared styles as modules and request no stylesheet for the
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   expect(requests).toContain("/assets/component-styles/compact-icon-button.css.js");
   expect(requests.filter((pathname) => !pathname.endsWith(".css.js"))).toEqual([]);
-  // The workspace corner controls' compact icon button scope and the
-  // foreground recovery notice's busy spin scope.
-  expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(2);
+  // Every component takes them in its own root; the document adopts none.
+  expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(0);
 });
 
-test("new consumers declare their own scope, retain local overrides and reconnect without extra sheets", { tag: "@desktop" }, async ({ page }) => {
+test("new consumers declare their own scope, retain local overrides and share one sheet per target", { tag: "@desktop" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
-  const originalSheets = await page.evaluate(() => document.adoptedStyleSheets.length);
   await page.evaluate(async () => {
-    const [{ adoptScopedStyle }, { default: compactIconButton }] = await Promise.all([
+    const [{ scopedStyle }, { default: compactIconButton }] = await Promise.all([
       import("/assets/scoped-style.js"),
       import("/assets/component-styles/compact-icon-button.css.js"),
     ]);
-    adoptScopedStyle(compactIconButton, "caffold-style-contract", "> header > .contract-actions > .contract-button");
     customElements.define("caffold-style-contract", class extends HTMLElement {
       connectedCallback() {
-        if (this.childElementCount) return;
-        this.innerHTML = `<header><div class="contract-actions">
+        if (this.shadowRoot) return;
+        const root = this.attachShadow({ mode: "open" });
+        root.adoptedStyleSheets = [
+          scopedStyle(compactIconButton, ".contract-actions > .contract-button"),
+        ];
+        root.innerHTML = `<header><div class="contract-actions">
           <button class="contract-button">New consumer</button>
-          <caffold-unregistered-contract><button class="contract-button">Nested control</button></caffold-unregistered-contract>
-        </div></header>`;
+        </div></header><button class="contract-button">Outside the path</button>`;
       }
     });
-    const host = document.createElement("caffold-style-contract");
-    const other = document.createElement("caffold-unregistered-contract");
-    other.innerHTML = `<button class="contract-button">Other owner</button>`;
-    document.body.append(host, other);
+    document.body.append(
+      document.createElement("caffold-style-contract"),
+      document.createElement("caffold-style-contract"),
+    );
   });
-  const button = page.locator("caffold-style-contract > header > .contract-actions > .contract-button");
+  const hosts = page.locator("caffold-style-contract");
+  const button = hosts.first().locator(".contract-actions > .contract-button");
   await expect(button).toHaveCSS("display", "grid");
   const dimensions = await button.evaluate((element) => {
     const style = getComputedStyle(element);
@@ -52,44 +53,42 @@ test("new consumers declare their own scope, retain local overrides and reconnec
   });
   expect(dimensions.width).toBe(dimensions.height);
   expect(dimensions.surface).toBe('""');
-  for (const other of [
-    page.locator("caffold-style-contract caffold-unregistered-contract button"),
-    page.locator("body > caffold-unregistered-contract button"),
-  ]) {
-    expect(await other.evaluate((element) => getComputedStyle(element, "::before").content)).toBe("none");
-  }
+  expect(await hosts.first().locator(":scope > button.contract-button").evaluate(
+    (element) => getComputedStyle(element, "::before").content,
+  )).toBe("none");
+  expect(await hosts.evaluateAll(([first, second]) =>
+    first.shadowRoot.adoptedStyleSheets[0] === second.shadowRoot.adoptedStyleSheets[0])).toBe(true);
 
+  // An unlayered rule of the owner's own wins over the shared one.
   await button.focus();
   await expect(button).toBeFocused();
   const focusedSurface = await button.evaluate((element) => getComputedStyle(element, "::before").backgroundColor);
-  await page.addStyleTag({ content: "caffold-style-contract > header > .contract-actions > .contract-button::before { background: rgb(12, 34, 56); }" });
+  await hosts.first().evaluate((host) => {
+    const own = new CSSStyleSheet();
+    own.replaceSync(".contract-button::before { background: rgb(12, 34, 56); }");
+    host.shadowRoot.adoptedStyleSheets = [...host.shadowRoot.adoptedStyleSheets, own];
+  });
   expect(focusedSurface).not.toBe("rgb(12, 34, 56)");
   await expect.poll(() => button.evaluate((element) => getComputedStyle(element, "::before").backgroundColor)).toBe("rgb(12, 34, 56)");
   await button.evaluate((element) => { element.disabled = true; });
   await expect(button).toHaveCSS("opacity", "0.35");
-  await page.evaluate(() => {
-    const host = document.querySelector("caffold-style-contract");
-    host.remove();
-    document.body.append(host);
-    document.body.append(document.createElement("caffold-style-contract"));
-  });
-  await expect(page.locator("caffold-style-contract > header > .contract-actions > .contract-button")).toHaveCount(2);
-  expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(originalSheets + 1);
+  expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(0);
 });
 
 test("a busy spin turns only its owner's busy element and stops for reduced motion", { tag: "@viewport-independent" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   await page.evaluate(async () => {
-    const [{ adoptScopedStyle }, { default: busySpin }] = await Promise.all([
+    const [{ scopedStyle }, { default: busySpin }] = await Promise.all([
       import("/assets/scoped-style.js"),
       import("/assets/pages/component-styles/busy-spin.css.js"),
     ]);
-    adoptScopedStyle(busySpin, "caffold-spin-contract", "> .contract-button.is-busy > .contract-icon");
     customElements.define("caffold-spin-contract", class extends HTMLElement {
       connectedCallback() {
-        if (this.childElementCount) return;
-        this.innerHTML = `
+        if (this.shadowRoot) return;
+        const root = this.attachShadow({ mode: "open" });
+        root.adoptedStyleSheets = [scopedStyle(busySpin, ".contract-button.is-busy > .contract-icon")];
+        root.innerHTML = `
           <button class="contract-button is-busy" data-contract="busy"><span class="contract-icon"></span></button>
           <button class="contract-button" data-contract="idle"><span class="contract-icon"></span></button>
         `;
@@ -99,8 +98,8 @@ test("a busy spin turns only its owner's busy element and stops for reduced moti
     other.innerHTML = `<button class="contract-button is-busy"><span class="contract-icon"></span></button>`;
     document.body.append(document.createElement("caffold-spin-contract"), other);
   });
-  const busy = page.locator('caffold-spin-contract > [data-contract="busy"] > .contract-icon');
-  const idle = page.locator('caffold-spin-contract > [data-contract="idle"] > .contract-icon');
+  const busy = page.locator('caffold-spin-contract [data-contract="busy"] > .contract-icon');
+  const idle = page.locator('caffold-spin-contract [data-contract="idle"] > .contract-icon');
   const otherOwner = page.locator("caffold-unregistered-spin .contract-icon");
   await expect(busy).toHaveCSS("animation-name", "caffold-busy-spin");
   await expect(busy).toHaveCSS("animation-duration", "0.8s");
@@ -225,9 +224,6 @@ test("a drawn ref keeps its element out of the document and lets go once it is n
         super();
         this.shown = true;
         this.keys = ["a", "b"];
-      }
-      createRenderRoot() {
-        return this;
       }
       render() {
         return html`${this.shown ? html`<section ${drawn(this.panel)}></section>` : nothing}

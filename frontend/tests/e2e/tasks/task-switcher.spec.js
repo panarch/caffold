@@ -492,10 +492,10 @@ test("stands beside Back the way the Task list header spaces its own buttons", {
   await expect(routeSwitcherOpener(page)).toBeVisible();
   const layout = await page.locator("caffold-task-workspace").evaluate(
     (workspace, titleElement) => {
-      const back = workspace
+      const back = workspace.shadowRoot
         .querySelector(".task-workspace-back")
         .getBoundingClientRect();
-      const switcher = workspace
+      const switcher = workspace.shadowRoot
         .querySelector(".task-workspace-switcher")
         .getBoundingClientRect();
       const title = titleElement.getBoundingClientRect();

@@ -11,64 +11,28 @@ export function scopedStyle(style: CSSStyleSheet, target: string) {
       `Shared styles require a class path to a local target: ${target}`,
     );
   }
-  return scopedSheet(style, target);
-}
-
-// For a component that still renders into Light DOM, before it defines its
-// element: `owner` is the element name and `target` the child path from it.
-export function adoptScopedStyle(
-  style: CSSStyleSheet,
-  owner: string,
-  target: string,
-) {
-  if (!CUSTOM_ELEMENT_NAME.test(owner)) {
-    throw new TypeError(
-      `Shared styles require a custom-element owner: ${owner}`,
-    );
+  let byTarget = sheets.get(style);
+  if (!byTarget) {
+    byTarget = new Map();
+    sheets.set(style, byTarget);
   }
-  if (!LOCAL_CHILD_PATH.test(target)) {
-    throw new TypeError(
-      `Shared styles require a child path to a local class target: ${target}`,
-    );
-  }
-  const scope = `${owner} ${target.replace(/\s+/g, " ")}`;
-  const sheet = scopedSheet(style, scope);
-  if (document.adoptedStyleSheets.includes(sheet)) return;
-  const layer = sheet.cssRules[0] as CSSGroupingRule | undefined;
-  const scoped = layer?.cssRules[0] as CSSGroupingRule | undefined;
-  if (!scoped?.cssRules?.length) {
-    throw new Error(`Shared styles require native @scope rules: ${scope}`);
-  }
-  document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
-}
-
-const sheets = new WeakMap<CSSStyleSheet, Map<string, CSSStyleSheet>>();
-
-function scopedSheet(style: CSSStyleSheet, scope: string) {
-  let byScope = sheets.get(style);
-  if (!byScope) {
-    byScope = new Map();
-    sheets.set(style, byScope);
-  }
-  let sheet = byScope.get(scope);
+  let sheet = byTarget.get(target);
   if (!sheet) {
     const rules = Array.from(style.cssRules, (rule) => rule.cssText);
     sheet = new CSSStyleSheet();
     sheet.replaceSync(`@layer component-styles {
-      @scope (${scope}) {
+      @scope (${target}) {
         ${rules.join("\n")}
       }
     }`);
-    byScope.set(scope, sheet);
+    byTarget.set(target, sheet);
   }
   return sheet;
 }
 
-const CUSTOM_ELEMENT_NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/;
-// Each step is a tag or class with optional state classes; the target is a class.
-const LOCAL_CHILD_PATH =
-  /^>(?:\s+(?:[a-z]+|\.[a-zA-Z_][\w-]*)(?:\.[a-zA-Z_][\w-]*)*\s+>)*\s+\.[a-zA-Z_][\w-]*(?:\.[a-zA-Z_][\w-]*)*$/;
-// The same steps, starting inside a shadow root and joined by `>` or by a
-// space.
+const sheets = new WeakMap<CSSStyleSheet, Map<string, CSSStyleSheet>>();
+
+// Each step is a tag or class with optional state classes, joined by `>` or by
+// a space; the target is a class.
 const LOCAL_CLASS_PATH =
   /^(?:(?:[a-z]+|\.[a-zA-Z_][\w-]*)(?:\.[a-zA-Z_][\w-]*)*\s+(?:>\s+)?)*\.[a-zA-Z_][\w-]*(?:\.[a-zA-Z_][\w-]*)*$/;

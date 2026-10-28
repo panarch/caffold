@@ -424,6 +424,7 @@ test("updates stable detail regions and preserves an active IME composition", { 
     textarea.dispatchEvent(
       new CompositionEvent("compositionstart", {
         bubbles: true,
+        composed: true,
         data: "ㅎ",
       }),
     );
@@ -597,6 +598,7 @@ test("updates stable detail regions and preserves an active IME composition", { 
     textarea.dispatchEvent(
       new CompositionEvent("compositionend", {
         bubbles: true,
+        composed: true,
         data: "한글",
       }),
     );
@@ -814,8 +816,7 @@ test("keeps the managed header and Archive escape hatch when canonical Detail di
   await emitTaskDetailBootstrap(page, loadingDetail);
   const loadingMessage = page.getByText("Loading conversation…");
   await expect(loadingMessage).toBeVisible();
-  const loadingClearance = await loadingMessage.evaluate((message) => {
-    const close = document.querySelector(".task-workspace-back");
+  const loadingClearance = await loadingMessage.evaluate((message, close) => {
     const closeBounds = close.getBoundingClientRect();
     const textRange = document.createRange();
     textRange.selectNodeContents(message);
@@ -825,7 +826,7 @@ test("keeps the managed header and Archive escape hatch when canonical Detail di
       closeRight: closeBounds.right,
       textLeft: textRange.getBoundingClientRect().left,
     };
-  });
+  }, await page.locator(".task-workspace-back").elementHandle());
   if (loadingClearance.closeVisible) {
     expect(loadingClearance.textLeft).toBeGreaterThanOrEqual(
       loadingClearance.closeRight + 4,
@@ -1361,8 +1362,7 @@ test("preserves stable detail children through another task load failure", { tag
     .toBe(true);
   await expect
     .poll(() =>
-      tasksPage.evaluate((element) => {
-        const detail = element.querySelector("caffold-detail-layout");
+      tasksPage.locator("caffold-detail-layout").evaluate((detail) => {
         return (
           detail.reviewComponents?.get("task:thread-stable-a") ===
             window.__stableTaskReview &&

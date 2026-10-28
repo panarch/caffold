@@ -476,6 +476,7 @@ test("leaves keys that finish composing text to the input method", { tag: "@view
       element.dispatchEvent(new KeyboardEvent("keydown", {
         key: composingKey,
         bubbles: true,
+        composed: true,
         cancelable: true,
         isComposing: true,
       }));

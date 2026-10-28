@@ -157,11 +157,14 @@ test("puts the compact Back to Tasks in the New Task header", { tag: "@phone" },
   const tasksPage = page.locator("caffold-tasks-page");
   const back = page.locator("caffold-task-workspace .task-workspace-back");
   const newTaskLayout = async () => page.evaluate(([paneElement, headerElement, titleElement, scrollerElement]) => {
-    const workspace = document.querySelector("caffold-task-workspace");
+    // The workspace draws in its own root inside the App Shell's.
+    const workspace = document
+      .querySelector("caffold-app-shell")
+      .shadowRoot.querySelector("caffold-task-workspace");
     const probe = document.createElement("div");
     probe.style.position = "absolute";
     probe.style.height = "var(--task-workspace-header-size)";
-    workspace.append(probe);
+    workspace.shadowRoot.append(probe);
     const headerSize = probe.getBoundingClientRect().height;
     probe.remove();
     const pane = paneElement.getBoundingClientRect();
@@ -169,7 +172,7 @@ test("puts the compact Back to Tasks in the New Task header", { tag: "@phone" },
     const title = titleElement.getBoundingClientRect();
     const scroller = scrollerElement.getBoundingClientRect();
     const controls = [".task-workspace-back", ".task-workspace-switcher"]
-      .map((selector) => workspace.querySelector(selector))
+      .map((selector) => workspace.shadowRoot.querySelector(selector))
       .filter((control) => control.getClientRects().length)
       .map((control) => control.getBoundingClientRect());
     return {
@@ -250,11 +253,14 @@ test("titles New Task in a header shaped like the Section header", { tag: "@all-
     route.fulfill({ json: { tasks: [], nextCursor: null } })
   );
   const measure = async (selectors) => page.evaluate(([paneElement, header, title, directoryElement, listHeader]) => {
-    const workspace = document.querySelector("caffold-task-workspace");
+    // The workspace draws in its own root inside the App Shell's.
+    const workspace = document
+      .querySelector("caffold-app-shell")
+      .shadowRoot.querySelector("caffold-task-workspace");
     const probe = document.createElement("div");
     probe.style.position = "absolute";
     probe.style.height = "var(--task-workspace-header-size)";
-    workspace.append(probe);
+    workspace.shadowRoot.append(probe);
     const headerSize = probe.getBoundingClientRect().height;
     probe.remove();
     const pane = paneElement.getBoundingClientRect();

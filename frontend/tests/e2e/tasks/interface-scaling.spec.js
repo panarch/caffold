@@ -270,6 +270,9 @@ async function taskInterfaceMetrics(page) {
     popoverTerm,
     popoverValue,
     openPopover,
+    close,
+    navigator,
+    taskNew,
   ]) => {
     const number = (value) => Number.parseFloat(value) || 0;
     const rootStyle = getComputedStyle(document.documentElement);
@@ -280,11 +283,9 @@ async function taskInterfaceMetrics(page) {
     const composer = activeComposer.shadowRoot;
     const turnOptions = composer.querySelector("caffold-task-turn-options").shadowRoot;
     const controls = {
-      close: document.querySelector(".task-workspace-back"),
+      close,
       info,
-      newTask: document
-        .querySelector("caffold-task-navigator")
-        .shadowRoot.querySelector(".task-list-new-task"),
+      newTask: navigator.shadowRoot.querySelector(".task-list-new-task"),
       git,
       github,
       terminal,
@@ -389,7 +390,7 @@ async function taskInterfaceMetrics(page) {
     const taskRow = ["caffold-active-task-list", "caffold-active-task-section", "caffold-active-task-row"]
       .reduce(
         (root, tag) => root.querySelector(tag).shadowRoot,
-        document.querySelector("caffold-task-navigator").shadowRoot,
+        navigator.shadowRoot,
       )
       .querySelector(".task-row");
     const taskTitle = taskRow.querySelector(".task-row-title");
@@ -398,9 +399,7 @@ async function taskInterfaceMetrics(page) {
     );
     const popoverLabelFontSize = fontSize(popoverTerm);
     const popoverValueFontSize = fontSize(popoverValue);
-    const worktreeGuide = document
-      .querySelector("caffold-task-new")
-      .shadowRoot.querySelector(".task-new-worktree-guide");
+    const worktreeGuide = taskNew.shadowRoot.querySelector(".task-new-worktree-guide");
     const worktreeGuideHeadingFontSize = fontSize(
       worktreeGuide.querySelector("h2"),
     );
@@ -473,5 +472,12 @@ async function taskInterfaceMetrics(page) {
     ".task-detail-popover dt",
     ".task-detail-popover dd",
     ".task-detail-popover:popover-open",
+  ]).then(async (handles) => [
+    ...handles,
+    ...(await elementHandles(page, [
+      ".task-workspace-back",
+      "caffold-task-navigator",
+      "caffold-task-new",
+    ])),
   ]));
 }

@@ -234,7 +234,10 @@ test("App Shell owns the normal context and route cleanup while Task Workspace p
   assert.match(presentation, /<caffold-scroll-mode-hud\b/);
   assert.match(presentation, /<caffold-scroll-surface-selector\b/);
   assert.doesNotMatch(presentation, /<caffold-keyboard-shortcut-dialog\b/);
-  assert.match(context, /!context\.root\.contains\(context\.presentation\)/);
+  assert.match(
+    context,
+    /!containsAcrossShadowRoots\(context\.root, context\.presentation\)/,
+  );
 
   const applyRoute = appShell.match(
     /async applyRoute\([\s\S]*?\n  \}\n/,

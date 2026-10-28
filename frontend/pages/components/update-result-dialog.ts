@@ -1,10 +1,13 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, ActionHints } from "../../action-hints.js";
 import type { CaffoldUpdateAttempt } from "../../api.js";
 import { DrawnRef, drawn } from "../../components/drawn-refs.js";
 import { KeyboardContexts } from "../../keyboard-navigation.js";
 import "../../keyboard-navigation/components/presentation.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+
+import styles from "./update-result-dialog.css.js";
 
 type UpdateResultNotice = { title: string; description: string };
 
@@ -13,17 +16,15 @@ type UpdateResultNotice = { title: string; description: string };
  * informs, so its one button closes it.
  */
 @customElement("caffold-update-result-dialog")
-export class CaffoldUpdateResultDialog extends LitElement {
+export class CaffoldUpdateResultDialog extends CaffoldElement {
   @state()
   private accessor notice: UpdateResultNotice | null = null;
+
+  static override styles = styles;
 
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     return html`

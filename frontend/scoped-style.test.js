@@ -24,7 +24,6 @@ test("a shadow root takes one sheet per target and refuses anything but a local 
     ".panel button",
   ])
     assert.throws(() => scopedStyle(style, target), /class path/);
-  assert.equal(document.adoptedStyleSheets.length, 0);
 });
 
 test("each shared style keeps its own sheets", async (t) => {
@@ -37,79 +36,19 @@ test("each shared style keeps its own sheets", async (t) => {
   assert.match(second.text, /:scope \{ animation: none; \}/);
 });
 
-test("a Light DOM owner adopts each scope once beside the document's sheets", async (t) => {
-  const { adoptScopedStyle, style } = await styleEnvironment(t);
-  const previous = {};
-  document.adoptedStyleSheets.push(previous);
-  adoptScopedStyle(style, "caffold-one", "> .button");
-  adoptScopedStyle(style, "caffold-one", ">   .button");
-  adoptScopedStyle(style, "caffold-two", "> .panel > header > .actions > .button");
-  assert.equal(document.adoptedStyleSheets.length, 3);
-  assert.equal(document.adoptedStyleSheets[0], previous);
-  assert.match(
-    document.adoptedStyleSheets[2].text,
-    /@scope \(caffold-two > \.panel > header > \.actions > \.button\)/,
-  );
-});
-
-test("a child path step may carry the owner's state classes", async (t) => {
-  const { adoptScopedStyle, style } = await styleEnvironment(t);
-  adoptScopedStyle(style, "caffold-owner", "> .panel > .button.is-busy > .icon");
-  adoptScopedStyle(style, "caffold-owner", "> button.is-refreshing > span > .icon");
-  assert.match(
-    document.adoptedStyleSheets[0].text,
-    /@scope \(caffold-owner > \.panel > \.button\.is-busy > \.icon\)/,
-  );
-  assert.match(
-    document.adoptedStyleSheets[1].text,
-    /@scope \(caffold-owner > button\.is-refreshing > span > \.icon\)/,
-  );
-});
-
-test("Light DOM registration rejects descendant lists, selector injection and explicit custom-element paths", async (t) => {
-  const { adoptScopedStyle, style } = await styleEnvironment(t);
-  for (const target of [
-    ".button",
-    "> .panel .button",
-    "> .panel > caffold-child > .button",
-    "> .panel > caffold-child.is-busy > .button",
-    "> .button.is-busy .icon",
-    "> .button, button",
-    "> .button) {}",
-  ])
-    assert.throws(() => adoptScopedStyle(style, "caffold-owner", target), /child path/);
-  assert.throws(() => adoptScopedStyle(style, "button", "> .button"), /custom-element/);
-  assert.equal(document.adoptedStyleSheets.length, 0);
-});
-
-test("a browser without native @scope gets no empty sheet", async (t) => {
-  const { adoptScopedStyle, style } = await styleEnvironment(t);
-  CSSStyleSheet.prototype.replaceSync = function (text) {
-    this.text = text;
-    this.cssRules = [{ cssRules: [] }];
-  };
-  assert.throws(() => adoptScopedStyle(style, "caffold-owner", "> .button"), /native @scope/);
-  assert.equal(document.adoptedStyleSheets.length, 0);
-});
-
 async function styleEnvironment(t) {
-  const originals = new Map(["document", "CSSStyleSheet"].map((key) =>
-    [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  const original = Object.getOwnPropertyDescriptor(globalThis, "CSSStyleSheet");
   t.after(() => {
-    for (const [key, descriptor] of originals) {
-      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
-      else delete globalThis[key];
-    }
+    if (original) Object.defineProperty(globalThis, "CSSStyleSheet", original);
+    else delete globalThis.CSSStyleSheet;
   });
-  globalThis.document = { adoptedStyleSheets: [] };
-  // A rule keeps its text; the sheet a scope wraps parses as a layer holding
-  // a scope holding one rule.
+  // A sheet keeps its text, and its one rule is that text.
   globalThis.CSSStyleSheet = class {
     cssRules = [];
 
     replaceSync(text) {
       this.text = text;
-      this.cssRules = [{ cssText: text, cssRules: [{ cssRules: [{}] }] }];
+      this.cssRules = [{ cssText: text }];
     }
   };
   const style = new CSSStyleSheet();

@@ -1698,11 +1698,10 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
       const permissionIcon = permissionButton.querySelector(".task-permission-icon");
       const permissionLabel = permissionButton.querySelector(".task-permission-label");
       const voiceButton = element.querySelector(".task-voice-button");
-      const buildAlert = document.querySelector(
-        "caffold-build-mismatch-alert",
-      );
+      // The App Shell draws the alert and the workspace in its own root.
       const shell = document.querySelector("caffold-app-shell");
-      const workspace = document.querySelector("caffold-task-workspace");
+      const buildAlert = shell.shadowRoot.querySelector("caffold-build-mismatch-alert");
+      const workspace = shell.shadowRoot.querySelector("caffold-task-workspace");
       const rootStyle = getComputedStyle(document.documentElement);
       const formStyle = getComputedStyle(element);
       const conversationStyle = getComputedStyle(conversation);

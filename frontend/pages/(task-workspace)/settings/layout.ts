@@ -404,6 +404,7 @@ export class CaffoldSettingsWorkspace extends CaffoldElement {
         "caffold:request-settings-route",
         {
           bubbles: true,
+          composed: true,
           detail: { route: { kind: "settings", section: section ?? "" } },
         },
       ),

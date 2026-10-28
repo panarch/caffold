@@ -2434,11 +2434,16 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
     await expect(resizer).toBeVisible();
     await expect(tasksPage.locator('textarea[name="prompt"]')).toBeVisible();
     const initialLayout = await tasksPage.evaluate((element) => {
-      const list = element
+      // The workspace draws in its own root, and the Tasks page in its.
+      const root = element.shadowRoot;
+      const list = root
         .querySelector(".task-workspace-master-pane")
         .getBoundingClientRect();
-      const detail = element.querySelector(".tasks-detail-pane").getBoundingClientRect();
-      const separator = element
+      const detail = root
+        .querySelector("caffold-tasks-page")
+        .shadowRoot.querySelector(".tasks-detail-pane")
+        .getBoundingClientRect();
+      const separator = root
         .querySelector(".task-workspace-master-detail > caffold-pane-resizer")
         .getBoundingClientRect();
       return {
@@ -2489,7 +2494,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
     await resizer.press("ArrowRight");
     await expect(resizer).toHaveAttribute("aria-valuenow", "304");
     const resizedNavigationLayout = await tasksPage.evaluate((element) => {
-      const list = element.querySelector(".task-workspace-master-pane");
+      const list = element.shadowRoot.querySelector(".task-workspace-master-pane");
       const navigation = list.querySelector(
         "caffold-task-workspace-navigation",
       );
@@ -2544,8 +2549,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
     await expect(
       tasksPage.locator('.task-row[data-thread-id="thread_main_root"]'),
     ).toHaveAttribute("aria-current", "true");
-    const selectedRowLayout = await rootRow.evaluate((selected, peer) => {
-      const navigator = document.querySelector("caffold-task-navigator");
+    const selectedRowLayout = await rootRow.evaluate((selected, [peer, navigator]) => {
       const navigatorRect = navigator.getBoundingClientRect();
       const selectedRect = selected.getBoundingClientRect();
       const selectedTitleRect = selected
@@ -2563,7 +2567,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
         leftInset: selectedRect.left - navigatorRect.left,
         titleOffset: selectedTitleRect.left - peerTitleRect.left,
       };
-    }, await coreRow.elementHandle());
+    }, [await coreRow.elementHandle(), await page.locator("caffold-task-navigator").elementHandle()]);
     expect(selectedRowLayout.indicatorGap).toBeCloseTo(rootFontSize * 0.25, 1);
     expect(selectedRowLayout.indicatorWidth).toBeCloseTo(rootFontSize * 3, 1);
     expect(selectedRowLayout.leftInset).toBeCloseTo(0, 1);
@@ -2808,10 +2812,15 @@ test("switches Tasks to master-detail at the Fold8 landscape boundary", { tag: "
   await expect(detailPane).toBeVisible();
   await expect(resizer).toBeVisible();
   const layout = await tasksPage.evaluate((element) => {
-    const list = element
+    // The workspace draws in its own root, and the Tasks page in its.
+    const root = element.shadowRoot;
+    const list = root
       .querySelector(".task-workspace-master-pane")
       .getBoundingClientRect();
-    const detail = element.querySelector(".tasks-detail-pane").getBoundingClientRect();
+    const detail = root
+      .querySelector("caffold-tasks-page")
+      .shadowRoot.querySelector(".tasks-detail-pane")
+      .getBoundingClientRect();
     return {
       detailWidth: detail.width,
       listWidth: list.width,
@@ -2916,20 +2925,20 @@ test("keeps the Tasks list DOM stable while opening a managed task", { tag: "@al
     '.task-row[data-thread-id="thread_dom_stability"]',
   );
   await expect(target.locator(".task-unseen-complete")).toBeVisible();
-  await target.evaluate((row) => {
+  await target.evaluate((row, scroller) => {
     // The row draws in its own root; its item and list are its Section's.
     const item = row.getRootNode().host.closest("li");
     row.dataset.domProbe = "preserved";
     item.dataset.domProbe = "preserved";
     window.__taskListDomProbe = {
-      scroller: document
-        .querySelector("caffold-task-navigator")
-        .shadowRoot.querySelector(".task-list-scroll"),
+      scroller,
       list: item.closest(".task-list"),
       item,
       row,
     };
-  });
+  }, await page.locator("caffold-task-navigator").evaluateHandle(
+    (navigator) => navigator.shadowRoot.querySelector(".task-list-scroll"),
+  ));
 
   await target.click();
   await page.evaluate((updatedTask) => {
@@ -2941,15 +2950,11 @@ test("keeps the Tasks list DOM stable while opening a managed task", { tag: "@al
     "DOM stability detail response",
   );
 
-  const result = await target.evaluate((row) => {
+  const result = await target.evaluate((row, scroller) => {
     const item = row.getRootNode().host.closest("li");
     const probe = window.__taskListDomProbe;
     return {
-      scrollerPreserved:
-        probe.scroller ===
-        document
-          .querySelector("caffold-task-navigator")
-          .shadowRoot.querySelector(".task-list-scroll"),
+      scrollerPreserved: probe.scroller === scroller,
       listPreserved: probe.list === item.closest(".task-list"),
       itemPreserved: probe.item === item,
       rowPreserved: probe.row === row,
@@ -2958,7 +2963,9 @@ test("keeps the Tasks list DOM stable while opening a managed task", { tag: "@al
       selected: row.getAttribute("aria-current"),
       unseenIndicatorCount: row.querySelectorAll(".task-unseen-complete").length,
     };
-  });
+  }, await page.locator("caffold-task-navigator").evaluateHandle(
+    (navigator) => navigator.shadowRoot.querySelector(".task-list-scroll"),
+  ));
   expect({ ...result, seenRequests }).toEqual({
     scrollerPreserved: true,
     listPreserved: true,

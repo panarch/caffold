@@ -533,7 +533,7 @@ test("the top of the tree says it is loading or could not load, and a failed rer
   await expect(status).toBeHidden();
 
   failTop = true;
-  await page.evaluate(() => document.querySelector("caffold-notes-workspace").reload());
+  await page.locator("caffold-notes-workspace").evaluate((notes) => notes.reload());
   await expect(message).toHaveText("Notes are unavailable.");
   await expect(retry).toBeVisible();
   await expect(treeNames(page)).toHaveText(["Projects", "Inbox"]);
@@ -1138,7 +1138,7 @@ test("a failed companion retries independently and foreground recovery refreshes
   expect(counts.storage).toBe(primaryReads);
   notes.storage = note("storage", { content: "# Refreshed primary" });
   notes.inbox = note("inbox", { content: "# Refreshed companion" });
-  await page.evaluate(() => document.querySelector("caffold-notes-workspace").reload());
+  await page.locator("caffold-notes-workspace").evaluate((notes) => notes.reload());
   await expect(primary.locator("caffold-markdown-preview h1")).toHaveText("Refreshed primary");
   await expect(secondary.locator("caffold-markdown-preview h1")).toHaveText("Refreshed companion");
 });
@@ -1202,12 +1202,12 @@ test("paired Notes size three equal floating tabs from the selected font and kee
   for (const preset of ["geist-sans", "inter", "pretendard", "system"]) {
     for (const [scale, theme] of [[100, "light"], [90, "light"], [120, "dark"]]) {
       await page.setViewportSize({ width: 1920, height: 704 });
-      await page.evaluate(async ({ scale, theme, preset }) => {
+      await footer.evaluate(async (element, { scale, theme, preset }) => {
         const settings = await import("/assets/settings.js");
         settings.setUiTypefacePreset(preset);
         settings.setAppearanceRangeSetting("interfaceScalePercent", scale);
         settings.setThemeMode(theme);
-        document.querySelector("caffold-task-workspace-navigation").getBoundingClientRect();
+        element.getBoundingClientRect();
         await document.fonts.ready;
       }, { scale, theme, preset });
       const naturalWidth = (await footer.boundingBox()).width;
@@ -1216,7 +1216,7 @@ test("paired Notes size three equal floating tabs from the selected font and kee
         await page.setViewportSize({ width, height: 704 });
         await expect(footer).toBeVisible();
         const geometry = await footer.evaluate((element, secondaryDocument) => {
-          const buttons = [...element.querySelectorAll("button")];
+          const buttons = [...element.shadowRoot.querySelectorAll("button")];
           const box = element.getBoundingClientRect();
           const pane = element.parentElement;
           const paneBox = pane.getBoundingClientRect();

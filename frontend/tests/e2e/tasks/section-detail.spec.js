@@ -446,10 +446,12 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
   await threadIdInput.evaluate((input) => {
     input.dispatchEvent(new CompositionEvent("compositionstart", {
       bubbles: true,
+      composed: true,
       data: "ㅎ",
     }));
     input.dispatchEvent(new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "Escape",
       isComposing: true,
@@ -461,6 +463,7 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
   await threadIdInput.evaluate((input) => {
     input.dispatchEvent(new CompositionEvent("compositionend", {
       bubbles: true,
+      composed: true,
       data: "ㅎ",
     }));
   });

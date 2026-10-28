@@ -1510,10 +1510,8 @@ test("keeps local reordering available while Codex is unavailable and exits on n
     .locator('[data-task-action="select-reorder-mode"][data-reorder-mode="tasks"]')
     .evaluate((button) => button.click());
   await expect(page.locator(".task-reorder-handle")).toHaveCount(2);
-  await page.evaluate(() => {
-    document
-      .querySelector("caffold-task-workspace")
-      .prepareRoute({ kind: "settings", section: "appearance" });
+  await page.locator("caffold-task-workspace").evaluate((workspace) => {
+    workspace.prepareRoute({ kind: "settings", section: "appearance" });
   });
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
 });

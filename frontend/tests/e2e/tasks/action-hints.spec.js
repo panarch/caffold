@@ -1061,10 +1061,12 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
   await prompt.evaluate((textarea) => {
     textarea.dispatchEvent(new CompositionEvent("compositionstart", {
       bubbles: true,
+      composed: true,
       data: "ㅎ",
     }));
     textarea.dispatchEvent(new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "Escape",
       isComposing: true,
@@ -1075,6 +1077,7 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
   await prompt.evaluate((textarea) => {
     textarea.dispatchEvent(new CompositionEvent("compositionend", {
       bubbles: true,
+      composed: true,
       data: "ㅎ",
     }));
   });
@@ -1085,6 +1088,7 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
     const dispatch = (init) => {
       const event = new KeyboardEvent("keydown", {
         bubbles: true,
+        composed: true,
         cancelable: true,
         code: "KeyF",
         key: "f",
@@ -1103,6 +1107,7 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
   await detail.evaluate((region) => {
     region.dispatchEvent(new KeyboardEvent("keydown", {
       bubbles: true,
+      composed: true,
       cancelable: true,
       code: "KeyF",
       key: "ㄹ",
@@ -1641,17 +1646,11 @@ test("keeps badges aligned and legible at appearance and zoom extremes", { tag: 
   // The expected target map reads the New Task pickers, which settle only once
   // the model list has landed.
   await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const taskNew = document.querySelector("caffold-task-new:not([hidden])");
-        // The name is the turn options', inside New Task's Composer.
-        const turnOptions = taskNew?.shadowRoot
-          .querySelector("caffold-task-create")
-          ?.shadowRoot.querySelector("caffold-task-composer")
-          ?.shadowRoot.querySelector("caffold-task-turn-options");
-        return !taskNew || Boolean(turnOptions?.shadowRoot.querySelector(".task-model-name"));
-      }),
-    )
+    .poll(async () => {
+      const taskNew = page.locator("caffold-task-new:not([hidden])");
+      return !(await taskNew.count()) ||
+        (await taskNew.locator("caffold-task-turn-options .task-model-name").count()) > 0;
+    })
     .toBe(true);
   const devtools = await context.newCDPSession(page);
 
@@ -1876,7 +1875,7 @@ async function visibleTaskTitles(page) {
     const scroll = navigator.shadowRoot.querySelector(".task-list-scroll");
     const navigatorRect = navigator.getBoundingClientRect();
     const scrollRect = scroll.getBoundingClientRect();
-    const panel = document.querySelector("caffold-task-workspace-navigation").getBoundingClientRect();
+    const panel = deepAll(document, "caffold-task-workspace-navigation")[0].getBoundingClientRect();
     const viewport = {
       left: window.visualViewport?.offsetLeft ?? 0,
       top: window.visualViewport?.offsetTop ?? 0,
@@ -1925,13 +1924,14 @@ async function captureActionHintVisualState(page) {
       right: Math.min(...rects.map((rect) => rect.right)),
       bottom: Math.min(...rects.map((rect) => rect.bottom)),
     });
-    const panel = document.querySelector("caffold-task-workspace-navigation").getBoundingClientRect();
     // Every match below `root`, through the open shadow roots under it, in tree
     // order.
     const deepAll = (root, selector) => [...root.querySelectorAll("*")].flatMap((element) => [
       ...(element.matches(selector) ? [element] : []),
       ...(element.shadowRoot ? deepAll(element.shadowRoot, selector) : []),
     ]);
+    const first = (selector) => deepAll(document, selector)[0] ?? null;
+    const panel = first("caffold-task-workspace-navigation").getBoundingClientRect();
     const target = (element, clips, content = true) => {
       if (!element) {
         return null;
@@ -1954,12 +1954,12 @@ async function captureActionHintVisualState(page) {
         ? visible
         : null;
     };
-    const navigator = document.querySelector("caffold-task-navigator");
+    const navigator = first("caffold-task-navigator");
     const taskScroll = navigator.shadowRoot.querySelector(".task-list-scroll");
     const taskTargets = deepAll(navigator.shadowRoot, "button.task-row:not(:disabled)")
       .filter((row) => row.getRootNode().host.localName === "caffold-active-task-row")
       .map((row) => target(row, [navigator, taskScroll])).filter(Boolean);
-    const taskNew = document.querySelector("caffold-task-new:not([hidden])");
+    const taskNew = first("caffold-task-new:not([hidden])");
     const createScroll = taskNew?.shadowRoot.querySelector(".task-new-workspace");
     const inTaskNew = (selector) => (taskNew ? deepAll(taskNew.shadowRoot, selector) : []);
     const fixedTargets = new Map([
@@ -2002,15 +2002,13 @@ async function captureActionHintVisualState(page) {
       const name = control.querySelector(".task-repository-label")?.textContent ?? "";
       automaticTargets.set(`Open section: ${name}`, target(control, [navigator, taskScroll]));
     }
-    const workspaceNavigation = document.querySelector(
-      "caffold-task-workspace-navigation",
-    );
+    const workspaceNavigation = first("caffold-task-workspace-navigation");
     const workspaceModeNames = {
       tasks: "Tasks",
       notes: "Notes",
       settings: "Settings",
     };
-    for (const control of workspaceNavigation?.querySelectorAll(
+    for (const control of workspaceNavigation?.shadowRoot.querySelectorAll(
       "button[data-workspace-mode]",
     ) ?? []) {
       if (control.hasAttribute("aria-current")) {
@@ -2020,16 +2018,16 @@ async function captureActionHintVisualState(page) {
       const label = control.getAttribute("aria-label") ||
         `Open ${workspaceModeNames[mode]}`;
       automaticTargets.set(label, target(control, [
-        document.querySelector("caffold-task-workspace"),
-        document.querySelector(".task-workspace-master-pane"),
+        first("caffold-task-workspace"),
+        first(".task-workspace-master-pane"),
       ], false));
     }
-    const workspace = document.querySelector("caffold-task-workspace");
-    const masterDetail = workspace?.querySelector(
-      ":scope > .task-workspace-surface > .task-workspace-master-detail",
+    const workspace = first("caffold-task-workspace");
+    const masterDetail = workspace?.shadowRoot.querySelector(
+      ".task-workspace-surface > .task-workspace-master-detail",
     );
-    const workspaceSeparator = workspace?.querySelector(
-      ":scope > .task-workspace-surface > .task-workspace-master-detail > caffold-pane-resizer",
+    const workspaceSeparator = workspace?.shadowRoot.querySelector(
+      ".task-workspace-surface > .task-workspace-master-detail > caffold-pane-resizer",
     );
     const workspaceHandle = workspaceSeparator?.shadowRoot.querySelector(
       ".pane-resizer-handle",

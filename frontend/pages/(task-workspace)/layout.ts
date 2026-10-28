@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -79,7 +79,8 @@ import type {
   TaskSwitcherSelectDetail,
 } from "./tasks/components/task-switcher-dialog.js";
 import "./tasks/layout.js";
-import { adoptScopedStyle } from "#app/scoped-style.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import type { PaneResizeDetail } from "../../components/pane-resizer.js";
 import type { ParsedRoute } from "../../navigation-routes.js";
 import type { RequestTasksRouteDetail } from "../layout.js";
@@ -92,6 +93,7 @@ import type { CaffoldTasksPage } from "./tasks/layout.js";
 import type { TaskNavigatorIntentDetail } from "./tasks/task-navigator-intent-event.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import styles from "./layout.css.js";
 
 export interface RequestWorkspaceTabDetail {
   tab: WorkspaceTab | undefined;
@@ -134,12 +136,6 @@ interface SidePane {
   setCollapsed?(collapsed: boolean): void;
 }
 
-adoptScopedStyle(
-  compactIconButton,
-  "caffold-task-workspace",
-  "> .task-workspace-route-controls > .task-workspace-route-control",
-);
-
 /**
  * The workspace: the navigation pane with each tab's list and the tab
  * buttons, the detail pane with each tab's screen, the corner controls, and
@@ -149,7 +145,15 @@ adoptScopedStyle(
  * The app shell routes here and reads it right after, so it draws at once.
  */
 @customElement("caffold-task-workspace")
-export class CaffoldTaskWorkspace extends LitElement {
+export class CaffoldTaskWorkspace extends CaffoldElement {
+  static override styles = [
+    scopedStyle(
+      compactIconButton,
+      ".task-workspace-route-controls > .task-workspace-route-control",
+    ),
+    styles,
+  ];
+
   private mode: WorkspaceTab = "tasks";
   private route: WorkspaceRoute = { kind: "tasks" };
   private codexRestartState: CodexRuntimeRequestState = {
@@ -173,6 +177,7 @@ export class CaffoldTaskWorkspace extends LitElement {
       this.dispatchEvent(
         new CustomEvent<LiveConnectionReport>(LIVE_CONNECTION_REPORT_EVENT, {
           bubbles: true,
+          composed: true,
           detail: report,
         }),
       );
@@ -282,10 +287,6 @@ export class CaffoldTaskWorkspace extends LitElement {
       event.stopPropagation();
       this.claudeRuntimeRestartDialog.open();
     });
-  }
-
-  override createRenderRoot() {
-    return this;
   }
 
   override connectedCallback() {
@@ -879,6 +880,7 @@ export class CaffoldTaskWorkspace extends LitElement {
     this.dispatchEvent(
       new CustomEvent<RequestTasksRouteDetail>("caffold:request-tasks-route", {
         bubbles: true,
+        composed: true,
         detail: { route: { kind: "tasks" } },
       }),
     );
@@ -930,6 +932,7 @@ export class CaffoldTaskWorkspace extends LitElement {
         "caffold:request-workspace-tab",
         {
           bubbles: true,
+          composed: true,
           detail: { tab, fallbackRoute },
         },
       ),
@@ -1074,6 +1077,7 @@ export class CaffoldTaskWorkspace extends LitElement {
     this.dispatchEvent(
       new CustomEvent<RequestTasksRouteDetail>("caffold:request-tasks-route", {
         bubbles: true,
+        composed: true,
         detail: {
           route: {
             kind: "tasks",

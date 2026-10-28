@@ -518,9 +518,11 @@ test("shows Codex versions and explicitly restarts an outdated runtime", { tag: 
     };
   });
   await expect(dialog).toBeVisible();
+  // The workspace draws the dialog at the top of its own root.
   expect(await dialogHostNode.evaluate((element) => (
     element.isConnected &&
-    element === document.querySelector("caffold-task-workspace > caffold-codex-runtime-restart-dialog")
+    element.parentNode === element.getRootNode() &&
+    element.getRootNode().host?.localName === "caffold-task-workspace"
   ))).toBe(true);
   expect(await scrollerNode.evaluate((element) => (
     element.isConnected && element.scrollTop
@@ -2729,6 +2731,7 @@ test("turns keyboard navigation off through its declared switch", { tag: "@all-v
     const dispatch = (key, code) => {
       const event = new KeyboardEvent("keydown", {
         bubbles: true,
+        composed: true,
         cancelable: true,
         code,
         key,

@@ -1,4 +1,4 @@
-caffold-task-workspace-navigation {
+:host {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   width: 100%;
@@ -11,112 +11,112 @@ caffold-task-workspace-navigation {
   background: var(--surface);
   padding-bottom: env(safe-area-inset-bottom);
   overflow: hidden;
+}
 
-  & .task-workspace-navigation {
-    position: relative;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    width: 100%;
-  }
+.task-workspace-navigation {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+}
 
-  & button {
-    position: relative;
-    display: grid;
-    grid-template-columns: auto auto;
-    place-content: center;
-    align-items: center;
-    padding: 0;
-    gap: var(--interface-space-3);
-    min-width: 0;
-    min-height: var(--interface-compact-hit-size);
-    border: 0;
-    background: transparent;
-    color: var(--muted);
-    font: inherit;
-    font-size: var(--interface-meta-font-size);
-    cursor: pointer;
-  }
+button {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto auto;
+  place-content: center;
+  align-items: center;
+  padding: 0;
+  gap: var(--interface-space-3);
+  min-width: 0;
+  min-height: var(--interface-compact-hit-size);
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--interface-meta-font-size);
+  cursor: pointer;
+}
 
-  & button:hover,
-  & button:focus-visible {
-    background: var(--row-hover-bg);
-    color: var(--text);
-    outline: none;
-  }
+button:hover,
+button:focus-visible {
+  background: var(--row-hover-bg);
+  color: var(--text);
+  outline: none;
+}
 
-  & button[aria-current] {
-    background: var(--selection-bg);
-    color: var(--text);
-  }
+button[aria-current] {
+  background: var(--selection-bg);
+  color: var(--text);
+}
 
-  & button + button::before {
-    position: absolute;
-    top: 50%;
-    width: 1px;
-    height: 0.875rem;
-    background: var(--border);
-    content: "";
-    opacity: 0.72;
-    pointer-events: none;
-    transform: translateY(-50%);
-  }
+button + button::before {
+  position: absolute;
+  top: 50%;
+  width: 1px;
+  height: 0.875rem;
+  background: var(--border);
+  content: "";
+  opacity: 0.72;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
 
-  & button + button::before {
-    left: 0;
-    transform: translate(-0.5px, -50%);
-  }
+button + button::before {
+  left: 0;
+  transform: translate(-0.5px, -50%);
+}
 
-  & button[aria-current] + button::before,
-  & button + button[aria-current]::before {
-    opacity: 0;
-  }
+button[aria-current] + button::before,
+button + button[aria-current]::before {
+  opacity: 0;
+}
 
-  & [data-workspace-navigation-icon] {
-    position: relative;
-    display: grid;
-    place-items: center;
-  }
+[data-workspace-navigation-icon] {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
 
-  /* A newer Caffold: a green dot, the Task list's unseen-completion color
-     without its blink, on the icon's top right corner. The icon slot is re-rendered when
-     icons load, so the dot is drawn by the slot rather than placed in it. */
-  & button[data-update-available] [data-workspace-navigation-icon]::after {
-    position: absolute;
-    top: 0;
-    right: 0;
-    width: var(--interface-space-3);
-    height: var(--interface-space-3);
-    border-radius: 50%;
-    background: var(--success);
-    box-shadow: 0 0 0 1.5px var(--surface);
-    content: "";
-    transform: translateY(-40%);
-  }
+/* A newer Caffold: a green dot, the Task list's unseen-completion color
+   without its blink, on the icon's top right corner. The icon slot is re-rendered when
+   icons load, so the dot is drawn by the slot rather than placed in it. */
+button[data-update-available] [data-workspace-navigation-icon]::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--interface-space-3);
+  height: var(--interface-space-3);
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 1.5px var(--surface);
+  content: "";
+  transform: translateY(-40%);
+}
 
-  & .task-workspace-navigation-icon {
-    display: block;
-    width: var(--interface-icon-size);
-    height: var(--interface-icon-size);
-  }
+.task-workspace-navigation-icon {
+  display: block;
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
 }
 
 @container task-workspace (min-width: 641px) {
-  caffold-task-workspace-navigation {
+  :host {
     height: var(--task-workspace-navigation-height);
     min-height: var(--task-workspace-navigation-height);
     padding: var(--interface-space-2);
     border: 1px solid var(--border);
     border-radius: var(--interface-space-6);
     box-shadow: var(--floating-shadow-panel);
+  }
 
-    & button {
-      gap: var(--interface-space-2);
-      padding-inline: var(--interface-control-padding-inline);
-      border-radius: var(--interface-space-4);
-    }
+  button {
+    gap: var(--interface-space-2);
+    padding-inline: var(--interface-control-padding-inline);
+    border-radius: var(--interface-space-4);
+  }
 
-    & button + button::before {
-      content: none;
-    }
+  button + button::before {
+    content: none;
   }
 }
