@@ -1,0 +1,9 @@
+/* The icon of an action button. Components in Light DOM still take it from
+   `tasks/controls.css`. */
+:scope {
+  position: relative;
+  display: block;
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
+  stroke-width: 2;
+}

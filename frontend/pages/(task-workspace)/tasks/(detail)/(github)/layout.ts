@@ -36,7 +36,8 @@ import type {
   TaskStartSource,
 } from "./components/task-start-dialog.js";
 
-import { compactIconButton } from "#app/component-styles.js";
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import { adoptScopedStyle } from "#app/scoped-style.js";
 
 export interface RequestGithubRouteDetail {
   route: GithubRoute;
@@ -74,7 +75,8 @@ interface Chrome {
   parentKey: string;
 }
 
-await compactIconButton.register(
+adoptScopedStyle(
+  compactIconButton,
   "caffold-task-github-layout",
   "> .task-github-surface > .task-domain-header > .task-domain-back",
 );

@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -13,9 +13,12 @@ import {
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#tasks/components/task-status-chip.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { taskStatusView, taskThreadStatusType } from "#tasks/runtime-state.js";
 import { formatRelativeAgePresentation } from "#tasks/task-format.js";
 import { type ListedTask, taskThreadId } from "#tasks/task-list-model.js";
+
+import styles from "./row.css.js";
 
 export const ACTIVE_TASK_ROW_INTENT_EVENT = "caffold:active-task-row-intent";
 
@@ -62,7 +65,9 @@ interface PointerGesture {
  * going. What the person does with it leaves as `ACTIVE_TASK_ROW_INTENT_EVENT`.
  */
 @customElement("caffold-active-task-row")
-export class CaffoldActiveTaskRow extends LitElement {
+export class CaffoldActiveTaskRow extends CaffoldElement {
+  static override styles = styles;
+
   private snapshot: TaskRowSnapshot = {
     task: null,
     selectedThreadId: "",
@@ -90,10 +95,6 @@ export class CaffoldActiveTaskRow extends LitElement {
     this.addEventListener("lostpointercapture", (event) =>
       this.handlePointerCancel(event),
     );
-  }
-
-  override createRenderRoot() {
-    return this;
   }
 
   override connectedCallback() {

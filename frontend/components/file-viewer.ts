@@ -55,7 +55,9 @@ import "./xlsx-viewer.js";
 import { CaffoldElement } from "../caffold-element.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
 
-import { compactIconButton, secondaryButton } from "../component-styles.js";
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import secondaryButton from "#app/component-styles/secondary-button.css.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./file-viewer.css.js";
 
 // How long switching to another file keeps showing the previous one before
@@ -243,9 +245,9 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   private accessor documentFile: DocumentPreviewFile | null = null;
 
   static override styles = [
-    compactIconButton(".viewer-refresh-button"),
-    compactIconButton(".viewer-close-button"),
-    secondaryButton(".task-secondary-button"),
+    scopedStyle(compactIconButton, ".viewer-refresh-button"),
+    scopedStyle(compactIconButton, ".viewer-close-button"),
+    scopedStyle(secondaryButton, ".task-secondary-button"),
     styles,
   ];
 

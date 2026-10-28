@@ -37,21 +37,27 @@ test("precaches no stylesheet the document does not load", () => {
   assert.deepEqual(unloaded, []);
 });
 
-// Stylesheets production modules import as `<stylesheet>.js`.
+// Stylesheets production modules import as `<stylesheet>.js`, by a relative
+// path or through an alias in `package.json`.
 function stylesheetsImportedAsModules(root) {
+  const aliases = Object.entries(
+    JSON.parse(readFileSync(path.join(frontendRoot, "package.json"), "utf8")).imports,
+  ).map(([alias, target]) => [alias.slice(0, -1), target.slice("./".length, -1)]);
   const stylesheets = new Set();
   for (const relative of runtimeFrontendFiles(root)) {
     if (!relative.endsWith(".ts")) continue;
     const module = readFileSync(path.join(root, relative), "utf8");
-    for (const [, specifier] of module.matchAll(/\bfrom\s+"(\.{1,2}\/[^"]+\.css)\.js"/g)) {
-      stylesheets.add(path.posix.join(path.posix.dirname(relative), specifier));
+    for (const [, specifier] of module.matchAll(/\bfrom\s+"([^"]+\.css)\.js"/g)) {
+      const [alias, target] = aliases.find(([alias]) => specifier.startsWith(alias)) ?? [];
+      stylesheets.add(alias
+        ? `${target}${specifier.slice(alias.length)}`
+        : path.posix.join(path.posix.dirname(relative), specifier));
     }
   }
   return stylesheets;
 }
 
-// `styles.css` with every stylesheet it imports, and the shared styles
-// `component-styles.ts` fetches for components in the document.
+// `styles.css` with every stylesheet it imports.
 function stylesheetsTheDocumentLoads() {
   const stylesheets = new Set();
   const visit = (relative) => {
@@ -63,10 +69,6 @@ function stylesheetsTheDocumentLoads() {
     }
   };
   visit("styles.css");
-  const componentStyles = readFileSync(path.join(frontendRoot, "component-styles.ts"), "utf8");
-  for (const [, fetched] of componentStyles.matchAll(/"\.\/(component-styles\/[^"]+\.css)"/g)) {
-    stylesheets.add(fetched);
-  }
   return stylesheets;
 }
 

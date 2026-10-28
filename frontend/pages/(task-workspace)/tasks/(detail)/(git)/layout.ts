@@ -29,7 +29,8 @@ import {
   IDLE_CONTROLS,
 } from "./components/controls.js";
 
-import { compactIconButton } from "#app/component-styles.js";
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import { adoptScopedStyle } from "#app/scoped-style.js";
 
 export interface RequestGitRouteDetail {
   route: GitRoute;
@@ -65,7 +66,8 @@ interface Chrome {
   controls: GitControlsSnapshot;
 }
 
-await compactIconButton.register(
+adoptScopedStyle(
+  compactIconButton,
   "caffold-task-git-layout",
   "> .task-git-surface > .task-domain-header > .task-domain-back",
 );

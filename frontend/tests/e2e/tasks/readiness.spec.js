@@ -156,49 +156,28 @@ test("keeps the stable Task shell while the Task list loads", { tag: "@all-viewp
 });
 
 test("waits for explicit route activation when readiness settles first", { tag: "@all-viewports" }, async ({ page }) => {
-  const stylesRequested = Promise.withResolvers();
-  const releaseStyles = Promise.withResolvers();
-  await page.route("**/assets/component-styles/compact-icon-button.css", async (route) => {
-    stylesRequested.resolve();
-    await releaseStyles.promise;
-    await route.continue();
-  });
-  let routeOpens;
-  try {
-    await page.goto("/");
-    await stylesRequested.promise;
-    [routeOpens] = await Promise.all([
-      page.evaluate(async (status) => {
-        const Workspace = await customElements.whenDefined("caffold-task-workspace");
-        // The shell defines itself after its own shared styles, and only a
-        // booted shell keeps this second workspace's route work in the page.
-        await customElements.whenDefined("caffold-app-shell");
-        const workspace = new Workspace();
-        workspace.codexRuntimeRestartDialog.close = () => {};
-        workspace.prepareRoute = () => {};
-        let opens = 0;
-        workspace.tasksPage.openRoute = async () => {
-          opens += 1;
-          return null;
-        };
+  await page.goto("/");
 
-        workspace.setCodexStatusSnapshot({
-          phase: "loaded",
-          status,
-          error: "",
-        });
-        const beforeActivation = opens;
-        await workspace.openRoute({ kind: "tasks" });
-        return { beforeActivation, afterActivation: opens };
-      }, mockCodexStatus()),
-      (async () => {
-        expect(await page.evaluate(() => Boolean(customElements.get("caffold-task-workspace")))).toBe(false);
-        releaseStyles.resolve();
-      })(),
-    ]);
-  } finally {
-    releaseStyles.resolve();
-  }
+  const routeOpens = await page.evaluate(async (status) => {
+    const Workspace = customElements.get("caffold-task-workspace");
+    const workspace = new Workspace();
+    workspace.codexRuntimeRestartDialog.close = () => {};
+    workspace.prepareRoute = () => {};
+    let opens = 0;
+    workspace.tasksPage.openRoute = async () => {
+      opens += 1;
+      return null;
+    };
+
+    workspace.setCodexStatusSnapshot({
+      phase: "loaded",
+      status,
+      error: "",
+    });
+    const beforeActivation = opens;
+    await workspace.openRoute({ kind: "tasks" });
+    return { beforeActivation, afterActivation: opens };
+  }, mockCodexStatus());
 
   expect(routeOpens).toEqual({
     beforeActivation: 0,

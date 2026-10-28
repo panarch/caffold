@@ -388,7 +388,7 @@ test("reorders by keyboard, preserves row geometry, and persists across reloads"
   });
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
   const headerActionGap = await navigator.evaluate((element) => {
-    const [reorder, create] = element.querySelectorAll(
+    const [reorder, create] = element.shadowRoot.querySelectorAll(
       ".task-list-primary-actions > .task-list-header-action",
     );
     const reorderBounds = reorder.getBoundingClientRect();
@@ -412,9 +412,12 @@ test("reorders by keyboard, preserves row geometry, and persists across reloads"
     .evaluate(async (button) => {
     button.click();
     await new Promise((resolve) => requestAnimationFrame(resolve));
-    const navigator = button.closest("caffold-task-navigator");
-    const count = navigator.querySelector(".task-repository-count");
-    const icon = navigator.querySelector(".task-reorder-handle-icon");
+    // The first Section draws in the list's root, its rows in their own.
+    const list = button.getRootNode().querySelector("caffold-active-task-list");
+    const section = list.shadowRoot.querySelector("caffold-active-task-section").shadowRoot;
+    const row = section.querySelector("caffold-active-task-row").shadowRoot;
+    const count = section.querySelector(".task-repository-count");
+    const icon = row.querySelector(".task-reorder-handle-icon");
     return {
       countOpacity: getComputedStyle(count).opacity,
       countTransitionDuration: getComputedStyle(count).transitionDuration,
@@ -483,7 +486,7 @@ test("reorders by keyboard, preserves row geometry, and persists across reloads"
     },
   ]);
   await expect(toggle.evaluate(async (button) => {
-    const navigator = button.closest("caffold-task-navigator");
+    const navigator = button.getRootNode().host;
     const icon = button.querySelector(":scope > .task-action-icon");
     const animation = icon.firstElementChild.getAnimations()[0];
     navigator.requestUpdate();
@@ -560,11 +563,12 @@ test("reorders by keyboard, preserves row geometry, and persists across reloads"
   const returnMotion = await toggle.evaluate(async (button) => {
     button.click();
     await new Promise((resolve) => requestAnimationFrame(resolve));
-    const navigator = button.closest("caffold-task-navigator");
-    const count = navigator.querySelector(".task-repository-count");
-    const indicators = navigator.querySelector(
-      ".task-row-indicators:not(.task-row-reorder-slot)",
-    );
+    const list = button.getRootNode().querySelector("caffold-active-task-list");
+    const section = list.shadowRoot.querySelector("caffold-active-task-section").shadowRoot;
+    const count = section.querySelector(".task-repository-count");
+    const indicators = section
+      .querySelector("caffold-active-task-row")
+      .shadowRoot.querySelector(".task-row-indicators:not(.task-row-reorder-slot)");
     const transitionProperties = (element) => element.getAnimations()
       .map((animation) => animation.transitionProperty)
       .filter(Boolean)
@@ -615,26 +619,29 @@ test("reorders by keyboard, preserves row geometry, and persists across reloads"
   await page.waitForTimeout(180);
   const activeList = navigator.locator("caffold-active-task-list");
   await activeList.evaluate((element) => {
-    const group = element.querySelector(
+    // The group is the list's; the rows are its Section's, each drawing in its
+    // own root.
+    const group = element.shadowRoot.querySelector(
       '.task-repository-group[data-task-repository-key="section-one"]',
     );
-    const rows = [...group.querySelectorAll(":scope > caffold-active-task-section > .task-list > li")];
+    const section = group.querySelector(":scope > caffold-active-task-section");
+    const rows = [...section.shadowRoot.querySelectorAll(".task-list > li")];
     const components = rows.map((row) =>
       row.querySelector(":scope > caffold-active-task-row")
     );
     const handles = components.map((component) =>
-      component.querySelector(".task-reorder-handle")
+      component.shadowRoot.querySelector(".task-reorder-handle")
     );
     const handleIcons = handles.map((handle) =>
       handle.querySelector(".task-reorder-handle-icon")
     );
-    const taskList = group.querySelector(":scope > caffold-active-task-section > .task-list");
+    const taskList = section.shadowRoot.querySelector(".task-list");
     element.__reorderDom = {
       group,
-      section: group.querySelector(":scope > caffold-active-task-section"),
-      header: group.querySelector(":scope > caffold-active-task-section > .task-repository-header"),
-      label: group.querySelector(":scope > caffold-active-task-section > .task-repository-header > .task-repository-select > .task-repository-label"),
-      count: group.querySelector(":scope > caffold-active-task-section > .task-repository-header > .task-repository-count"),
+      section,
+      header: section.shadowRoot.querySelector(".task-repository-header"),
+      label: section.shadowRoot.querySelector(".task-repository-header > .task-repository-select > .task-repository-label"),
+      count: section.shadowRoot.querySelector(".task-repository-header > .task-repository-count"),
       rows: Object.fromEntries(rows.map((row) => [row.dataset.threadId, row])),
       components: Object.fromEntries(
         rows.map((row, index) => [row.dataset.threadId, components[index]]),
@@ -680,28 +687,30 @@ test("reorders by keyboard, preserves row geometry, and persists across reloads"
     "thread-c",
   ]);
   await expect(activeList.evaluate((element) => {
-    const group = element.querySelector(
+    const group = element.shadowRoot.querySelector(
       '.task-repository-group[data-task-repository-key="section-one"]',
     );
     const stable = element.__reorderDom;
-    const rows = [...group.querySelectorAll(":scope > caffold-active-task-section > .task-list > li")];
+    const section = group.querySelector(":scope > caffold-active-task-section");
+    const rows = [...section.shadowRoot.querySelectorAll(".task-list > li")];
+    const rowRoot = (row) => row.querySelector(":scope > caffold-active-task-row").shadowRoot;
     return {
       group: group === stable.group,
-      section: group.querySelector(":scope > caffold-active-task-section") === stable.section,
-      header: group.querySelector(":scope > caffold-active-task-section > .task-repository-header") === stable.header,
-      label: group.querySelector(":scope > caffold-active-task-section > .task-repository-header > .task-repository-select > .task-repository-label") === stable.label,
-      count: group.querySelector(":scope > caffold-active-task-section > .task-repository-header > .task-repository-count") === stable.count,
+      section: section === stable.section,
+      header: section.shadowRoot.querySelector(".task-repository-header") === stable.header,
+      label: section.shadowRoot.querySelector(".task-repository-header > .task-repository-select > .task-repository-label") === stable.label,
+      count: section.shadowRoot.querySelector(".task-repository-header > .task-repository-count") === stable.count,
       rows: rows.every((row) => row === stable.rows[row.dataset.threadId]),
       components: rows.every((row) =>
         row.querySelector(":scope > caffold-active-task-row") ===
           stable.components[row.dataset.threadId]
       ),
       handles: rows.every((row) =>
-        row.querySelector(".task-reorder-handle") ===
+        rowRoot(row).querySelector(".task-reorder-handle") ===
           stable.handles[row.dataset.threadId]
       ),
       handleIcons: rows.every((row) =>
-        row.querySelector(".task-reorder-handle-icon") ===
+        rowRoot(row).querySelector(".task-reorder-handle-icon") ===
           stable.handleIcons[row.dataset.threadId]
       ),
       transitionRestarts: stable.transitionRestarts,
@@ -772,9 +781,10 @@ test("chooses Section mode and presents compact headers", { tag: "@all-viewports
     token: "1rem",
   });
   const normalGeometry = await groups.nth(0).evaluate((group) => {
-    const header = group.querySelector(":scope > caffold-active-task-section > .task-repository-header")
+    const section = group.querySelector(":scope > caffold-active-task-section").shadowRoot;
+    const header = section.querySelector(".task-repository-header")
       .getBoundingClientRect();
-    const row = group.querySelector(":scope > caffold-active-task-section > .task-list > li")
+    const row = section.querySelector(".task-list > li")
       .getBoundingClientRect();
     return { headerHeight: header.height, headerTaskGap: row.top - header.bottom };
   });
@@ -860,7 +870,7 @@ test("reorders Sections by keyboard and primary pointer with capture", { tag: "@
 
   const oneHandle = navigator.getByRole("button", { name: "Reorder one" });
   await expect(oneHandle.evaluate((handle) => {
-    const component = handle.closest("caffold-active-task-section");
+    const component = handle.getRootNode().host;
     handle.dispatchEvent(new PointerEvent("pointerdown", {
       bubbles: true,
       button: 0,
@@ -873,7 +883,7 @@ test("reorders Sections by keyboard and primary pointer with capture", { tag: "@
     return component.pointerGesture;
   })).resolves.toBeNull();
   await expect(oneHandle.evaluate((handle) => {
-    const component = handle.closest("caffold-active-task-section");
+    const component = handle.getRootNode().host;
     const setPointerCapture = handle.setPointerCapture;
     let capturedPointerId = null;
     handle.setPointerCapture = (pointerId) => {
@@ -914,12 +924,12 @@ test("reorders Sections by keyboard and primary pointer with capture", { tag: "@
   );
   await expect(oneHandle).toBeFocused();
   await expect(oneHandle.evaluate((handle) => {
-    const component = handle.closest("caffold-active-task-section");
+    const component = handle.getRootNode().host;
     return {
       captured: handle.hasPointerCapture(component.pointerGesture.pointerId),
       dragging: component.pointerGesture.dragging,
       parentDragging: Boolean(
-        component.closest("caffold-active-task-list").sectionDragState,
+        component.getRootNode().host.sectionDragState,
       ),
     };
   })).resolves.toEqual({
@@ -932,30 +942,30 @@ test("reorders Sections by keyboard and primary pointer with capture", { tag: "@
     oneBounds.y + oneBounds.height / 2,
   );
   await expect(oneHandle.evaluate((handle) => {
-    const component = handle.closest("caffold-active-task-section");
+    const component = handle.getRootNode().host;
     return {
       componentDragging: component.hasAttribute("data-dragging"),
       parentSectionId:
-        component.closest("caffold-active-task-list").sectionDragState?.sectionId,
+        component.getRootNode().host.sectionDragState?.sectionId,
     };
   })).resolves.toEqual({
     componentDragging: true,
     parentSectionId: "section-one",
   });
   await oneHandle.evaluate((handle) => {
-    const component = handle.closest("caffold-active-task-section");
+    const component = handle.getRootNode().host;
     component.dispatchEvent(new PointerEvent("lostpointercapture", {
       bubbles: true,
       pointerId: component.pointerGesture.pointerId,
     }));
   });
   await expect(oneHandle.evaluate((handle) => {
-    const component = handle.closest("caffold-active-task-section");
+    const component = handle.getRootNode().host;
     return {
       componentDragging: component.hasAttribute("data-dragging"),
       gesture: component.pointerGesture,
       parentDragging:
-        component.closest("caffold-active-task-list").sectionDragState,
+        component.getRootNode().host.sectionDragState,
     };
   })).resolves.toEqual({
     componentDragging: false,
@@ -986,7 +996,13 @@ test("reorders Sections by keyboard and primary pointer with capture", { tag: "@
   const sourceBounds = await threeHandle.boundingBox();
   const targetBounds = await twoGroup.boundingBox();
   await expect(page.evaluate(({ x, y }) => {
-    const hit = document.elementFromPoint(x, y);
+    // The document names only the outermost host at a point.
+    let hit = document.elementFromPoint(x, y);
+    while (hit?.shadowRoot) {
+      const inner = hit.shadowRoot.elementFromPoint(x, y);
+      if (!inner || inner === hit) break;
+      hit = inner;
+    }
     return {
       tag: hit?.tagName,
       sectionId: hit?.closest?.(".section-reorder-handle")?.dataset.sectionId,
@@ -1047,10 +1063,13 @@ test("reveals Tasks on explicit Section mode exit", { tag: "@all-viewports" }, a
 
   const reveal = await toggle.evaluate((button) => {
     button.click();
-    const lists = [...button.closest("caffold-task-navigator")
-      .querySelectorAll(
-        "caffold-active-task-list .task-repository-group:not([data-task-recovery]) > caffold-active-task-section > .task-list",
-      )];
+    // Each Section draws its Tasks in its own root, in the list's root.
+    const lists = [...button
+      .getRootNode()
+      .querySelector("caffold-active-task-list")
+      .shadowRoot.querySelectorAll(
+        ".task-repository-group:not([data-task-recovery]) > caffold-active-task-section",
+      )].map((section) => section.shadowRoot.querySelector(".task-list"));
     const animations = lists.map((list) => list.getAnimations().find(
       (animation) => animation.animationName === "task-section-tasks-reveal",
     ));
@@ -1076,7 +1095,8 @@ test("reveals Tasks on explicit Section mode exit", { tag: "@all-viewports" }, a
   await enterReorderMode(page, "Sections");
   await toggle.click();
   await expect(navigator.locator("caffold-active-task-list").evaluate((list) =>
-    [...list.querySelectorAll(".task-repository-group > caffold-active-task-section > .task-list")]
+    [...list.shadowRoot.querySelectorAll(".task-repository-group > caffold-active-task-section")]
+      .map((section) => section.shadowRoot.querySelector(".task-list"))
       .flatMap((taskList) => taskList.getAnimations())
       .filter((animation) => animation.animationName === "task-section-tasks-reveal")
       .length
@@ -1108,7 +1128,8 @@ test("preserves the visible Section scroll anchor across compact mode", { tag: "
   );
   await expect(anchorGroup).toHaveCount(1);
   const anchor = await anchorGroup.evaluate((group) => {
-    const scroller = group.closest(".task-list-scroll");
+    // The group is the list's; the scroller is the navigator's around it.
+    const scroller = group.getRootNode().host.closest(".task-list-scroll");
     scroller.scrollTop = group.offsetTop - 18;
     return {
       sectionId: group.dataset.taskRepositoryKey,
@@ -1117,7 +1138,7 @@ test("preserves the visible Section scroll anchor across compact mode", { tag: "
   });
   const currentAnchor = () => activeList.evaluate((list, sectionId) => {
     const scroller = list.closest(".task-list-scroll");
-    const group = list.querySelector(
+    const group = list.shadowRoot.querySelector(
       `.task-repository-group[data-task-repository-key="${CSS.escape(sectionId)}"]`,
     );
     return group.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
@@ -1177,7 +1198,7 @@ test("starts pointer reordering only from a handle and keeps moves inside a Sect
   );
   await page.mouse.down();
   await expect(handle.evaluate((element) =>
-    Boolean(element.closest("caffold-active-task-row").pointerGesture)
+    Boolean(element.getRootNode().host.pointerGesture)
   )).resolves.toBe(true);
   await page.mouse.move(
     alphaBounds.x + alphaBounds.width / 2,

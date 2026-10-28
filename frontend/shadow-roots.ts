@@ -67,6 +67,47 @@ export function containsAcrossShadowRoots(
   return false;
 }
 
+// Observes each of `roots` and, as they come and go, the shadow roots of the
+// components inside them: a component changes inside its own root, which an
+// observer of the root that holds it does not see. The returned function stops
+// following new roots; disconnecting the observer ends the rest.
+export function observeAcrossShadowRoots(
+  observer: MutationObserver,
+  roots: readonly Node[],
+  options: MutationObserverInit,
+) {
+  for (const root of roots) {
+    observer.observe(root, options);
+  }
+  return eachDocumentTree((tree) => {
+    if (
+      tree instanceof ShadowRoot &&
+      !roots.includes(tree) &&
+      roots.some((root) => containsAcrossShadowRoots(root, tree.host))
+    ) {
+      observer.observe(tree, options);
+    }
+    return () => {};
+  });
+}
+
+// The nearest ancestor of `node` that matches `selector`, going on through the
+// host of each shadow root it is in. `Element.closest` stops at a shadow root.
+export function closestAcrossShadowRoots(
+  node: Node | null | undefined,
+  selector: string,
+) {
+  for (let current = node; current; ) {
+    const match = current instanceof Element ? current.closest(selector) : null;
+    if (match) {
+      return match;
+    }
+    const root = current.getRootNode();
+    current = root instanceof ShadowRoot ? root.host : null;
+  }
+  return null;
+}
+
 // An element and the shadow root it renders into. An observer on the element
 // alone does not see what changes inside that root.
 export function elementAndShadowRoot(element: Element): Node[] {

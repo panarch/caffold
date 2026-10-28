@@ -115,13 +115,21 @@ test("mounts initial loading once and preserves settled Task DOM across refresh"
         countLoadingMessage(message);
       }
     };
-    new MutationObserver((records) => {
+    const observer = new MutationObserver((records) => {
       for (const record of records) {
         for (const node of record.addedNodes) {
           countLoadingMessages(node);
         }
       }
-    }).observe(document, { childList: true, subtree: true });
+    });
+    observer.observe(document, { childList: true, subtree: true });
+    // Components draw into shadow roots, which a document observer does not see.
+    const attachShadow = Element.prototype.attachShadow;
+    Element.prototype.attachShadow = function (init) {
+      const root = attachShadow.call(this, init);
+      observer.observe(root, { childList: true, subtree: true });
+      return root;
+    };
   });
   await page.route(/\/api\/tasks(?:\?|$)/, async (route) => {
     requestCount += 1;
@@ -141,51 +149,48 @@ test("mounts initial loading once and preserves settled Task DOM across refresh"
     list.locator('.task-row[data-thread-id="thread_initial_dom_a"]'),
   ).toBeVisible();
   await list.evaluate((element) => {
-    const group = element.querySelector(
+    const group = element.shadowRoot.querySelector(
       '.task-repository-group[data-task-repository-key="fixture-section-1"]',
     );
+    const section = group.querySelector(":scope > caffold-active-task-section");
     element.__settledDom = {
       group,
-      section: group.querySelector(":scope > caffold-active-task-section"),
-      header: group.querySelector(":scope > caffold-active-task-section > .task-repository-header"),
-      label: group.querySelector(
-        ":scope > caffold-active-task-section > .task-repository-header > .task-repository-select > .task-repository-label",
+      section,
+      header: section.shadowRoot.querySelector(".task-repository-header"),
+      label: section.shadowRoot.querySelector(
+        ".task-repository-header > .task-repository-select > .task-repository-label",
       ),
-      count: group.querySelector(
-        ":scope > caffold-active-task-section > .task-repository-header > .task-repository-count",
+      count: section.shadowRoot.querySelector(
+        ".task-repository-header > .task-repository-count",
       ),
-      rows: [...group.querySelectorAll(":scope > caffold-active-task-section > .task-list > li")],
+      rows: [...section.shadowRoot.querySelectorAll(".task-list > li")],
       components: [
-        ...group.querySelectorAll(
-          ":scope > caffold-active-task-section > .task-list > li > caffold-active-task-row",
-        ),
+        ...section.shadowRoot.querySelectorAll(".task-list > li > caffold-active-task-row"),
       ],
     };
   });
   await list.evaluate((element) => element.loadTasks({ force: true }));
   await expect.poll(() => requestCount).toBe(2);
   await expect(list.evaluate((element) => {
-    const group = element.querySelector(
+    const group = element.shadowRoot.querySelector(
       '.task-repository-group[data-task-repository-key="fixture-section-1"]',
     );
     const settled = element.__settledDom;
-    const rows = [...group.querySelectorAll(":scope > caffold-active-task-section > .task-list > li")];
+    const section = group.querySelector(":scope > caffold-active-task-section");
+    const rows = [...section.shadowRoot.querySelectorAll(".task-list > li")];
     const components = [
-      ...group.querySelectorAll(
-        ":scope > caffold-active-task-section > .task-list > li > caffold-active-task-row",
-      ),
+      ...section.shadowRoot.querySelectorAll(".task-list > li > caffold-active-task-row"),
     ];
     return {
       group: group === settled.group,
-      section: group.querySelector(":scope > caffold-active-task-section") ===
-        settled.section,
-      header: group.querySelector(":scope > caffold-active-task-section > .task-repository-header") ===
+      section: section === settled.section,
+      header: section.shadowRoot.querySelector(".task-repository-header") ===
         settled.header,
-      label: group.querySelector(
-        ":scope > caffold-active-task-section > .task-repository-header > .task-repository-select > .task-repository-label",
+      label: section.shadowRoot.querySelector(
+        ".task-repository-header > .task-repository-select > .task-repository-label",
       ) === settled.label,
-      count: group.querySelector(
-        ":scope > caffold-active-task-section > .task-repository-header > .task-repository-count",
+      count: section.shadowRoot.querySelector(
+        ".task-repository-header > .task-repository-count",
       ) === settled.count,
       rows: rows.every((row, index) => row === settled.rows[index]),
       components: components.every(
@@ -674,9 +679,9 @@ test("hydrates a cached Task with the task-list stream bootstrap snapshot", { ta
     ),
   ).toHaveCount(0);
 
-  await page.evaluate(() => {
+  await page.locator("caffold-active-task-list").evaluate((list) => {
     const previous = window.__taskListBootstrapSource;
-    document.querySelector("caffold-active-task-list").retryStream();
+    list.retryStream();
     window.__previousTaskListBootstrapSource = previous;
   });
   await expect.poll(() =>
@@ -834,11 +839,13 @@ test("applies canonical top placements without list refetches or duplicate reord
     "fixture-section-new",
     "fixture-section-2",
   ]);
-  await page.evaluate((task) => {
-    const item = document.querySelector(
-      `li[data-thread-id="${CSS.escape(task.threadId)}"]`,
-    );
+  const transferred = page.locator(
+    `caffold-active-task-list li[data-thread-id="${existingOther.threadId}"]`,
+  );
+  await transferred.evaluate((item) => {
     window.__transferredTaskItem = item;
+  });
+  await page.evaluate((task) => {
     window.__activePlacementSource.emit("task-placed-at-top", {
       task,
       placement: {
@@ -853,16 +860,12 @@ test("applies canonical top placements without list refetches or duplicate reord
     });
   }, activeListTask(existingOther));
   await expect(rows).toHaveCount(5);
-  await expect.poll(() => page.evaluate((threadId) => {
-    const item = document.querySelector(
-      `li[data-thread-id="${CSS.escape(threadId)}"]`,
-    );
-    return {
-      itemPreserved: item === window.__transferredTaskItem,
-      sectionId: item?.closest(".task-repository-group")
-        ?.dataset.taskRepositoryKey,
-    };
-  }, existingOther.threadId)).toEqual({
+  // The row sits in its Section's shadow root, the Section in the list's group.
+  await expect.poll(() => transferred.evaluate((item) => ({
+    itemPreserved: item === window.__transferredTaskItem,
+    sectionId: item.getRootNode().host.closest(".task-repository-group")
+      ?.dataset.taskRepositoryKey,
+  }))).toEqual({
     itemPreserved: true,
     sectionId: "fixture-section-1",
   });
@@ -1094,11 +1097,10 @@ test("keeps Task row indicator columns aligned across worktree and meta states",
       const indicatorBounds = indicators.getBoundingClientRect();
       const worktreeBounds = worktreeIndicator?.getBoundingClientRect();
       const metaBounds = meta.getBoundingClientRect();
-      const countBounds = row
-        .closest(".task-repository-group")
-        .querySelector(
-          ":scope > caffold-active-task-section > .task-repository-header > .task-repository-count",
-        )
+      // The row draws in its own root, inside its Section's.
+      const section = row.getRootNode().host.getRootNode().host;
+      const countBounds = section.shadowRoot
+        .querySelector(".task-repository-header > .task-repository-count")
         .getBoundingClientRect();
       return {
         countCenter: countBounds.left + countBounds.width / 2,
@@ -1142,10 +1144,11 @@ test("keeps Task row indicator columns aligned across worktree and meta states",
     recencyMs: now - month,
     lastCompletedMs: now - month,
   };
-  await page.evaluate(() => {
-    window.__indicatorAgeNode = document.querySelector(
-      '[data-thread-id="thread_indicator_11_months"] .task-row-time',
-    );
+  const updatedTime = page.locator(
+    '[data-thread-id="thread_indicator_11_months"] .task-row-time',
+  );
+  await updatedTime.evaluate((element) => {
+    window.__indicatorAgeNode = element;
   });
   await page.evaluate((updatedTask) => {
     const source = window.__indicatorEventSources.find(({ url }) =>
@@ -1153,9 +1156,6 @@ test("keeps Task row indicator columns aligned across worktree and meta states",
     );
     source.emit("task-updated", updatedTask);
   }, activeListTask(updatedAgeTask));
-  const updatedTime = page.locator(
-    '[data-thread-id="thread_indicator_11_months"] .task-row-time',
-  );
   await expect(updatedTime).toHaveText("1M");
   await expect(updatedTime).toHaveAttribute("aria-label", "1 month ago");
   expect(
@@ -1376,7 +1376,8 @@ test("starts active Task navigator spinners at independent phases", { tag: "@all
   const spinnerPhases = () => navigatorSpinners.evaluateAll((elements) =>
     elements
       .map((spinner) => {
-        const row = spinner.closest(".task-row");
+        // The spinner is the status chip's, inside the row.
+        const row = spinner.getRootNode().host.closest(".task-row");
         const style = getComputedStyle(spinner);
         return {
           animationDelay: style.animationDelay,
@@ -1667,13 +1668,13 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   await expect(
     navigator.locator('.task-list-section[data-task-section="managed"]'),
   ).toHaveAttribute("aria-label", "Caffold Tasks");
-  const headerTypography = await page.evaluate(() => {
+  const headerTypography = await page.locator(
+    "caffold-task-navigator caffold-workspace-brand",
+  ).evaluate((brandHost) => {
     const rootFontSize = Number.parseFloat(
       getComputedStyle(document.documentElement).fontSize,
     );
-    const brand = document.querySelector(
-      "caffold-task-navigator caffold-workspace-brand",
-    ).shadowRoot;
+    const brand = brandHost.shadowRoot;
     const navigatorTitle = brand.querySelector(".workspace-brand-title");
     const detailTitle = document.querySelector(".task-detail-heading > h2");
     const brandIcon = brand.querySelector(".workspace-brand-icon");
@@ -2241,8 +2242,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
     2,
   );
   await expect(archivedHeader.locator(":scope > span")).toHaveText("0");
-  const headerActionAlignment = await tasksPage.evaluate(() => {
-    const button = document.querySelector(".task-list-new-task");
+  const headerActionAlignment = await page.locator(".task-list-new-task").evaluate((button) => {
     const header = button.closest(".task-list-section-header");
     const headerBounds = header.getBoundingClientRect();
     const buttonBounds = button.getBoundingClientRect();
@@ -2517,42 +2517,36 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
     });
     await expect(workspaceNavigation).toBeVisible();
 
-    const listScrollBeforeSelection = await tasksPage.evaluate(() => {
-      const scroller = document.querySelector(
-        "caffold-task-navigator .task-list-scroll",
-      );
-      scroller.style.height = "90px";
-      scroller.scrollTop = 40;
-      scroller.querySelector(
-        '.task-list-section[data-task-section="managed"] .task-list',
-      ).dataset.domProbe = "preserved";
-      const row = document.querySelector(
-        'caffold-task-navigator .task-row[data-thread-id="thread_main_core"]',
-      );
+    const managedList = tasksPage
+      .locator('.task-list-section[data-task-section="managed"] .task-list')
+      .first();
+    const coreRow = tasksPage.locator('.task-row[data-thread-id="thread_main_core"]');
+    const rootRow = tasksPage.locator('.task-row[data-thread-id="thread_main_root"]');
+    const listScrollBeforeSelection = await tasksPage
+      .locator("caffold-task-navigator .task-list-scroll")
+      .evaluate((scroller) => {
+        scroller.style.height = "90px";
+        scroller.scrollTop = 40;
+        return scroller.scrollTop;
+      });
+    await managedList.evaluate((list) => {
+      list.dataset.domProbe = "preserved";
+    });
+    await coreRow.evaluate((row) => {
+      // The row draws in its own root; its item is its Section's.
       row.dataset.domProbe = "preserved";
-      row.closest("li").dataset.domProbe = "preserved";
-      return scroller.scrollTop;
+      row.getRootNode().host.closest("li").dataset.domProbe = "preserved";
     });
     expect(listScrollBeforeSelection).toBeGreaterThan(0);
-    await tasksPage.evaluate(() =>
-      document
-        .querySelector('caffold-task-navigator .task-row[data-thread-id="thread_main_root"]')
-        .click(),
-    );
+    await rootRow.evaluate((row) => row.click());
     await expect(page).toHaveURL("/tasks/thread_main_root");
     await expect(listPane).toBeVisible();
     await expect(detailPane).toContainText("Main root task detail response");
     await expect(
       tasksPage.locator('.task-row[data-thread-id="thread_main_root"]'),
     ).toHaveAttribute("aria-current", "true");
-    const selectedRowLayout = await tasksPage.evaluate(() => {
+    const selectedRowLayout = await rootRow.evaluate((selected, peer) => {
       const navigator = document.querySelector("caffold-task-navigator");
-      const selected = navigator.querySelector(
-        '.task-row[data-thread-id="thread_main_root"]',
-      );
-      const peer = navigator.querySelector(
-        '.task-row[data-thread-id="thread_main_core"]',
-      );
       const navigatorRect = navigator.getBoundingClientRect();
       const selectedRect = selected.getBoundingClientRect();
       const selectedTitleRect = selected
@@ -2570,7 +2564,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
         leftInset: selectedRect.left - navigatorRect.left,
         titleOffset: selectedTitleRect.left - peerTitleRect.left,
       };
-    });
+    }, await coreRow.elementHandle());
     expect(selectedRowLayout.indicatorGap).toBeCloseTo(rootFontSize * 0.25, 1);
     expect(selectedRowLayout.indicatorWidth).toBeCloseTo(rootFontSize * 3, 1);
     expect(selectedRowLayout.leftInset).toBeCloseTo(0, 1);
@@ -2675,7 +2669,8 @@ test("keeps the brand beside the corner toggle and header actions in the narrowe
     ].map((action) => action.getBoundingClientRect());
     return {
       paneWidth: element
-        .closest(".task-workspace-master-pane")
+        .getRootNode()
+        .host.closest(".task-workspace-master-pane")
         .getBoundingClientRect().width,
       actionCount: actions.length,
       titleClipped: title.scrollWidth > title.clientWidth,
@@ -2716,7 +2711,8 @@ test("keeps the brand beside the corner toggle and header actions in the narrowe
     .toBeVisible();
   const scaled = await header.evaluate((element) => {
     const pane = element
-      .closest(".task-workspace-master-pane")
+      .getRootNode()
+      .host.closest(".task-workspace-master-pane")
       .getBoundingClientRect();
     const brand = element.querySelector("caffold-workspace-brand").shadowRoot;
     const title = brand.querySelector(".workspace-brand-title");
@@ -2921,16 +2917,17 @@ test("keeps the Tasks list DOM stable while opening a managed task", { tag: "@al
     '.task-row[data-thread-id="thread_dom_stability"]',
   );
   await expect(target.locator(".task-unseen-complete")).toBeVisible();
-  await tasksPage.evaluate((element) => {
-    const row = element.querySelector(
-      '.task-row[data-thread-id="thread_dom_stability"]',
-    );
+  await target.evaluate((row) => {
+    // The row draws in its own root; its item and list are its Section's.
+    const item = row.getRootNode().host.closest("li");
     row.dataset.domProbe = "preserved";
-    row.closest("li").dataset.domProbe = "preserved";
+    item.dataset.domProbe = "preserved";
     window.__taskListDomProbe = {
-      scroller: element.querySelector(".task-list-scroll"),
-      list: row.closest(".task-list"),
-      item: row.closest("li"),
+      scroller: document
+        .querySelector("caffold-task-navigator")
+        .shadowRoot.querySelector(".task-list-scroll"),
+      list: item.closest(".task-list"),
+      item,
       row,
     };
   });
@@ -2945,17 +2942,19 @@ test("keeps the Tasks list DOM stable while opening a managed task", { tag: "@al
     "DOM stability detail response",
   );
 
-  const result = await tasksPage.evaluate((element) => {
-    const row = element.querySelector(
-      '.task-row[data-thread-id="thread_dom_stability"]',
-    );
+  const result = await target.evaluate((row) => {
+    const item = row.getRootNode().host.closest("li");
     const probe = window.__taskListDomProbe;
     return {
-      scrollerPreserved: probe.scroller === element.querySelector(".task-list-scroll"),
-      listPreserved: probe.list === row.closest(".task-list"),
-      itemPreserved: probe.item === row.closest("li"),
+      scrollerPreserved:
+        probe.scroller ===
+        document
+          .querySelector("caffold-task-navigator")
+          .shadowRoot.querySelector(".task-list-scroll"),
+      listPreserved: probe.list === item.closest(".task-list"),
+      itemPreserved: probe.item === item,
       rowPreserved: probe.row === row,
-      itemStatePreserved: row.closest("li").dataset.domProbe,
+      itemStatePreserved: item.dataset.domProbe,
       rowStatePreserved: row.dataset.domProbe,
       selected: row.getAttribute("aria-current"),
       unseenIndicatorCount: row.querySelectorAll(".task-unseen-complete").length,
@@ -3070,23 +3069,24 @@ test("patches Task rows in place without reordering and preserves a running spin
     '.task-row[data-thread-id="thread_spinner_stability"]',
   );
   await expect(target.locator(".task-status-spinner")).toHaveCount(1);
-  await tasksPage.evaluate((element) => {
-    const row = element.querySelector(
-      '.task-row[data-thread-id="thread_spinner_stability"]',
-    );
-    const item = row.closest("li");
+  await target.evaluate((row) => {
+    // The row draws in its own root, and its status chip in another.
+    const item = row.getRootNode().host.closest("li");
+    const chip = row.querySelector("caffold-task-status-chip");
     const records = [];
     const observer = new MutationObserver((mutations) => records.push(...mutations));
-    observer.observe(item, {
-      attributes: true,
-      characterData: true,
-      childList: true,
-      subtree: true,
-    });
+    for (const node of [item, row.getRootNode(), chip.shadowRoot]) {
+      observer.observe(node, {
+        attributes: true,
+        characterData: true,
+        childList: true,
+        subtree: true,
+      });
+    }
     window.__taskDomProbe = {
       item,
       row,
-      spinner: row.querySelector(".task-status-spinner"),
+      spinner: chip.shadowRoot.querySelector(".task-status-spinner"),
       observer,
       records,
     };
@@ -3121,16 +3121,16 @@ test("patches Task rows in place without reordering and preserves a running spin
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
 
   expect(
-    await tasksPage.evaluate((element) => {
-      const row = element.querySelector(
-        '.task-row[data-thread-id="thread_spinner_stability"]',
-      );
+    await target.evaluate((row) => {
       return {
-        itemPreserved: window.__taskDomProbe.item === row.closest("li"),
+        itemPreserved: window.__taskDomProbe.item === row.getRootNode().host.closest("li"),
         mutationCount: window.__taskDomProbe.records.length,
         rowPreserved: window.__taskDomProbe.row === row,
         spinnerPreserved:
-          window.__taskDomProbe.spinner === row.querySelector(".task-status-spinner"),
+          window.__taskDomProbe.spinner ===
+          row
+            .querySelector("caffold-task-status-chip")
+            .shadowRoot.querySelector(".task-status-spinner"),
       };
     }),
   ).toEqual({
@@ -3155,14 +3155,14 @@ test("patches Task rows in place without reordering and preserves a running spin
     ),
   ).toHaveText("Updated sibling");
   expect(
-    await tasksPage.evaluate((element) => {
-      const row = element.querySelector(
-        '.task-row[data-thread-id="thread_spinner_stability"]',
-      );
+    await target.evaluate((row) => {
       return {
         rowPreserved: window.__taskDomProbe.row === row,
         spinnerPreserved:
-          window.__taskDomProbe.spinner === row.querySelector(".task-status-spinner"),
+          window.__taskDomProbe.spinner ===
+          row
+            .querySelector("caffold-task-status-chip")
+            .shadowRoot.querySelector(".task-status-spinner"),
       };
     }),
   ).toEqual({ rowPreserved: true, spinnerPreserved: true });
@@ -3186,14 +3186,14 @@ test("patches Task rows in place without reordering and preserves a running spin
     tasksPage.locator('.task-list .task-row[data-thread-id]').first(),
   ).toHaveAttribute("data-thread-id", "thread_spinner_sibling");
   expect(
-    await tasksPage.evaluate((element) => {
-      const row = element.querySelector(
-        '.task-row[data-thread-id="thread_spinner_stability"]',
-      );
+    await target.evaluate((row) => {
       return {
         rowPreserved: window.__taskDomProbe.row === row,
         spinnerPreserved:
-          window.__taskDomProbe.spinner === row.querySelector(".task-status-spinner"),
+          window.__taskDomProbe.spinner ===
+          row
+            .querySelector("caffold-task-status-chip")
+            .shadowRoot.querySelector(".task-status-spinner"),
       };
     }),
   ).toEqual({ rowPreserved: true, spinnerPreserved: true });
@@ -3215,10 +3215,7 @@ test("patches Task rows in place without reordering and preserves a running spin
   await expect(target.locator(".task-status-spinner")).toHaveCount(0);
   await expect(target.locator(".task-unseen-complete")).toHaveCount(0);
   expect(
-    await tasksPage.evaluate((element) => {
-      const row = element.querySelector(
-        '.task-row[data-thread-id="thread_spinner_stability"]',
-      );
+    await target.evaluate((row) => {
       window.__taskDomProbe.observer.disconnect();
       return window.__taskDomProbe.row === row;
     }),
@@ -3454,15 +3451,26 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
   await expect(tasksPage.locator('.task-row .task-status-label')).toHaveCount(0);
   await expect(tasksPage.locator(".task-row-summary")).toHaveCount(0);
   const treeLayout = await groups.nth(0).evaluate((group) => {
-    const scroller = group.closest(".task-list-scroll");
-    const header = group.querySelector(".task-repository-header");
+    // The group is the list's; its header and rows are its Section's, and each
+    // row draws in its own root.
+    const sectionRoot = (item) =>
+      item.querySelector("caffold-active-task-section").shadowRoot;
+    const rowRoot = (item) =>
+      item.querySelector("caffold-active-task-row").shadowRoot;
+    const scroller = group.getRootNode().host.closest(".task-list-scroll");
+    const section = sectionRoot(group);
+    const header = section.querySelector(".task-repository-header");
     const headerIcon = header.querySelector(".task-repository-icon");
     const headerLabel = header.querySelector(".task-repository-label");
-    const row = group.querySelector(".task-row");
+    const row = rowRoot(section).querySelector(".task-row");
     const rowTitle = row.querySelector(".task-row-title");
     const nextGroup = group.nextElementSibling;
-    const lastRowTitle = group.querySelector(".task-list > li:last-child .task-row-title");
-    const nextHeaderLabel = nextGroup.querySelector(".task-repository-label");
+    const lastRowTitle = rowRoot(
+      section.querySelector(".task-list > li:last-child"),
+    ).querySelector(".task-row-title");
+    const nextHeaderLabel = sectionRoot(nextGroup).querySelector(
+      ".task-repository-label",
+    );
     return {
       bottomPadding: Number.parseFloat(getComputedStyle(scroller).paddingBottom),
       betweenGroupTextGap:

@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -6,10 +6,7 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hints.js";
 import type { ActiveTask, ActiveTaskTopPlacement, Task } from "#app/api.js";
-import {
-  KEYBOARD_SESSION_DISMISS_EVENT,
-  KeyboardContexts,
-} from "#app/keyboard-navigation.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
 import { ScrollSurfaces, scrollBackToTop } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
@@ -31,6 +28,8 @@ import type {
   SectionSummary,
 } from "./active-task-list.js";
 import "./archived-task-list.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { focusedElement } from "#app/shadow-roots.js";
 import type { TaskNavigatorIntent } from "../task-navigator-intent-event.js";
 import { TASK_NAVIGATOR_INTENT_EVENT } from "../task-navigator-intent-event.js";
 import type { TaskNavigatorTransportChangeDetail } from "./active-task-list.js";
@@ -40,7 +39,10 @@ import type {
   CaffoldArchivedTaskList,
 } from "./archived-task-list.js";
 
-import { compactIconButton } from "#app/component-styles.js";
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import { scopedStyle } from "#app/scoped-style.js";
+import actionIcon from "#tasks/component-styles/action-icon.css.js";
+import styles from "./navigator.css.js";
 
 const ICON = "task-action-icon";
 
@@ -59,11 +61,6 @@ export interface TaskNavigatorListState {
   selectedRecovery: ActiveTaskListState["selectedRecovery"];
 }
 
-await compactIconButton.register(
-  "caffold-task-navigator",
-  "> .task-list-primary-header > .task-list-primary-actions > .task-list-header-action",
-);
-
 /**
  * The Tasks tab's navigation pane: the workspace header with Switch task,
  * Reorder, and New Task, and below it the Active list and the Archived list.
@@ -73,7 +70,13 @@ await compactIconButton.register(
  * what the Active list learns: the transport, and Tasks archived or restored.
  */
 @customElement("caffold-task-navigator")
-export class CaffoldTaskNavigator extends LitElement {
+export class CaffoldTaskNavigator extends CaffoldElement {
+  static override styles = [
+    scopedStyle(compactIconButton, ".task-list-header-action"),
+    scopedStyle(actionIcon, ".task-action-icon"),
+    styles,
+  ];
+
   private active = false;
   private reorderMode: ReorderMode = "none";
   private taskOperations = taskStoreOperationsPresentation(null);
@@ -95,13 +98,6 @@ export class CaffoldTaskNavigator extends LitElement {
     this.addEventListener("keydown", (event) =>
       this.exitReorderOnEscape(event),
     );
-    this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) =>
-      this.handleDismiss(event),
-    );
-  }
-
-  override createRenderRoot() {
-    return this;
   }
 
   override connectedCallback() {
@@ -253,9 +249,7 @@ export class CaffoldTaskNavigator extends LitElement {
       return;
     }
     const activeList = this.activeTaskList;
-    const handleHadFocus = activeList.containsReorderFocus(
-      document.activeElement,
-    );
+    const handleHadFocus = activeList.containsReorderFocus(focusedElement());
     const previous = this.reorderMode;
     this.reorderMode = mode;
     activeList.setReorderMode(mode, {
@@ -384,6 +378,7 @@ export class CaffoldTaskNavigator extends LitElement {
             popover="auto"
             role="group"
             aria-label="Reorder options"
+            @caffold:keyboard-session-dismiss=${this.closeReorderPopover}
           >
             <button
               ${this.hints.button({
@@ -511,12 +506,6 @@ export class CaffoldTaskNavigator extends LitElement {
     event.preventDefault();
     event.stopPropagation();
     this.exitReorderMode();
-  }
-
-  private handleDismiss(event: Event) {
-    if (event.target === this.reorderPopover) {
-      this.closeReorderPopover();
-    }
   }
 
   private closeReorderPopover() {

@@ -8,6 +8,11 @@ import { registerHooks } from "node:module";
 
 const buildRoot = new URL("../unit-build/", import.meta.url).href;
 const frontendRoot = new URL("../../", import.meta.url).href;
+// Node resolves an alias such as `#app/` only to a file that exists, and no
+// stylesheet module does, so the hook resolves the aliases itself.
+const aliases = Object.entries(
+  JSON.parse(readFileSync(new URL("package.json", frontendRoot), "utf8")).imports,
+).map(([alias, target]) => [alias.slice(0, -1), new URL(target.slice(0, -1), buildRoot).href]);
 
 globalThis.CSSStyleSheet ??= class CSSStyleSheet {
   cssRules = [];
@@ -20,9 +25,14 @@ globalThis.CSSStyleSheet ??= class CSSStyleSheet {
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
-    return specifier.endsWith(".css.js")
-      ? { url: new URL(specifier, context.parentURL).href, shortCircuit: true }
-      : nextResolve(specifier, context);
+    if (!specifier.endsWith(".css.js")) {
+      return nextResolve(specifier, context);
+    }
+    const [alias, target] = aliases.find(([alias]) => specifier.startsWith(alias)) ?? [];
+    const url = alias
+      ? new URL(specifier.slice(alias.length), target)
+      : new URL(specifier, context.parentURL);
+    return { url: url.href, shortCircuit: true };
   },
   load(url, context, nextLoad) {
     if (!url.endsWith(".css.js")) {

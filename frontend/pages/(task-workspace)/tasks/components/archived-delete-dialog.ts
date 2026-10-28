@@ -1,10 +1,13 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { taskThreadId } from "../task-list-model.js";
+
+import styles from "./archived-delete-dialog.css.js";
 
 export interface TaskArchivedDeleteConfirmedDetail {
   threadId: string;
@@ -14,19 +17,17 @@ export const TASK_ARCHIVED_DELETE_CONFIRMED_EVENT =
   "caffold:task-archived-delete-confirmed";
 
 @customElement("caffold-task-archived-delete-dialog")
-export class CaffoldTaskArchivedDeleteDialog extends LitElement {
+export class CaffoldTaskArchivedDeleteDialog extends CaffoldElement {
   @state()
   private accessor taskTitle = "";
   @state()
   private accessor pendingThreadId: string | null = null;
 
+  static override styles = styles;
+
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     return html`

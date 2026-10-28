@@ -8,7 +8,8 @@ import {
 import { CaffoldElement } from "#app/caffold-element.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 
-import { busySpin } from "#app/component-styles.js";
+import busySpin from "#app/pages/component-styles/busy-spin.css.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./refresh-button.css.js";
 
 export const SETTINGS_REFRESH_INTENT_EVENT = "caffold:settings-refresh-intent";
@@ -22,7 +23,10 @@ const LABEL = "Refresh";
 @customElement("caffold-settings-refresh-button")
 export class CaffoldSettingsRefreshButton extends CaffoldElement {
   static override styles = [
-    busySpin("button.is-refreshing > span > .settings-refresh-icon"),
+    scopedStyle(
+      busySpin,
+      "button.is-refreshing > span > .settings-refresh-icon",
+    ),
     styles,
   ];
 

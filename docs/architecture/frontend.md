@@ -81,7 +81,7 @@ Nearby relative imports remain useful within an owner. The native-import
 contract checks that long relative imports do not return, that both runtimes
 resolve aliases to the same files, and that those files are served and cached.
 
-A module's style imports, its stylesheet modules and `component-styles.js`,
+A module's style imports, its stylesheet modules and `scoped-style.js`,
 come last, after a blank line. The import organizer that `frontend/biome.json`
 configures keeps them together there; it sorts only up to a bare import such as
 `import "./child.js"`, so the style imports go below the last one.
@@ -2138,18 +2138,20 @@ finishing never starts another Hint session automatically.
 
 The shared components in `frontend/components/`, the keyboard mode's
 presentation, Scroll selector, Scroll HUD, and shortcut help in
-`keyboard-navigation/components/`, the Action Hint dialog, pagination with
-its page button, Settings and Notes, and the Caffold mark at the head of the
-left pane (`caffold-workspace-brand`) extend `CaffoldElement`
+`keyboard-navigation/components/`, the Action Hint dialog, pagination with its
+page button, Settings and Notes, the Caffold mark at the head of the left pane
+(`caffold-workspace-brand`), and the Tasks components in `tasks/components/`,
+`tasks/new/`, and `tasks/recovery/` (the Task list, the Composer, New Task, the
+recovery screens, and the Task dialogs) extend `CaffoldElement`
 (`frontend/caffold-element.ts`) and render into open shadow roots. Their
-stylesheets style the host as `:host` and the rest by local class, and reach
-the component as a module: beside each stylesheet the server build writes
-`name.css.js`, whose default export is the stylesheet as a `CSSStyleSheet`,
-the shape a CSS module script has, which Safari does not load. The component
-lists that sheet in its `static styles`, and Lit adopts it into every
-instance's shadow root. The document's stylesheets do not reach inside those
-roots, and their sheets do not reach out. A parent names a child it draws only
-to place, size, or hide its host.
+stylesheets style the host as `:host` and the rest by local class, and reach the
+component as a module: beside each stylesheet the server build writes
+`name.css.js`, whose default export is the stylesheet as a `CSSStyleSheet`, the
+shape a CSS module script has, which Safari does not load. The component lists
+that sheet in its `static styles`, and Lit adopts it into every instance's
+shadow root. The document's stylesheets do not reach inside those roots, and
+their sheets do not reach out. A parent names a child it draws only to place,
+size, or hide its host.
 
 An event heard outside the root it starts in is `composed`, such as
 `caffold:change-page`, the Scroll selector's choice, and the File Viewer's
@@ -2162,7 +2164,12 @@ there when it connects and removes it when it disconnects, so the keyboard mode
 can run its document queries, observers, and capturing listeners on every
 listed root as well, and resolve the focused element inside the roots that hold
 it. An owner asks whether an element sits inside it across those roots, as Task
-Workspace does to find which surface holds a field being edited.
+Workspace does to find which surface holds a field being edited, and finds its
+nearest matching ancestor across them, as the turn options do to find the pane
+their menu stays inside. While a Scroll session runs, the keyboard mode watches
+the owner of each surface together with the roots of the components inside it,
+as they come and go, so a Task row removed inside a Section's root still tells
+it that the Task list may have stopped scrolling.
 
 The other components render in Light DOM, where CSS is one cascade:
 `styles.css` imports each component's stylesheet, and each stylesheet scopes
@@ -2176,36 +2183,38 @@ the `static styles` of every component that extends it, so such a component
 lists only its own. Theme tokens and inherited text properties reach a shadow
 root from the document.
 
-`frontend/component-styles.ts` exports three shared styles:
-`compactIconButton`, `secondaryButton`, and `busySpin`. Components in Light DOM
-await `register(owner, target)` on each style they use before defining their
-element, so the await stands above the class `@customElement()` registers,
-declaring the explicit child path from the owner to their own local class; a
-step in that path may add the owner's state classes. Each style fetches its
-stylesheet (`component-styles/compact-icon-button.css`,
-`component-styles/busy-spin.css`) once per document and adopts a native
-`@scope` sheet for each registration. A component in a shadow root puts
-`compactIconButton(target)` or `busySpin(target)` in its `static styles`
-instead, `target` being the class path to its element in that root; the sheet
-comes from the stylesheet's module, so it needs no request, and every instance
-shares the one sheet for that target. `secondaryButton`, the bordered text
-button, has only that form, for the File Viewer's notice action; components in
-Light DOM below Tasks still take the same look from `tasks/controls.css`. The
-CSS uses `:scope` without naming consumers and may define its own keyframes.
-Shared defaults use the `component-styles` layer; unlayered owner rules retain
-local overrides.
-Registration lasts for the document, while components retain their native
-state and Action Hint providers.
+A shared style is a stylesheet directly under a `component-styles/` directory
+at the nearest common owner of the components that use it.
+`frontend/component-styles/` holds `compact-icon-button.css` and
+`secondary-button.css`, the bordered text button; `pages/component-styles/`
+holds `busy-spin.css`; `pages/(task-workspace)/tasks/component-styles/` holds
+`action-icon.css`, the icon in a Tasks action. A shared style's rules start at
+`:scope`, name no consumer, and may define their own keyframes; its head
+comment says what it draws. `frontend/scoped-style.ts` applies any of them and
+names none. A component in a shadow root imports the stylesheet's module and
+puts `scopedStyle(style, target)` in its `static styles`, `target` being the
+class path to its element in that root; every instance shares the one sheet
+for that target. A component in Light DOM calls `adoptScopedStyle(style, owner, target)`
+above the class `@customElement()` registers, declaring the explicit child path
+from the owner to its own local class; a step in that path may add the owner's
+state classes, and the document adopts one native `@scope` sheet for each owner
+and path. Either way the sheet comes from the stylesheet's module, so neither
+requests the stylesheet. `secondary-button.css` and `action-icon.css` are
+applied only in shadow roots; components in Light DOM below Tasks still take
+the same looks from `tasks/controls.css`. Shared defaults use the
+`component-styles` layer; unlayered owner rules retain local overrides.
+Adoption lasts for the document, while components retain their native state
+and Action Hint providers.
 
-`compactIconButton` covers Task list/header actions, workspace and Git/GitHub
-Back controls, terminal and file refresh controls, pagination, and Task/Notes
-Info. Local colors, margins, visibility and native-state appearance remain with
-each owner. Regular-size Back controls and controls with different surfaces
-keep their existing styles.
+`compact-icon-button.css` covers Task list/header actions, workspace and
+Git/GitHub Back controls, terminal and file refresh controls, pagination, and
+Task/Notes Info. Local colors, margins, visibility and native-state appearance
+remain with each owner. Regular-size Back controls and controls with different
+surfaces keep their existing styles.
 
-`busySpin` turns a busy element in place, one turn every 0.8 s, and stops it
-under reduced motion; the element's shape stays with its owner. Rings that
-appear only while their owner is busy register their own path: Task status
+`busy-spin.css` turns a busy element in place, one turn every 0.8 s, and stops
+it under reduced motion; the element's shape stays with its owner. Rings that
+appear only while their owner is busy name their own path: Task status
 chips, closed model and permission pickers, the conversation's working line,
 and the reconnect notice. Icons that stay while idle add the busy state class
 to the path: the Git and Settings refresh arrows, archived Task restore and
@@ -2214,7 +2223,7 @@ Task list gives each running row's ring its own start delay so neighboring rows
 do not turn in step.
 
 Busy controls and waiting content use two presentations. A busy control or
-icon slot turns its ring or icon in place through `busySpin`. A place
+icon slot turns its ring or icon in place through `busy-spin.css`. A place
 where content is about to appear shows `caffold-loading-text` from
 `frontend/components/loading-text.ts`: a short muted phrase crossed by a moving
 highlight and announced as a status. It draws the text its owner gives it

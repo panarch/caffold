@@ -7,7 +7,8 @@ import {
 } from "#app/action-hints.js";
 import { inlineIcon } from "#components/icons.js";
 
-import { compactIconButton } from "#app/component-styles.js";
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import { adoptScopedStyle } from "#app/scoped-style.js";
 
 export interface TaskDetailTerminalIntentDetail {
   type: "toggle";
@@ -16,7 +17,8 @@ export interface TaskDetailTerminalIntentDetail {
 export const TERMINAL_BUTTON_INTENT_EVENT =
   "caffold:task-detail-terminal-intent";
 
-await compactIconButton.register(
+adoptScopedStyle(
+  compactIconButton,
   "caffold-task-detail-terminal",
   "> .task-terminal-button",
 );

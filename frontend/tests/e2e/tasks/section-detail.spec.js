@@ -62,12 +62,16 @@ test("selects a Section and opens fixed-directory Task creation", { tag: "@all-v
   await expect(section).toHaveJSProperty("tagName", "BUTTON");
   await expect.poll(() => sectionCount.evaluate((count) => {
     const bounds = count.getBoundingClientRect();
-    return document
-      .elementFromPoint(
-        bounds.left + bounds.width / 2,
-        bounds.top + bounds.height / 2,
-      )
-      ?.closest(".task-repository-select")?.tagName ?? "";
+    const x = bounds.left + bounds.width / 2;
+    const y = bounds.top + bounds.height / 2;
+    // The document names only the outermost host at a point.
+    let hit = document.elementFromPoint(x, y);
+    while (hit?.shadowRoot) {
+      const inner = hit.shadowRoot.elementFromPoint(x, y);
+      if (!inner || inner === hit) break;
+      hit = inner;
+    }
+    return hit?.closest(".task-repository-select")?.tagName ?? "";
   })).toBe("BUTTON");
   await activateActionHint(
     page,
@@ -1171,11 +1175,10 @@ test("starts the Section composer where global New Task starts its composer", { 
   await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
     route.fulfill({ json: { tasks: [], nextCursor: null } })
   );
-  const composerOffset = (scroller) => page.evaluate((selector) => {
-    const scroll = document.querySelector(selector);
+  const composerOffset = (scroller) => page.locator(scroller).evaluate((scroll) => {
     const create = scroll.querySelector(":scope > caffold-task-create");
     return create.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
-  }, scroller);
+  });
 
   await page.goto("/tasks/new");
   await expect(page.locator("caffold-task-new .task-new-form")).toBeVisible();

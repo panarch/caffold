@@ -150,9 +150,10 @@ primary public entry point for non-visual behavior. `name/` contains the
 module's private implementation. Routed `page.js` and `layout.js` files are
 ownership entry points rather than private implementation. The only other
 conventionally visible paths below a boundary are Web Component entry points
-directly under its `components/` namespace, as defined below. `index.js` has no
-special role in this convention. A same-stem private implementation directory
-must not contain `page.js` or `layout.js`.
+directly under its `components/` namespace, as defined below, and shared styles
+directly under its `component-styles/` directory. `index.js` has no special
+role in this convention. A same-stem private implementation directory must not
+contain `page.js` or `layout.js`.
 
 Apply import rules at the ownership boundary rather than by counting directory
 levels:
@@ -423,9 +424,10 @@ Use these rules when reviewing CSS:
   the child component's stylesheet.
 - Prefer `>` for container layout selectors.
 - Use component-local classes for internal chrome.
-- A component declares its own use of shared styles. Shared CSS must not name
-  feature consumers, and registration must not discover targets by scanning the
-  DOM. Preserve component-owned state and local overrides, and verify scoped
+- Shared styles live directly under a `component-styles/` directory, and a
+  component declares its own use of them. Shared CSS must not name feature
+  consumers, and registration must not discover targets by scanning the DOM.
+  Preserve component-owned state and local overrides, and verify scoped
   application and isolation in the browser. CSS ownership contracts must also
   cover shared sources.
 - Avoid raw tag selectors from shell or container components.

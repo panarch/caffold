@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { actionHintDialog, enterActionHints } from "../support/action-hints.js";
+import { elementHandles } from "../support/element-handles.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { TASK_PERMISSION_FIXTURE } from "../support/task-api-fixture.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
@@ -109,14 +110,12 @@ test("lines the directory up with the Composer card, joins its list below it, an
   const path = field.locator(".task-directory-field-path");
   await expect(path).toHaveText(`~/Workspace/${LONG}/${LONG}-inside`);
 
-  const closed = await page.evaluate(() => {
-    const boxElement = document.querySelector(".task-directory-field-box");
-    const panelElement = document.querySelector("caffold-task-new .task-composer-panel");
+  const closed = await page.evaluate(([boxElement, panelElement]) => {
     const box = boxElement.getBoundingClientRect();
     const panel = panelElement.getBoundingClientRect();
-    const icon = document.querySelector(".task-directory-field-icon").getBoundingClientRect();
-    const chevron = document.querySelector(".task-directory-field-chevron").getBoundingClientRect();
-    const pathElement = document.querySelector(".task-directory-field-path");
+    const icon = boxElement.querySelector(".task-directory-field-icon").getBoundingClientRect();
+    const chevron = boxElement.querySelector(".task-directory-field-chevron").getBoundingClientRect();
+    const pathElement = boxElement.querySelector(".task-directory-field-path");
     const text = [...pathElement.querySelector("span").childNodes].find(
       (node) => node.nodeType === Node.TEXT_NODE,
     );
@@ -141,7 +140,10 @@ test("lines the directory up with the Composer card, joins its list below it, an
       firstClipped: first.left < shown.left,
       pageOverflow: document.scrollingElement.scrollWidth - window.innerWidth,
     };
-  });
+  }, await elementHandles(page, [
+    ".task-directory-field-box",
+    "caffold-task-new .task-composer-panel",
+  ]));
   expect(closed.edges[0]).toBeCloseTo(0, 0);
   expect(closed.edges[1]).toBeCloseTo(0, 0);
   expect(closed.gap).toBeGreaterThan(0);
@@ -157,10 +159,7 @@ test("lines the directory up with the Composer card, joins its list below it, an
   await page.goto(`/tasks/new?cwd=${encodeURIComponent(`${HOME}/Workspace/rust`)}`);
   await field.getByRole("button", { name: "Show folders" }).click();
   await expect(folderRow(field, "codger")).toBeVisible();
-  const joined = await page.evaluate(() => {
-    const box = document.querySelector(".task-directory-field-box");
-    const list = document.querySelector(".task-directory-field-panel");
-    const card = document.querySelector("caffold-task-new .task-composer-panel");
+  const joined = await page.evaluate(([box, list, card]) => {
     const boxRect = box.getBoundingClientRect();
     const listRect = list.getBoundingClientRect();
     return {
@@ -171,7 +170,11 @@ test("lines the directory up with the Composer card, joins its list below it, an
       listBottom: getComputedStyle(list).borderBottomLeftRadius,
       card: getComputedStyle(card).borderBottomLeftRadius,
     };
-  });
+  }, await elementHandles(page, [
+    ".task-directory-field-box",
+    ".task-directory-field-panel",
+    "caffold-task-new .task-composer-panel",
+  ]));
   expect(joined.gap).toBeCloseTo(0, 0);
   expect(joined.edges[0]).toBeCloseTo(0, 0);
   expect(joined.edges[1]).toBeCloseTo(0, 0);
@@ -198,21 +201,26 @@ test("lines the directory up with the Composer card, joins its list below it, an
 
   // The pressed edit button keeps an even gap from the box's edges.
   await field.getByRole("button", { name: "Type a path" }).click();
-  const inset = await page.evaluate(() => {
-    const box = document.querySelector(".task-directory-field-box").getBoundingClientRect();
-    const edit = document.querySelector(".task-directory-field-edit").getBoundingClientRect();
+  const inset = await page.evaluate((elements) => {
+    const [box, edit] = elements.map((element) => element.getBoundingClientRect());
     return { top: edit.top - box.top, bottom: box.bottom - edit.bottom };
-  });
+  }, await elementHandles(page, [".task-directory-field-box", ".task-directory-field-edit"]));
   expect(Math.abs(inset.top - inset.bottom)).toBeLessThanOrEqual(1);
   expect(inset.top).toBeGreaterThanOrEqual(3);
 });
 
 test("Section New shows its fixed directory where New Task shows the field", { tag: "@all-viewports" }, async ({ page }) => {
   const { field } = await openNewTask(page, `${HOME}/Workspace/rust/codger`);
-  const measure = (selector, iconSelector, textSelector) => page.evaluate(
-    ([rowSelector, icon, text]) => {
-      const row = document.querySelector(rowSelector);
-      const panel = row.closest("caffold-task-create").querySelector(".task-composer-panel")
+  const measure = (selector, iconSelector, textSelector) => page.locator(selector).first().evaluate(
+    (row, [icon, text]) => {
+      // The row is drawn inside Task creation, whose Composer draws the card.
+      let create = row;
+      while (create.localName !== "caffold-task-create") {
+        create = create.parentNode ?? create.host;
+      }
+      const panel = create.shadowRoot
+        .querySelector("caffold-task-composer")
+        .shadowRoot.querySelector(".task-composer-panel")
         .getBoundingClientRect();
       const box = row.getBoundingClientRect();
       const glyph = row.querySelector(icon).getBoundingClientRect();
@@ -226,7 +234,7 @@ test("Section New shows its fixed directory where New Task shows the field", { t
         cardBelow: panel.top - box.top,
       };
     },
-    [selector, iconSelector, textSelector],
+    [iconSelector, textSelector],
   );
   await expect(field.locator(".task-directory-field-glyph").first()).toBeVisible();
   const global = await measure(

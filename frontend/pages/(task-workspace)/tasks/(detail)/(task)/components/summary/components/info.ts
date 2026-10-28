@@ -25,7 +25,8 @@ import type {
   TaskInfoActionsSnapshot,
 } from "./info/components/actions.js";
 
-import { compactIconButton } from "#app/component-styles.js";
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import { adoptScopedStyle } from "#app/scoped-style.js";
 
 let taskInfoInstanceId = 0;
 
@@ -62,7 +63,8 @@ export function taskInfoSnapshot(
   };
 }
 
-await compactIconButton.register(
+adoptScopedStyle(
+  compactIconButton,
   "caffold-task-detail-info",
   "> .task-detail-info-button",
 );

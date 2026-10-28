@@ -2,9 +2,11 @@ import { html, LitElement, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { activeTurnDuration } from "../active-turn.js";
 
-import { busySpin } from "#app/component-styles.js";
+import busySpin from "#app/pages/component-styles/busy-spin.css.js";
+import { adoptScopedStyle } from "#app/scoped-style.js";
 
-await busySpin.register(
+adoptScopedStyle(
+  busySpin,
   "caffold-task-active-turn",
   "> .task-active-turn-spinner",
 );

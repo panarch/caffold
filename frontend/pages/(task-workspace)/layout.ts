@@ -90,7 +90,8 @@ import type { TaskArchivedDeleteConfirmedDetail } from "./tasks/components/archi
 import type { CaffoldTasksPage } from "./tasks/layout.js";
 import type { TaskNavigatorIntentDetail } from "./tasks/task-navigator-intent-event.js";
 
-import { compactIconButton } from "#app/component-styles.js";
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import { adoptScopedStyle } from "#app/scoped-style.js";
 
 export interface RequestWorkspaceTabDetail {
   tab: WorkspaceTab | undefined;
@@ -133,7 +134,8 @@ interface SidePane {
   setCollapsed?(collapsed: boolean): void;
 }
 
-await compactIconButton.register(
+adoptScopedStyle(
+  compactIconButton,
   "caffold-task-workspace",
   "> .task-workspace-route-controls > .task-workspace-route-control",
 );

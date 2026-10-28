@@ -32,7 +32,8 @@ import { CaffoldElement } from "#app/caffold-element.js";
 import { DrawnRef, drawn } from "../../drawn-refs.js";
 import type { FileTreeLoadChildrenDetail } from "../../file-tree.js";
 
-import { compactIconButton } from "#app/component-styles.js";
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./list.css.js";
 
 export interface OpenEntryDetail {
@@ -71,7 +72,10 @@ export class CaffoldFileList extends CaffoldElement {
   @state()
   private accessor refreshVisible = true;
 
-  static override styles = [compactIconButton(".file-refresh-button"), styles];
+  static override styles = [
+    scopedStyle(compactIconButton, ".file-refresh-button"),
+    styles,
+  ];
 
   private selectedPath = "";
   private keyByPath = new Map<string, string>();

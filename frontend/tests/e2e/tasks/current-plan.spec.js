@@ -135,7 +135,7 @@ test("floats ignored current documents above the stable composer and updates the
     const composer = document.querySelector(
       'caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])',
     );
-    const composerPanel = composer.querySelector(".task-composer-panel");
+    const composerPanel = composer.shadowRoot.querySelector(".task-composer-panel");
     const composerDock = element.closest(".task-follow-up-composer-dock");
     const conversationScroll = document.querySelector(
       "caffold-task-detail:not([hidden]) .task-conversation-scroll",

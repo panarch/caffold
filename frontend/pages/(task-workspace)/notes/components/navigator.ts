@@ -31,7 +31,8 @@ import {
   notesTreeNodes,
 } from "../tree.js";
 
-import { compactIconButton } from "#app/component-styles.js";
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./navigator.css.js";
 
 export const NOTES_NAVIGATOR_INTENT_EVENT = "caffold:notes-navigator-intent";
@@ -73,8 +74,8 @@ export class CaffoldNotesNavigator extends CaffoldElement {
   };
 
   static override styles = [
-    compactIconButton(".notes-picker-back"),
-    compactIconButton(".notes-picker-close"),
+    scopedStyle(compactIconButton, ".notes-picker-back"),
+    scopedStyle(compactIconButton, ".notes-picker-close"),
     styles,
   ];
 

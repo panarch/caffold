@@ -46,7 +46,8 @@ import {
   terminalTransition,
 } from "./page/model.js";
 
-import { compactIconButton } from "#app/component-styles.js";
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import { adoptScopedStyle } from "#app/scoped-style.js";
 
 export interface TerminalPageStateDetail {
   node: TerminalNode;
@@ -62,7 +63,8 @@ const SPECIAL_KEYS_STORAGE_KEY = "caffold:terminal-special-keys";
 const HEADER_STORAGE_KEY = "caffold:terminal-header-hidden";
 const FALLBACK_SIZE: TerminalSize = Object.freeze({ cols: 80, rows: 24 });
 
-await compactIconButton.register(
+adoptScopedStyle(
+  compactIconButton,
   "caffold-terminal-page",
   "> .terminal-page-bar > .terminal-page-button",
 );

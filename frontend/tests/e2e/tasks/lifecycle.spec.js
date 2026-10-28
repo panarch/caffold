@@ -2310,8 +2310,11 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
     const navigator = workspace.querySelector("caffold-task-navigator");
     const taskNew = element.querySelector("caffold-task-new");
     const detail = element.querySelector("caffold-task-detail");
-    const composer = taskNew.querySelector("caffold-task-composer");
-    const turnOptions = composer.querySelector("caffold-task-turn-options");
+    // New Task draws Task creation, which draws the Composer, each in its root.
+    const composer = taskNew.shadowRoot
+      .querySelector("caffold-task-create")
+      .shadowRoot.querySelector("caffold-task-composer");
+    const turnOptions = composer.shadowRoot.querySelector("caffold-task-turn-options");
     turnOptions.modelLoading = true;
     turnOptions.permissionRequest = { key: "still-on-its-way" };
     turnOptions.modelLoadingFeedback.visible = true;

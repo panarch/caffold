@@ -214,8 +214,11 @@ function scrollRangeBeyondContent(scroller) {
   });
 }
 
-function bottomEdgeContrast(page, screenshot) {
-  return page.evaluate(async (base64) => {
+async function bottomEdgeContrast(page, screenshot) {
+  const followUpPanel = await page
+    .locator(".task-follow-up-form .task-composer-panel")
+    .elementHandle();
+  return page.evaluate(async ([base64, panel]) => {
     const bitmap = await createImageBitmap(
       new Blob([Uint8Array.from(atob(base64), (character) => character.charCodeAt(0))]),
     );
@@ -229,7 +232,6 @@ function bottomEdgeContrast(page, screenshot) {
     };
 
     const scroller = document.querySelector(".task-conversation-scroll");
-    const panel = document.querySelector(".task-follow-up-form .task-composer-panel");
     const bottom = Math.floor(scroller.getBoundingClientRect().bottom) - 1;
     const fadeHeight = Number.parseFloat(getComputedStyle(scroller, "::after").height);
     // The table's middle divider sits away from the panel's sides, where the
@@ -258,7 +260,7 @@ function bottomEdgeContrast(page, screenshot) {
         .slice(0, 3)
         .map(Number),
     };
-  }, screenshot.toString("base64"));
+  }, [screenshot.toString("base64"), followUpPanel]);
 }
 
 function composerLayout(form) {

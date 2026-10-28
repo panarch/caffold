@@ -405,7 +405,8 @@ test("updates stable detail regions and preserves an active IME composition", { 
 
   await prompt.focus();
   await prompt.evaluate((textarea) => {
-    const detailElement = textarea.closest("caffold-task-detail");
+    // The prompt is the Composer's, drawn in its root inside the Task detail.
+    const detailElement = textarea.getRootNode().host.closest("caffold-task-detail");
     if (!detailElement) {
       throw new Error("Follow-up prompt is outside the task detail owner");
     }
@@ -485,11 +486,12 @@ test("updates stable detail regions and preserves an active IME composition", { 
           element.querySelector(".task-conversation-scroll") ===
           nodes.conversationScroller,
         promptPreserved:
-          element.querySelector(
-            '.task-follow-up-form textarea[name="prompt"]',
-          ) === nodes.prompt,
+          element
+            .querySelector("caffold-task-composer")
+            .shadowRoot.querySelector('.task-follow-up-form textarea[name="prompt"]') === nodes.prompt,
         promptValue: nodes.prompt.value,
-        promptFocused: document.activeElement === nodes.prompt,
+        promptFocused:
+          document.activeElement.shadowRoot?.activeElement === nodes.prompt,
       };
     }),
   ).toEqual({
@@ -515,9 +517,9 @@ test("updates stable detail regions and preserves an active IME composition", { 
       siblingMessage: detailElement.querySelector(
         '.task-message[data-event-id="event-stable-sibling"], .task-assistant-message[data-event-id="event-stable-sibling"]',
       ),
-      prompt: detailElement.querySelector(
-        '.task-follow-up-form textarea[name="prompt"]',
-      ),
+      prompt: detailElement
+        .querySelector("caffold-task-composer")
+        .shadowRoot.querySelector('.task-follow-up-form textarea[name="prompt"]'),
     };
     window.__detailRegionOrderBefore = [
       ...detailElement.querySelectorAll(
@@ -571,9 +573,9 @@ test("updates stable detail regions and preserves an active IME composition", { 
           ),
         ].map((message) => message.dataset.eventId),
         promptPreserved:
-          element.querySelector(
-            '.task-follow-up-form textarea[name="prompt"]',
-          ) === nodes.prompt,
+          element
+            .querySelector("caffold-task-composer")
+            .shadowRoot.querySelector('.task-follow-up-form textarea[name="prompt"]') === nodes.prompt,
       };
     }),
   ).toEqual({
@@ -617,9 +619,9 @@ test("updates stable detail regions and preserves an active IME composition", { 
       );
       return {
         promptPreserved:
-          element.querySelector(
-            '.task-follow-up-form textarea[name="prompt"]',
-          ) ===
+          element
+            .querySelector("caffold-task-composer")
+            .shadowRoot.querySelector('.task-follow-up-form textarea[name="prompt"]') ===
           window.__detailRegionNodes.prompt,
         renderDeferred: composer.drewWhileComposing,
       };

@@ -1,3 +1,5 @@
+/* An icon button whose bordered surface, drawn by `::before`, sits inside a
+   larger hit area. */
 :scope {
   position: relative;
   display: grid;

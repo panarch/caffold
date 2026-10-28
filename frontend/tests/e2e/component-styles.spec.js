@@ -5,36 +5,18 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("components wait for shared CSS and share one request per stylesheet", { tag: "@viewport-independent" }, async ({ page }) => {
-  const started = Promise.withResolvers();
-  const release = Promise.withResolvers();
+test("components take shared styles as modules and request no stylesheet for them", { tag: "@viewport-independent" }, async ({ page }) => {
   const requests = [];
-  await page.route("**/assets/component-styles/*.css", async (route) => {
-    const name = new URL(route.request().url()).pathname.split("/").pop();
-    requests.push(name);
-    if (name === "compact-icon-button.css") {
-      started.resolve();
-      await release.promise;
-    }
-    await route.continue();
+  page.on("request", (request) => {
+    const { pathname } = new URL(request.url());
+    if (pathname.includes("/component-styles/")) requests.push(pathname);
   });
-  try {
-    await page.goto("/", { waitUntil: "commit" });
-    await started.promise;
-    expect(await page.evaluate(() => [
-      "caffold-task-detail-terminal", "caffold-task-detail-git",
-      "caffold-task-detail-github", "caffold-task-detail-info",
-      "caffold-task-navigator", "caffold-task-workspace", "caffold-task-git-layout",
-      "caffold-task-github-layout", "caffold-terminal-page", "caffold-git-review-controls",
-    ].some((name) => Boolean(customElements.get(name))))).toBe(false);
-    release.resolve();
-    await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
-    expect(requests.sort()).toEqual(["busy-spin.css", "compact-icon-button.css"]);
-    // 10 compact icon button scopes and 8 busy spin scopes.
-    expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(18);
-  } finally {
-    release.resolve();
-  }
+  await page.goto("/");
+  await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
+  expect(requests).toContain("/assets/component-styles/compact-icon-button.css.js");
+  expect(requests.filter((pathname) => !pathname.endsWith(".css.js"))).toEqual([]);
+  // 9 compact icon button scopes and 3 busy spin scopes.
+  expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(12);
 });
 
 test("new consumers declare their own scope, retain local overrides and reconnect without extra sheets", { tag: "@desktop" }, async ({ page }) => {
@@ -42,8 +24,11 @@ test("new consumers declare their own scope, retain local overrides and reconnec
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   const originalSheets = await page.evaluate(() => document.adoptedStyleSheets.length);
   await page.evaluate(async () => {
-    const { compactIconButton } = await import("/assets/component-styles.js");
-    await compactIconButton.register("caffold-style-contract", "> header > .contract-actions > .contract-button");
+    const [{ adoptScopedStyle }, { default: compactIconButton }] = await Promise.all([
+      import("/assets/scoped-style.js"),
+      import("/assets/component-styles/compact-icon-button.css.js"),
+    ]);
+    adoptScopedStyle(compactIconButton, "caffold-style-contract", "> header > .contract-actions > .contract-button");
     customElements.define("caffold-style-contract", class extends HTMLElement {
       connectedCallback() {
         if (this.childElementCount) return;
@@ -95,8 +80,11 @@ test("a busy spin turns only its owner's busy element and stops for reduced moti
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   await page.evaluate(async () => {
-    const { busySpin } = await import("/assets/component-styles.js");
-    await busySpin.register("caffold-spin-contract", "> .contract-button.is-busy > .contract-icon");
+    const [{ adoptScopedStyle }, { default: busySpin }] = await Promise.all([
+      import("/assets/scoped-style.js"),
+      import("/assets/pages/component-styles/busy-spin.css.js"),
+    ]);
+    adoptScopedStyle(busySpin, "caffold-spin-contract", "> .contract-button.is-busy > .contract-icon");
     customElements.define("caffold-spin-contract", class extends HTMLElement {
       connectedCallback() {
         if (this.childElementCount) return;

@@ -1,25 +1,13 @@
-import { readFile } from "node:fs/promises";
-
-import { sourceUrl } from "./source-url.js";
-
 export function installCustomElementUnitRegistry() {
   const previousHTMLElement = globalThis.HTMLElement;
   const previousCustomElements = globalThis.customElements;
-  const previousFetch = globalThis.fetch;
   const previousDocument = globalThis.document;
   const previousStyleSheet = globalThis.CSSStyleSheet;
   const definitions = new Map();
 
-  // Component imports await their CSS assets. This harness supplies the file
-  // transport and a sheet sink; browser tests own CSS parsing and rendering.
-  globalThis.fetch = (input, ...options) => {
-    const url = input instanceof URL ? input
-      : typeof input === "string" && input.startsWith("file:") ? new URL(input) : null;
-    return url?.protocol === "file:" && url.pathname.endsWith(".css")
-      ? readFile(sourceUrl(url), "utf8").then((text) => new Response(text))
-      : previousFetch(input, ...options);
-  };
   // lit-html walks templates with a document tree walker it creates on import.
+  // Component imports adopt their shared styles into this document's sheet
+  // sink; browser tests own CSS parsing and rendering.
   globalThis.document = {
     documentElement: { dataset: {}, style: { setProperty() {} } },
     querySelector: () => null,
@@ -60,7 +48,6 @@ export function installCustomElementUnitRegistry() {
     restore() {
       restoreGlobal("HTMLElement", previousHTMLElement);
       restoreGlobal("customElements", previousCustomElements);
-      restoreGlobal("fetch", previousFetch);
       restoreGlobal("document", previousDocument);
       restoreGlobal("CSSStyleSheet", previousStyleSheet);
     },

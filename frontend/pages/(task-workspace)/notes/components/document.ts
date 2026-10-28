@@ -23,7 +23,8 @@ import { CaffoldElement } from "#app/caffold-element.js";
 import { moveIntoPane } from "../move-into-pane.js";
 import type { CaffoldNotesInfo } from "./info.js";
 
-import { compactIconButton } from "#app/component-styles.js";
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./document.css.js";
 
 export const NOTE_DOCUMENT_INTENT_EVENT = "caffold:note-document-intent";
@@ -73,8 +74,8 @@ export class CaffoldNoteDocument extends CaffoldElement {
   accessor snapshot: NoteDocumentSnapshot = IDLE_DOCUMENT;
 
   static override styles = [
-    compactIconButton(".note-document-split"),
-    compactIconButton(".note-document-close"),
+    scopedStyle(compactIconButton, ".note-document-split"),
+    scopedStyle(compactIconButton, ".note-document-close"),
     styles,
   ];
 

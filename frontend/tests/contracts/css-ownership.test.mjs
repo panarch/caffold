@@ -8,11 +8,10 @@ import {
 } from "./css-ownership.mjs";
 
 const frontendRoot = fileURLToPath(new URL("../../", import.meta.url));
-const registeredStyles = [
-  "component-styles/compact-icon-button.css",
-  "component-styles/busy-spin.css",
-  "component-styles/secondary-button.css",
-];
+// A shared style is any stylesheet directly under a `component-styles/`
+// directory.
+const sharedStyles = discoverFiles(frontendRoot, ".css").filter((path) =>
+  /(?:^|\/)component-styles\/[^/]+\.css$/.test(path));
 const baseStyles = "caffold-element/base.css";
 // Stylesheets a component puts in the shadow root it renders into, by owner.
 const shadowRootStyles = new Map([
@@ -65,6 +64,26 @@ const shadowRootStyles = new Map([
   ["pages/(task-workspace)/settings/notifications/page.css", "caffold-settings-notifications-page"],
   ["pages/(task-workspace)/settings/remote-access/page.css", "caffold-settings-remote-access-page"],
   ["pages/(task-workspace)/settings/voice/page.css", "caffold-settings-voice-page"],
+  ["pages/(task-workspace)/tasks/components/active-task-list.css", "caffold-active-task-list"],
+  ["pages/(task-workspace)/tasks/components/active-task-list/components/section.css", "caffold-active-task-section"],
+  ["pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css", "caffold-active-task-row"],
+  ["pages/(task-workspace)/tasks/components/archived-delete-dialog.css", "caffold-task-archived-delete-dialog"],
+  ["pages/(task-workspace)/tasks/components/archived-task-list.css", "caffold-archived-task-list"],
+  ["pages/(task-workspace)/tasks/components/composer.css", "caffold-task-composer"],
+  ["pages/(task-workspace)/tasks/components/composer/components/attachments.css", "caffold-task-composer-attachments"],
+  ["pages/(task-workspace)/tasks/components/composer/components/context-usage.css", "caffold-task-context-usage"],
+  ["pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.css", "caffold-voice-level-meter"],
+  ["pages/(task-workspace)/tasks/components/image-preview-dialog.css", "caffold-task-image-preview-dialog"],
+  ["pages/(task-workspace)/tasks/components/navigator.css", "caffold-task-navigator"],
+  ["pages/(task-workspace)/tasks/components/task-absence.css", "caffold-task-absence"],
+  ["pages/(task-workspace)/tasks/components/task-create.css", "caffold-task-create"],
+  ["pages/(task-workspace)/tasks/components/task-create/components/directory-field.css", "caffold-task-directory-field"],
+  ["pages/(task-workspace)/tasks/components/task-status-chip.css", "caffold-task-status-chip"],
+  ["pages/(task-workspace)/tasks/components/task-store-recovery.css", "caffold-task-store-recovery"],
+  ["pages/(task-workspace)/tasks/components/task-switcher-dialog.css", "caffold-task-switcher-dialog"],
+  ["pages/(task-workspace)/tasks/components/task-turn-options.css", "caffold-task-turn-options"],
+  ["pages/(task-workspace)/tasks/new/page.css", "caffold-task-new"],
+  ["pages/(task-workspace)/tasks/recovery/page.css", "caffold-task-recovery"],
 ]);
 // Child hosts another owner draws that an owner places in its shadow root.
 const placedChildren = new Map([
@@ -95,26 +114,6 @@ const ownership = new Map([
   [
     "pages/(task-workspace)/components/update-task-dialog.css",
     ["caffold-update-task-dialog"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/components/composer.css",
-    ["caffold-task-composer"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/components/composer/components/attachments.css",
-    ["caffold-task-composer-attachments"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/components/composer/components/context-usage.css",
-    ["caffold-task-context-usage"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.css",
-    ["caffold-voice-level-meter"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/components/task-turn-options.css",
-    ["caffold-task-turn-options"],
   ],
   [
     "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
@@ -200,22 +199,6 @@ const ownership = new Map([
     "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css",
     ["caffold-task-work-details"],
   ],
-  [
-    "pages/(task-workspace)/tasks/components/task-create/components/directory-field.css",
-    ["caffold-task-directory-field"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/components/archived-delete-dialog.css",
-    ["caffold-task-archived-delete-dialog"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/components/task-switcher-dialog.css",
-    ["caffold-task-switcher-dialog"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
-    ["caffold-task-image-preview-dialog"],
-  ],
   ["pages/(task-workspace)/tasks/(detail)/(task)/layout.css", ["caffold-task-detail"]],
   [
     "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css",
@@ -274,49 +257,8 @@ const ownership = new Map([
     ["caffold-section-detail-summary"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/navigator.css",
-    ["caffold-task-navigator"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/components/active-task-list.css",
-    ["caffold-active-task-list"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/components/active-task-list/components/section.css",
-    ["caffold-active-task-section"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css",
-    ["caffold-active-task-row"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/components/archived-task-list.css",
-    ["caffold-archived-task-list"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/components/task-store-recovery.css",
-    ["caffold-task-store-recovery"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/components/task-absence.css",
-    ["caffold-task-absence"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/recovery/page.css",
-    ["caffold-task-recovery"],
-  ],
-  [
     "pages/(task-workspace)/tasks/(detail)/(review)/layout.css",
     ["caffold-task-review"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/components/task-create.css",
-    ["caffold-task-create"],
-  ],
-  ["pages/(task-workspace)/tasks/new/page.css", ["caffold-task-new"]],
-  [
-    "pages/(task-workspace)/tasks/components/task-status-chip.css",
-    ["caffold-task-status-chip"],
   ],
   ["pages/(task-workspace)/tasks/controls.css", ["caffold-tasks-page"]],
   ["pages/(task-workspace)/tasks/layout.css", ["caffold-tasks-page"]],
@@ -780,11 +722,11 @@ test("supports stylesheets shared by explicitly declared owners", () => {
 });
 
 test("frontend CSS manifest covers every stylesheet", () => {
-  const discovered = discoverCssFiles(frontendRoot);
+  const discovered = discoverFiles(frontendRoot, ".css");
   const declared = [
     ...ownership.keys(),
     ...shadowRootStyles.keys(),
-    ...registeredStyles,
+    ...sharedStyles,
     baseStyles,
     "styles.css",
   ].sort();
@@ -804,6 +746,8 @@ test("a shadow root's stylesheet is its owner's alone and names no element outsi
     assert.doesNotMatch(css, /@import\b/, path);
     // A pseudo-element goes after `:host(…)`; inside it, the rule is dropped.
     assert.doesNotMatch(css, /:host\([^)]*::/, path);
+    // `:has()` inside `:host()` looks at the host's own children, never the root's.
+    assert.doesNotMatch(css, /:host\([^)]*:has\(/, path);
     const selectors = effectiveSelectors(css);
     assert.ok(selectors.some((selector) => selector.startsWith(":host")), path);
     // Another element by name only as a child host the owner draws and places.
@@ -843,9 +787,10 @@ test("all component styles stay inside their ownership boundaries", () => {
   assert.deepEqual(violations, []);
 });
 
-test("registered style sources target only their scope root and pseudo surface", () => {
+test("shared styles target only their scope root and pseudo surface", () => {
   const entrypoint = readFileSync(`${frontendRoot}styles.css`, "utf8");
-  for (const path of registeredStyles) {
+  assert.ok(sharedStyles.length > 0);
+  for (const path of sharedStyles) {
     const css = readFileSync(`${frontendRoot}${path}`, "utf8");
     const selectors = effectiveSelectors(css);
     assert.ok(selectors.length > 0, path);
@@ -858,6 +803,28 @@ test("registered style sources target only their scope root and pseudo surface",
     assert.doesNotMatch(consumerFacing, /@import\b|url\s*\(|caffold-/i, path);
     assert.equal(entrypoint.includes(`@import "./${path}"`), false, path);
   }
+});
+
+test("components apply shared styles from `component-styles/` directories and use them for nothing else", () => {
+  let applied = 0;
+  for (const path of discoverFiles(frontendRoot, ".ts")) {
+    const module = readFileSync(`${frontendRoot}${path}`, "utf8");
+    const defaults = new Map(
+      [...module.matchAll(/^import (\w+) from "([^"]+)";$/gm)].map(([, name, specifier]) => [name, specifier]),
+    );
+    for (const [, name] of module.matchAll(/\b(?:scopedStyle|adoptScopedStyle)\(\s*(\w+),/g)) {
+      assert.match(defaults.get(name) ?? "", /(?:^|\/)component-styles\/[^/]+\.css\.js$/, `${path} applies ${name}`);
+      applied += 1;
+    }
+    for (const [name, specifier] of defaults) {
+      if (!/(?:^|\/)component-styles\//.test(specifier)) continue;
+      const uses = module.match(new RegExp(`\\b${name}\\b`, "g")).length - 1;
+      const applications =
+        module.match(new RegExp(`\\b(?:scopedStyle|adoptScopedStyle)\\(\\s*${name},`, "g"))?.length ?? 0;
+      assert.equal(uses, applications, `${path} uses ${name} other than as a shared style`);
+    }
+  }
+  assert.ok(applied > 0);
 });
 
 test("container styles add no untracked descendant ownership debt", () => {
@@ -929,7 +896,7 @@ test("Settings detail pages do not reserve space for the master-pane workspace n
   }
 });
 
-function discoverCssFiles(directory, prefix = "") {
+function discoverFiles(directory, extension, prefix = "") {
   const paths = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     if (entry.name === "node_modules" || entry.name === "tests") {
@@ -937,8 +904,8 @@ function discoverCssFiles(directory, prefix = "") {
     }
     const relativePath = `${prefix}${entry.name}`;
     if (entry.isDirectory()) {
-      paths.push(...discoverCssFiles(`${directory}${entry.name}/`, `${relativePath}/`));
-    } else if (entry.isFile() && entry.name.endsWith(".css")) {
+      paths.push(...discoverFiles(`${directory}${entry.name}/`, extension, `${relativePath}/`));
+    } else if (entry.isFile() && entry.name.endsWith(extension)) {
       paths.push(relativePath);
     }
   }

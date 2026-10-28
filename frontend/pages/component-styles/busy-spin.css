@@ -1,3 +1,5 @@
+/* Turns a busy element. An element that stays while idle names its busy state
+   class in the target path. */
 @keyframes caffold-busy-spin {
   to {
     transform: rotate(360deg);

@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import { fetchInChunks } from "#app/chunked-fetch.js";
@@ -7,6 +7,9 @@ import "#app/keyboard-navigation/components/presentation.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+
+import styles from "./image-preview-dialog.css.js";
 
 export const TASK_IMAGE_PREVIEW_EVENT = "caffold:task-image-preview";
 
@@ -43,7 +46,7 @@ type PictureView = "image" | "loading" | "unavailable";
 
 /** One picture from a Task, larger, in a dialog over the Tasks screen. */
 @customElement("caffold-task-image-preview-dialog")
-export class CaffoldTaskImagePreviewDialog extends LitElement {
+export class CaffoldTaskImagePreviewDialog extends CaffoldElement {
   @state()
   private accessor name = "";
   @state()
@@ -51,16 +54,14 @@ export class CaffoldTaskImagePreviewDialog extends LitElement {
   @state()
   private accessor view: PictureView = "image";
 
+  static override styles = styles;
+
   private picture: { fetching: AbortController; objectUrl: string } | null =
     null;
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

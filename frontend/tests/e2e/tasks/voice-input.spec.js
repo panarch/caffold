@@ -97,7 +97,7 @@ test("records without focusing the prompt and inserts a host transcript at the s
     .poll(() =>
       composer.evaluate(
         (form) =>
-          form.closest("caffold-task-composer")?.voiceRecorder?.sampleCount ?? 0,
+          form.getRootNode().host?.voiceRecorder?.sampleCount ?? 0,
       ),
     )
     .toBeGreaterThan(0);
@@ -105,7 +105,7 @@ test("records without focusing the prompt and inserts a host transcript at the s
     initialViewportHeight,
   );
   const levelPresentation = await composer.evaluate((form) => {
-    const host = form.closest("caffold-task-composer");
+    const host = form.getRootNode().host;
     const recorder = host.voiceRecorder;
     const levelMeter = form.querySelector("caffold-voice-level-meter");
     const textarea = form.querySelector("textarea[name='prompt']");
@@ -116,7 +116,7 @@ test("records without focusing the prompt and inserts a host transcript at the s
     recorder.captureChunk(silent, start);
     recorder.captureChunk(silent, start + 100);
     const silentLevel = Number(levelMeter.dataset.level);
-    const quietTransforms = Array.from(levelMeter.children, (segment) =>
+    const quietTransforms = Array.from(levelMeter.shadowRoot.children, (segment) =>
       segment.style.transform,
     );
 
@@ -125,15 +125,15 @@ test("records without focusing the prompt and inserts a host transcript at the s
     recorder.captureChunk(speech, start + 200);
     recorder.captureChunk(speech, start + 300);
     const speechLevel = Number(levelMeter.dataset.level);
-    const speechTransforms = Array.from(levelMeter.children, (segment) =>
+    const speechTransforms = Array.from(levelMeter.shadowRoot.children, (segment) =>
       segment.style.transform,
     );
     levelMeter.setLevel(0.25);
     levelMeter.setLevel(0.75);
-    const historyScales = Array.from(levelMeter.children, (segment) =>
+    const historyScales = Array.from(levelMeter.shadowRoot.children, (segment) =>
       Number(segment.style.transform.match(/scaleY\(([^)]+)\)/)?.[1]),
     );
-    const segmentStyle = getComputedStyle(levelMeter.firstElementChild);
+    const segmentStyle = getComputedStyle(levelMeter.shadowRoot.firstElementChild);
     const segmentHeight = Number(segmentStyle.height.replace("px", ""));
     const transformOriginY = Number(
       segmentStyle.transformOrigin.split(" ")[1].replace("px", ""),
@@ -180,7 +180,9 @@ test("records without focusing the prompt and inserts a host transcript at the s
   );
   await expect(composer.locator(".task-model-name")).toHaveCount(1);
   const toolLayout = await composer.evaluate((form) => {
-    const modelName = form.querySelector(".task-model-name");
+    const modelName = form
+      .querySelector("caffold-task-turn-options")
+      .shadowRoot.querySelector(".task-model-name");
     const items = Array.from(
       form.querySelectorAll(".task-composer-tools > *"),
       (element) => element.getBoundingClientRect(),
@@ -268,7 +270,7 @@ test("records without focusing the prompt and inserts a host transcript at the s
     .poll(() =>
       composer.evaluate(
         (form) =>
-          form.closest("caffold-task-composer")?.voiceRecorder?.sampleCount ?? 0,
+          form.getRootNode().host?.voiceRecorder?.sampleCount ?? 0,
       ),
     )
     .toBeGreaterThan(0);
@@ -299,7 +301,7 @@ test("keeps live input feedback visible without transitions in reduced motion", 
   await expect(composer).toHaveAttribute("data-voice-state", "recording");
   const meter = composer.locator("caffold-voice-level-meter");
   const reduced = await composer.evaluate((form) => {
-    const host = form.closest("caffold-task-composer");
+    const host = form.getRootNode().host;
     const recorder = host.voiceRecorder;
     const levelMeter = form.querySelector("caffold-voice-level-meter");
     const start = performance.now();
@@ -310,7 +312,7 @@ test("keeps live input feedback visible without transitions in reduced motion", 
     return {
       level: Number(levelMeter.dataset.level),
       transitionDuration: getComputedStyle(
-        levelMeter.firstElementChild,
+        levelMeter.shadowRoot.firstElementChild,
       ).transitionDuration,
     };
   });
@@ -484,7 +486,7 @@ test("returns to Voice Input settings when the provider rejects its setup during
     .poll(() =>
       composer.evaluate(
         (form) =>
-          form.closest("caffold-task-composer")?.voiceRecorder?.sampleCount ?? 0,
+          form.getRootNode().host?.voiceRecorder?.sampleCount ?? 0,
       ),
     )
     .toBeGreaterThan(0);
@@ -599,7 +601,7 @@ test("finishes transcription before sending when Send is tapped during recording
     window.__caffoldVoiceSubmissions = [];
     // Caught on its way down, before New Task's own listener on the Composer
     // starts a Task with it.
-    form.closest("caffold-task-create").addEventListener(
+    form.getRootNode().host.getRootNode().host.addEventListener(
       "caffold:task-composer-submit",
       (event) => {
         event.stopPropagation();
@@ -615,7 +617,7 @@ test("finishes transcription before sending when Send is tapped during recording
     .poll(() =>
       composer.evaluate(
         (form) =>
-          form.closest("caffold-task-composer")?.voiceRecorder?.sampleCount ?? 0,
+          form.getRootNode().host?.voiceRecorder?.sampleCount ?? 0,
       ),
     )
     .toBeGreaterThan(0);
@@ -682,7 +684,7 @@ test("keeps recording Stop separate while voice steers an active turn", { tag: "
     .poll(() =>
       composer.evaluate(
         (form) =>
-          form.closest("caffold-task-composer")?.voiceRecorder?.sampleCount ?? 0,
+          form.getRootNode().host?.voiceRecorder?.sampleCount ?? 0,
       ),
     )
     .toBeGreaterThan(0);
@@ -732,7 +734,7 @@ test("keeps the draft unsent when send-triggered transcription fails", { tag: "@
     window.__caffoldVoiceSubmissions = [];
     // Caught on its way down, before New Task's own listener on the Composer
     // starts a Task with it.
-    form.closest("caffold-task-create").addEventListener(
+    form.getRootNode().host.getRootNode().host.addEventListener(
       "caffold:task-composer-submit",
       (event) => {
         event.stopPropagation();
@@ -748,7 +750,7 @@ test("keeps the draft unsent when send-triggered transcription fails", { tag: "@
     .poll(() =>
       composer.evaluate(
         (form) =>
-          form.closest("caffold-task-composer")?.voiceRecorder?.sampleCount ?? 0,
+          form.getRootNode().host?.voiceRecorder?.sampleCount ?? 0,
       ),
     )
     .toBeGreaterThan(0);
@@ -795,9 +797,11 @@ test("keeps attached pictures and the Composer's buttons in place through voice 
   // A node drawn again loses its mark.
   const marked = composer.locator("[data-test-shown-before]");
   await composer.evaluate((form) => {
-    for (const node of form.querySelectorAll(
-      ".task-composer-attachment img, .task-voice-button, .task-primary-action-button",
-    )) {
+    const strip = form.querySelector("caffold-task-composer-attachments").shadowRoot;
+    for (const node of [
+      ...strip.querySelectorAll(".task-composer-attachment img"),
+      ...form.querySelectorAll(".task-voice-button, .task-primary-action-button"),
+    ]) {
       node.dataset.testShownBefore = "";
     }
   });
@@ -810,7 +814,7 @@ test("keeps attached pictures and the Composer's buttons in place through voice 
     .poll(() =>
       composer.evaluate(
         (form) =>
-          form.closest("caffold-task-composer")?.voiceRecorder?.sampleCount ?? 0,
+          form.getRootNode().host?.voiceRecorder?.sampleCount ?? 0,
       ),
     )
     .toBeGreaterThan(0);
@@ -868,7 +872,7 @@ test("keeps the level meter through a Task update while recording and starts the
   // would lose both. The readings are dated far ahead, so the microphone's
   // own chunks deliver no reading over them.
   await composer.evaluate((form) => {
-    const recorder = form.closest("caffold-task-composer").voiceRecorder;
+    const recorder = form.getRootNode().host.voiceRecorder;
     const start = performance.now() + 1e9;
     const speech = new Float32Array(512).fill(0.5);
     recorder.levelTracker.reset();
@@ -893,7 +897,7 @@ test("keeps the level meter through a Task update while recording and starts the
   await expect
     .poll(() =>
       composer.evaluate(
-        (form) => form.closest("caffold-task-composer").context.turnActive,
+        (form) => form.getRootNode().host.context.turnActive,
       ),
     )
     .toBe(false);
@@ -942,7 +946,7 @@ test("leaves a voice error on screen as it is while the Composer is drawn again"
     .poll(() =>
       composer.evaluate(
         (form) =>
-          form.closest("caffold-task-composer")?.voiceRecorder?.sampleCount ?? 0,
+          form.getRootNode().host?.voiceRecorder?.sampleCount ?? 0,
       ),
     )
     .toBeGreaterThan(0);
@@ -1060,7 +1064,7 @@ test("reads voice status again when Voice Input settings change, but not while r
   status = { ready: false };
   expect(
     await composer.evaluate((form) => {
-      const host = form.closest("caffold-task-composer");
+      const host = form.getRootNode().host;
       window.dispatchEvent(new CustomEvent("caffold:voice-settings-changed"));
       return host.voice.phase;
     }),
@@ -1140,7 +1144,7 @@ test("returns to idle and releases the microphone when the composer is moved whi
   await expect(composer).toHaveAttribute("data-voice-state", "recording");
 
   await composer.evaluate((form) => {
-    const host = form.closest("caffold-task-composer");
+    const host = form.getRootNode().host;
     const parent = host.parentNode;
     const next = host.nextSibling;
     host.remove();

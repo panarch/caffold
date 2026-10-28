@@ -18,10 +18,10 @@
                 ":ALIAS:",
                 ":PATH:",
                 "!**/*.css.js",
-                "!**/component-styles.js"
+                "!**/scoped-style.js"
               ],
               ":BLANK_LINE:",
-              ["**/component-styles.js", "**/*.css.js"]
+              ["**/scoped-style.js", "**/*.css.js"]
             ]
           }
         }

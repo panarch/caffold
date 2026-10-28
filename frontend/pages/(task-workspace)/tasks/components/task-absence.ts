@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -6,7 +6,13 @@ import {
   ActionHints,
 } from "#app/action-hints.js";
 import { TASK_ABSENCE, type TaskAbsence } from "#app/api.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
+
+import secondaryButton from "#app/component-styles/secondary-button.css.js";
+import { scopedStyle } from "#app/scoped-style.js";
+import actionIcon from "#tasks/component-styles/action-icon.css.js";
+import styles from "./task-absence.css.js";
 
 export const TASK_ABSENCE_INTENT_EVENT = "caffold:task-absence-intent";
 
@@ -50,18 +56,20 @@ const COPY: Readonly<
  * Restore; its owner sends the request and hands back how it went.
  */
 @customElement("caffold-task-absence")
-export class CaffoldTaskAbsence extends LitElement {
+export class CaffoldTaskAbsence extends CaffoldElement {
   @state()
   private accessor snapshot: TaskAbsenceSnapshot | null = null;
+
+  static override styles = [
+    scopedStyle(secondaryButton, ".task-secondary-button"),
+    scopedStyle(actionIcon, ".task-action-icon"),
+    styles,
+  ];
 
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

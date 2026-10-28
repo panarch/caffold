@@ -1534,13 +1534,15 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     const navigatorClearance = await page
       .locator("caffold-task-workspace")
       .evaluate((element) => {
-        const brand = element
+        // The header is the navigator's, drawn in its root.
+        const navigator = element.querySelector("caffold-task-navigator").shadowRoot;
+        const brand = navigator
           .querySelector(".task-list-primary-header caffold-workspace-brand")
           .getBoundingClientRect();
-        const sectionHeader = element
+        const sectionHeader = navigator
           .querySelector(".task-list-primary-header")
           .getBoundingClientRect();
-        const newTask = element
+        const newTask = navigator
           .querySelector(".task-list-primary-header .task-list-new-task")
           .getBoundingClientRect();
         const summary = element

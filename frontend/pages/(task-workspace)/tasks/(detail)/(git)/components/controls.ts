@@ -10,7 +10,9 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import type { FetchState } from "../(log)/layout.js";
 
-import { busySpin, compactIconButton } from "#app/component-styles.js";
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import busySpin from "#app/pages/component-styles/busy-spin.css.js";
+import { adoptScopedStyle } from "#app/scoped-style.js";
 
 export interface ChangeCompareRefsDetail {
   baseRef: string;
@@ -38,11 +40,13 @@ export const IDLE_CONTROLS: GitControlsSnapshot = {
   refreshState: "idle",
 };
 
-await compactIconButton.register(
+adoptScopedStyle(
+  compactIconButton,
   "caffold-git-review-controls",
   "> .git-review-controls > .git-review-refresh",
 );
-await busySpin.register(
+adoptScopedStyle(
+  busySpin,
   "caffold-git-review-controls",
   "> .git-review-controls > .git-review-refresh.is-refreshing > .git-review-refresh-icon",
 );

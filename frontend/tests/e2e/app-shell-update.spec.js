@@ -201,36 +201,6 @@ test("tells a failed restore and leaves a successful update to the reload dialog
   await expect(page.locator("caffold-update-result-dialog > dialog")).toBeHidden();
 });
 
-test("waits for update registration while component styles are pending", { tag: "@viewport-independent" }, async ({ page }) => {
-  const requested = Promise.withResolvers();
-  const release = Promise.withResolvers();
-  await page.route("**/assets/component-styles/compact-icon-button.css", async (route) => {
-    requested.resolve();
-    await release.promise;
-    await route.continue();
-  });
-  await installServiceWorkerFixture(page, { controlled: true });
-  try {
-    await page.goto("/");
-    await requested.promise;
-    // Document load can finish while asynchronous component definitions wait.
-    await Promise.all([
-      waitForServiceWorkerRegistration(page),
-      (async () => {
-        expect(await page.evaluate(() => ({
-          defined: Boolean(customElements.get("caffold-app-shell")),
-          registerCalls: window.__caffoldServiceWorkerFixture.serviceWorker.registerCalls,
-        }))).toEqual({ defined: false, registerCalls: 0 });
-        release.resolve();
-      })(),
-    ]);
-    await triggerServiceWorkerActivation(page, "replacement-after-styles");
-    await expect(page.getByRole("dialog", { name: "Caffold update ready" })).toBeVisible();
-  } finally {
-    release.resolve();
-  }
-});
-
 test("suppresses the first install but presents a later replacement", { tag: "@all-viewports" }, async ({
   page,
 }) => {

@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
@@ -12,18 +12,23 @@ import {
   getAgentModels,
   getAgentPermissions,
 } from "#app/api.js";
-import {
-  KEYBOARD_SESSION_DISMISS_EVENT,
-  KeyboardContexts,
-} from "#app/keyboard-navigation.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
 import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import {
+  closestAcrossShadowRoots,
+  containsAcrossShadowRoots,
+  focusedElement,
+} from "#app/shadow-roots.js";
 import { cleanLogicalPath } from "../task-format.js";
 
-import { busySpin } from "#app/component-styles.js";
+import busySpin from "#app/pages/component-styles/busy-spin.css.js";
+import { scopedStyle } from "#app/scoped-style.js";
+import styles from "./task-turn-options.css.js";
 
 // What the Task or Section last ran under, as far as the turn options read it.
 export interface TurnOptionsSelection {
@@ -42,6 +47,8 @@ export interface TurnOptionsContext {
   locked?: boolean;
   placement?: "above" | "below";
   provider?: string;
+  // The owner is taking voice input; a phone in portrait leaves the row to it.
+  voiceInput?: boolean;
 }
 
 // What a turn started now would run under.
@@ -81,6 +88,7 @@ interface ResolvedContext {
   locked: boolean;
   placement: "above" | "below";
   provider: string;
+  voiceInput: boolean;
 }
 
 interface ModelIdentity {
@@ -147,15 +155,6 @@ interface PermissionFace {
   unavailable: boolean;
 }
 
-await busySpin.register(
-  "caffold-task-turn-options",
-  "> .task-turn-options > .task-model-picker > .task-model-button > .task-picker-spinner",
-);
-await busySpin.register(
-  "caffold-task-turn-options",
-  "> .task-turn-options > .task-permission-picker > .task-permission-button > .task-picker-spinner",
-);
-
 /**
  * The model, reasoning, speed, and approval mode a turn runs under, as two
  * compact controls that each open a menu.
@@ -165,13 +164,19 @@ await busySpin.register(
  * every change of it, so an owner sends only once the mode is known.
  */
 @customElement("caffold-task-turn-options")
-export class CaffoldTaskTurnOptions extends LitElement {
+export class CaffoldTaskTurnOptions extends CaffoldElement {
+  static override styles = [
+    scopedStyle(busySpin, ".task-picker-spinner"),
+    styles,
+  ];
+
   private context: ResolvedContext = {
     cwd: ".",
     initialSelection: {},
     locked: false,
     placement: "below",
     provider: "",
+    voiceInput: false,
   };
   private choice = createChoice();
   // Browsing an agent does not choose a model or change submission options.
@@ -200,13 +205,7 @@ export class CaffoldTaskTurnOptions extends LitElement {
   private readonly iconsReady = () => this.requestUpdate();
   private readonly reviewerChanged = () => this.forgetPermissionList();
   private readonly dismissed = (event: Event) => {
-    const popover = event.target;
-    if (
-      popover === this.modelPopover.value ||
-      popover === this.permissionPopover.value
-    ) {
-      hidePopover(popover);
-    }
+    hidePopover(event.currentTarget);
   };
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
@@ -214,16 +213,13 @@ export class CaffoldTaskTurnOptions extends LitElement {
   private readonly permissionButton = new DrawnRef<HTMLButtonElement>(this);
   private readonly modelPopover = new DrawnRef<HTMLElement>(this);
   private readonly permissionPopover = new DrawnRef<HTMLElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
+  // What had focus as the open menu opened.
+  private focusBeforeMenu: HTMLElement | null = null;
 
   // An owner shows the control as it is mounted, and a dialog that opens at
   // once moves focus into it.
   override connectedCallback() {
     super.connectedCallback();
-    this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, this.dismissed);
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     window.addEventListener(
       "caffold:jev-settings-changed",
@@ -238,7 +234,6 @@ export class CaffoldTaskTurnOptions extends LitElement {
   override disconnectedCallback() {
     super.disconnectedCallback();
     this.hidePopovers();
-    this.removeEventListener(KEYBOARD_SESSION_DISMISS_EVENT, this.dismissed);
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     window.removeEventListener(
       "caffold:jev-settings-changed",
@@ -265,11 +260,13 @@ export class CaffoldTaskTurnOptions extends LitElement {
       locked: Boolean(context.locked),
       placement: context.placement === "above" ? "above" : "below",
       provider: (context.provider ?? this.context.provider).trim(),
+      voiceInput: Boolean(context.voiceInput),
     };
     const changed =
       next.cwd !== this.context.cwd ||
       next.locked !== this.context.locked ||
       next.placement !== this.context.placement ||
+      next.voiceInput !== this.context.voiceInput ||
       next.provider !== this.context.provider ||
       !sameSelection(next.initialSelection, this.context.initialSelection);
     if (next.provider !== this.context.provider) {
@@ -295,6 +292,7 @@ export class CaffoldTaskTurnOptions extends LitElement {
       locked: Boolean(context.locked),
       placement: context.placement === "above" ? "above" : "below",
       provider: (context.provider ?? "").trim(),
+      voiceInput: Boolean(context.voiceInput),
     };
     this.hidePopovers();
     this.reconcile();
@@ -457,6 +455,7 @@ export class CaffoldTaskTurnOptions extends LitElement {
             role="menu"
             aria-label=${model.popoverLabel}
             @beforetoggle=${this.handleBeforeToggle}
+            @caffold:keyboard-session-dismiss=${this.dismissed}
           >
             <div class="task-model-popover-content">${
               offered.length
@@ -517,6 +516,7 @@ export class CaffoldTaskTurnOptions extends LitElement {
             role="menu"
             aria-label="Approval modes"
             @beforetoggle=${this.handleBeforeToggle}
+            @caffold:keyboard-session-dismiss=${this.dismissed}
           >
             <div class="task-permission-popover-content">
               <p class="task-permission-heading">Permissions</p>
@@ -548,6 +548,7 @@ export class CaffoldTaskTurnOptions extends LitElement {
     if (this.dataset.placement !== this.context.placement) {
       this.dataset.placement = this.context.placement;
     }
+    this.toggleAttribute("data-voice-input", this.context.voiceInput);
     if (this.controls.permission.disabled) {
       hidePopover(this.permissionPopover.value);
     }
@@ -633,15 +634,25 @@ export class CaffoldTaskTurnOptions extends LitElement {
   }
 
   handleBeforeToggle(event: ToggleEvent) {
-    if (event.newState !== "open") {
-      return;
-    }
     const popover = event.target;
     if (
       !(popover instanceof HTMLElement) ||
       (popover !== this.modelPopover.value &&
         popover !== this.permissionPopover.value)
     ) {
+      return;
+    }
+    if (event.newState !== "open") {
+      // Outside a shadow root the browser hands focus in a closing menu back to
+      // what had it as the menu opened; inside one it leaves focus nowhere.
+      const before = this.focusBeforeMenu;
+      this.focusBeforeMenu = null;
+      if (
+        before?.isConnected &&
+        containsAcrossShadowRoots(popover, focusedElement())
+      ) {
+        before.focus({ preventScroll: true });
+      }
       return;
     }
     if (
@@ -657,6 +668,8 @@ export class CaffoldTaskTurnOptions extends LitElement {
       this.refreshModels();
     }
     this.constrainAnchoredPopover(popover);
+    const focused = focusedElement();
+    this.focusBeforeMenu = focused instanceof HTMLElement ? focused : null;
   }
 
   // What the two closed controls show, worked out from the choice, the Task
@@ -790,7 +803,7 @@ export class CaffoldTaskTurnOptions extends LitElement {
       event.target instanceof Element
         ? event.target.closest<HTMLButtonElement>("[data-turn-options-action]")
         : null;
-    if (!action || !this.contains(action) || this.context.locked) {
+    if (!action || !this.renderRoot.contains(action) || this.context.locked) {
       return;
     }
     const { dataset } = action;
@@ -1135,7 +1148,8 @@ export class CaffoldTaskTurnOptions extends LitElement {
       popover === this.modelPopover.value
         ? this.modelButton.value
         : this.permissionButton.value;
-    const boundary = this.closest(
+    const boundary = closestAcrossShadowRoots(
+      this,
       ".task-conversation-pane, dialog, .tasks-detail-pane",
     );
     if (!button || !boundary) {

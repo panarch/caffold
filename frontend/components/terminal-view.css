@@ -11,10 +11,9 @@
   overflow: hidden;
   padding: var(--interface-space-3) var(--interface-space-4);
   background: var(--terminal-background);
-
-  /* The fit addon counts rows and columns in this box's content height and width. */
 }
 
+/* The fit addon counts rows and columns in this box's content height and width. */
 .terminal-view-screen {
   height: 100%;
   min-height: 0;

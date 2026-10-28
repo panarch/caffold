@@ -18,7 +18,8 @@ import "./info/components/copy-path.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import type { CaffoldNotesInfoCopyPath } from "./info/components/copy-path.js";
 
-import { compactIconButton } from "#app/component-styles.js";
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./info.css.js";
 
 let notesInfoInstanceId = 0;
@@ -28,7 +29,10 @@ let notesInfoInstanceId = 0;
 // Note's path or its Markdown.
 @customElement("caffold-notes-info")
 export class CaffoldNotesInfo extends CaffoldElement {
-  static override styles = [compactIconButton(".notes-info-button"), styles];
+  static override styles = [
+    scopedStyle(compactIconButton, ".notes-info-button"),
+    styles,
+  ];
 
   // The Note shown in the header, or null while none is.
   @property({ attribute: false })

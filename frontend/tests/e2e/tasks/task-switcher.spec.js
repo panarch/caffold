@@ -297,15 +297,12 @@ test("brings the chosen Task into view in the Task list", { tag: "@desktop" }, a
   await page.keyboard.type(code.toLowerCase());
   await expect(dialog).toBeHidden();
 
-  await expect.poll(() => listScroll.evaluate((element) => {
-    const row = element.querySelector('.task-row[aria-current="true"]');
-    if (!row) {
-      return null;
-    }
+  const currentRow = page.locator('caffold-task-navigator .task-row[aria-current="true"]');
+  await expect.poll(async () => (await currentRow.count()) ? listScroll.evaluate((element, row) => {
     const view = element.getBoundingClientRect();
     const box = row.getBoundingClientRect();
     return box.top >= view.top - 1 && box.bottom <= view.bottom + 1;
-  })).toBe(true);
+  }, await currentRow.elementHandle()) : null).toBe(true);
 });
 
 test("shows each row the time the list is ordered by", { tag: "@viewport-independent" }, async ({

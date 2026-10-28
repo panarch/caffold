@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
@@ -6,8 +6,11 @@ import {
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { inlineIcon } from "#components/icons.js";
 import { requestTaskImagePreview } from "../../image-preview-dialog.js";
+
+import styles from "./attachments.css.js";
 
 // A file a draft will send. A picture every agent can be shown also carries
 // its contents as a data URL.
@@ -37,7 +40,9 @@ const THUMBNAIL_SHORT_SIDE = 216;
  * A thumbnail draws a reduced copy of its picture, never the whole photo.
  */
 @customElement("caffold-task-composer-attachments")
-export class CaffoldTaskComposerAttachments extends LitElement {
+export class CaffoldTaskComposerAttachments extends CaffoldElement {
+  static override styles = styles;
+
   // The reduced copy drawn for each picture, by attachment id, once made.
   @state()
   private accessor thumbnails: ReadonlyMap<string, string> = new Map();
@@ -46,10 +51,6 @@ export class CaffoldTaskComposerAttachments extends LitElement {
   private thumbnailQueue = Promise.resolve();
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

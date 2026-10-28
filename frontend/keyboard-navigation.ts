@@ -62,6 +62,7 @@ import {
   documentTrees,
   eachDocumentTree,
   focusedElement,
+  observeAcrossShadowRoots,
 } from "./shadow-roots.js";
 
 export {
@@ -72,6 +73,13 @@ export {
 
 export const KEYBOARD_SESSION_DISMISS_EVENT =
   "caffold:keyboard-session-dismiss";
+// What changes in a Scroll surface's owner the mode looks at again.
+const SCROLL_MUTATIONS: MutationObserverInit = {
+  attributes: true,
+  childList: true,
+  characterData: true,
+  subtree: true,
+};
 const KEYBOARD_SESSION_DISMISSAL_REASONS = new Set([
   "escape",
   "no-match",
@@ -1303,14 +1311,13 @@ export class KeyboardNavigationController {
       session.mutationObserver = new MutationObserver(() =>
         this.queueSelectionRevalidation(session, { afterDraw: true }),
       );
-      for (const root of session.context.mutationRoots) {
-        session.mutationObserver.observe(root, {
-          attributes: true,
-          childList: true,
-          characterData: true,
-          subtree: true,
-        });
-      }
+      session.cleanup.push(
+        observeAcrossShadowRoots(
+          session.mutationObserver,
+          session.context.mutationRoots,
+          SCROLL_MUTATIONS,
+        ),
+      );
     }
     if (typeof ResizeObserver === "function") {
       session.resizeObserver = new ResizeObserver(() =>
@@ -1359,14 +1366,13 @@ export class KeyboardNavigationController {
       session.mutationObserver = new MutationObserver(() =>
         this.queueActiveRevalidation(session, { afterDraw: true }),
       );
-      for (const root of session.mutationRoots) {
-        session.mutationObserver.observe(root, {
-          attributes: true,
-          childList: true,
-          characterData: true,
-          subtree: true,
-        });
-      }
+      session.cleanup.push(
+        observeAcrossShadowRoots(
+          session.mutationObserver,
+          session.mutationRoots,
+          SCROLL_MUTATIONS,
+        ),
+      );
     }
     if (typeof ResizeObserver === "function") {
       session.resizeObserver = new ResizeObserver(() =>

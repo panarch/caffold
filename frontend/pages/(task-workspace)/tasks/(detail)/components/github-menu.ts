@@ -12,7 +12,8 @@ import {
 import "#app/keyboard-navigation/components/presentation.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 
-import { compactIconButton } from "#app/component-styles.js";
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import { adoptScopedStyle } from "#app/scoped-style.js";
 
 // What the menu asks the Detail layout to open.
 export interface GitHubMenuIntent {
@@ -22,7 +23,8 @@ export interface GitHubMenuIntent {
 
 let taskDetailGithubInstanceId = 0;
 
-await compactIconButton.register(
+adoptScopedStyle(
+  compactIconButton,
   "caffold-task-detail-github",
   "> .task-github-button",
 );

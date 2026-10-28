@@ -849,8 +849,9 @@ test("preserves Tasks and Settings DOM while hidden task updates arrive", { tag:
   await prompt.fill("조합 중인 입력과 화면 상태를 그대로 유지한다");
   await tasksPage.evaluate((element) => {
     element.dataset.identityMarker = "tasks-stable";
-    element.querySelector('textarea[name="prompt"]').dataset.identityMarker =
-      "prompt-stable";
+  });
+  await prompt.evaluate((textarea) => {
+    textarea.dataset.identityMarker = "prompt-stable";
   });
   await expect
     .poll(() =>

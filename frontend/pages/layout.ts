@@ -63,7 +63,8 @@ import {
 } from "./navigation-history.js";
 import { PwaUpdateLifecycle } from "./pwa-update-lifecycle.js";
 
-import { busySpin } from "#app/component-styles.js";
+import busySpin from "#app/pages/component-styles/busy-spin.css.js";
+import { adoptScopedStyle } from "#app/scoped-style.js";
 
 export interface RequestTasksRouteDetail {
   route: ParsedRoute;
@@ -102,7 +103,8 @@ interface PwaUpdateStatus {
 /** Which failed update this browser has told, so it tells each one once. */
 const SEEN_UPDATE_RESULT_KEY = "caffold:update-result-seen";
 
-await busySpin.register(
+adoptScopedStyle(
+  busySpin,
   "caffold-app-shell",
   "> .app-foreground-recovery > .app-foreground-recovery-spinner",
 );

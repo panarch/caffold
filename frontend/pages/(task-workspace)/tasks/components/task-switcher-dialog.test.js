@@ -32,16 +32,6 @@ test("closes and reports the chosen Task", () => {
   });
 });
 
-test("closes when its own Action Hint session is dismissed", () => {
-  const switcher = openedSwitcher();
-
-  switcher.handleDismiss({ target: {} });
-  assert.equal(switcher.dialog.open, true);
-
-  switcher.handleDismiss({ target: switcher.dialog });
-  assert.equal(switcher.dialog.open, false);
-});
-
 test("orders by when a Task last finished, not by when it was last looked at", () => {
   const switcher = openedSwitcher();
   switcher.dialog.open = false;

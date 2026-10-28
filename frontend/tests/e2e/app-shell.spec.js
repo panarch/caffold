@@ -182,15 +182,8 @@ test("returns a workspace tab to the screen it last showed", { tag: "@viewport-i
 test("puts the screens under a request into another tab's page", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
-  const stylesRequested = Promise.withResolvers();
-  const releaseStyles = Promise.withResolvers();
   const healthRequested = Promise.withResolvers();
   const releaseHealth = Promise.withResolvers();
-  await page.route("**/assets/component-styles/compact-icon-button.css", async (route) => {
-    stylesRequested.resolve();
-    await releaseStyles.promise;
-    await route.continue();
-  });
   await page.route(/\/api\/health(?:\?|$)/, async (route) => {
     healthRequested.resolve();
     await releaseHealth.promise;
@@ -200,9 +193,6 @@ test("puts the screens under a request into another tab's page", { tag: "@viewpo
   // the Settings list belongs under it just as it would after a tab change.
   try {
     await page.goto("/");
-    await stylesRequested.promise;
-    expect(await page.evaluate(() => Boolean(customElements.get("caffold-app-shell")))).toBe(false);
-    releaseStyles.resolve();
     await healthRequested.promise;
     // Component definition precedes bootstrap: health still owns the initial route.
     await Promise.all([
@@ -223,7 +213,6 @@ test("puts the screens under a request into another tab's page", { tag: "@viewpo
       );
     });
   } finally {
-    releaseStyles.resolve();
     releaseHealth.resolve();
   }
   await expect(page).toHaveURL("/settings/voice");

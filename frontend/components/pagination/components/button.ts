@@ -4,7 +4,8 @@ import { type ActionHintPull, ActionHints } from "#app/action-hints.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import { inlineIcon } from "../../icons.js";
 
-import { compactIconButton } from "#app/component-styles.js";
+import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./button.css.js";
 
 export interface ChangePageDetail {
@@ -26,7 +27,10 @@ export class CaffoldPaginationButton extends CaffoldElement {
   @property({ type: Boolean })
   accessor disabled = false;
 
-  static override styles = [compactIconButton(".pagination-button"), styles];
+  static override styles = [
+    scopedStyle(compactIconButton, ".pagination-button"),
+    styles,
+  ];
 
   private readonly hints = new ActionHints(this);
 

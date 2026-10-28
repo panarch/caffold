@@ -34,19 +34,7 @@ test("excludes covered Settings items and preserves navigation Hint activation",
   );
   await page.setViewportSize({ width: testInfo.project.name === "phone" ? 390 : 933, height: 320 });
 
-  // Page load can precede the module's awaited component CSS registration.
-  // Release that response after load to exercise delayed initial rendering.
-  let releaseStyles;
-  const stylesReady = new Promise((resolve) => { releaseStyles = resolve; });
-  await page.route("**/assets/component-styles/compact-icon-button.css", async (route) => {
-    await stylesReady;
-    await route.continue();
-  });
-  try {
-    await page.goto("/settings");
-  } finally {
-    releaseStyles();
-  }
+  await page.goto("/settings");
 
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   await expect(page.locator('caffold-settings-navigator button[data-settings-section="appearance"]')).toBeVisible();
@@ -2907,8 +2895,11 @@ test("updates independent ranges live without replacing their DOM", { tag: "@all
     const composer = document.createElement("caffold-task-composer");
     composer.setContext({ mode: "create", cwd: "." });
     document.body.append(composer);
-    const textarea = composer.querySelector("textarea");
-    const modelButton = composer.querySelector(".task-model-button");
+    // The Composer draws in its root, and its turn options in theirs.
+    const textarea = composer.shadowRoot.querySelector("textarea");
+    const modelButton = composer.shadowRoot
+      .querySelector("caffold-task-turn-options")
+      .shadowRoot.querySelector(".task-model-button");
 
     const result = {
       githubBody: getComputedStyle(githubBody).fontSize,
@@ -3351,8 +3342,8 @@ test("keeps mixed surfaces reflowed across appearance extremes", { tag: "@all-vi
 
     const approvalText = approval.querySelector("p");
     const approvalCode = approval.querySelector("pre");
-    const textarea = composer.querySelector("textarea");
-    const send = composer.querySelector(".task-primary-action-button");
+    const textarea = composer.shadowRoot.querySelector("textarea");
+    const send = composer.shadowRoot.querySelector(".task-primary-action-button");
     const githubText = github.shadowRoot.querySelector("p");
     const githubCode = github.shadowRoot.querySelector("code");
     const metric = (element) => {
@@ -3722,12 +3713,15 @@ function headedSectionLayout(content) {
 }
 
 async function modelPickerMetrics(composer) {
-  return composer.evaluate((element) => {
+  return composer.evaluate((host) => {
+    // The Composer draws in its root, and its turn options in theirs.
+    const element = host.shadowRoot;
+    const turnOptions = element.querySelector("caffold-task-turn-options").shadowRoot;
     const rootStyle = getComputedStyle(document.documentElement);
     const toolbar = element.querySelector(".task-composer-toolbar");
-    const modelButton = element.querySelector(".task-model-button");
-    const permissionButton = element.querySelector(".task-permission-button");
-    const popover = element.querySelector(".task-model-popover");
+    const modelButton = turnOptions.querySelector(".task-model-button");
+    const permissionButton = turnOptions.querySelector(".task-permission-button");
+    const popover = turnOptions.querySelector(".task-model-popover");
     const option = popover.querySelector(".task-model-option");
     const title = option.querySelector("strong");
     const toolbarStyle = getComputedStyle(toolbar);

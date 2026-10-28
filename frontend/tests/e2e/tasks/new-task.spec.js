@@ -4,6 +4,7 @@ import {
   workspaceTargets,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { elementHandles } from "../support/element-handles.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import {
   activeTaskProjection,
@@ -63,14 +64,7 @@ test("opens home and New Task without focusing the prompt", { tag: "@all-viewpor
         elements.map((element) => getComputedStyle(element).fontWeight),
       ),
   ).toEqual(["400", "400", "400"]);
-  const guideAlignment = await tasksPage.evaluate((element) => {
-    const composerElement = element.querySelector(
-      ".task-new-form .task-composer-panel",
-    );
-    const textareaElement = element.querySelector(
-      '.task-new-form textarea[name="prompt"]',
-    );
-    const guideElement = element.querySelector(".task-new-worktree-guide");
+  const guideAlignment = await page.evaluate(([composerElement, textareaElement, guideElement]) => {
     const guideHeadingElement = guideElement.querySelector("h2");
     const composer = composerElement.getBoundingClientRect();
     const textarea = textareaElement.getBoundingClientRect();
@@ -92,7 +86,11 @@ test("opens home and New Task without focusing the prompt", { tag: "@all-viewpor
       textareaContentRight:
         textarea.right - Number.parseFloat(textareaStyle.paddingRight),
     };
-  });
+  }, await elementHandles(tasksPage, [
+    ".task-new-form .task-composer-panel",
+    '.task-new-form textarea[name="prompt"]',
+    ".task-new-worktree-guide",
+  ]));
   expect(guideAlignment.guideLeft).toBeCloseTo(guideAlignment.composerLeft, 1);
   expect(guideAlignment.guideRight).toBeCloseTo(guideAlignment.composerRight, 1);
   expect(
@@ -158,7 +156,7 @@ test("puts the compact Back to Tasks in the New Task header", { tag: "@phone" },
   await installTaskLoopFixture(page);
   const tasksPage = page.locator("caffold-tasks-page");
   const back = page.locator("caffold-task-workspace .task-workspace-back");
-  const newTaskLayout = () => page.evaluate(() => {
+  const newTaskLayout = async () => page.evaluate(([paneElement, headerElement, titleElement, scrollerElement]) => {
     const workspace = document.querySelector("caffold-task-workspace");
     const probe = document.createElement("div");
     probe.style.position = "absolute";
@@ -166,11 +164,10 @@ test("puts the compact Back to Tasks in the New Task header", { tag: "@phone" },
     workspace.append(probe);
     const headerSize = probe.getBoundingClientRect().height;
     probe.remove();
-    const rect = (selector) => document.querySelector(selector).getBoundingClientRect();
-    const pane = rect("caffold-tasks-page .tasks-detail-pane");
-    const header = rect("caffold-task-new > .task-new-header");
-    const title = rect("caffold-task-new > .task-new-header > h2");
-    const scroller = rect("caffold-task-new > .task-new-workspace");
+    const pane = paneElement.getBoundingClientRect();
+    const header = headerElement.getBoundingClientRect();
+    const title = titleElement.getBoundingClientRect();
+    const scroller = scrollerElement.getBoundingClientRect();
     const controls = [".task-workspace-back", ".task-workspace-switcher"]
       .map((selector) => workspace.querySelector(selector))
       .filter((control) => control.getClientRects().length)
@@ -185,7 +182,12 @@ test("puts the compact Back to Tasks in the New Task header", { tag: "@phone" },
       controlsRight: Math.max(pane.left, ...controls.map(({ right }) => right)),
       controlMiddles: controls.map(({ top, height }) => top + height / 2),
     };
-  });
+  }, await elementHandles(page, [
+    "caffold-tasks-page .tasks-detail-pane",
+    "caffold-task-new > .task-new-header",
+    "caffold-task-new > .task-new-header > h2",
+    "caffold-task-new > .task-new-workspace",
+  ]));
   const expectHeaderOnTop = (layout) => {
     expect(Math.abs(layout.headerTop)).toBeLessThanOrEqual(0.5);
     expect(Math.abs(layout.headerHeight - layout.headerSize)).toBeLessThanOrEqual(0.5);
@@ -247,7 +249,7 @@ test("titles New Task in a header shaped like the Section header", { tag: "@all-
   await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
     route.fulfill({ json: { tasks: [], nextCursor: null } })
   );
-  const measure = (selectors) => page.evaluate(([headerSelector, titleSelector, directorySelector]) => {
+  const measure = async (selectors) => page.evaluate(([paneElement, header, title, directoryElement, listHeader]) => {
     const workspace = document.querySelector("caffold-task-workspace");
     const probe = document.createElement("div");
     probe.style.position = "absolute";
@@ -255,11 +257,8 @@ test("titles New Task in a header shaped like the Section header", { tag: "@all-
     workspace.append(probe);
     const headerSize = probe.getBoundingClientRect().height;
     probe.remove();
-    const pane = document.querySelector("caffold-tasks-page .tasks-detail-pane").getBoundingClientRect();
-    const header = document.querySelector(headerSelector);
-    const title = document.querySelector(titleSelector);
-    const directory = document.querySelector(directorySelector).getBoundingClientRect();
-    const listHeader = document.querySelector(".task-workspace-master-pane .task-list-primary-header");
+    const pane = paneElement.getBoundingClientRect();
+    const directory = directoryElement.getBoundingClientRect();
     return {
       headerSize,
       headerTop: header.getBoundingClientRect().top - pane.top,
@@ -273,7 +272,11 @@ test("titles New Task in a header shaped like the Section header", { tag: "@all-
       titleClipped: title.scrollWidth > title.clientWidth,
       directoryGap: directory.top - header.getBoundingClientRect().bottom,
     };
-  }, selectors);
+  }, await elementHandles(page, [
+    "caffold-tasks-page .tasks-detail-pane",
+    ...selectors,
+    ".task-workspace-master-pane .task-list-primary-header",
+  ]));
 
   await page.goto("/tasks/new");
   const title = page.locator("caffold-task-new > .task-new-header > h2");
@@ -320,13 +323,10 @@ test("makes room in the New Task header for the side pane toggle", { tag: ["@des
   await expect(navigator).toBeHidden();
   await expect(toggle).toBeVisible();
 
-  const layout = await page.evaluate(() => {
-    const rect = (selector) => document.querySelector(selector).getBoundingClientRect();
-    const pane = rect("caffold-tasks-page .tasks-detail-pane");
-    const header = rect("caffold-task-new > .task-new-header");
-    const title = rect("caffold-task-new > .task-new-header > h2");
-    const scroller = rect("caffold-task-new > .task-new-workspace");
-    const control = rect("caffold-task-workspace .task-workspace-side-pane-toggle");
+  const layout = await page.evaluate((elements) => {
+    const [pane, header, title, scroller, control] = elements.map((element) =>
+      element.getBoundingClientRect()
+    );
     return {
       headerTop: header.top - pane.top,
       scrollerGap: scroller.top - header.bottom,
@@ -335,7 +335,13 @@ test("makes room in the New Task header for the side pane toggle", { tag: ["@des
       toggleRight: control.right,
       toggleMiddle: control.top + control.height / 2,
     };
-  });
+  }, await elementHandles(page, [
+    "caffold-tasks-page .tasks-detail-pane",
+    "caffold-task-new > .task-new-header",
+    "caffold-task-new > .task-new-header > h2",
+    "caffold-task-new > .task-new-workspace",
+    "caffold-task-workspace .task-workspace-side-pane-toggle",
+  ]));
   expect(Math.abs(layout.headerTop)).toBeLessThanOrEqual(0.5);
   expect(Math.abs(layout.scrollerGap)).toBeLessThanOrEqual(0.5);
   expect(layout.titleLeft).toBeGreaterThanOrEqual(layout.toggleRight);
@@ -418,10 +424,16 @@ test("creates a task with responsive composer controls and canonical approval st
   const modelPopover = page.locator("caffold-tasks-page .task-model-popover");
   await expect(modelPopover).toBeVisible();
   const modelPopoverMetrics = await newTaskComposer.evaluate((form) => {
-    const button = form.querySelector(".task-model-button").getBoundingClientRect();
+    // The model control is the turn options', in the Composer, in New Task.
+    const turnOptions = form.querySelector("caffold-task-turn-options").shadowRoot;
+    let paneElement = form;
+    while (!paneElement.matches?.(".tasks-detail-pane")) {
+      paneElement = paneElement.parentNode ?? paneElement.host;
+    }
+    const button = turnOptions.querySelector(".task-model-button").getBoundingClientRect();
     const panel = form.querySelector(".task-composer-panel").getBoundingClientRect();
-    const pane = form.closest(".tasks-detail-pane").getBoundingClientRect();
-    const popover = form.querySelector(".task-model-popover").getBoundingClientRect();
+    const pane = paneElement.getBoundingClientRect();
+    const popover = turnOptions.querySelector(".task-model-popover").getBoundingClientRect();
     return {
       buttonBottom: button.bottom,
       buttonLeft: button.left,
@@ -431,8 +443,8 @@ test("creates a task with responsive composer controls and canonical approval st
       paneLeft: pane.left,
       paneRight: pane.right,
       backdropVisible: Boolean(
-        form.querySelector(".task-model-backdrop") &&
-          window.getComputedStyle(form.querySelector(".task-model-backdrop")).display !==
+        turnOptions.querySelector(".task-model-backdrop") &&
+          window.getComputedStyle(turnOptions.querySelector(".task-model-backdrop")).display !==
             "none",
       ),
       popoverBottom: popover.bottom,
@@ -552,8 +564,7 @@ test("creates a task with responsive composer controls and canonical approval st
   await expect(newTaskAttachment).toHaveCount(0);
   await pasteImage(newPromptTextarea, "planner-layout.png");
   await expect(newTaskAttachment).toHaveCount(1);
-  const newTaskFormState = await page.locator("caffold-tasks-page").evaluate((element) => {
-    const form = element.querySelector('form[data-task-form="create"]');
+  const newTaskFormState = await page.locator('caffold-tasks-page form[data-task-form="create"]').evaluate((form) => {
     return {
       data: Object.fromEntries(new FormData(form).entries()),
       valid: form.checkValidity(),
