@@ -1298,10 +1298,9 @@ test("keeps the shared Review panes inside the task workspace", { tag: "@all-vie
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
 
-  const layout = await page.evaluate(() => {
+  const layout = await taskReview.evaluate((review) => {
     const codex = document.querySelector("caffold-task-workspace");
     const appMain = document.querySelector("caffold-app-shell .app-main");
-    const review = document.querySelector("caffold-task-review");
     const reviewRect = review.getBoundingClientRect();
     const codexRect = codex.getBoundingClientRect();
     return {

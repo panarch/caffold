@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -7,7 +7,6 @@ import {
 } from "#app/action-hints.js";
 import { getCurrentPlan } from "#app/api.js";
 import {
-  KEYBOARD_SESSION_DISMISS_EVENT,
   KeyboardContexts,
   mergeKeyboardNavigationContexts,
 } from "#app/keyboard-navigation.js";
@@ -17,6 +16,13 @@ import { subscribeToWatch, watchChangeAffectsPath } from "#app/watch.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "./current-plan/components/document-dialog.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { returnPopoverFocus } from "#app/popover-focus.js";
+import { scopedStyle } from "#app/scoped-style.js";
+import {
+  containsAcrossShadowRoots,
+  focusedElement,
+} from "#app/shadow-roots.js";
 import type { CaffoldCurrentPlanDocumentDialog } from "./current-plan/components/document-dialog.js";
 import {
   CURRENT_PLAN_NODE,
@@ -28,6 +34,9 @@ import {
   currentPlanTransitionAllowed,
   normalizeCurrentPlanProjection,
 } from "./current-plan/model.js";
+
+import secondaryButton from "#app/component-styles/secondary-button.css.js";
+import styles from "./current-plan.css.js";
 
 // The Task the plan belongs to: its thread, the folder its plan files are
 // read from, and the root its document paths are shown from.
@@ -45,7 +54,7 @@ let currentPlanInstanceId = 0;
  * cannot be read. It reads the plan again whenever its files change.
  */
 @customElement("caffold-task-current-plan")
-export class CaffoldTaskCurrentPlan extends LitElement {
+export class CaffoldTaskCurrentPlan extends CaffoldElement {
   @state()
   private accessor node: CurrentPlanNode = CURRENT_PLAN_NODE.INACTIVE;
   @state()
@@ -56,6 +65,11 @@ export class CaffoldTaskCurrentPlan extends LitElement {
   private accessor readError: Error | null = null;
   @state()
   private accessor watchError: Error | null = null;
+
+  static override styles = [
+    scopedStyle(secondaryButton, ".task-secondary-button"),
+    styles,
+  ];
 
   private readonly statusPopoverId =
     `task-current-plan-status-${++currentPlanInstanceId}`;
@@ -76,17 +90,6 @@ export class CaffoldTaskCurrentPlan extends LitElement {
   private readonly statusPopover = new DrawnRef<HTMLDivElement>(this);
   private readonly documentDialog =
     new DrawnRef<CaffoldCurrentPlanDocumentDialog>(this);
-
-  constructor() {
-    super();
-    this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) =>
-      this.handleDismiss(event),
-    );
-  }
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -297,6 +300,8 @@ export class CaffoldTaskCurrentPlan extends LitElement {
         id=${popoverId}
         class="task-current-plan-popover"
         popover="auto"
+        @beforetoggle=${returnPopoverFocus}
+        @caffold:keyboard-session-dismiss=${this.handleDismiss}
         aria-label="Plan status"
       >
         <dl data-current-plan-issues>${presentation.issues.map(
@@ -332,11 +337,12 @@ export class CaffoldTaskCurrentPlan extends LitElement {
   }
 
   override willUpdate() {
-    const focused = document.activeElement;
+    const focused = focusedElement();
+    const popover = this.statusPopover.value;
     this.statusHadFocus = Boolean(
       focused &&
         (focused === this.statusAction.value ||
-          this.statusPopover.value?.contains(focused)),
+          (popover && containsAcrossShadowRoots(popover, focused))),
     );
   }
 

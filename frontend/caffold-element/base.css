@@ -1,18 +1,24 @@
-* {
-  box-sizing: border-box;
-}
+/* The resets sit beneath the shared styles, so a shared button style sets its
+   own font. */
+@layer base, component-styles;
 
-button,
-input,
-textarea {
-  font: inherit;
-}
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
 
-code,
-kbd,
-pre,
-samp {
-  font-family: var(--font-code);
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
+
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family: var(--font-code);
+  }
 }
 
 [hidden] {

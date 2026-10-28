@@ -1,14 +1,17 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import type { MarkdownPreviewRequest } from "#tasks/(detail)/(task)/components/markdown-preview-dialog.js";
+
+import styles from "./code-block.css.js";
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
 const MARKDOWN_FENCE_LABELS = new Set(["markdown", "md"]);
@@ -20,13 +23,15 @@ type CopyState = "idle" | "copying" | "copied" | "failed";
 // it. The Markdown places the block where the `<pre>` it parsed stood and hands
 // that `<pre>` over; the block keeps it in a slot its template does not draw.
 @customElement("caffold-task-markdown-code-block")
-export class CaffoldTaskMarkdownCodeBlock extends LitElement {
+export class CaffoldTaskMarkdownCodeBlock extends CaffoldElement {
   @property({ attribute: false })
   accessor label = "Plain text";
   @state()
   private accessor copyState: CopyState = "idle";
   @state()
   private accessor wrapped = false;
+
+  static override styles = styles;
 
   private pre: HTMLPreElement | null = null;
   // Wraps a change to the block's height so the conversation keeps its place.
@@ -42,10 +47,6 @@ export class CaffoldTaskMarkdownCodeBlock extends LitElement {
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly content = new DrawnRef<HTMLDivElement>(this);
   private readonly previewButton = new DrawnRef<HTMLButtonElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

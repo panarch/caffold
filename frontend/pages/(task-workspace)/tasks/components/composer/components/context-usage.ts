@@ -6,6 +6,7 @@ import {
   ActionHints,
 } from "#app/action-hints.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { returnPopoverFocus } from "#app/popover-focus.js";
 
 import styles from "./context-usage.css.js";
 
@@ -81,6 +82,7 @@ export class CaffoldTaskContextUsage extends CaffoldElement {
         id=${this.popoverId}
         class="task-context-usage-popover"
         popover="auto"
+        @beforetoggle=${returnPopoverFocus}
         aria-label="Context usage"
       >${
         view.known

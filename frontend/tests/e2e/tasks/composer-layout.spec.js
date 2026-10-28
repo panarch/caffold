@@ -110,12 +110,11 @@ for (const themeMode of ["light", "dark"]) {
     const range = await scrollRangeBeyondContent(scroller);
     expect(Math.abs(range.beyondContent - range.paddingBottom)).toBeLessThanOrEqual(1);
 
-    await scroller.evaluate((element) => {
-      const table = element.querySelector("table");
+    await scroller.evaluate((element, table) => {
       element.scrollTop +=
         table.getBoundingClientRect().top - element.getBoundingClientRect().top - 16;
       element.dispatchEvent(new Event("scroll"));
-    });
+    }, await scroller.locator("table").elementHandle());
     await expect
       .poll(() => scrollPosition(scroller))
       .toEqual(expect.objectContaining({ atBottom: false }));
@@ -218,7 +217,11 @@ async function bottomEdgeContrast(page, screenshot) {
   const followUpPanel = await page
     .locator(".task-follow-up-form .task-composer-panel")
     .elementHandle();
-  return page.evaluate(async ([base64, panel]) => {
+  const scrollerHandle = await page.locator(".task-conversation-scroll").elementHandle();
+  const dividerHandle = await page
+    .locator(".task-conversation-scroll table th:nth-child(2)")
+    .elementHandle();
+  return page.evaluate(async ([base64, panel, scroller, dividerCell]) => {
     const bitmap = await createImageBitmap(
       new Blob([Uint8Array.from(atob(base64), (character) => character.charCodeAt(0))]),
     );
@@ -231,14 +234,11 @@ async function bottomEdgeContrast(page, screenshot) {
       return [pixels[offset], pixels[offset + 1], pixels[offset + 2]];
     };
 
-    const scroller = document.querySelector(".task-conversation-scroll");
     const bottom = Math.floor(scroller.getBoundingClientRect().bottom) - 1;
     const fadeHeight = Number.parseFloat(getComputedStyle(scroller, "::after").height);
     // The table's middle divider sits away from the panel's sides, where the
     // panel's shadow is even.
-    const divider = Math.round(
-      scroller.querySelector("table th:nth-child(2)").getBoundingClientRect().left,
-    );
+    const divider = Math.round(dividerCell.getBoundingClientRect().left);
     const borderContrast = (y) => {
       const beside = color(divider - 8, y);
       return Math.max(
@@ -260,14 +260,13 @@ async function bottomEdgeContrast(page, screenshot) {
         .slice(0, 3)
         .map(Number),
     };
-  }, [screenshot.toString("base64"), followUpPanel]);
+  }, [screenshot.toString("base64"), followUpPanel, scrollerHandle, dividerHandle]);
 }
 
-function composerLayout(form) {
-  return form.evaluate((element) => {
+async function composerLayout(form) {
+  return form.evaluate((element, conversation) => {
     const textarea = element.querySelector("textarea[name='prompt']");
     const panel = element.querySelector(".task-composer-panel");
-    const conversation = document.querySelector(".task-conversation-scroll");
     const events = [...conversation.querySelectorAll(".task-event[data-event-id]")];
     const lastEvent = events.at(-1);
     const textareaStyle = getComputedStyle(textarea);
@@ -289,12 +288,11 @@ function composerLayout(form) {
         Number.parseFloat(textareaStyle.paddingBottom),
       viewportHeight: window.innerHeight,
     };
-  });
+  }, await form.page().locator(".task-conversation-scroll").elementHandle());
 }
 
-function rapidComposerLayoutTransitions(prompt) {
-  return prompt.evaluate((textarea) => {
-    const conversation = document.querySelector(".task-conversation-scroll");
+async function rapidComposerLayoutTransitions(prompt) {
+  return prompt.evaluate((textarea, conversation) => {
     const lastEvent = [
       ...conversation.querySelectorAll(".task-event[data-event-id]"),
     ].at(-1);
@@ -315,7 +313,7 @@ function rapidComposerLayoutTransitions(prompt) {
         lastEventBottom: lastEvent.getBoundingClientRect().bottom,
       };
     });
-  });
+  }, await prompt.page().locator(".task-conversation-scroll").elementHandle());
 }
 
 function captureUserScrollAnchor(scroller) {

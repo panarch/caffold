@@ -1,30 +1,30 @@
-caffold-task-assistant-message {
+:host {
   display: grid;
   gap: 0.3125rem;
   width: 100%;
   min-width: 0;
+}
 
-  & > .task-assistant-message-header {
-    display: flex;
-    align-items: center;
-    gap: var(--interface-space-4);
-    min-height: 1rem;
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-  }
+.task-assistant-message-header {
+  display: flex;
+  align-items: center;
+  gap: var(--interface-space-4);
+  min-height: 1rem;
+  color: var(--muted);
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+}
 
-  /* Without a time, Copy starts where the text starts. */
-  & > .task-assistant-message-header > time:empty {
-    display: none;
-  }
+/* Without a time, Copy starts where the text starts. */
+.task-assistant-message-header > time:empty {
+  display: none;
+}
 
-  & > .task-assistant-message-body {
-    width: min(100%, 850px);
-    min-width: 0;
-    max-width: 100%;
-    padding: 0.0625rem 0 0;
-    font-size: var(--conversation-font-size);
-    line-height: var(--conversation-line-height);
-  }
+.task-assistant-message-body {
+  width: min(100%, 850px);
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.0625rem 0 0;
+  font-size: var(--conversation-font-size);
+  line-height: var(--conversation-line-height);
 }

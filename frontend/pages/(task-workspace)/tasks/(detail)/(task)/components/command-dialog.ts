@@ -1,9 +1,10 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import type { TaskEvent } from "#app/api.js";
 import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
@@ -12,6 +13,8 @@ import {
   formatDuration,
   taskEventObservedMs,
 } from "#tasks/task-format.js";
+
+import styles from "./command-dialog.css.js";
 
 // One finished command as the dialog shows it.
 interface CommandView {
@@ -29,9 +32,11 @@ interface CommandView {
  * The dialog belongs to one Task and closes when another Task opens.
  */
 @customElement("caffold-task-command-dialog")
-export class CaffoldTaskCommandDialog extends LitElement {
+export class CaffoldTaskCommandDialog extends CaffoldElement {
   @state()
   private accessor threadId = "";
+
+  static override styles = styles;
 
   private command: CommandView | null = null;
   private readonly iconsReady = () => this.requestUpdate();
@@ -41,10 +46,6 @@ export class CaffoldTaskCommandDialog extends LitElement {
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
   private readonly body = new DrawnRef<HTMLDivElement>(this);
   private readonly output = new DrawnRef<HTMLPreElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

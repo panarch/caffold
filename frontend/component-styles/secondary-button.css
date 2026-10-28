@@ -1,5 +1,4 @@
-/* A bordered text button. Components in Light DOM still take it from
-   `tasks/controls.css`. */
+/* A bordered text button. */
 :scope {
   position: relative;
   isolation: isolate;

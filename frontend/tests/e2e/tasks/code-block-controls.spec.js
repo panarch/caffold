@@ -82,17 +82,19 @@ test("keeps the code-block toolbar dense and usable across Task viewports", { ta
   ).toHaveCount(0);
   expect(
     await finalMarkdown.evaluate((markdown) => {
-      const codeBlock = markdown.querySelector("caffold-task-markdown-code-block");
+      const codeBlock = markdown.shadowRoot?.querySelector("caffold-task-markdown-code-block");
       return {
         codeBlockHasShadowRoot: Boolean(codeBlock?.shadowRoot),
-        inlineStyles: markdown.querySelectorAll("style").length,
+        inlineStyles: [markdown, markdown.shadowRoot, codeBlock?.shadowRoot]
+          .filter(Boolean)
+          .reduce((count, root) => count + root.querySelectorAll("style").length, 0),
         markdownHasShadowRoot: Boolean(markdown.shadowRoot),
       };
     }),
   ).toEqual({
-    codeBlockHasShadowRoot: false,
+    codeBlockHasShadowRoot: true,
     inlineStyles: 0,
-    markdownHasShadowRoot: false,
+    markdownHasShadowRoot: true,
   });
 
   const expectedTarget = testInfo.project.name === "desktop" ? 30 : 40;
@@ -377,10 +379,10 @@ test("keeps opt-in code blocks current across rerenders", { tag: "@desktop" }, a
   await expect(probe.getByRole("button", { name: "Copy code" })).toHaveCount(1);
   await expect(probe.getByRole("button", { name: "Wrap code lines" })).toHaveCount(1);
   const standaloneGeometry = await probe.evaluate((markdown) => {
-    const wrapper = markdown.querySelector(
+    const wrapper = markdown.shadowRoot.querySelector(
       "caffold-task-markdown-code-block",
     );
-    const header = wrapper.querySelector(":scope > .code-block-header");
+    const header = wrapper.shadowRoot.querySelector(".code-block-header");
     const actions = header.querySelector(":scope > .code-block-actions");
     return {
       actionsInside: actions.getBoundingClientRect().right <=
@@ -442,7 +444,7 @@ test("keeps opt-in code blocks current across rerenders", { tag: "@desktop" }, a
 
 async function toolbarGeometry(block) {
   return block.evaluate((wrapper) => {
-    const header = wrapper.querySelector(":scope > .code-block-header");
+    const header = wrapper.shadowRoot.querySelector(".code-block-header");
     const label = header.querySelector(":scope > .code-block-label");
     const buttons = [
       ...header.querySelectorAll(".code-block-actions > button"),
@@ -479,8 +481,7 @@ async function toolbarGeometry(block) {
 }
 
 async function scrollIntoConversationView(target) {
-  await target.evaluate((element) => {
-    const scrollport = element.closest(".task-conversation-scroll");
+  await target.evaluate((element, scrollport) => {
     if (!scrollport) {
       throw new Error("Code block has no Conversation scroll owner");
     }
@@ -500,7 +501,7 @@ async function scrollIntoConversationView(target) {
         resolve();
       }
     });
-  });
+  }, await target.page().locator(".task-conversation-scroll").elementHandle());
 }
 
 async function seedCodeBlockTask(

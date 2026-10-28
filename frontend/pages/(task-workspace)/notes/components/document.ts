@@ -20,11 +20,11 @@ import "#components/markdown-preview.js";
 import type { CaffoldMarkdownPreview } from "#components/markdown-preview.js";
 import "./info.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import { moveIntoPane } from "../move-into-pane.js";
 import type { CaffoldNotesInfo } from "./info.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./document.css.js";
 
 export const NOTE_DOCUMENT_INTENT_EVENT = "caffold:note-document-intent";

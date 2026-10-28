@@ -2,11 +2,11 @@ import { html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { TaskThreadStatus } from "#app/api.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import { taskStatusView } from "../runtime-state.js";
 
 import busySpin from "#app/pages/component-styles/busy-spin.css.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./task-status-chip.css.js";
 
 // A spinner turns once in this long; a staggered one starts somewhere along

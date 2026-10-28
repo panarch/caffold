@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { elementHandles } from "../support/element-handles.js";
 import {
   installTaskApiFixture,
   taskDetailFixture,
@@ -950,7 +951,8 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
   await expect(modalSelector).toBeVisible();
   const replacementChecklistFile = fileResponse(page, checklistPath);
   await documentDialog.evaluate((element, path) => {
-    const opener = element.closest("caffold-task-current-plan")?.querySelector(
+    // The dialog sits in the current plan's root, beside the strip.
+    const opener = element.getRootNode().querySelector(
       '[data-current-plan-action="checklist"]',
     );
     element.openDocument({
@@ -1416,12 +1418,11 @@ async function surfaceCode(selector, label) {
 }
 
 async function scrollPositions(page) {
-  return page.evaluate(() => ({
-    taskList: document.querySelector(".task-list-scroll")?.scrollTop ?? 0,
-    conversation:
-      document.querySelector(".task-conversation-scroll")?.scrollTop ?? 0,
+  return page.evaluate(([taskList, conversation]) => ({
+    taskList: taskList?.scrollTop ?? 0,
+    conversation: conversation?.scrollTop ?? 0,
     window: window.scrollY,
-  }));
+  }), await elementHandles(page, [".task-list-scroll", ".task-conversation-scroll"]));
 }
 
 async function captureScrollPresentation(page, kind) {

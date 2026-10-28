@@ -1,4 +1,4 @@
-caffold-section-detail {
+:host {
   display: grid;
   align-content: start;
   min-width: 0;
@@ -6,38 +6,38 @@ caffold-section-detail {
   height: 100%;
   overflow: auto;
   padding-top: clamp(1.125rem, 6vh, 4.5rem);
+}
 
-  &[hidden] {
-    display: none;
-  }
+:host([hidden]) {
+  display: none;
+}
 
-  & > caffold-task-create {
-    width: min(calc(100% - 1.75rem), 952px);
-    margin: 0 auto;
-  }
+caffold-task-create {
+  width: min(calc(100% - 1.75rem), 952px);
+  margin: 0 auto;
+}
 
-  & > caffold-section-conversation-shortcuts,
-  & > caffold-section-github-shortcuts {
-    width: min(calc(100% - 5.25rem), 896px);
-    margin: 0 auto;
-  }
+caffold-section-conversation-shortcuts,
+caffold-section-github-shortcuts {
+  width: min(calc(100% - 5.25rem), 896px);
+  margin: 0 auto;
+}
 
-  & > caffold-section-conversation-shortcuts {
-    margin-bottom: var(--interface-space-7);
-  }
+caffold-section-conversation-shortcuts {
+  margin-bottom: var(--interface-space-7);
 }
 
 @media (max-width: 959px) {
-  caffold-section-detail {
+  :host {
     padding-top: 0;
   }
 
-  caffold-section-detail > caffold-section-conversation-shortcuts,
-  caffold-section-detail > caffold-section-github-shortcuts {
+  caffold-section-conversation-shortcuts,
+  caffold-section-github-shortcuts {
     width: min(calc(100% - 3rem), 932px);
   }
 
-  caffold-section-detail > caffold-section-conversation-shortcuts {
+  caffold-section-conversation-shortcuts {
     margin-bottom: var(--interface-space-5);
   }
 }

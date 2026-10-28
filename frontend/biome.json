@@ -13,15 +13,9 @@
           "level": "on",
           "options": {
             "groups": [
-              [
-                ":PACKAGE:",
-                ":ALIAS:",
-                ":PATH:",
-                "!**/*.css.js",
-                "!**/scoped-style.js"
-              ],
+              [":PACKAGE:", ":ALIAS:", ":PATH:", "!**/*.css.js"],
               ":BLANK_LINE:",
-              ["**/scoped-style.js", "**/*.css.js"]
+              ["**/*.css.js"]
             ]
           }
         }

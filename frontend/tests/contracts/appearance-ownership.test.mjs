@@ -420,7 +420,6 @@ test("busy elements turn through one registered spin with reduced-motion fallbac
 
   const consumers = [
     ["pages/layout", "caffold-app-shell", "> .app-foreground-recovery > .app-foreground-recovery-spinner"],
-    ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn", "caffold-task-active-turn", "> .task-active-turn-spinner"],
   ];
   const declarations = [];
   const shadowDeclarations = [];
@@ -436,6 +435,7 @@ test("busy elements turn through one registered spin with reduced-motion fallbac
   assert.deepEqual(shadowDeclarations.map((entry) => entry.join(" ")).sort(), [
     "pages/(task-workspace)/settings/components/refresh-button button.is-refreshing > span > .settings-refresh-icon",
     "pages/(task-workspace)/tasks/(detail)/(git)/components/controls .git-review-refresh.is-refreshing > .git-review-refresh-icon",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn .task-active-turn-spinner",
     "pages/(task-workspace)/tasks/components/archived-task-list .task-archived-action-button.is-loading > .task-archived-action-icon",
     "pages/(task-workspace)/tasks/components/composer .task-voice-button.is-busy > .task-voice-icon",
     "pages/(task-workspace)/tasks/components/task-status-chip .task-status-spinner",
@@ -749,7 +749,7 @@ test("common chrome shares one icon slot and control geometry", () => {
   }
 
   const owners = [
-    ["pages/(task-workspace)/tasks/controls.css", ".task-action-icon"],
+    ["pages/(task-workspace)/tasks/component-styles/action-icon.css", ":scope"],
     [
       "pages/(task-workspace)/tasks/(detail)/components/git-menu.css",
       ".task-git-icon",
@@ -783,7 +783,7 @@ test("visible inline icons have explicit block geometry from their UI owner", ()
     ["pages/(task-workspace)/settings/appearance/page.css", ".settings-reset-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/layout.css", ".task-workspace-route-control-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/components/navigation.css", ".task-workspace-navigation-icon", "--interface-icon-size"],
-    ["pages/(task-workspace)/tasks/controls.css", ".task-action-icon", "--interface-icon-size"],
+    ["pages/(task-workspace)/tasks/component-styles/action-icon.css", ":scope", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-primary-action-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/components/active-task-list/components/section.css", ".task-repository-icon", "--task-list-icon-size"],
     ["pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css", ".task-row-worktree-icon", "--task-list-icon-size"],
@@ -818,24 +818,6 @@ test("icon-only controls do not fall back to baseline-dependent text glyphs", ()
       );
     }
   }
-});
-
-test("control paint layers do not pull screen-reader text into layout", () => {
-  const taskControls = readFrontend("pages/(task-workspace)/tasks/controls.css");
-
-  assert.doesNotMatch(taskControls, /\.task-primary-button\s*>\s*\*\s*\{/);
-  assert.match(
-    taskControls,
-    /\.task-primary-button\s*>\s*:not\(\.sr-only\)\s*\{/,
-  );
-  assert.match(
-    taskControls,
-    /\.task-primary-button,[\s\S]*isolation: isolate;/,
-  );
-  assert.match(
-    taskControls,
-    /\.task-primary-button::before,[\s\S]*z-index: -1;/,
-  );
 });
 
 test("the browser fixture renders every shared inline icon used by production", () => {
@@ -963,12 +945,7 @@ test("icon-only controls use square slots from their semantic control tier", () 
 
 test("compact icon controls declare shared styles at their own component boundary", () => {
   const consumers = [
-    ["pages/(task-workspace)/tasks/(detail)/components/terminal-button", "caffold-task-detail-terminal", "> .task-terminal-button"],
-    ["pages/(task-workspace)/tasks/(detail)/components/git-menu", "caffold-task-detail-git", "> .task-git-button"],
-    ["pages/(task-workspace)/tasks/(detail)/components/github-menu", "caffold-task-detail-github", "> .task-github-button"],
-    ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info", "caffold-task-detail-info", "> .task-detail-info-button"],
     ["pages/(task-workspace)/layout", "caffold-task-workspace", "> .task-workspace-route-controls > .task-workspace-route-control"],
-    ["pages/(task-workspace)/tasks/(detail)/terminal/page", "caffold-terminal-page", "> .terminal-page-bar > .terminal-page-button"],
   ];
   for (const [path, owner, target] of consumers) {
     const declarations = sharedStyleApplications(readFrontendModule(path), "compact-icon-button.css");
@@ -990,6 +967,11 @@ test("compact icon controls declare shared styles at their own component boundar
     ["pages/(task-workspace)/tasks/(detail)/(git)/layout", ".task-domain-back"],
     ["pages/(task-workspace)/tasks/(detail)/(github)/layout", ".task-domain-back"],
     ["pages/(task-workspace)/tasks/(detail)/(git)/components/controls", ".git-review-refresh"],
+    ["pages/(task-workspace)/tasks/(detail)/components/terminal-button", ".task-terminal-button"],
+    ["pages/(task-workspace)/tasks/(detail)/components/git-menu", ".task-git-button"],
+    ["pages/(task-workspace)/tasks/(detail)/components/github-menu", ".task-github-button"],
+    ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info", ".task-detail-info-button"],
+    ["pages/(task-workspace)/tasks/(detail)/terminal/page", ".terminal-page-bar > .terminal-page-button"],
   ]) {
     const declarations = sharedStyleApplications(readFrontendModule(path), "compact-icon-button.css");
     assert.ok(declarations.some(([helper, selector]) => helper === "scopedStyle" && selector === target), path);
@@ -1119,14 +1101,6 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
     assert.match(block, new RegExp(token), `${path} ${selector}`);
   }
 
-  cssBlockMatching(
-    readFrontend("pages/(task-workspace)/tasks/controls.css"),
-    ".task-primary-button::before",
-    [
-      /inset-block: var\(--interface-control-hit-outset\)/,
-      /background: var\(--primary-action-bg\)/,
-    ],
-  );
 });
 
 test("contextual and inline actions stay compact while page and primary actions stay regular", () => {
@@ -1143,7 +1117,7 @@ test("contextual and inline actions stay compact while page and primary actions 
     ],
     [
       "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.css",
-      "& > .task-suggested-prompt {",
+      "\n.task-suggested-prompt {",
       "--interface-compact-visual-size",
     ],
     [
@@ -1163,23 +1137,6 @@ test("contextual and inline actions stay compact while page and primary actions 
     ],
   ];
 
-  cssBlockMatching(
-    readFrontend("pages/(task-workspace)/tasks/controls.css"),
-    ".task-primary-button",
-    [
-      /min-height: var\(--interface-control-hit-size\)/,
-      /background: transparent/,
-    ],
-  );
-  cssBlockMatching(
-    readFrontend("pages/(task-workspace)/tasks/controls.css"),
-    ".task-icon-button",
-    [
-      /min-height: var\(--interface-control-hit-size\)/,
-      /width: var\(--interface-control-hit-size\)/,
-      /height: var\(--interface-control-hit-size\)/,
-    ],
-  );
   for (const [path, selector, token] of compactControls) {
     const block = cssBlockContaining(readFrontend(path), selector, token);
     assert.match(
@@ -1370,7 +1327,7 @@ test("task rows use full-width selection and compact repository grouping", () =>
 
 test("text actions use the shared Interface metadata scale instead of root body text", () => {
   const owners = [
-    ["pages/(task-workspace)/tasks/controls.css", ".task-primary-button"],
+    ["component-styles/secondary-button.css", ":scope"],
     [
       "pages/(task-workspace)/tasks/components/navigator.css",
       '.task-list-reorder-popover > button[data-task-action="select-reorder-mode"]',

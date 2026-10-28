@@ -1686,8 +1686,8 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
       }),
     )
     .toBe(true);
-  const metrics = () =>
-    form.evaluate((element) => {
+  const metrics = async () =>
+    form.evaluate((element, conversation) => {
       const panel = element.querySelector(".task-composer-panel");
       const textarea = element.querySelector("textarea[name='prompt']");
       const sendButton = element.querySelector(".task-primary-action-button");
@@ -1703,7 +1703,6 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
       );
       const shell = document.querySelector("caffold-app-shell");
       const workspace = document.querySelector("caffold-task-workspace");
-      const conversation = document.querySelector(".task-conversation-scroll");
       const rootStyle = getComputedStyle(document.documentElement);
       const formStyle = getComputedStyle(element);
       const conversationStyle = getComputedStyle(conversation);
@@ -1743,7 +1742,7 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
         shellBottom: shellRect.bottom,
         workspaceBottom: workspaceRect.bottom,
       };
-    });
+    }, await page.locator(".task-conversation-scroll").elementHandle());
 
   await expect(form.locator(".task-permission-button svg.task-permission-icon")).toHaveCount(1);
   const idle = await metrics();

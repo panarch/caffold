@@ -259,12 +259,16 @@ test("automatic gap repair preserves selection, scroll anchor, and the composer 
     const anchor = page.getByText("Question for turn 3", { exact: true });
     await composer.focus();
     // Put a retained row at a real, non-clamped scroll offset before prepending.
-    await anchor.evaluate((element) => {
-      const scroller = element.closest(".task-conversation-scroll");
-      scroller.scrollTop += element.closest(".task-event").getBoundingClientRect().top -
+    // The prompt's text sits in the message's root, its entry in the
+    // conversation's.
+    await page.evaluate(([scroller, entry]) => {
+      scroller.scrollTop += entry.getBoundingClientRect().top -
         scroller.getBoundingClientRect().top - 20;
       scroller.dispatchEvent(new Event("scroll"));
-    });
+    }, [
+      await page.locator(".task-conversation-scroll").elementHandle(),
+      await page.locator(".task-conversation > .task-event").filter({ has: anchor }).elementHandle(),
+    ]);
     await anchor.evaluate((element) => {
       const range = document.createRange();
       range.selectNodeContents(element);

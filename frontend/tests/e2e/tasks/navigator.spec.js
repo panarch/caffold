@@ -1670,13 +1670,12 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   ).toHaveAttribute("aria-label", "Caffold Tasks");
   const headerTypography = await page.locator(
     "caffold-task-navigator caffold-workspace-brand",
-  ).evaluate((brandHost) => {
+  ).evaluate((brandHost, detailTitle) => {
     const rootFontSize = Number.parseFloat(
       getComputedStyle(document.documentElement).fontSize,
     );
     const brand = brandHost.shadowRoot;
     const navigatorTitle = brand.querySelector(".workspace-brand-title");
-    const detailTitle = document.querySelector(".task-detail-heading > h2");
     const brandIcon = brand.querySelector(".workspace-brand-icon");
     return {
       rootFontSize,
@@ -1686,7 +1685,7 @@ test("archives and restores an idle Caffold task through the grouped Archived se
       detailTitleSize: Number.parseFloat(getComputedStyle(detailTitle).fontSize),
       brandIconWidth: Number.parseFloat(getComputedStyle(brandIcon).width),
     };
-  });
+  }, await page.locator(".task-detail-heading > h2").elementHandle());
   expect(headerTypography.navigatorTitleSize).toBeCloseTo(
     headerTypography.rootFontSize * 0.8125,
     2,

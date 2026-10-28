@@ -16,10 +16,11 @@ import "./info/components/copy-markdown.js";
 import type { CaffoldNotesInfoCopyMarkdown } from "./info/components/copy-markdown.js";
 import "./info/components/copy-path.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { returnPopoverFocus } from "#app/popover-focus.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import type { CaffoldNotesInfoCopyPath } from "./info/components/copy-path.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./info.css.js";
 
 let notesInfoInstanceId = 0;
@@ -108,6 +109,7 @@ export class CaffoldNotesInfo extends CaffoldElement {
         id=${this.popoverId}
         class="notes-info-popover"
         popover="auto"
+        @beforetoggle=${returnPopoverFocus}
         aria-label="Note details"
         @caffold:keyboard-session-dismiss=${this.deactivate}
       >

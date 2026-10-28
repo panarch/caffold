@@ -1,20 +1,16 @@
-import { html, LitElement, type PropertyValues } from "lit";
+import { html, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import { activeTurnDuration } from "../active-turn.js";
 
 import busySpin from "#app/pages/component-styles/busy-spin.css.js";
-import { adoptScopedStyle } from "#app/scoped-style.js";
-
-adoptScopedStyle(
-  busySpin,
-  "caffold-task-active-turn",
-  "> .task-active-turn-spinner",
-);
+import styles from "./active-turn.css.js";
 
 // The turn in progress: how long it has run and what it is doing. Its clock
 // ticks only while the conversation is on screen.
 @customElement("caffold-task-active-turn")
-export class CaffoldTaskActiveTurn extends LitElement {
+export class CaffoldTaskActiveTurn extends CaffoldElement {
   @property({ attribute: false })
   accessor startedMs: number | null = null;
   @property({ attribute: false })
@@ -24,11 +20,12 @@ export class CaffoldTaskActiveTurn extends LitElement {
   @state()
   private accessor nowMs: number = Date.now();
 
-  private clockTimer: number | null = null;
+  static override styles = [
+    scopedStyle(busySpin, ".task-active-turn-spinner"),
+    styles,
+  ];
 
-  override createRenderRoot() {
-    return this;
-  }
+  private clockTimer: number | null = null;
 
   override connectedCallback() {
     super.connectedCallback();

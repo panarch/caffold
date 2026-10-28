@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { activateActionHint } from "../support/action-hints.js";
+import { elementHandles } from "../support/element-handles.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import { canonicalTaskState, captureReviewScreenshot, stabilizeDynamicText } from "../support/task-fixtures.js";
@@ -76,8 +77,8 @@ for (const scopes of [[], ["allowForSession"], ["allowForSession", "allowAlways"
     await argument.press("ArrowRight");
     await page.evaluate(() => window.__mcpScrollEnded);
     await expect.poll(() => argument.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
-    const geometry = await card.evaluate((node) => {
-      const parent = node.closest(".task-conversation-scroll").getBoundingClientRect();
+    const geometry = await card.evaluate((node, scroll) => {
+      const parent = scroll.getBoundingClientRect();
       const box = node.getBoundingClientRect();
       return {
         contained: box.left >= parent.left - 1 && box.right <= parent.right + 1,
@@ -88,7 +89,7 @@ for (const scopes of [[], ["allowForSession"], ["allowForSession", "allowAlways"
           return text.left >= box.left && text.right <= box.right && text.top >= box.top && text.bottom <= box.bottom;
         }),
       };
-    });
+    }, await page.locator(".task-conversation-scroll").elementHandle());
     expect(geometry).toEqual({ contained: true, overflow: false, buttonsReadable: true });
     // Equivalent projection keeps DOM-owned horizontal scroll, text selection,
     // and focus intact, even when an independent detail refresh arrives.
@@ -173,7 +174,7 @@ test("approval owner retains native state through refresh, errors, and lifecycle
     const range = document.createRange(); range.selectNodeContents(node.querySelector("code"));
     window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
     window.__approvalNode = node;
-    window.__approvalOwner = node.closest("caffold-task-approval");
+    window.__approvalOwner = node.getRootNode().host;
   });
   scenario.events = [approval, scenario.eventRecord("independent-message", "assistant_message", "Still inspecting", {
     text: "Still inspecting", phase: "commentary", itemId: "independent-message",
@@ -417,12 +418,8 @@ test("renders permission and network approvals without clipping at appearance ex
     "20px",
   );
 
-  const layout = await tasksPage.evaluate((tasks) => {
-    const flow = tasks.querySelector(".task-approval-flow");
-    const permission = tasks.querySelector(".task-approval-card");
+  const layout = await page.evaluate(([flow, permission, scroller, command, cards]) => {
     const actions = permission.querySelector(".task-approval-actions");
-    const scroller = tasks.querySelector(".task-conversation-scroll");
-    const command = tasks.querySelector(".task-approval-card pre");
     const contained = (child, parent) => {
       const childBox = child.getBoundingClientRect();
       const parentBox = parent.getBoundingClientRect();
@@ -437,9 +434,7 @@ test("renders permission and network approvals without clipping at appearance ex
         style.display === "grid"
           ? style.gridTemplateColumns.split(" ").filter(Boolean).length
           : 0,
-      cardsContained: [...tasks.querySelectorAll(".task-approval-card")].every(
-        (card) => contained(card, scroller),
-      ),
+      cardsContained: cards.every((card) => contained(card, scroller)),
       commandContained: contained(command, command.closest(".task-approval-card")),
       commandScrolls: command.scrollWidth > command.clientWidth,
       documentOverflow:
@@ -450,7 +445,15 @@ test("renders permission and network approvals without clipping at appearance ex
         getComputedStyle(document.documentElement).fontSize,
       ),
     };
-  });
+  }, [
+    ...(await elementHandles(tasksPage, [
+      ".task-approval-flow",
+      ".task-approval-card",
+      ".task-conversation-scroll",
+      ".task-approval-card pre",
+    ])),
+    await tasksPage.locator(".task-approval-card").elementHandles(),
+  ]);
   expect(layout.cardsContained).toBe(true);
   expect(layout.commandContained).toBe(true);
   expect(layout.commandScrolls).toBe(true);

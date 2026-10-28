@@ -3339,9 +3339,10 @@ test("keeps mixed surfaces reflowed across appearance extremes", { tag: "@all-vi
     github.html = "<p>Long-form review <code>const value = 1;</code></p>";
     host.append(github);
     await github.updateComplete;
+    await approval.updateComplete;
 
-    const approvalText = approval.querySelector("p");
-    const approvalCode = approval.querySelector("pre");
+    const approvalText = approval.shadowRoot.querySelector("p");
+    const approvalCode = approval.shadowRoot.querySelector("pre");
     const textarea = composer.shadowRoot.querySelector("textarea");
     const send = composer.shadowRoot.querySelector(".task-primary-action-button");
     const githubText = github.shadowRoot.querySelector("p");

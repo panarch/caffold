@@ -49,6 +49,7 @@ import {
   type CaffoldUpdateDialog,
 } from "./components/update-dialog.js";
 import "./components/update-result-dialog.js";
+import { adoptScopedStyle } from "#app/scoped-style.js";
 import type { CaffoldUpdateResultDialog } from "./components/update-result-dialog.js";
 import {
   FOREGROUND_RECOVERY_PRESENTATION,
@@ -64,7 +65,6 @@ import {
 import { PwaUpdateLifecycle } from "./pwa-update-lifecycle.js";
 
 import busySpin from "#app/pages/component-styles/busy-spin.css.js";
-import { adoptScopedStyle } from "#app/scoped-style.js";
 
 export interface RequestTasksRouteDetail {
   route: ParsedRoute;

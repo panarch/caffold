@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { elementHandles } from "../support/element-handles.js";
 import {
   activateActionHint,
   enterActionHints,
@@ -148,10 +149,10 @@ test("the terminal takes the full width, and the side panel keys never reach its
   await expect(navigator).toBeHidden();
   await expect(toggle).toBeVisible();
   await expect(toggle).toBeDisabled();
-  const edges = await page.evaluate(() => ({
-    workspace: document.querySelector("caffold-task-workspace").getBoundingClientRect().left,
-    terminal: document.querySelector("caffold-terminal-page").getBoundingClientRect().left,
-  }));
+  const edges = await page.evaluate(([workspace, terminal]) => ({
+    workspace: workspace.getBoundingClientRect().left,
+    terminal: terminal.getBoundingClientRect().left,
+  }), await elementHandles(page, ["caffold-task-workspace", "caffold-terminal-page"]));
   expect(edges.terminal).toBeCloseTo(edges.workspace, 1);
   await captureReviewScreenshot(page, testInfo, "terminal-full-width");
 
@@ -510,7 +511,7 @@ test("the terminal bar is as tall as the review file header, with its buttons un
     .locator("caffold-terminal-page > .terminal-page-bar")
     .evaluate((bar) => bar.getBoundingClientRect().height);
   const buttons = await drawnButtons(page, {
-    terminal: "caffold-task-detail-terminal > button",
+    terminal: "caffold-task-detail-terminal button",
     info: ".task-detail-info-button",
     keyboard: '.terminal-page-bar > [data-terminal-action="special-keys"]',
     kill: '.terminal-page-bar > [data-terminal-action="kill"]',
@@ -550,7 +551,7 @@ test("a Section's terminal bar has its buttons under Git, GitHub, and the termin
   const buttons = await drawnButtons(page, {
     git: ".task-git-button",
     github: ".task-github-button",
-    terminal: "caffold-task-detail-terminal > button",
+    terminal: "caffold-task-detail-terminal button",
     keyboard: '.terminal-page-bar > [data-terminal-action="special-keys"]',
     kill: '.terminal-page-bar > [data-terminal-action="kill"]',
     toggle: '.terminal-page-bar > [data-terminal-action="header"]',
@@ -770,20 +771,25 @@ test("the terminal button sits beside Task details and matches its size", { tag:
   });
   await openTask(page, threadId, "", { detail });
 
-  const geometry = await page.locator("caffold-detail-layout").evaluate((layout) => {
-    const box = (selector) => {
-      const rect = layout.querySelector(selector).getBoundingClientRect();
+  const geometry = await page.evaluate(([terminal, info, heading, actions, title]) => {
+    const box = (element) => {
+      const rect = element.getBoundingClientRect();
       return { left: rect.left, right: rect.right, top: rect.top, width: rect.width, height: rect.height };
     };
-    const heading = layout.querySelector(".task-detail-heading > h2");
     return {
-      terminal: box("caffold-task-detail-terminal > button"),
-      info: box(".task-detail-info-button"),
-      heading: box(".task-detail-heading"),
-      actions: box(".detail-layout-actions"),
-      titleClipped: heading.scrollWidth > heading.clientWidth,
+      terminal: box(terminal),
+      info: box(info),
+      heading: box(heading),
+      actions: box(actions),
+      titleClipped: title.scrollWidth > title.clientWidth,
     };
-  });
+  }, await elementHandles(page.locator("caffold-detail-layout"), [
+    "caffold-task-detail-terminal button",
+    ".task-detail-info-button",
+    ".task-detail-heading",
+    ".detail-layout-actions",
+    ".task-detail-heading > h2",
+  ]));
   expect(geometry.terminal.width).toBeCloseTo(geometry.info.width, 1);
   expect(geometry.terminal.height).toBeCloseTo(geometry.info.height, 1);
   expect(geometry.terminal.top).toBeCloseTo(geometry.info.top, 1);
@@ -821,13 +827,15 @@ test("a Section's terminal button is its header's last control", { tag: "@all-vi
   const header = page.locator("caffold-detail-layout .detail-layout-summary");
   const button = terminalButton(page);
   await expect(button).toBeEnabled();
-  const geometry = await header.evaluate((element) => {
-    const rect = (node) => node.getBoundingClientRect();
-    const terminal = rect(element.querySelector("caffold-task-detail-terminal > button"));
-    const controls = [...element.querySelectorAll("button")]
+  // The header's controls each draw their button in their own root.
+  const controls = await header.locator("button").evaluateAll((buttons) =>
+    buttons
       .filter((control) => control.getClientRects().length)
-      .map((control) => rect(control));
-    const heading = rect(element.querySelector("caffold-section-detail-summary"));
+      .map((control) => control.getBoundingClientRect()),
+  );
+  const geometry = await page.evaluate(([terminalButton, summary, controls]) => {
+    const terminal = terminalButton.getBoundingClientRect();
+    const heading = summary.getBoundingClientRect();
     return {
       lastRight: Math.max(...controls.map(({ right }) => right)),
       terminalRight: terminal.right,
@@ -835,7 +843,13 @@ test("a Section's terminal button is its header's last control", { tag: "@all-vi
       headingTop: heading.top,
       headingBottom: heading.bottom,
     };
-  });
+  }, [
+    ...(await elementHandles(header, [
+      "caffold-task-detail-terminal button",
+      "caffold-section-detail-summary",
+    ])),
+    controls,
+  ]);
   expect(geometry.terminalRight).toBeCloseTo(geometry.lastRight, 1);
   expect(geometry.terminalTop).toBeLessThan(geometry.headingBottom);
 
@@ -917,7 +931,7 @@ test("the special key row starts on touch screens and keeps the choice", { tag: 
   await expect(keys).toBeVisible();
   const row = await keys.evaluate((element) => ({
     fits: element.scrollWidth <= element.clientWidth,
-    buttons: element.querySelectorAll("button").length,
+    buttons: element.shadowRoot.querySelectorAll("button").length,
   }));
   expect(row).toEqual({ fits: true, buttons: 7 });
 
@@ -1033,7 +1047,7 @@ async function installKeyboardViewport(page) {
 }
 
 function terminalButton(page) {
-  return page.locator("caffold-task-detail-terminal > button");
+  return page.locator("caffold-task-detail-terminal button");
 }
 
 function terminalRows(page) {
@@ -1060,18 +1074,20 @@ async function expectPrompt(page) {
 // Where each button draws its box, inside its larger hit area. The first
 // button on screen for each selector is measured.
 async function drawnButtons(page, selectors) {
-  return page.evaluate((selectors) => Object.fromEntries(
-    Object.entries(selectors).map(([name, selector]) => {
-      const button = [...document.querySelectorAll(selector)]
-        .find((element) => element.getClientRects().length);
-      const rect = button.getBoundingClientRect();
-      const box = ["::before", "::after"]
-        .map((pseudo) => getComputedStyle(button, pseudo))
-        .find((style) => style.position === "absolute" && style.content !== "none");
-      const inset = box ? parseFloat(box.left) : 0;
-      return [name, { left: rect.left + inset, right: rect.right - inset }];
-    }),
-  ), selectors);
+  return Object.fromEntries(await Promise.all(
+    Object.entries(selectors).map(async ([name, selector]) => [
+      name,
+      await page.locator(selector).evaluateAll((buttons) => {
+        const button = buttons.find((element) => element.getClientRects().length);
+        const rect = button.getBoundingClientRect();
+        const box = ["::before", "::after"]
+          .map((pseudo) => getComputedStyle(button, pseudo))
+          .find((style) => style.position === "absolute" && style.content !== "none");
+        const inset = box ? parseFloat(box.left) : 0;
+        return { left: rect.left + inset, right: rect.right - inset };
+      }),
+    ]),
+  ));
 }
 
 // The terminal screen's boxes, and where each button of its bar draws its box,
@@ -1085,7 +1101,8 @@ async function terminalBarGeometry(page) {
       const { left, right, top, bottom } = element.getBoundingClientRect();
       return { left, right, top, bottom };
     };
-    const buttons = [...terminal.querySelectorAll(":scope > .terminal-page-bar > button")]
+    const root = terminal.shadowRoot;
+    const buttons = [...root.querySelectorAll(".terminal-page-bar > button")]
       .filter((button) => button.getClientRects().length)
       .map((button) => {
         const inset = parseFloat(getComputedStyle(button, "::before").top);
@@ -1100,11 +1117,11 @@ async function terminalBarGeometry(page) {
       })
       .sort((a, b) => a.top - b.top || a.left - b.left);
     return {
-      detail: box(terminal.closest("caffold-detail-layout")),
+      detail: box(terminal.getRootNode().host),
       page: box(terminal),
-      bar: box(terminal.querySelector(":scope > .terminal-page-bar")),
-      body: box(terminal.querySelector(":scope > .terminal-page-body")),
-      keys: box(terminal.querySelector(":scope > caffold-terminal-special-keys")),
+      bar: box(root.querySelector(".terminal-page-bar")),
+      body: box(root.querySelector(".terminal-page-body")),
+      keys: box(root.querySelector("caffold-terminal-special-keys")),
       buttons,
     };
   });

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { elementHandles } from "../support/element-handles.js";
 import {
   installTaskApiFixture,
   taskDetailFixture,
@@ -42,10 +43,9 @@ test("scales visible Task controls without shrinking their touch targets", { tag
       "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden]) .task-model-name",
     ),
   ).toHaveCount(1);
-  await page.evaluate(async () => {
-    const composer = document.querySelector(
-      "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])",
-    );
+  await page.locator(
+    "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])",
+  ).evaluate(async (composer) => {
     composer.state.attachments = [
       {
         id: "scale-audit-image",
@@ -259,35 +259,36 @@ function attachmentRemoveMetrics(page) {
   });
 }
 
-function taskInterfaceMetrics(page) {
-  return page.evaluate(() => {
+async function taskInterfaceMetrics(page) {
+  return page.evaluate(([
+    activeComposer,
+    info,
+    git,
+    github,
+    terminal,
+    archive,
+    popoverTerm,
+    popoverValue,
+    openPopover,
+  ]) => {
     const number = (value) => Number.parseFloat(value) || 0;
     const rootStyle = getComputedStyle(document.documentElement);
     const rootFontSize = number(rootStyle.fontSize);
     const tokenPixels = (name) =>
       number(rootStyle.getPropertyValue(name)) * rootFontSize;
-    const activeComposer = document.querySelector(
-      "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])",
-    );
-    const activeDetail = document.querySelector(
-      "caffold-task-detail:not([hidden])",
-    );
-    const detailLayout = activeDetail.closest("caffold-detail-layout");
     // The Composer draws in its own root, and its turn options in theirs.
     const composer = activeComposer.shadowRoot;
     const turnOptions = composer.querySelector("caffold-task-turn-options").shadowRoot;
     const controls = {
       close: document.querySelector(".task-workspace-back"),
-      info: detailLayout.querySelector(".task-detail-info-button"),
+      info,
       newTask: document
         .querySelector("caffold-task-navigator")
         .shadowRoot.querySelector(".task-list-new-task"),
-      git: detailLayout.querySelector(".task-git-button"),
-      github: detailLayout.querySelector(".task-github-button"),
-      terminal: detailLayout.querySelector(".task-terminal-button"),
-      archive: detailLayout.querySelector(
-        ".task-detail-popover:popover-open .task-detail-archive-action .task-secondary-button",
-      ),
+      git,
+      github,
+      terminal,
+      archive,
       model: turnOptions.querySelector(".task-model-button"),
       permission: turnOptions.querySelector(".task-permission-button"),
       send: composer.querySelector(".task-primary-action-button"),
@@ -395,12 +396,8 @@ function taskInterfaceMetrics(page) {
     const compactInset = number(
       getComputedStyle(controls.git, "::before").left,
     );
-    const popoverLabelFontSize = fontSize(
-      document.querySelector(".task-detail-popover dt"),
-    );
-    const popoverValueFontSize = fontSize(
-      document.querySelector(".task-detail-popover dd"),
-    );
+    const popoverLabelFontSize = fontSize(popoverTerm);
+    const popoverValueFontSize = fontSize(popoverValue);
     const worktreeGuide = document
       .querySelector("caffold-task-new")
       .shadowRoot.querySelector(".task-new-worktree-guide");
@@ -410,9 +407,7 @@ function taskInterfaceMetrics(page) {
     const worktreeGuideBodyFontSize = fontSize(worktreeGuide);
     const archiveHitTarget = verticalHitTarget(controls.archive);
     const archiveHitDebug = hitDebug(controls.archive);
-    detailLayout
-      .querySelector(".task-detail-popover:popover-open")
-      ?.hidePopover();
+    openPopover?.hidePopover();
 
     return {
       rootFontSize,
@@ -468,5 +463,15 @@ function taskInterfaceMetrics(page) {
         archive: archiveHitDebug,
       },
     };
-  });
+  }, await elementHandles(page.locator("caffold-detail-layout"), [
+    "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])",
+    ".task-detail-info-button",
+    ".task-git-button",
+    ".task-github-button",
+    ".task-terminal-button",
+    ".task-detail-popover:popover-open .task-detail-archive-action .task-secondary-button",
+    ".task-detail-popover dt",
+    ".task-detail-popover dd",
+    ".task-detail-popover:popover-open",
+  ]));
 }

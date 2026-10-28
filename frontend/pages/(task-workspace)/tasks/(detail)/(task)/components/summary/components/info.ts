@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -7,10 +7,7 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hints.js";
 import type { Task, TaskWorktree } from "#app/api.js";
-import {
-  KEYBOARD_SESSION_DISMISS_EVENT,
-  KeyboardContexts,
-} from "#app/keyboard-navigation.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
@@ -19,6 +16,9 @@ import { formatTaskStatus, taskStatusView } from "#tasks/runtime-state.js";
 import { shortId } from "#tasks/task-format.js";
 import { taskThreadId } from "#tasks/task-list-model.js";
 import "./info/components/actions.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { returnPopoverFocus } from "#app/popover-focus.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import type {
   CaffoldTaskDetailInfoActions,
   TaskInfoActionIntent,
@@ -26,7 +26,8 @@ import type {
 } from "./info/components/actions.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
-import { adoptScopedStyle } from "#app/scoped-style.js";
+import actionIcon from "#tasks/component-styles/action-icon.css.js";
+import styles from "./info.css.js";
 
 let taskInfoInstanceId = 0;
 
@@ -63,12 +64,6 @@ export function taskInfoSnapshot(
   };
 }
 
-adoptScopedStyle(
-  compactIconButton,
-  "caffold-task-detail-info",
-  "> .task-detail-info-button",
-);
-
 /**
  * The Task's details button in the summary: its status, and a popover with
  * the Task's thread, directory, and worktree above its actions.
@@ -76,9 +71,15 @@ adoptScopedStyle(
  * The popover closes when another Task takes this one's place.
  */
 @customElement("caffold-task-detail-info")
-export class CaffoldTaskDetailInfo extends LitElement {
+export class CaffoldTaskDetailInfo extends CaffoldElement {
   @property({ attribute: false })
   accessor snapshot: TaskInfoSnapshot = taskInfoSnapshot();
+
+  static override styles = [
+    scopedStyle(compactIconButton, ".task-detail-info-button"),
+    scopedStyle(actionIcon, ".task-action-icon"),
+    styles,
+  ];
 
   private readonly popoverId = `task-detail-info-${++taskInfoInstanceId}`;
   private readonly iconsReady = () => this.requestUpdate();
@@ -87,17 +88,6 @@ export class CaffoldTaskDetailInfo extends LitElement {
   private readonly infoButton = new DrawnRef<HTMLButtonElement>(this);
   private readonly infoPopover = new DrawnRef<HTMLDivElement>(this);
   private readonly actions = new DrawnRef<CaffoldTaskDetailInfoActions>(this);
-
-  constructor() {
-    super();
-    this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) =>
-      this.handleDismiss(event),
-    );
-  }
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -169,6 +159,8 @@ export class CaffoldTaskDetailInfo extends LitElement {
         id=${this.popoverId}
         class="task-detail-popover"
         popover="auto"
+        @beforetoggle=${returnPopoverFocus}
+        @caffold:keyboard-session-dismiss=${this.handleDismiss}
         aria-label="Task details"
       >
         <dl>

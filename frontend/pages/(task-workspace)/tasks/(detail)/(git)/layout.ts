@@ -18,6 +18,7 @@ import "./compare/page.js";
 import type { CaffoldGitComparePage } from "./compare/page.js";
 import "./components/controls.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import type { OpenCompareDiffDetail } from "#components/git-compare-tree.js";
 import type { OpenCommitDiffDetail } from "./(log)/commit/components/changes-tree.js";
 import type {
@@ -31,7 +32,6 @@ import {
 } from "./components/controls.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./layout.css.js";
 
 export interface RequestGitRouteDetail {

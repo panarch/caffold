@@ -14,6 +14,7 @@ import {
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
+import { elementHandles } from "../support/element-handles.js";
 import {
   activeTaskProjection,
   activeWatchSubscriptionId,
@@ -910,7 +911,7 @@ test("reloads Task-scoped Compare and releases its refs watch while inactive", {
   await expect(page.locator("caffold-git-compare-page")).toContainText("example.rs");
   const compareHeaderGeometry = await layout
     .locator(":scope > .task-git-surface > .task-domain-header")
-    .evaluate((header) => {
+    .evaluate((header, [taskHeader, taskTitle]) => {
       const title = header.querySelector(".task-domain-title").getBoundingClientRect();
       const titleStyle = getComputedStyle(
         header.querySelector(".task-domain-title"),
@@ -922,16 +923,13 @@ test("reloads Task-scoped Compare and releases its refs watch while inactive", {
       const headerStyle = getComputedStyle(header);
       const paddingLeft = Number.parseFloat(headerStyle.paddingLeft);
       const paddingRight = Number.parseFloat(headerStyle.paddingRight);
-      const taskHeader = document.querySelector(".detail-layout-summary");
       const taskHeaderStyle = getComputedStyle(taskHeader);
       const domainTitleStyle = getComputedStyle(
         header.querySelector(".task-domain-title h2"),
       );
-      const taskTitleStyle = getComputedStyle(
-        taskHeader.querySelector(".task-detail-heading > h2"),
-      );
+      const taskTitleStyle = getComputedStyle(taskTitle);
       const visibleControlRects = [
-        ...header.querySelectorAll(
+        ...header.querySelector("caffold-git-review-controls").shadowRoot.querySelectorAll(
           ".review-compare-ref-controls label, .review-compare-ref-controls select, .review-compare-ref-separator, .git-review-refresh",
         ),
       ]
@@ -969,7 +967,10 @@ test("reloads Task-scoped Compare and releases its refs watch while inactive", {
         controlsAtTrailingEdge:
           Math.abs(bounds.right - paddingRight - controls.right) <= 1,
       };
-    });
+    }, await elementHandles(page.locator("caffold-detail-layout"), [
+      ".detail-layout-summary",
+      ".task-detail-heading > h2",
+    ]));
   expect(compareHeaderGeometry.height).toBeCloseTo(
     compareHeaderGeometry.minimumHeight,
     0,

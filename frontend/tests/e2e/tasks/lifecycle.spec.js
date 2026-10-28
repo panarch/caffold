@@ -2309,7 +2309,9 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
     const nextSibling = element.nextSibling;
     const navigator = workspace.querySelector("caffold-task-navigator");
     const taskNew = element.querySelector("caffold-task-new");
-    const detail = element.querySelector("caffold-task-detail");
+    const taskDetail = () =>
+      element.querySelector("caffold-detail-layout").shadowRoot.querySelector("caffold-task-detail");
+    const detail = taskDetail();
     // New Task draws Task creation, which draws the Composer, each in its root.
     const composer = taskNew.shadowRoot
       .querySelector("caffold-task-create")
@@ -2339,7 +2341,7 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
       sameNavigator: navigator === workspace.querySelector("caffold-task-navigator"),
       navigatorStillConnected: element.taskNavigator() === navigator,
       sameTaskNew: taskNew === element.querySelector("caffold-task-new"),
-      sameDetail: detail === element.querySelector("caffold-task-detail"),
+      sameDetail: detail !== null && detail === taskDetail(),
       turnOptionRequestsReleased,
       settledTurnOptionsNotAskedAgain:
         turnOptions.permissionRequest === null &&

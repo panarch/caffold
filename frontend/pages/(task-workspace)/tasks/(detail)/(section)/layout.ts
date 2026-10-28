@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
 import { mergeActionHintScopes } from "#app/action-hints.js";
@@ -17,7 +17,10 @@ import { cleanLogicalPath } from "../../task-format.js";
 import "./components/conversation-shortcuts.js";
 import type { CaffoldSectionConversationShortcuts } from "./components/conversation-shortcuts.js";
 import "./components/github-shortcuts.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { CaffoldSectionGithubShortcuts } from "./components/github-shortcuts.js";
+
+import styles from "./layout.css.js";
 
 // The Section Detail opens: its identity, its directory as its name, whether
 // that is a Git repository, and what a new Task there starts from.
@@ -37,7 +40,9 @@ export type DetailSection = Pick<
  * reads it right after each change, so it draws at once.
  */
 @customElement("caffold-section-detail")
-export class CaffoldSectionDetail extends LitElement {
+export class CaffoldSectionDetail extends CaffoldElement {
+  static override styles = styles;
+
   private section: DetailSection | null = null;
   private server: { root?: string; homePath?: string | null } = {};
   private transportAvailable = true;
@@ -47,10 +52,6 @@ export class CaffoldSectionDetail extends LitElement {
   private readonly conversations =
     new DrawnRef<CaffoldSectionConversationShortcuts>(this);
   private readonly github = new DrawnRef<CaffoldSectionGithubShortcuts>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   setSection(section: DetailSection | null | undefined) {
     this.ensureDrawn();
@@ -150,7 +151,7 @@ export class CaffoldSectionDetail extends LitElement {
             },
           ]
         : [],
-      mutationRoots: [this],
+      mutationRoots: [this, this.renderRoot],
       resizeElements: [this],
       scrollRoots: [this],
     };

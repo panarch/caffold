@@ -20,6 +20,7 @@ import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
 import "../../components/workspace-brand.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import type { FileTreeLoadChildrenDetail } from "#components/file-tree.js";
 import type { NotesPicker } from "../layout/selection.js";
 import { moveIntoPane } from "../move-into-pane.js";
@@ -32,7 +33,6 @@ import {
 } from "../tree.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./navigator.css.js";
 
 export const NOTES_NAVIGATOR_INTENT_EVENT = "caffold:notes-navigator-intent";

@@ -114,18 +114,14 @@ test("opens the agent's numbers above the pie in the Task details form", { tag: 
   await page.keyboard.press("Escape");
   await expect(popover).toBeHidden();
   await page.locator("caffold-task-detail-info .task-detail-info-button").click();
-  const reference = await page.evaluate(() => {
-    const header = document
-      .querySelector("caffold-task-detail-info")
-      .closest(".detail-layout-summary")
-      .getBoundingClientRect();
-    const popover = document.querySelector(".task-detail-popover");
+  const reference = await page.evaluate(([buttonElement, popover]) => {
+    const button = buttonElement.getBoundingClientRect();
     const box = popover.getBoundingClientRect();
     const style = getComputedStyle(popover);
     const term = getComputedStyle(popover.querySelector("dt"));
     const value = getComputedStyle(popover.querySelector("dd"));
     return {
-      belowHeader: box.top - header.bottom,
+      belowButton: box.top - button.bottom,
       left: box.left,
       right: window.innerWidth - box.right,
       form: {
@@ -140,14 +136,17 @@ test("opens the agent's numbers above the pie in the Task details form", { tag: 
         valueSize: value.fontSize,
       },
     };
-  });
+  }, await elementHandles(page.locator("caffold-detail-layout"), [
+    ".task-detail-info-button",
+    ".task-detail-popover",
+  ]));
 
   expect(opened.form).toEqual(reference.form);
   if (opened.phone) {
-    // The width of Task details, and its gap from the pie it opens from.
+    // The width of Task details, and its gap from the button it opens from.
     expect(opened.left).toBeCloseTo(reference.left, 1);
     expect(opened.right).toBeCloseTo(reference.right, 1);
-    expect(opened.gapAbovePie).toBeCloseTo(reference.belowHeader, 1);
+    expect(opened.gapAbovePie).toBeCloseTo(reference.belowButton, 1);
   } else {
     expect(opened.abovePie).toBe(true);
     expect(opened.rightEdgeToPie).toBeLessThan(1);

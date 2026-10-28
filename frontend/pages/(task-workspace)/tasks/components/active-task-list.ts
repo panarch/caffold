@@ -18,6 +18,7 @@ import {
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/loading-text.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import { focusedElement } from "#app/shadow-roots.js";
 import type { WorkspaceLiveUpdates } from "../../live-updates.js";
 import {
@@ -44,7 +45,6 @@ import {
 import { moveListItemBefore } from "./active-task-list/move-list-item.js";
 
 import secondaryButton from "#app/component-styles/secondary-button.css.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./active-task-list.css.js";
 
 export interface TaskNavigatorTransportChangeDetail {

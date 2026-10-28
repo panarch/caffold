@@ -22,6 +22,7 @@ import "./(pulls)/layout.js";
 import type { CaffoldGithubPullsLayout } from "./(pulls)/layout.js";
 import "./components/task-start-dialog.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import type {
   ChangeGithubIssuesPageDetail,
   OpenGithubIssueDetail,
@@ -38,7 +39,6 @@ import type {
 } from "./components/task-start-dialog.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./layout.css.js";
 
 export interface RequestGithubRouteDetail {

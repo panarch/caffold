@@ -29,11 +29,11 @@ import {
 import { inlineIcon, warmIcons } from "../../icons.js";
 import "../../loading-text.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import { DrawnRef, drawn } from "../../drawn-refs.js";
 import type { FileTreeLoadChildrenDetail } from "../../file-tree.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./list.css.js";
 
 export interface OpenEntryDetail {

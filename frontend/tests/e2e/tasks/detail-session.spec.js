@@ -5,6 +5,7 @@ import {
   workspaceTargets,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { elementHandles } from "../support/element-handles.js";
 import {
   installTaskApiFixture,
   taskDetailFixture,
@@ -393,8 +394,22 @@ test("updates stable detail regions and preserves an active IME composition", { 
   await page.goto("/tasks/thread-1?cwd=src");
   await emitTaskDetailBootstrap(page, detail);
   const tasksPage = page.locator("caffold-tasks-page");
-  const form = tasksPage.locator(".task-follow-up-form");
+  const form = page.locator("caffold-task-detail .task-follow-up-form");
   const prompt = form.locator('textarea[name="prompt"]');
+  // The regions this test keeps hold of, each found in the root it is drawn
+  // in: the summary heading, the conversation, the prompt, and two messages.
+  const regions = () =>
+    elementHandles(tasksPage, [
+      "caffold-task-detail-summary h2",
+      ".task-conversation-scroll",
+      'caffold-task-detail .task-follow-up-form textarea[name="prompt"]',
+      '.task-message[data-event-id="event-live-render-boundary"], .task-assistant-message[data-event-id="event-live-render-boundary"]',
+      '.task-message[data-event-id="event-stable-sibling"], .task-assistant-message[data-event-id="event-stable-sibling"]',
+    ]);
+  const messageOrder = () =>
+    tasksPage
+      .locator(".task-message[data-event-id], .task-assistant-message[data-event-id]")
+      .evaluateAll((messages) => messages.map((message) => message.dataset.eventId));
   await expect(form.locator(".task-model-button")).toContainText("Test");
   await expect(form.locator(".task-permission-button")).toContainText(
     "Auto review",
@@ -404,13 +419,8 @@ test("updates stable detail regions and preserves an active IME composition", { 
     .toBe(true);
 
   await prompt.focus();
-  await prompt.evaluate((textarea) => {
-    // The prompt is the Composer's, drawn in its root inside the Task detail.
-    const detailElement = textarea.getRootNode().host.closest("caffold-task-detail");
-    if (!detailElement) {
-      throw new Error("Follow-up prompt is outside the task detail owner");
-    }
-    const detailLayout = detailElement.closest("caffold-detail-layout");
+  const [summaryHeading, conversationScroller] = await regions();
+  await prompt.evaluate((textarea, nodes) => {
     textarea.dispatchEvent(
       new CompositionEvent("compositionstart", {
         bubbles: true,
@@ -420,16 +430,8 @@ test("updates stable detail regions and preserves an active IME composition", { 
     textarea.value = "한";
     textarea.setSelectionRange(1, 1);
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
-    window.__detailRegionNodes = {
-      summaryHeading: detailLayout.querySelector(
-        "caffold-task-detail-summary h2",
-      ),
-      conversationScroller: detailElement.querySelector(
-        ".task-conversation-scroll",
-      ),
-      prompt: textarea,
-    };
-  });
+    window.__detailRegionNodes = { ...nodes, prompt: textarea };
+  }, { summaryHeading, conversationScroller });
 
   await page.evaluate((event) => {
     window.__taskDetailSource.emit("task-event", {
@@ -460,8 +462,7 @@ test("updates stable detail regions and preserves an active IME composition", { 
   await expect(tasksPage).not.toContainText("Duplicate delta must be ignored");
   await expect
     .poll(() =>
-      tasksPage.evaluate((element) => {
-        const detailElement = element.querySelector("caffold-task-detail");
+      page.locator("caffold-task-detail").evaluate((detailElement) => {
         const event = detailElement.events.find(
           (candidate) => candidate.id === "event-live-render-boundary",
         );
@@ -476,24 +477,20 @@ test("updates stable detail regions and preserves an active IME composition", { 
       text: "Only the conversation changed.",
     });
   expect(
-    await tasksPage.evaluate((element) => {
+    await page.evaluate(([summaryHeading, conversationScroller, prompt]) => {
       const nodes = window.__detailRegionNodes;
+      let focused = document.activeElement;
+      while (focused?.shadowRoot?.activeElement) {
+        focused = focused.shadowRoot.activeElement;
+      }
       return {
-        summaryPreserved:
-          element.querySelector("caffold-task-detail-summary h2") ===
-          nodes.summaryHeading,
-        conversationPreserved:
-          element.querySelector(".task-conversation-scroll") ===
-          nodes.conversationScroller,
-        promptPreserved:
-          element
-            .querySelector("caffold-task-composer")
-            .shadowRoot.querySelector('.task-follow-up-form textarea[name="prompt"]') === nodes.prompt,
+        summaryPreserved: summaryHeading === nodes.summaryHeading,
+        conversationPreserved: conversationScroller === nodes.conversationScroller,
+        promptPreserved: prompt === nodes.prompt,
         promptValue: nodes.prompt.value,
-        promptFocused:
-          document.activeElement.shadowRoot?.activeElement === nodes.prompt,
+        promptFocused: focused === nodes.prompt,
       };
-    }),
+    }, await regions()),
   ).toEqual({
     summaryPreserved: true,
     conversationPreserved: true,
@@ -502,31 +499,17 @@ test("updates stable detail regions and preserves an active IME composition", { 
     promptFocused: true,
   });
 
-  await tasksPage.evaluate((element) => {
-    const detailElement = element.querySelector("caffold-task-detail");
+  await page.evaluate(([nodes, order]) => {
+    const [summaryHeading, conversationScroller, prompt, message, siblingMessage] = nodes;
     window.__detailRegionNodes = {
-      summaryHeading: element.querySelector(
-        "caffold-task-detail-summary h2",
-      ),
-      conversationScroller: detailElement.querySelector(
-        ".task-conversation-scroll",
-      ),
-      message: detailElement.querySelector(
-        '.task-message[data-event-id="event-live-render-boundary"], .task-assistant-message[data-event-id="event-live-render-boundary"]',
-      ),
-      siblingMessage: detailElement.querySelector(
-        '.task-message[data-event-id="event-stable-sibling"], .task-assistant-message[data-event-id="event-stable-sibling"]',
-      ),
-      prompt: detailElement
-        .querySelector("caffold-task-composer")
-        .shadowRoot.querySelector('.task-follow-up-form textarea[name="prompt"]'),
+      summaryHeading,
+      conversationScroller,
+      message,
+      siblingMessage,
+      prompt,
     };
-    window.__detailRegionOrderBefore = [
-      ...detailElement.querySelectorAll(
-        ".task-message[data-event-id], .task-assistant-message[data-event-id]",
-      ),
-    ].map((message) => message.dataset.eventId);
-  });
+    window.__detailRegionOrderBefore = order;
+  }, [await regions(), await messageOrder()]);
   await page.evaluate((nextDetail) => {
     window.__taskDetailSource.emit("task-sync", {
       threadId: "thread-1",
@@ -548,36 +531,19 @@ test("updates stable detail regions and preserves an active IME composition", { 
     ],
   });
   expect(
-    await tasksPage.evaluate((element) => {
-      const nodes = window.__detailRegionNodes;
-      const detailElement = element.querySelector("caffold-task-detail");
+    await page.evaluate(([nodes, orderAfter]) => {
+      const [summaryHeading, conversationScroller, prompt, message, siblingMessage] = nodes;
+      const before = window.__detailRegionNodes;
       return {
-        summaryPreserved:
-          element.querySelector("caffold-task-detail-summary h2") ===
-          nodes.summaryHeading,
-        conversationPreserved:
-          element.querySelector(".task-conversation-scroll") ===
-          nodes.conversationScroller,
-        messagePreserved:
-          detailElement.querySelector(
-            '.task-message[data-event-id="event-live-render-boundary"], .task-assistant-message[data-event-id="event-live-render-boundary"]',
-          ) === nodes.message,
-        siblingMessagePreserved:
-          detailElement.querySelector(
-            '.task-message[data-event-id="event-stable-sibling"], .task-assistant-message[data-event-id="event-stable-sibling"]',
-          ) === nodes.siblingMessage,
+        summaryPreserved: summaryHeading === before.summaryHeading,
+        conversationPreserved: conversationScroller === before.conversationScroller,
+        messagePreserved: message === before.message,
+        siblingMessagePreserved: siblingMessage === before.siblingMessage,
         orderBefore: window.__detailRegionOrderBefore,
-        orderAfter: [
-          ...detailElement.querySelectorAll(
-            ".task-message[data-event-id], .task-assistant-message[data-event-id]",
-          ),
-        ].map((message) => message.dataset.eventId),
-        promptPreserved:
-          element
-            .querySelector("caffold-task-composer")
-            .shadowRoot.querySelector('.task-follow-up-form textarea[name="prompt"]') === nodes.prompt,
+        orderAfter,
+        promptPreserved: prompt === before.prompt,
       };
-    }),
+    }, [await regions(), await messageOrder()]),
   ).toEqual({
     summaryPreserved: true,
     conversationPreserved: true,
@@ -612,20 +578,16 @@ test("updates stable detail regions and preserves an active IME composition", { 
   await expect(
     tasksPage.getByRole("button", { name: "Task details, idle" }),
   ).toBeVisible();
+  const followUpComposer = page.locator(
+    "caffold-task-detail .task-follow-up-composer-slot > caffold-task-composer",
+  );
   expect(
-    await tasksPage.evaluate((element) => {
-      const composer = element.querySelector(
-        ".task-follow-up-composer-slot > caffold-task-composer",
-      );
-      return {
-        promptPreserved:
-          element
-            .querySelector("caffold-task-composer")
-            .shadowRoot.querySelector('.task-follow-up-form textarea[name="prompt"]') ===
-          window.__detailRegionNodes.prompt,
-        renderDeferred: composer.drewWhileComposing,
-      };
-    }),
+    await followUpComposer.evaluate((composer) => ({
+      promptPreserved:
+        composer.shadowRoot.querySelector('.task-follow-up-form textarea[name="prompt"]') ===
+        window.__detailRegionNodes.prompt,
+      renderDeferred: composer.drewWhileComposing,
+    })),
   ).toEqual({ promptPreserved: true, renderDeferred: true });
 
   await prompt.evaluate((textarea) => {
@@ -644,12 +606,9 @@ test("updates stable detail regions and preserves an active IME composition", { 
   await expect(prompt).toBeFocused();
   await expect
     .poll(() =>
-      tasksPage.evaluate((element) => {
-        const composer = element.querySelector(
-          ".task-follow-up-composer-slot > caffold-task-composer",
-        );
-        return !composer.compositionActive && !composer.drewWhileComposing;
-      }),
+      followUpComposer.evaluate(
+        (composer) => !composer.compositionActive && !composer.drewWhileComposing,
+      ),
     )
     .toBe(true);
 });
@@ -682,15 +641,14 @@ test("keeps a growing agent message inside the element already rendering it", { 
   await expect
     .poll(() => page.evaluate(() => Boolean(window.__taskDetailSource)))
     .toBe(true);
-  await tasksPage.evaluate((element) => {
-    const row = element.querySelector(
+  const growingAnswer = () =>
+    elementHandles(tasksPage, [
       '.task-assistant-message[data-event-id="event-growing-answer"]',
-    );
-    window.__growingAnswerNodes = {
-      row,
-      markdown: row.querySelector("caffold-task-markdown"),
-    };
-  });
+      '.task-assistant-message[data-event-id="event-growing-answer"] caffold-task-markdown',
+    ]);
+  await page.evaluate(([row, markdown]) => {
+    window.__growingAnswerNodes = { row, markdown };
+  }, await growingAnswer());
 
   await page.evaluate((event) => {
     window.__taskDetailSource.emit("task-event", {
@@ -711,17 +669,13 @@ test("keeps a growing agent message inside the element already rendering it", { 
   // Longer text is the same message still being written, so the element that
   // parsed the first half keeps parsing rather than being replaced.
   expect(
-    await tasksPage.evaluate((element) => {
+    await page.evaluate(([row, markdown]) => {
       const nodes = window.__growingAnswerNodes;
-      const row = element.querySelector(
-        '.task-assistant-message[data-event-id="event-growing-answer"]',
-      );
       return {
         rowPreserved: row === nodes.row,
-        markdownPreserved:
-          row?.querySelector("caffold-task-markdown") === nodes.markdown,
+        markdownPreserved: markdown === nodes.markdown,
       };
-    }),
+    }, await growingAnswer()),
   ).toEqual({ rowPreserved: true, markdownPreserved: true });
 });
 
@@ -1362,23 +1316,18 @@ test("preserves stable detail children through another task load failure", { tag
     window.__stableTaskReview = element;
   });
   await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
-  await tasksPage.evaluate((element) => {
-    const markers = new Map([
-      ["conversation", "caffold-task-conversation"],
-      ["composer", "caffold-task-detail caffold-task-composer"],
-    ]);
-    for (const [name, selector] of markers) {
-      element.querySelector(selector).dataset.stableChild = name;
-    }
-    window.__stableTaskComposer = element.querySelector(
-      "caffold-task-detail caffold-task-composer",
-    );
+  await page.locator("caffold-task-detail").evaluate((detail) => {
+    detail.shadowRoot.querySelector("caffold-task-conversation").dataset.stableChild =
+      "conversation";
+    const composer = detail.shadowRoot.querySelector("caffold-task-composer");
+    composer.dataset.stableChild = "composer";
+    window.__stableTaskComposer = composer;
   });
   const conversation = tasksPage.locator(
     '[data-stable-child="conversation"]',
   );
   await conversation.evaluate((element) => {
-    window.__stableTaskActiveTurn = element.querySelector(
+    window.__stableTaskActiveTurn = element.shadowRoot.querySelector(
       ".task-turn-active > caffold-task-active-turn",
     );
   });
@@ -1401,8 +1350,7 @@ test("preserves stable detail children through another task load failure", { tag
   await expect(conversation).toHaveCount(1);
   await expect
     .poll(() =>
-      tasksPage.evaluate((element) => {
-        const detail = element.querySelector("caffold-task-detail");
+      page.locator("caffold-task-detail").evaluate((detail) => {
         return (
           detail.followUpComposers?.get("thread-stable-a") ===
             window.__stableTaskComposer &&
@@ -1541,16 +1489,15 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
   });
   expect(imageDraft.id).not.toBe("");
   expect(imageDraft.src).toMatch(/^data:image\/png;base64,/);
-  await tasksPage.evaluate((element) => {
-    const detail = element.querySelector("caffold-task-detail");
+  await page.locator("caffold-task-detail").evaluate((detail) => {
     const composer = detail.followUpComposer();
     const image = composer.state.attachments[0];
     composer.dataset.cacheIdentity = "stateful";
     window.__statefulTaskComposer = composer;
     window.__statefulTaskImage = image;
-    window.__statefulTaskAttachment = composer.querySelector(
-      ".task-composer-attachment",
-    );
+    window.__statefulTaskAttachment = composer.shadowRoot
+      .querySelector("caffold-task-composer-attachments")
+      .shadowRoot.querySelector(".task-composer-attachment");
   });
 
   const workspaceNavigation = page.locator("caffold-task-workspace-navigation");
@@ -1559,14 +1506,15 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
     .click();
   await expect(page).toHaveURL("/settings");
   await expect(tasksPage).toBeHidden();
-  const settingsRetention = await tasksPage.evaluate((element, threadId) => {
-    const detail = element.querySelector("caffold-task-detail");
+  const settingsRetention = await page.locator("caffold-task-detail").evaluate((detail, threadId) => {
     const composer = detail.followUpComposers.get(threadId);
     return {
       sameComposer: composer === window.__statefulTaskComposer,
       sameImage: composer.state.attachments[0] === window.__statefulTaskImage,
       sameAttachment:
-        composer.querySelector(".task-composer-attachment") ===
+        composer.shadowRoot
+          .querySelector("caffold-task-composer-attachments")
+          .shadowRoot.querySelector(".task-composer-attachment") ===
         window.__statefulTaskAttachment,
       connected: composer.isConnected,
     };
@@ -1585,8 +1533,7 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
   await expect(attachment).toHaveCount(1);
 
   await openTaskWithBootstrap(tasksPage, details.get(threadIds[1]));
-  await tasksPage.evaluate((element, threadId) => {
-    const detail = element.querySelector("caffold-task-detail");
+  await page.locator("caffold-task-detail").evaluate((detail, threadId) => {
     window.__oldestCleanTaskComposer =
       detail.followUpComposers.get(threadId);
   }, threadIds[1]);
@@ -1594,8 +1541,7 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
     await openTaskWithBootstrap(tasksPage, details.get(threadId));
   }
 
-  const cache = await tasksPage.evaluate((element, ids) => {
-    const detail = element.querySelector("caffold-task-detail");
+  const cache = await page.locator("caffold-task-detail").evaluate((detail, ids) => {
     const active = detail.followUpComposer();
     const stateful = detail.followUpComposers.get(ids[0]);
     return {
@@ -1608,9 +1554,8 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
       oldestCleanConnected: window.__oldestCleanTaskComposer.isConnected,
       activeThreadId: active?.dataset.threadId ?? "",
       activeImageCount: active.state.attachments.length,
-      connectedComposers: element.querySelectorAll(
-        "caffold-task-detail caffold-task-composer",
-      ).length,
+      connectedComposers:
+        detail.shadowRoot.querySelectorAll("caffold-task-composer").length,
     };
   }, threadIds);
   expect(cache.keys).toHaveLength(8);
@@ -1624,9 +1569,8 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
   expect(cache.connectedComposers).toBe(1);
   await expect(attachment).toHaveCount(0);
 
-  const staleSubmission = await tasksPage.evaluate(
-    async (element, { staleThreadId, activeThreadId }) => {
-      const detail = element.querySelector("caffold-task-detail");
+  const staleSubmission = await page.locator("caffold-task-detail").evaluate(
+    async (detail, { staleThreadId, activeThreadId }) => {
       const composer = window.__statefulTaskComposer;
       const originalResolve = composer.resolveSubmission.bind(composer);
       let resolution = null;
@@ -1660,8 +1604,7 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
   await prompt.fill("Keep this isolated Task B draft");
 
   await openTaskWithBootstrap(tasksPage, details.get(threadIds[2]));
-  await tasksPage.evaluate((element, threadId) => {
-    const detail = element.querySelector("caffold-task-detail");
+  await page.locator("caffold-task-detail").evaluate((detail, threadId) => {
     if (
       detail.followUpComposer() !== detail.followUpComposers.get(threadId)
     ) {
@@ -1679,8 +1622,7 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
   await expect(previewImage).toHaveAttribute("data-attachment-id", imageDraft.id);
   await expect(attachment.locator("img")).toHaveAttribute("src", imageDraft.src);
   await expect(removeImage).toBeVisible();
-  const taskRetention = await tasksPage.evaluate((element) => {
-    const detail = element.querySelector("caffold-task-detail");
+  const taskRetention = await page.locator("caffold-task-detail").evaluate((detail) => {
     return {
       sameComposer: detail.followUpComposer() === window.__statefulTaskComposer,
       sameImage:
@@ -1811,10 +1753,8 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
   await expect(interruptError).toHaveText("Interrupt failed by fixture.");
   await expect(approvalError).toHaveText("Approval failed by fixture.");
 
-  const ownedErrors = await tasksPage.evaluate((element) => {
-    const detail = element.querySelector("caffold-task-detail");
-    const summary = element.querySelector("caffold-task-detail-summary");
-    const conversation = detail.querySelector("caffold-task-conversation");
+  const ownedErrors = await page.locator("caffold-task-detail").evaluate((detail, summary) => {
+    const conversation = detail.shadowRoot.querySelector("caffold-task-conversation");
     const composer = detail.followUpComposer();
     return {
       detailErrorFields: ["error", "interruptError", "approvalErrors"].filter(
@@ -1823,10 +1763,10 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
       summaryOwnsInterruptError: Object.hasOwn(summary, "interruptError"),
       interrupt: composer.context.interruptError,
       conversationOwnsApprovalErrors: Object.hasOwn(conversation, "approvalErrors"),
-      approval: conversation.querySelector("caffold-task-approval").errorMessage,
+      approval: conversation.shadowRoot.querySelector("caffold-task-approval").errorMessage,
       prompt: composer.context.requestError,
     };
-  });
+  }, await page.locator("caffold-task-detail-summary").elementHandle());
   expect(ownedErrors).toEqual({
     detailErrorFields: [],
     summaryOwnsInterruptError: false,
@@ -1901,8 +1841,7 @@ test("canonical stream sync clears errors but waits for the prompt response iden
   await composer.locator(".task-primary-action-button").click();
   await expect
     .poll(() =>
-      tasksPage.evaluate((element) => {
-        const detail = element.querySelector("caffold-task-detail");
+      page.locator("caffold-task-detail").evaluate((detail) => {
         return {
           requests: detail.followUpRequests.size,
           submissions: detail.followUpComposer().activeSubmissions.size,
@@ -1911,15 +1850,12 @@ test("canonical stream sync clears errors but waits for the prompt response iden
     )
     .toEqual({ requests: 1, submissions: 1 });
 
-  await tasksPage.evaluate(async (element) => {
-    await element
-      .querySelector("caffold-task-detail")
-      .loadOlderEvents();
-  });
+  await page
+    .locator("caffold-task-detail")
+    .evaluate((detail) => detail.loadOlderEvents());
   await expect
     .poll(() =>
-      tasksPage.evaluate((element) => {
-        const detail = element.querySelector("caffold-task-detail");
+      page.locator("caffold-task-detail").evaluate((detail) => {
         return {
           requests: detail.followUpRequests.size,
           submissions: detail.followUpComposer().activeSubmissions.size,
@@ -1977,8 +1913,7 @@ test("canonical stream sync clears errors but waits for the prompt response iden
   ).toHaveCount(0);
   await expect
     .poll(() =>
-      tasksPage.evaluate((element) => {
-        const detail = element.querySelector("caffold-task-detail");
+      page.locator("caffold-task-detail").evaluate((detail) => {
         return {
           requests: detail.followUpRequests.size,
           submissions: detail.followUpComposer().activeSubmissions.size,
@@ -1990,8 +1925,7 @@ test("canonical stream sync clears errors but waits for the prompt response iden
   releasePrompt();
   await expect
     .poll(() =>
-      tasksPage.evaluate((element) => {
-        const detail = element.querySelector("caffold-task-detail");
+      page.locator("caffold-task-detail").evaluate((detail) => {
         return {
           requests: detail.followUpRequests.size,
           submissions: detail.followUpComposer().activeSubmissions.size,
@@ -2072,8 +2006,7 @@ test("canonical action responses reject foreign tasks and preserve history curso
   await expect(tasksPage.locator(".task-load-older")).toHaveCount(1);
   await expect
     .poll(() =>
-      tasksPage.evaluate((element) => {
-        const detail = element.querySelector("caffold-task-detail");
+      page.locator("caffold-task-detail").evaluate((detail) => {
         return {
           threadId: detail.taskDetail?.task?.threadId,
           nextCursor: detail.eventsPage?.nextCursor,
@@ -2319,8 +2252,7 @@ test("reconciles a canonical final answer over a retained transient item after r
   const tasksPage = page.locator("caffold-tasks-page");
   await expect
     .poll(() =>
-      tasksPage.evaluate((element) => {
-        const detail = element.querySelector("caffold-task-detail");
+      page.locator("caffold-task-detail").evaluate((detail) => {
         return detail.events.find((event) =>
           event.payload?.itemId === "item_canonical_item_recovery"
         )?.type;
@@ -2348,8 +2280,7 @@ test("reconciles a canonical final answer over a retained transient item after r
   }, { registryKey, threadId });
   await expect
     .poll(() =>
-      tasksPage.evaluate((element) => {
-        const detail = element.querySelector("caffold-task-detail");
+      page.locator("caffold-task-detail").evaluate((detail) => {
         return {
           phase: detail.detailSession.phase,
           buffering: Boolean(detail.detailSession.bootstrap),
@@ -2401,8 +2332,7 @@ test("reconciles a canonical final answer over a retained transient item after r
 
   await expect
     .poll(() =>
-      tasksPage.evaluate((element) => {
-        const detail = element.querySelector("caffold-task-detail");
+      page.locator("caffold-task-detail").evaluate((detail) => {
         const event = detail.events.find(
           (candidate) =>
             candidate.payload?.itemId === "item_canonical_item_recovery",

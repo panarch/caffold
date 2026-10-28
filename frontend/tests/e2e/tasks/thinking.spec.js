@@ -84,7 +84,7 @@ test("owns Thinking disclosure state, anchor, and exact target boundary", { tag:
   await expect.poll(thinkingSeam).toEqual({ content: false, lines: 0 });
   await expect
     .poll(() =>
-      thinkingSummary.evaluate((element) => document.activeElement === element)
+      thinkingSummary.evaluate((element) => element.getRootNode().activeElement === element)
     )
     .toBe(true);
   await expect

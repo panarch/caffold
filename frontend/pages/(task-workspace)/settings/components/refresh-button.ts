@@ -6,10 +6,10 @@ import {
   ActionHints,
 } from "#app/action-hints.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 
 import busySpin from "#app/pages/component-styles/busy-spin.css.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./refresh-button.css.js";
 
 export const SETTINGS_REFRESH_INTENT_EVENT = "caffold:settings-refresh-intent";

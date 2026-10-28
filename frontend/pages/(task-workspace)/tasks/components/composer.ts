@@ -27,6 +27,7 @@ import {
 } from "./composer/voice-recorder.js";
 import "./task-turn-options.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import type {
   CaffoldTaskTurnOptions,
   TurnOptionsContext,
@@ -35,7 +36,6 @@ import type {
 } from "./task-turn-options.js";
 
 import busySpin from "#app/pages/component-styles/busy-spin.css.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./composer.css.js";
 
 export interface OpenSettingsDetail {

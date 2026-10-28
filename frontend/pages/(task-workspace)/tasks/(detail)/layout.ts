@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import type { ActionHintScope } from "#app/action-hint-scope.js";
 import {
@@ -63,6 +63,7 @@ import type {
 import "./components/terminal-button.js";
 import type { CaffoldTaskDetailTerminal } from "./components/terminal-button.js";
 import "./terminal/page.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { SegmentedControlIntentDetail } from "#components/segmented-control.js";
 import type { ChangeCompareRefsDetail } from "./(git)/components/controls.js";
 import type { RequestGitRouteDetail } from "./(git)/layout.js";
@@ -78,6 +79,8 @@ import type {
   CaffoldTerminalPage,
   TerminalPageStateDetail,
 } from "./terminal/page.js";
+
+import styles from "./layout.css.js";
 
 const CLEAN_REVIEW_CACHE_LIMIT = 6;
 
@@ -125,7 +128,9 @@ type SubjectKind = "" | "task" | "section";
  * what the subject and its route say.
  */
 @customElement("caffold-detail-layout")
-export class CaffoldDetailLayout extends LitElement {
+export class CaffoldDetailLayout extends CaffoldElement {
+  static override styles = styles;
+
   subjectKind: SubjectKind = "";
   private section: DetailSection | null = null;
   private sectionRoute: SectionDetailRoute | null = null;
@@ -167,10 +172,6 @@ export class CaffoldDetailLayout extends LitElement {
   private readonly gitSlot = new DrawnRef<HTMLDivElement>(this);
   private readonly githubSlot = new DrawnRef<HTMLDivElement>(this);
   private readonly terminalPage = new DrawnRef<CaffoldTerminalPage>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

@@ -1,78 +1,78 @@
-caffold-task-detail-github {
+:host {
   position: relative;
   display: grid;
   flex: 0 0 auto;
   height: var(--interface-compact-visual-size);
   place-items: center;
+}
 
-  &[hidden] {
-    display: none;
-  }
+:host([hidden]) {
+  display: none;
+}
 
-  & > .task-github-button {
-    display: inline-grid;
-    color: var(--text);
-    anchor-name: --task-review-github;
-  }
+.task-github-button {
+  display: inline-grid;
+  color: var(--text);
+  anchor-name: --task-review-github;
+}
 
-  & .task-github-icon {
-    position: absolute;
-    inset: 50% auto auto 50%;
-    display: block;
-    width: var(--interface-icon-size);
-    height: var(--interface-icon-size);
-    background-image: var(--brand-github-image);
-    background-position: center;
-    background-repeat: no-repeat;
-    background-size: contain;
-    transform: translate(-50%, -50%);
-  }
+.task-github-icon {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  display: block;
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
+  background-image: var(--brand-github-image);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  transform: translate(-50%, -50%);
+}
 
-  &:has(> .task-github-popover:popover-open) > .task-github-button::before {
-    border-color: var(--border-strong);
-    background: var(--surface-muted);
-  }
+.task-github-button:has(~ .task-github-popover:popover-open)::before {
+  border-color: var(--border-strong);
+  background: var(--surface-muted);
+}
 
-  & > .task-github-popover {
-    position: fixed;
-    z-index: 8;
-    inset: auto;
-    position-anchor: --task-review-github;
-    position-area: block-end center;
-    position-try-fallbacks: flip-block;
-    width: max-content;
-    margin: var(--interface-space-3) var(--interface-space-5);
-    padding: 0.25rem;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--surface);
-    box-shadow: 0 12px 30px rgb(var(--shadow-rgb) / 16%);
-  }
+.task-github-popover {
+  position: fixed;
+  z-index: 8;
+  inset: auto;
+  position-anchor: --task-review-github;
+  position-area: block-end center;
+  position-try-fallbacks: flip-block;
+  width: max-content;
+  margin: var(--interface-space-3) var(--interface-space-5);
+  padding: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 12px 30px rgb(var(--shadow-rgb) / 16%);
+}
 
-  & > .task-github-popover:popover-open {
-    display: grid;
-    align-content: start;
-  }
+.task-github-popover:popover-open {
+  display: grid;
+  align-content: start;
+}
 
-  & > .task-github-popover > button[data-github-button-action] {
-    box-sizing: border-box;
-    height: var(--interface-compact-control-size);
-    min-height: var(--interface-compact-control-size);
-    padding: 0 calc(var(--interface-space-5) + var(--keyboard-choice-slot-size))
-      0 var(--interface-space-5);
-    border: 0;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--text);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-    text-align: left;
-    cursor: pointer;
-  }
+.task-github-popover > button[data-github-button-action] {
+  box-sizing: border-box;
+  height: var(--interface-compact-control-size);
+  min-height: var(--interface-compact-control-size);
+  padding: 0 calc(var(--interface-space-5) + var(--keyboard-choice-slot-size))
+    0 var(--interface-space-5);
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+  text-align: left;
+  cursor: pointer;
+}
 
-  & > .task-github-popover > button[data-github-button-action]:hover,
-  & > .task-github-popover > button[data-github-button-action]:focus-visible {
-    background: var(--control-hover-bg);
-    outline: none;
-  }
+.task-github-popover > button[data-github-button-action]:hover,
+.task-github-popover > button[data-github-button-action]:focus-visible {
+  background: var(--control-hover-bg);
+  outline: none;
 }

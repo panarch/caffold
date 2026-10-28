@@ -1548,15 +1548,12 @@ test("keeps compact review controls and available panes inside the workspace", {
   ).toHaveCount(3);
   await expect(taskReview.locator(".task-review-toolbar")).toHaveCount(0);
 
-  const layout = await taskReview.evaluate((element) => {
+  const layout = await taskReview.evaluate((element, detailSwitch) => {
     const workspace = element.shadowRoot.querySelector(".task-review-workspace");
     const pageRect = document.querySelector("caffold-tasks-page").getBoundingClientRect();
     const workspaceRect = workspace.getBoundingClientRect();
     const navigator = element.shadowRoot.querySelector(".task-review-navigator-pane");
     const viewer = element.shadowRoot.querySelector(".task-review-viewer-pane");
-    const detailSwitch = document.querySelector(
-      "caffold-segmented-control[data-detail-view-switch]",
-    );
     const detailSwitchRect = detailSwitch.getBoundingClientRect();
     const detailSwitchStyle = getComputedStyle(detailSwitch);
     const rootFontSize = Number.parseFloat(
@@ -1645,7 +1642,7 @@ test("keeps compact review controls and available panes inside the workspace", {
         .filter((control) => control.getClientRects().length > 0)
         .map((control) => control.getBoundingClientRect().height),
     };
-  });
+  }, await page.locator("caffold-segmented-control[data-detail-view-switch]").elementHandle());
 
   expect(layout.leftGap).toBeLessThanOrEqual(1);
   expect(layout.rightGap).toBeLessThanOrEqual(1);

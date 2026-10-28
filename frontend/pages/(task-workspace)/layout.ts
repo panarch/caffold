@@ -79,6 +79,7 @@ import type {
   TaskSwitcherSelectDetail,
 } from "./tasks/components/task-switcher-dialog.js";
 import "./tasks/layout.js";
+import { adoptScopedStyle } from "#app/scoped-style.js";
 import type { PaneResizeDetail } from "../../components/pane-resizer.js";
 import type { ParsedRoute } from "../../navigation-routes.js";
 import type { RequestTasksRouteDetail } from "../layout.js";
@@ -91,7 +92,6 @@ import type { CaffoldTasksPage } from "./tasks/layout.js";
 import type { TaskNavigatorIntentDetail } from "./tasks/task-navigator-intent-event.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
-import { adoptScopedStyle } from "#app/scoped-style.js";
 
 export interface RequestWorkspaceTabDetail {
   tab: WorkspaceTab | undefined;

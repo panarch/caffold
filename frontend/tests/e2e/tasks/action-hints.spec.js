@@ -1339,12 +1339,14 @@ test("retires only a changed Conversation owner while preserving codes and the r
   await outsideBadge.evaluate((element) => {
     window.__conversationHintOutsideBadge = element;
   });
-  await survivorPreview.evaluate((element) => {
+  // The entry sits in the conversation's root, the button in the attachments'.
+  const survivorOwner = conversation
+    .locator(".task-event[data-conversation-entry-key]")
+    .filter({ has: page.getByRole("button", { name: "Preview owner-b.png" }) });
+  await survivorPreview.evaluate((element, owner) => {
     window.__conversationHintSurvivorControl = element;
-    window.__conversationHintSurvivorOwner = element.closest(
-      ".task-event[data-conversation-entry-key]",
-    );
-  });
+    window.__conversationHintSurvivorOwner = owner;
+  }, await survivorOwner.elementHandle());
 
   await conversation.evaluate((element, imageUrl) => {
     const ownerB = element.snapshot.events.find(
@@ -1425,7 +1427,16 @@ test("retires only a changed Conversation owner while preserving codes and the r
       updateKind: "live",
       events,
     });
-    const changedPreview = element.querySelector(
+    // The button sits in the attachments' root, inside the message's.
+    const find = (root, selector) =>
+      root.querySelector(selector) ??
+      [...root.querySelectorAll("*")]
+        .filter((child) => child.shadowRoot)
+        .map((child) => find(child.shadowRoot, selector))
+        .find(Boolean) ??
+      null;
+    const changedPreview = find(
+      element.shadowRoot,
       'button[aria-label="Preview owner-a.png"]',
     );
     changedPreview.style.minHeight = "40px";
@@ -1450,24 +1461,20 @@ test("retires only a changed Conversation owner while preserving codes and the r
   expect(await dialog.locator(
     `[data-action-hint-code="${outsideCode}"]`,
   ).evaluate((badge) => badge === window.__conversationHintOutsideBadge)).toBe(true);
-  expect(await survivorPreview.evaluate((element) =>
+  expect(await survivorPreview.evaluate((element, owner) =>
     element === window.__conversationHintSurvivorControl &&
-    element.closest(".task-event[data-conversation-entry-key]") ===
-      window.__conversationHintSurvivorOwner
-  )).toBe(true);
-  await expect.poll(() => dialog.locator(
+    owner === window.__conversationHintSurvivorOwner
+  , await survivorOwner.elementHandle())).toBe(true);
+  await expect.poll(async () => dialog.locator(
     `[data-action-hint-code="${survivorCode}"]`,
-  ).evaluate((badge) => {
-    const control = document.querySelector(
-      'button[aria-label="Preview owner-b.png"]',
-    );
+  ).evaluate((badge, control) => {
     if (!control) {
       return Infinity;
     }
     return Math.abs(
       control.getBoundingClientRect().top - badge.getBoundingClientRect().top,
     );
-  })).toBeLessThanOrEqual(1);
+  }, await survivorPreview.elementHandle())).toBeLessThanOrEqual(1);
   const currentSurvivorTop = await dialog.locator(
     `[data-action-hint-code="${survivorCode}"]`,
   ).evaluate((element) => element.getBoundingClientRect().top);

@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -24,6 +24,12 @@ import {
   type TaskTransportState,
 } from "../../runtime-state.js";
 import "./components/special-keys.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
+import {
+  containsAcrossShadowRoots,
+  focusedElement,
+} from "#app/shadow-roots.js";
 import type { TerminalViewInputDetail } from "#components/terminal-view.js";
 import type {
   CaffoldTerminalSpecialKeys,
@@ -47,7 +53,8 @@ import {
 } from "./page/model.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
-import { adoptScopedStyle } from "#app/scoped-style.js";
+import secondaryButton from "#app/component-styles/secondary-button.css.js";
+import styles from "./page.css.js";
 
 export interface TerminalPageStateDetail {
   node: TerminalNode;
@@ -63,12 +70,6 @@ const SPECIAL_KEYS_STORAGE_KEY = "caffold:terminal-special-keys";
 const HEADER_STORAGE_KEY = "caffold:terminal-header-hidden";
 const FALLBACK_SIZE: TerminalSize = Object.freeze({ cols: 80, rows: 24 });
 
-adoptScopedStyle(
-  compactIconButton,
-  "caffold-terminal-page",
-  "> .terminal-page-bar > .terminal-page-button",
-);
-
 /**
  * The terminal of one Task or Section, shown in place of the Detail body.
  *
@@ -77,7 +78,16 @@ adoptScopedStyle(
  * `apply`. The backend owns whether a terminal exists and who sees it.
  */
 @customElement("caffold-terminal-page")
-export class CaffoldTerminalPage extends LitElement {
+export class CaffoldTerminalPage extends CaffoldElement {
+  static override styles = [
+    scopedStyle(
+      compactIconButton,
+      ".terminal-page-bar > .terminal-page-button",
+    ),
+    scopedStyle(secondaryButton, ".task-secondary-button"),
+    styles,
+  ];
+
   private state: TerminalState = initialTerminalState();
   private subject: TerminalSubject | null = null;
   private cwd = "";
@@ -95,10 +105,6 @@ export class CaffoldTerminalPage extends LitElement {
   private readonly hints = new ActionHints(this);
   private readonly terminalView = new DrawnRef<CaffoldTerminalView>(this);
   private readonly specialKeys = new DrawnRef<CaffoldTerminalSpecialKeys>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -364,10 +370,11 @@ export class CaffoldTerminalPage extends LitElement {
         this.terminalView.value?.focus();
         break;
       case TERMINAL_EFFECT.RELEASE_FOCUS:
-        if (this.contains(document.activeElement)) {
+        if (containsAcrossShadowRoots(this, focusedElement())) {
           this.dispatchEvent(
             new CustomEvent(TERMINAL_PAGE_FOCUS_RELEASE_EVENT, {
               bubbles: true,
+              composed: true,
             }),
           );
         }

@@ -89,6 +89,42 @@ const shadowRootStyles = new Map([
   ["pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.css", "caffold-review-working-tree-changes"],
   ["pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.css", "caffold-git-diff-changes-tree"],
   ["pages/(task-workspace)/tasks/(detail)/(review)/layout.css", "caffold-task-review"],
+  ["pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.css", "caffold-section-conversation-shortcuts"],
+  ["pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.css", "caffold-conversation-fork-dialog"],
+  ["pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.css", "caffold-section-github-shortcuts"],
+  ["pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css", "caffold-section-detail-summary"],
+  ["pages/(task-workspace)/tasks/(detail)/(section)/layout.css", "caffold-section-detail"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/broken-delete-dialog.css", "caffold-broken-task-delete-dialog"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css", "caffold-task-command-dialog"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css", "caffold-task-conversation"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css", "caffold-task-active-turn"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.css", "caffold-task-approval"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.css", "caffold-task-assistant-message"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.css", "caffold-task-assistant-message-copy-button"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.css", "caffold-task-assistant-message-suggested-prompts"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css", "caffold-task-changed-files"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.css", "caffold-task-command-group"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css", "caffold-task-command"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css", "caffold-task-markdown"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css", "caffold-task-markdown-code-block"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.css", "caffold-task-message-attachments"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.css", "caffold-task-older-history"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.css", "caffold-task-user-message"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css", "caffold-task-work-details"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.css", "caffold-task-current-plan"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.css", "caffold-current-plan-document-dialog"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.css", "caffold-task-markdown-preview-dialog"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.css", "caffold-task-permission-instructions-dialog"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css", "caffold-task-detail-summary"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css", "caffold-task-detail-info"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css", "caffold-task-detail-info-actions"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/layout.css", "caffold-task-detail"],
+  ["pages/(task-workspace)/tasks/(detail)/components/git-menu.css", "caffold-task-detail-git"],
+  ["pages/(task-workspace)/tasks/(detail)/components/github-menu.css", "caffold-task-detail-github"],
+  ["pages/(task-workspace)/tasks/(detail)/components/terminal-button.css", "caffold-task-detail-terminal"],
+  ["pages/(task-workspace)/tasks/(detail)/layout.css", "caffold-detail-layout"],
+  ["pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.css", "caffold-terminal-special-keys"],
+  ["pages/(task-workspace)/tasks/(detail)/terminal/page.css", "caffold-terminal-page"],
   ["pages/(task-workspace)/tasks/components/active-task-list.css", "caffold-active-task-list"],
   ["pages/(task-workspace)/tasks/components/active-task-list/components/section.css", "caffold-active-task-section"],
   ["pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css", "caffold-active-task-row"],
@@ -124,148 +160,6 @@ const ownership = new Map([
     "pages/(task-workspace)/components/update-task-dialog.css",
     ["caffold-update-task-dialog"],
   ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
-    ["caffold-task-conversation"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.css",
-    ["caffold-task-older-history"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css",
-    ["caffold-task-active-turn"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.css",
-    ["caffold-task-assistant-message"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.css",
-    ["caffold-task-assistant-message-copy-button"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.css",
-    ["caffold-task-assistant-message-suggested-prompts"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.css",
-    ["caffold-task-message-attachments"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.css",
-    ["caffold-task-user-message"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css",
-    ["caffold-task-changed-files"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.css",
-    ["caffold-task-approval"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css",
-    ["caffold-task-command"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.css",
-    ["caffold-task-command-group"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css",
-    ["caffold-task-markdown"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css",
-    ["caffold-task-markdown-code-block"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/broken-delete-dialog.css",
-    ["caffold-broken-task-delete-dialog"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
-    ["caffold-task-command-dialog"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.css",
-    ["caffold-task-markdown-preview-dialog"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.css",
-    ["caffold-task-permission-instructions-dialog"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.css",
-    ["caffold-task-current-plan"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.css",
-    ["caffold-current-plan-document-dialog"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css",
-    ["caffold-task-work-details"],
-  ],
-  ["pages/(task-workspace)/tasks/(detail)/(task)/layout.css", ["caffold-task-detail"]],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css",
-    ["caffold-task-detail-summary"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/components/git-menu.css",
-    ["caffold-task-detail-git"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/components/github-menu.css",
-    ["caffold-task-detail-github"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/components/terminal-button.css",
-    ["caffold-task-detail-terminal"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/terminal/page.css",
-    ["caffold-terminal-page"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.css",
-    ["caffold-terminal-special-keys"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css",
-    ["caffold-task-detail-info"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css",
-    ["caffold-task-detail-info-actions"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/layout.css",
-    ["caffold-detail-layout"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(section)/layout.css",
-    ["caffold-section-detail"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.css",
-    ["caffold-section-conversation-shortcuts"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.css",
-    ["caffold-conversation-fork-dialog"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.css",
-    ["caffold-section-github-shortcuts"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css",
-    ["caffold-section-detail-summary"],
-  ],
-  ["pages/(task-workspace)/tasks/controls.css", ["caffold-tasks-page"]],
   ["pages/(task-workspace)/tasks/layout.css", ["caffold-tasks-page"]],
   [
     "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css",

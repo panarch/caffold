@@ -487,7 +487,10 @@ test("loads older collapsed work without a scrollbar and waits for each requeste
       expect(await scroller.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(true);
     };
     const historyLayout = () => scroller.evaluate((element) => ({
-      noticeHeight: element.querySelector(".task-load-older").getBoundingClientRect().height,
+      noticeHeight: element
+        .querySelector("caffold-task-older-history")
+        .shadowRoot.querySelector(".task-load-older")
+        .getBoundingClientRect().height,
       workTop: element.querySelector("caffold-task-work-details").getBoundingClientRect().top,
     }));
     await expect(conversation).toContainText("Done.");
@@ -1713,18 +1716,16 @@ test("keeps task event chronology stable through approval, completion, and reloa
     element.dispatchEvent(new Event("scroll"));
   });
   await expect.poll(() => isScrolledToBottom(conversationScroller)).toBe(true);
-  const disclosureOffset = await completedWorkSummary.evaluate((summary) => {
-    const scroller = summary.closest(".task-conversation-scroll");
-    return summary.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-  });
+  const summaryOffset = async () => completedWorkSummary.evaluate(
+    (summary, scroller) => summary.getBoundingClientRect().top - scroller.getBoundingClientRect().top,
+    await conversationScroller.elementHandle(),
+  );
+  const disclosureOffset = await summaryOffset();
   await completedWorkSummary.click();
   await expect(completedWorkDetails).toHaveAttribute("open", "");
   await expect
     .poll(() =>
-      completedWorkSummary.evaluate((summary) => {
-        const scroller = summary.closest(".task-conversation-scroll");
-        return summary.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-      }),
+      summaryOffset(),
     )
     .toBeCloseTo(disclosureOffset, 1);
   await expect.poll(() => isScrolledToBottom(conversationScroller)).toBe(false);
@@ -1750,19 +1751,13 @@ test("keeps task event chronology stable through approval, completion, and reloa
       text: "New work arrived while older logs are open.",
     },
   );
-  const disclosureOffsetBeforeLive = await completedWorkSummary.evaluate((summary) => {
-    const scroller = summary.closest(".task-conversation-scroll");
-    return summary.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-  });
+  const disclosureOffsetBeforeLive = await summaryOffset();
   await emitTaskEvent(liveWhileExpanded, 13);
   await expect(tasksPage).toContainText("New work arrived while older logs are open.");
   await expect(completedWorkDetails).toHaveAttribute("open", "");
   await expect
     .poll(() =>
-      completedWorkSummary.evaluate((summary) => {
-        const scroller = summary.closest(".task-conversation-scroll");
-        return summary.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-      }),
+      summaryOffset(),
     )
     .toBeCloseTo(disclosureOffsetBeforeLive, 1);
   await expect.poll(() => isScrolledToBottom(conversationScroller)).toBe(false);
@@ -1790,9 +1785,8 @@ test("keeps task event chronology stable through approval, completion, and reloa
   await expect(completedCommandAction).toBeFocused();
   await expect
     .poll(() =>
-      tasksPage.evaluate((element) => {
-        const final = element
-          .querySelector("caffold-task-detail")
+      page.locator("caffold-task-detail").evaluate((detail) => {
+        const final = detail
           .events.find(
           (entry) =>
             entry.type === "assistant_message" &&

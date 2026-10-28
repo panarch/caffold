@@ -136,55 +136,53 @@ test("renders managed Task file changes relative in live cards and Work details"
     `${rootPath}/src/./render.js`,
   );
 
-  await page.evaluate(() => {
-    const standaloneOwner = document.querySelector(
-      ".task-file-change caffold-task-changed-files",
-    );
-    const completedOwner = document.querySelector(
-      "caffold-task-work-details caffold-task-changed-files",
-    );
+  // Each list draws its rows in its own root.
+  const standaloneOwner = page
+    .locator(".task-file-change caffold-task-changed-files")
+    .first();
+  const completedOwner = page
+    .locator("caffold-task-work-details caffold-task-changed-files")
+    .first();
+  const changedFileParts = async () => [
+    await standaloneOwner.elementHandle(),
+    await standaloneOwner.locator("li").first().elementHandle(),
+    await completedOwner.elementHandle(),
+    await completedOwner.locator("li").first().elementHandle(),
+  ];
+  await page.evaluate(([standaloneOwner, standaloneRow, completedOwner, completedRow]) => {
     window.__standaloneChangedFiles = standaloneOwner;
-    window.__standaloneFirstFileRow = standaloneOwner?.querySelector("li");
+    window.__standaloneFirstFileRow = standaloneRow;
     window.__completedChangedFiles = completedOwner;
-    window.__completedFirstFileRow = completedOwner?.querySelector("li");
+    window.__completedFirstFileRow = completedRow;
     window.__changedFileMutationCount = 0;
     for (const owner of [standaloneOwner, completedOwner]) {
-      new MutationObserver((records) => {
+      const observer = new MutationObserver((records) => {
         window.__changedFileMutationCount += records.length;
-      }).observe(owner, {
-        attributes: true,
-        childList: true,
-        characterData: true,
-        subtree: true,
       });
+      for (const root of [owner, owner.shadowRoot]) {
+        observer.observe(root, {
+          attributes: true,
+          childList: true,
+          characterData: true,
+          subtree: true,
+        });
+      }
     }
-  });
+  }, await changedFileParts());
 
   const equivalentDetail = structuredClone(detail);
   equivalentDetail.revision = 2;
   equivalentDetail.eventRevision = 2;
   await emitTaskSync(page, threadId, equivalentDetail);
   await expect
-    .poll(() =>
-      page.evaluate(() => ({
-        completedOwner:
-          document.querySelector(
-            "caffold-task-work-details caffold-task-changed-files",
-          ) === window.__completedChangedFiles,
-        completedRow:
-          document.querySelector(
-            "caffold-task-work-details caffold-task-changed-files li",
-          ) === window.__completedFirstFileRow,
+    .poll(async () =>
+      page.evaluate(([standaloneOwner, standaloneRow, completedOwner, completedRow]) => ({
+        completedOwner: completedOwner === window.__completedChangedFiles,
+        completedRow: completedRow === window.__completedFirstFileRow,
         mutations: window.__changedFileMutationCount,
-        standaloneOwner:
-          document.querySelector(
-            ".task-file-change caffold-task-changed-files",
-          ) === window.__standaloneChangedFiles,
-        standaloneRow:
-          document.querySelector(
-            ".task-file-change caffold-task-changed-files li",
-          ) === window.__standaloneFirstFileRow,
-      })),
+        standaloneOwner: standaloneOwner === window.__standaloneChangedFiles,
+        standaloneRow: standaloneRow === window.__standaloneFirstFileRow,
+      }), await changedFileParts()),
     )
     .toEqual({
       completedOwner: true,
@@ -233,25 +231,13 @@ test("renders managed Task file changes relative in live cards and Work details"
     ),
   ).toHaveCount(1);
   await expect
-    .poll(() =>
-      page.evaluate(() => ({
-        completedOwner:
-          document.querySelector(
-            "caffold-task-work-details caffold-task-changed-files",
-          ) === window.__completedChangedFiles,
-        completedRow:
-          document.querySelector(
-            "caffold-task-work-details caffold-task-changed-files li",
-          ) === window.__completedFirstFileRow,
-        standaloneOwner:
-          document.querySelector(
-            ".task-file-change caffold-task-changed-files",
-          ) === window.__standaloneChangedFiles,
-        standaloneRow:
-          document.querySelector(
-            ".task-file-change caffold-task-changed-files li",
-          ) === window.__standaloneFirstFileRow,
-      })),
+    .poll(async () =>
+      page.evaluate(([standaloneOwner, standaloneRow, completedOwner, completedRow]) => ({
+        completedOwner: completedOwner === window.__completedChangedFiles,
+        completedRow: completedRow === window.__completedFirstFileRow,
+        standaloneOwner: standaloneOwner === window.__standaloneChangedFiles,
+        standaloneRow: standaloneRow === window.__standaloneFirstFileRow,
+      }), await changedFileParts()),
     )
     .toEqual({
       completedOwner: true,

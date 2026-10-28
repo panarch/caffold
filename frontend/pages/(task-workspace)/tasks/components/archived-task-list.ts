@@ -38,12 +38,12 @@ import {
 } from "../task-list-model.js";
 import "./task-status-chip.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import type { ArchivedTaskListIntent } from "../task-navigator-intent-event.js";
 import { TASK_NAVIGATOR_INTENT_EVENT } from "../task-navigator-intent-event.js";
 
 import secondaryButton from "#app/component-styles/secondary-button.css.js";
 import busySpin from "#app/pages/component-styles/busy-spin.css.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./archived-task-list.css.js";
 
 export const ARCHIVED_TASK_LIST_INITIAL_SETTLED_EVENT =

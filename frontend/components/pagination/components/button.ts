@@ -2,10 +2,10 @@ import { html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { type ActionHintPull, ActionHints } from "#app/action-hints.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import { inlineIcon } from "../../icons.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./button.css.js";
 
 export interface ChangePageDetail {

@@ -7,10 +7,10 @@ import {
 } from "#app/action-hints.js";
 import { TASK_ABSENCE, type TaskAbsence } from "#app/api.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 
 import secondaryButton from "#app/component-styles/secondary-button.css.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import actionIcon from "#tasks/component-styles/action-icon.css.js";
 import styles from "./task-absence.css.js";
 

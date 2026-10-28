@@ -29,6 +29,8 @@ import type {
 } from "./active-task-list.js";
 import "./archived-task-list.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { returnPopoverFocus } from "#app/popover-focus.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import { focusedElement } from "#app/shadow-roots.js";
 import type { TaskNavigatorIntent } from "../task-navigator-intent-event.js";
 import { TASK_NAVIGATOR_INTENT_EVENT } from "../task-navigator-intent-event.js";
@@ -40,7 +42,6 @@ import type {
 } from "./archived-task-list.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import actionIcon from "#tasks/component-styles/action-icon.css.js";
 import styles from "./navigator.css.js";
 
@@ -376,6 +377,7 @@ export class CaffoldTaskNavigator extends CaffoldElement {
             id=${popoverId}
             class="task-list-reorder-popover"
             popover="auto"
+            @beforetoggle=${returnPopoverFocus}
             role="group"
             aria-label="Reorder options"
             @caffold:keyboard-session-dismiss=${this.closeReorderPopover}

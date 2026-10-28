@@ -961,14 +961,13 @@ test("keeps a repository Section draft while switching shared surfaces", { tag: 
   await expect(detail.locator("caffold-task-detail-git")).toBeVisible();
   await expect(detail.locator("caffold-task-detail-github")).toBeVisible();
   if (await page.evaluate(() => window.innerWidth > 520)) {
-    const rightAlignment = await detail.evaluate((element) => {
-      const header = element.querySelector(".detail-layout-summary");
-      // The terminal button closes the Section header's controls.
-      const visibleActionButtons = [
-        ...element.querySelectorAll(
-          ".detail-layout-actions button, caffold-task-detail-terminal > button",
-        ),
-      ].filter((button) => button.getBoundingClientRect().width > 0);
+    // The terminal button closes the Section header's controls; each control
+    // draws its button in its own root.
+    const rightAlignment = await detail.locator(
+      ".detail-layout-actions button, caffold-task-detail-terminal button",
+    ).evaluateAll((buttons, header) => {
+      const visibleActionButtons = buttons
+        .filter((button) => button.getBoundingClientRect().width > 0);
       const rightmostButton = visibleActionButtons.reduce((rightmost, button) =>
         button.getBoundingClientRect().right > rightmost.getBoundingClientRect().right
           ? button
@@ -982,7 +981,7 @@ test("keeps a repository Section draft while switching shared surfaces", { tag: 
         ),
         rightInset: headerBox.right - buttonBox.right,
       };
-    });
+    }, await detail.locator(".detail-layout-summary").elementHandle());
     expect(
       Math.abs(rightAlignment.rightInset - rightAlignment.headerPaddingRight),
     ).toBeLessThanOrEqual(0.5);
@@ -1175,8 +1174,11 @@ test("starts the Section composer where global New Task starts its composer", { 
   await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
     route.fulfill({ json: { tasks: [], nextCursor: null } })
   );
+  // The Section scrolls as a whole and draws Task creation in its own root.
   const composerOffset = (scroller) => page.locator(scroller).evaluate((scroll) => {
-    const create = scroll.querySelector(":scope > caffold-task-create");
+    const create = [...(scroll.shadowRoot ?? scroll).children].find(
+      (child) => child.localName === "caffold-task-create",
+    );
     return create.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
   });
 

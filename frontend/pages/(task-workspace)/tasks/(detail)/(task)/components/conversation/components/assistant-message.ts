@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import {
   type ActionHintPull,
@@ -17,7 +17,10 @@ import type { CaffoldTaskAssistantMessageCopyButton } from "./assistant-message/
 import "./assistant-message/components/suggested-prompts.js";
 import type { CaffoldTaskAssistantMessageSuggestedPrompts } from "./assistant-message/components/suggested-prompts.js";
 import "./markdown.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { CaffoldTaskMarkdown } from "./markdown.js";
+
+import styles from "./assistant-message.css.js";
 
 export type { SuggestedPromptIntentDetail } from "./assistant-message/components/suggested-prompts.js";
 
@@ -35,7 +38,7 @@ export type { SuggestedPromptIntentDetail } from "./assistant-message/components
  * itself.
  */
 @customElement("caffold-task-assistant-message")
-export class CaffoldTaskAssistantMessage extends LitElement {
+export class CaffoldTaskAssistantMessage extends CaffoldElement {
   @property({ attribute: false })
   accessor event: TaskEvent | null = null;
   @property({ attribute: false })
@@ -45,15 +48,13 @@ export class CaffoldTaskAssistantMessage extends LitElement {
   @property({ attribute: false })
   accessor controlsDisabled = false;
 
+  static override styles = styles;
+
   private readonly copyButton =
     new DrawnRef<CaffoldTaskAssistantMessageCopyButton>(this);
   private readonly markdown = new DrawnRef<CaffoldTaskMarkdown>(this);
   private readonly suggestedPrompts =
     new DrawnRef<CaffoldTaskAssistantMessageSuggestedPrompts>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   get presentation() {
     const { event } = this;

@@ -1,19 +1,19 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
-import {
-  KEYBOARD_SESSION_DISMISS_EVENT,
-  KeyboardContexts,
-} from "#app/keyboard-navigation.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { returnPopoverFocus } from "#app/popover-focus.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
-import { adoptScopedStyle } from "#app/scoped-style.js";
+import styles from "./git-menu.css.js";
 
 // What the menu asks the Detail layout to open.
 export interface GitMenuIntent {
@@ -23,36 +23,24 @@ export interface GitMenuIntent {
 
 let taskDetailGitInstanceId = 0;
 
-adoptScopedStyle(
-  compactIconButton,
-  "caffold-task-detail-git",
-  "> .task-git-button",
-);
-
 /**
  * The Detail header's Git button, and the popover of Git work it opens:
  * Compare and Log.
  */
 @customElement("caffold-task-detail-git")
-export class CaffoldTaskDetailGit extends LitElement {
+export class CaffoldTaskDetailGit extends CaffoldElement {
   @state()
   private accessor available = false;
+
+  static override styles = [
+    scopedStyle(compactIconButton, ".task-git-button"),
+    styles,
+  ];
 
   private readonly popoverId = `task-git-actions-${++taskDetailGitInstanceId}`;
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly gitPopover = new DrawnRef<HTMLDivElement>(this);
-
-  constructor() {
-    super();
-    this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) =>
-      this.handleDismiss(event),
-    );
-  }
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
@@ -120,6 +108,8 @@ export class CaffoldTaskDetailGit extends LitElement {
         id=${this.popoverId}
         class="task-git-popover"
         popover="auto"
+        @beforetoggle=${returnPopoverFocus}
+        @caffold:keyboard-session-dismiss=${this.handleDismiss}
         role="group"
         aria-label="Git workspace actions"
       >

@@ -575,10 +575,10 @@ test("the Note details button sits where the Task details button does", { tag: "
 }) => {
   // Task Detail stacks its view switch under the title row on a phone, so the
   // button is placed against the title it shares a row with.
-  const buttonGeometry = async (button, { header, title }) => button.evaluate((element, [headerElement, titleSelector]) => {
+  const buttonGeometry = async (button, { header, title }) => button.evaluate((element, [headerElement, titleElement]) => {
     const round = (value) => Math.round(value * 100) / 100;
     const headerBox = headerElement.getBoundingClientRect();
-    const titleBox = headerElement.querySelector(titleSelector).getBoundingClientRect();
+    const titleBox = titleElement.getBoundingClientRect();
     const box = element.getBoundingClientRect();
     return {
       width: round(box.width),
@@ -588,7 +588,7 @@ test("the Note details button sits where the Task details button does", { tag: "
         box.top + box.height / 2 - (titleBox.top + titleBox.height / 2),
       ),
     };
-  }, [await header.elementHandle(), title]);
+  }, [await header.elementHandle(), await title.elementHandle()]);
 
   await mockAgentModels(page);
   await openCompletedTaskForReview(page);
@@ -596,7 +596,7 @@ test("the Note details button sits where the Task details button does", { tag: "
   await expect(taskButton).toBeVisible();
   const task = await buttonGeometry(taskButton, {
     header: page.locator("caffold-detail-layout .detail-layout-summary").first(),
-    title: ".task-detail-heading > h2",
+    title: page.locator(".task-detail-heading > h2"),
   });
 
   await stubNotes(page);
@@ -606,7 +606,7 @@ test("the Note details button sits where the Task details button does", { tag: "
   await expect(notesButton).toBeVisible();
   const notes = await buttonGeometry(notesButton, {
     header: primaryDocument(page).locator(".notes-workspace-detail-header"),
-    title: ":scope > h1",
+    title: primaryDocument(page).locator(".notes-workspace-detail-header > h1"),
   });
 
   expect(notes).toEqual(task);
@@ -656,7 +656,7 @@ test("opens a Note by address with the tree it sits under beneath it", { tag: "@
   await expect(notesTitle(page)).toHaveText("Inbox");
 });
 
-test("a phone spreads Note details across the screen under its Info button, as Task details spreads under its header", { tag: "@phone" }, async ({
+test("a phone spreads Note details across the screen under its Info button, as Task details does under its own", { tag: "@phone" }, async ({
   page,
 }, testInfo) => {
   const popoverPlacement = async (popover, anchor) => popover.evaluate((element, anchorElement) => {
@@ -677,7 +677,7 @@ test("a phone spreads Note details across the screen under its Info button, as T
   await page.locator("caffold-task-detail-info .task-detail-info-button").click();
   const taskDetails = page.locator(".task-detail-popover");
   await expect(taskDetails).toBeVisible();
-  const task = await popoverPlacement(taskDetails, page.locator("caffold-detail-layout .detail-layout-summary").first());
+  const task = await popoverPlacement(taskDetails, page.locator("caffold-task-detail-info .task-detail-info-button"));
 
   await stubNotes(page);
   await page.goto("/notes/storage");

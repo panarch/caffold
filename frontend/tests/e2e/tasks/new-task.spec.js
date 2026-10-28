@@ -984,9 +984,8 @@ test("does not carry an older-history cursor into a newly created task", { tag: 
   await expect(tasksPage).toContainText("Previous response 12.");
   await expect
     .poll(() =>
-      tasksPage.evaluate(
-        (element) =>
-          element.querySelector("caffold-task-detail")?.eventsPage?.nextCursor,
+      tasksPage.locator("caffold-task-detail").evaluate(
+        (detail) => detail.eventsPage?.nextCursor,
       ),
     )
     .toBe(previousCursor);
@@ -1011,9 +1010,7 @@ test("does not carry an older-history cursor into a newly created task", { tag: 
 
   await promptRequested;
   await expect(page).toHaveURL(`/tasks/${createdThreadId}`);
-  const paginationState = await tasksPage.evaluate((element) => {
-    const detail = element.querySelector("caffold-task-detail");
-    const scroller = detail.querySelector(".task-conversation-scroll");
+  const paginationState = await tasksPage.locator("caffold-task-detail").evaluate((detail, scroller) => {
     scroller.scrollTop = 0;
     scroller.dispatchEvent(new Event("scroll"));
     return {
@@ -1022,7 +1019,7 @@ test("does not carry an older-history cursor into a newly created task", { tag: 
       loadingOlder: detail.loadingOlderEvents,
       selectedThreadId: detail.selectedThreadId,
     };
-  });
+  }, await tasksPage.locator(".task-conversation-scroll").elementHandle());
   expect(paginationState).toEqual({
     cursor: null,
     historyError: null,

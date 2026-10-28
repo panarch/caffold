@@ -7,13 +7,13 @@ import {
 } from "#app/action-hints.js";
 import type { GitRef } from "#app/api.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import type { FetchState } from "../(log)/layout.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
 import busySpin from "#app/pages/component-styles/busy-spin.css.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./controls.css.js";
 
 export interface ChangeCompareRefsDetail {

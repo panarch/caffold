@@ -12,11 +12,11 @@ import { ChangesReading } from "../changes-reading.js";
 import type { ReviewChange } from "./selected-file/content.js";
 import "./working-tree-changes/components/changes-tree.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import type { ChangesRead } from "../layout.js";
 import type { CaffoldGitDiffChangesTree } from "./working-tree-changes/components/changes-tree.js";
 
 import secondaryButton from "#app/component-styles/secondary-button.css.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./working-tree-changes.css.js";
 
 @customElement("caffold-review-working-tree-changes")

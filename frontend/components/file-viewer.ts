@@ -52,12 +52,13 @@ import type { CaffoldMarkdownPreview } from "./markdown-preview.js";
 import "./pdf-viewer.js";
 import "./pptx-viewer.js";
 import "./xlsx-viewer.js";
+import { returnPopoverFocus } from "#app/popover-focus.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import { CaffoldElement } from "../caffold-element.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
 import secondaryButton from "#app/component-styles/secondary-button.css.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import styles from "./file-viewer.css.js";
 
 // How long switching to another file keeps showing the previous one before
@@ -411,6 +412,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
                 id=${this.detailsPopoverId}
                 class="viewer-meta-popover"
                 popover="auto"
+                @beforetoggle=${returnPopoverFocus}
                 aria-label="File details"
                 @caffold:keyboard-session-dismiss=${this.closeDetailsPopover}
               >

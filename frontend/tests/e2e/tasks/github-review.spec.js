@@ -11,6 +11,7 @@ import {
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { TASK_PERMISSION_FIXTURE } from "../support/task-api-fixture.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
+import { elementHandles } from "../support/element-handles.js";
 import {
   AGENT_MODELS_FIXTURE,
   activeTaskProjection,
@@ -2349,16 +2350,13 @@ test("reloads a Task-scoped GitHub route from canonical Task context", { tag: "@
   await expect(domainHeader.locator(".task-domain-subtitle")).toHaveText(
     "gluesql/gluesql · 53 PRs",
   );
-  const domainHeaderGeometry = await domainHeader.evaluate((header) => {
+  const domainHeaderGeometry = await domainHeader.evaluate((header, [taskHeader, taskTitle]) => {
     const headerStyle = getComputedStyle(header);
-    const taskHeader = document.querySelector(".detail-layout-summary");
     const taskHeaderStyle = getComputedStyle(taskHeader);
     const domainTitleStyle = getComputedStyle(
       header.querySelector(".task-domain-title h2"),
     );
-    const taskTitleStyle = getComputedStyle(
-      taskHeader.querySelector(".task-detail-heading > h2"),
-    );
+    const taskTitleStyle = getComputedStyle(taskTitle);
     return {
       height: header.getBoundingClientRect().height,
       minimumHeight: Number.parseFloat(headerStyle.minHeight),
@@ -2378,7 +2376,10 @@ test("reloads a Task-scoped GitHub route from canonical Task context", { tag: "@
             Number.parseFloat(taskTitleStyle.fontSize),
         ) <= 0.1,
     };
-  });
+  }, await elementHandles(page.locator("caffold-detail-layout"), [
+    ".detail-layout-summary",
+    ".task-detail-heading > h2",
+  ]));
   expect(domainHeaderGeometry.height).toBeCloseTo(
     domainHeaderGeometry.minimumHeight,
     0,

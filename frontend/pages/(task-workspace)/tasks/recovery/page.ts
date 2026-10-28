@@ -25,6 +25,7 @@ import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
 import "../components/task-absence.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import type {
   CaffoldTaskAbsence,
   TaskAbsenceIntent,
@@ -32,7 +33,6 @@ import type {
 import { taskThreadId } from "../task-list-model.js";
 
 import secondaryButton from "#app/component-styles/secondary-button.css.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import actionIcon from "#tasks/component-styles/action-icon.css.js";
 import styles from "./page.css.js";
 

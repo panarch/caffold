@@ -70,11 +70,11 @@ test("floats ignored current documents above the stable composer and updates the
   await composer.evaluate((element) => {
     element.stableCurrentPlanProbe = true;
   });
-  const layoutWithoutPlan = await composer.evaluate((element) => {
+  const conversationScroll = page.locator(
+    "caffold-task-detail:not([hidden]) .task-conversation-scroll",
+  );
+  const layoutWithoutPlan = await composer.evaluate((element, scroller) => {
     const composer = element.getBoundingClientRect();
-    const scroller = document.querySelector(
-      "caffold-task-detail:not([hidden]) .task-conversation-scroll",
-    );
     return {
       composerTop: composer.top,
       composerBottom: composer.bottom,
@@ -82,7 +82,7 @@ test("floats ignored current documents above the stable composer and updates the
         getComputedStyle(scroller).paddingBottom,
       ),
     };
-  });
+  }, await conversationScroll.elementHandle());
 
   const planTitle =
     "Coordinate current plan documents without exposing native agent Plan mode";
@@ -123,23 +123,17 @@ test("floats ignored current documents above the stable composer and updates the
     await composer.evaluate((element) => element.stableCurrentPlanProbe),
   ).toBe(true);
 
-  const compactLayout = await currentPlan.evaluate((element) => {
-    const strip = element.querySelector(".task-current-plan-strip");
-    const plan = element.querySelector('[data-current-plan-action="plan"]');
-    const checklist = element.querySelector(
+  const compactLayout = await currentPlan.evaluate((element, [composer, conversationScroll]) => {
+    const strip = element.shadowRoot.querySelector(".task-current-plan-strip");
+    const plan = element.shadowRoot.querySelector('[data-current-plan-action="plan"]');
+    const checklist = element.shadowRoot.querySelector(
       '[data-current-plan-action="checklist"]',
     );
-    const icon = element.querySelector("[data-current-plan-document-icon]");
-    const title = element.querySelector("[data-current-plan-title]");
-    const progress = element.querySelector("[data-current-plan-progress]");
-    const composer = document.querySelector(
-      'caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])',
-    );
+    const icon = element.shadowRoot.querySelector("[data-current-plan-document-icon]");
+    const title = element.shadowRoot.querySelector("[data-current-plan-title]");
+    const progress = element.shadowRoot.querySelector("[data-current-plan-progress]");
     const composerPanel = composer.shadowRoot.querySelector(".task-composer-panel");
     const composerDock = element.closest(".task-follow-up-composer-dock");
-    const conversationScroll = document.querySelector(
-      "caffold-task-detail:not([hidden]) .task-conversation-scroll",
-    );
     const stripBox = strip.getBoundingClientRect();
     const planBox = plan.getBoundingClientRect();
     const checklistBox = checklist.getBoundingClientRect();
@@ -172,7 +166,7 @@ test("floats ignored current documents above the stable composer and updates the
       checklistLeadingSpace: progressBox.left - checklistBox.left,
       checklistTrailingSpace: checklistBox.right - progressBox.right,
     };
-  });
+  }, [await composer.elementHandle(), await conversationScroll.elementHandle()]);
   expect(
     Math.abs(compactLayout.stripHeight - compactLayout.planHeight),
   ).toBeLessThanOrEqual(2.1);
@@ -352,11 +346,11 @@ test("floats ignored current documents above the stable composer and updates the
     previewScroll,
   );
 
-  const layout = await currentPlan.evaluate((element) => {
-    const strip = element.querySelector(".task-current-plan-strip");
-    const title = element.querySelector("[data-current-plan-title]");
+  const layout = await currentPlan.evaluate((element, dialogElement) => {
+    const strip = element.shadowRoot.querySelector(".task-current-plan-strip");
+    const title = element.shadowRoot.querySelector("[data-current-plan-title]");
     const box = strip.getBoundingClientRect();
-    const dialog = element.querySelector("dialog").getBoundingClientRect();
+    const dialog = dialogElement.getBoundingClientRect();
     return {
       stripLeft: box.left,
       stripRight: box.right,
@@ -367,7 +361,7 @@ test("floats ignored current documents above the stable composer and updates the
       dialogLeft: dialog.left,
       dialogRight: dialog.right,
     };
-  });
+  }, await dialog.elementHandle());
   expect(layout.stripLeft).toBeGreaterThanOrEqual(0);
   expect(layout.stripRight).toBeLessThanOrEqual(layout.viewportWidth + 1);
   expect(layout.horizontalOverflow).toBe(false);
@@ -546,10 +540,10 @@ test("shows a partial active-turn plan on one strip line with its detail in the 
   ]);
   await expect(popover.getByRole("button", { name: "Refresh" })).toHaveCount(0);
   const popoverLayout = await currentPlan.evaluate((element) => {
-    const strip = element
+    const strip = element.shadowRoot
       .querySelector(".task-current-plan-strip")
       .getBoundingClientRect();
-    const popover = element
+    const popover = element.shadowRoot
       .querySelector(".task-current-plan-popover")
       .getBoundingClientRect();
     return {
@@ -560,7 +554,7 @@ test("shows a partial active-turn plan on one strip line with its detail in the 
       popoverTop: popover.top,
       popoverBottom: popover.bottom,
       popoverMarginRight: Number.parseFloat(
-        getComputedStyle(element.querySelector(".task-current-plan-popover"))
+        getComputedStyle(element.shadowRoot.querySelector(".task-current-plan-popover"))
           .marginRight,
       ),
       viewportWidth: window.innerWidth,

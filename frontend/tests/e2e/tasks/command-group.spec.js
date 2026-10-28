@@ -135,7 +135,7 @@ test("the empty thinking around commands folds in as rows as tall as a command",
   );
   expect(
     await card.evaluate((element) => {
-      const row = element.querySelector(":scope > .task-command-summary");
+      const row = element.shadowRoot.querySelector(".task-command-summary");
       const action = row.querySelector(".task-command-summary-action");
       return row.getBoundingClientRect().right -
         parseFloat(getComputedStyle(row).paddingRight) -
@@ -185,12 +185,9 @@ test("the empty thinking around commands folds in as rows as tall as a command",
   );
   expect(heights).toHaveLength(1);
   // Every row ends at the same right edge, View output and time alike.
-  const rightEdges = await group.evaluate((element) =>
-    [
-      ...element.querySelectorAll(".task-command-summary-action"),
-      ...element.querySelectorAll(".task-command-group-thinking-row > time"),
-    ].map((node) => node.getBoundingClientRect().right)
-  );
+  const rightEdges = await group
+    .locator(".task-command-summary-action, .task-command-group-thinking-row > time")
+    .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().right));
   expect(Math.max(...rightEdges) - Math.min(...rightEdges)).toBeLessThan(0.5);
   await expectNothingClipped(group);
   await captureReviewScreenshot(page, testInfo, "command-group-thinking");
@@ -537,11 +534,11 @@ async function emitTaskSync(page, detail, revision) {
 // A command row's frame and the left edges of what it shows, measured from the
 // top of the conversation list so scrolling cannot move them.
 async function rowGeometry(command) {
-  return command.evaluate((element) => {
+  return command.evaluate((element, listElement) => {
     const box = element.getBoundingClientRect();
-    const list = element.closest(".task-conversation").getBoundingClientRect();
+    const list = listElement.getBoundingClientRect();
     const edge = (selector, side) =>
-      element.querySelector(selector).getBoundingClientRect()[side];
+      element.shadowRoot.querySelector(selector).getBoundingClientRect()[side];
     return {
       top: box.top - list.top,
       height: box.height,
@@ -550,7 +547,7 @@ async function rowGeometry(command) {
       action: edge(".task-command-summary-action", "right"),
       border: parseFloat(getComputedStyle(element).borderTopWidth),
     };
-  });
+  }, await command.page().locator(".task-conversation").elementHandle());
 }
 
 async function hostGeometry(locator) {
@@ -573,8 +570,8 @@ async function expectNothingClipped(group) {
     await group.evaluate((element) =>
       [
         element,
-        element.querySelector(".task-command-group-label"),
-        element.querySelector(".task-command-group-results"),
+        element.shadowRoot.querySelector(".task-command-group-label"),
+        element.shadowRoot.querySelector(".task-command-group-results"),
       ].map((node) => node.scrollWidth - node.clientWidth),
     ),
   ).toEqual([0, 0, 0]);
