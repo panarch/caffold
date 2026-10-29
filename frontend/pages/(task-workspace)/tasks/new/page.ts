@@ -12,7 +12,7 @@ import "../components/task-create.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import type { ParsedRoute } from "#app/navigation-routes.js";
 import type { TaskCreateIntentDetail } from "../../task-create-intent-event.js";
-import type { ServerPaths } from "../components/task-create/directory-path.js";
+import type { ServerPaths } from "../components/directory-path.js";
 import type { CaffoldTaskCreate } from "../components/task-create.js";
 import { cleanLogicalPath } from "../task-format.js";
 

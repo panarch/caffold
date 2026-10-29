@@ -1,0 +1,109 @@
+:host {
+  display: grid;
+  overflow: hidden;
+  min-width: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+}
+
+:host([hidden]),
+[hidden] {
+  display: none;
+}
+
+h2,
+p {
+  margin: 0;
+}
+
+header {
+  display: grid;
+  gap: var(--interface-space-2);
+  padding: var(--interface-space-5) var(--interface-space-6);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-subtle);
+
+  h2 {
+    display: grid;
+    grid-template-columns: var(--interface-icon-small-size) minmax(0, 1fr);
+    align-items: start;
+    gap: var(--interface-space-3);
+    font-size: var(--interface-meta-font-size);
+    font-weight: 600;
+  }
+
+  p {
+    color: var(--muted);
+  }
+
+  .recovery-icon-slot {
+    display: grid;
+    width: var(--interface-icon-small-size);
+    height: 1lh;
+    place-items: center;
+
+    .recovery-icon {
+      display: block;
+      width: var(--interface-icon-small-size);
+      height: var(--interface-icon-small-size);
+      color: var(--warning-strong);
+    }
+  }
+
+  .recovery-title {
+    /* The line box includes unused descender space. Center the visible caps
+       in the first line's icon slot without a font-specific pixel offset. */
+    @supports (text-box: trim-both cap alphabetic) {
+      text-box: trim-both cap alphabetic;
+      padding-block: calc((1lh - 1cap) / 2);
+    }
+  }
+}
+
+.recovery-body {
+  display: grid;
+  gap: var(--interface-space-6);
+  min-width: 0;
+  padding: var(--interface-space-6);
+
+  .previous,
+  .new-location {
+    display: grid;
+    gap: var(--interface-space-3);
+    min-width: 0;
+  }
+
+  .previous-path {
+    color: var(--muted);
+    overflow-wrap: anywhere;
+    user-select: text;
+  }
+
+  .explanation,
+  .reason {
+    color: var(--muted);
+    overflow-wrap: anywhere;
+  }
+
+  .error {
+    color: var(--danger-strong);
+    overflow-wrap: anywhere;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--interface-space-4);
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+  }
+}

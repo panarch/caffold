@@ -26,7 +26,6 @@ import {
   focusedElement,
 } from "#app/shadow-roots.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
-import { directoryPathDisplay, type ServerPaths } from "../directory-path.js";
 import {
   DIRECTORY_FIELD_NODE,
   type DirectoryFieldEffect,
@@ -37,6 +36,7 @@ import {
   PARENT_ROW_KEY,
   reduceDirectoryField,
 } from "./directory-field/control.js";
+import { directoryPathDisplay, type ServerPaths } from "./directory-path.js";
 
 import styles from "./directory-field.css.js";
 
@@ -89,6 +89,7 @@ export class CaffoldTaskDirectoryField extends CaffoldElement {
   private leaveCheck = 0;
   private pressedInside = false;
   private listeningOutside = false;
+  private dismissOnLeave = true;
   private readonly fieldId = `task-directory-field-${++nextFieldId}`;
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
@@ -127,11 +128,14 @@ export class CaffoldTaskDirectoryField extends CaffoldElement {
     path = "",
     server = {},
     locked = false,
+    dismissOnLeave = true,
   }: {
     path?: string;
     server?: ServerPaths;
     locked?: boolean;
+    dismissOnLeave?: boolean;
   } = {}) {
+    this.dismissOnLeave = dismissOnLeave;
     this.dispatch({ type: "context", path, server, locked });
     this.performUpdate();
   }
@@ -296,7 +300,7 @@ export class CaffoldTaskDirectoryField extends CaffoldElement {
     if (this.dataset.node !== node) {
       this.dataset.node = node;
     }
-    this.listenOutside(node !== CLOSED);
+    this.listenOutside(node !== CLOSED && this.dismissOnLeave);
     const input = this.input.value;
     if (input && editing && input.value !== text) {
       input.value = text;
@@ -530,6 +534,9 @@ export class CaffoldTaskDirectoryField extends CaffoldElement {
   // controls, into the keyboard mode's overlay, or away from the window is
   // not leaving.
   private scheduleLeaveCheck() {
+    if (!this.dismissOnLeave) {
+      return;
+    }
     window.clearTimeout(this.leaveCheck);
     this.leaveCheck = window.setTimeout(() => {
       const active = focusedElement();

@@ -134,6 +134,11 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
         ],
     );
 
+    schema.assert_declares(
+        "v2/ThreadSettingsUpdateParams.ts",
+        &["threadId: string", "cwd?: string | null"],
+    );
+
     let client_requests = schema.read("ClientRequest.ts");
     for method in [
         "thread/start",
@@ -143,6 +148,7 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
         "thread/fork",
         "thread/delete",
         "thread/resume",
+        "thread/settings/update",
         "thread/unsubscribe",
         "thread/turns/list",
         "turn/start",

@@ -30,6 +30,39 @@ outage.
   reached. Choose **Retry** once the agent is available; you can still archive
   the Task in the meantime.
 
+## A Section shows a missing-folder warning
+
+If you moved or renamed the original folder outside Caffold, reconnect
+its Section to the folder's current location:
+
+1. Open the Section and review **Previous location**.
+2. Under **New location**, browse to the moved folder or type its path.
+   This selects a folder on the Mac running Caffold, even from another device.
+3. Finish any running Tasks, then choose **Reconnect folder**.
+
+Caffold keeps the Section and Task order. This works with ordinary folders
+and Git repositories, with or without worktrees. Deleted worktrees are not
+recreated.
+
+If an active Task fails to reconnect, the Section keeps its previous path and
+the form names that Task. Earlier successful repairs remain usable. Resolve the
+problem and retry with the same selected folder. If you no longer need a broken
+worktree's files, Task details can offer
+[Discard changes and archive](../tasks/archive-and-delete.md#discard-changes-and-archive).
+
+If you put the original folder back or resolve an access problem, choose
+**Check again** to check its original location without reconnecting.
+
+## An archived Task will not restore
+
+Restore keeps the Task in Archived if its folder or repository cannot be found.
+If its Section shows a missing-folder warning, reconnect the Section using the
+steps above, then try Restore again.
+
+A Task archived with **Discard changes and archive** may not be restorable
+when its Git connection was already broken. Its conversation remains in
+Archived.
+
 ## Another device cannot open Caffold
 
 - Use the private HTTPS address from **Settings → Remote Access**, not

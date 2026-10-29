@@ -52,15 +52,16 @@ use protocol::{
     MCP_SERVER_RESOURCE_READ, MCP_SERVER_STATUS_LIST, MODEL_LIST, McpServerStatusListResponse,
     PERMISSION_PROFILE_LIST, PermissionProfileListResponse, RateLimitResetCreditConsumeParams,
     THREAD_ARCHIVE, THREAD_DELETE, THREAD_FORK, THREAD_LIST, THREAD_NAME_SET, THREAD_READ,
-    THREAD_RESUME, THREAD_START, THREAD_TURNS_LIST, THREAD_UNARCHIVE, THREAD_UNSUBSCRIBE,
-    TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadForkResponse, ThreadReadResponse,
-    ThreadStartResponse, TurnStartResponse, TurnSteerResponse, account_read_params,
-    config_read_params, decode_response, mcp_server_status_list_params, model_list_params,
-    permission_profile_list_params, thread_archive_params, thread_delete_params,
-    thread_fork_params_with_config, thread_list_params, thread_read_params,
-    thread_resume_params_with_config, thread_set_name_params, thread_start_params_with_config,
-    thread_turns_list_params, thread_unarchive_params, thread_unsubscribe_params,
-    turn_interrupt_params, turn_start_params, turn_steer_params,
+    THREAD_RESUME, THREAD_SETTINGS_UPDATE, THREAD_START, THREAD_TURNS_LIST, THREAD_UNARCHIVE,
+    THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadDirectoryParams,
+    ThreadForkResponse, ThreadReadResponse, ThreadStartResponse, TurnStartResponse,
+    TurnSteerResponse, account_read_params, config_read_params, decode_response,
+    mcp_server_status_list_params, model_list_params, permission_profile_list_params,
+    thread_archive_params, thread_delete_params, thread_fork_params_with_config,
+    thread_list_params, thread_read_params, thread_resume_params_with_config,
+    thread_set_name_params, thread_start_params_with_config, thread_turns_list_params,
+    thread_unarchive_params, thread_unsubscribe_params, turn_interrupt_params, turn_start_params,
+    turn_steer_params,
 };
 pub(crate) use protocol::{
     CodexAppServerInfo, CodexNotification, CodexPermissionMode, CodexServerRequest, CodexThread,
@@ -71,7 +72,8 @@ pub(crate) use protocol::{
 pub(crate) use protocol::{MCP_SERVER_TOOL_CALL, decode_notification, decode_server_request};
 use protocol::{
     THREAD_INJECT_ITEMS, THREAD_LOADED_LIST, ThreadListResponse, ThreadLoadedListResponse,
-    thread_loaded_list_params, thread_naming_instructions_params,
+    ThreadStatus as CodexThreadStatus, thread_loaded_list_params,
+    thread_naming_instructions_params,
 };
 pub(crate) use readiness::{CodexInstallation, inspect_codex_installation};
 pub(crate) use readiness::{CodexReadiness, CodexReadinessReason, CodexReadinessState};
@@ -96,6 +98,7 @@ use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 use transport::ProxyStream;
 pub(crate) use update::{CodexUpdateOutcome, CodexUpdateReport};
 
+use super::Conversation;
 use super::http_mcp::CAFFOLD_MCP_SERVER_NAME;
 
 const INTERACTIVE_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
@@ -1193,6 +1196,56 @@ impl CodexThreadClient {
         initial_turns_page: bool,
         service_tier: &str,
     ) -> Result<ThreadResumeResponse, CodexThreadError> {
+        self.resume_thread_in_directory(thread_id, initial_turns_page, service_tier, None)
+            .await
+    }
+
+    pub(crate) async fn move_working_directory(
+        &self,
+        thread_id: &str,
+        cwd: &str,
+        service_tier: &str,
+    ) -> Result<Conversation, CodexThreadError> {
+        let loaded = self
+            .resume_thread_in_directory(thread_id, false, service_tier, Some(cwd))
+            .await?;
+        if loaded.thread.id != thread_id || loaded.thread.status != CodexThreadStatus::Idle {
+            return Err(CodexThreadError::Protocol(
+                "Codex must confirm the same idle thread before its folder can be changed.".into(),
+            ));
+        }
+        // Resume overrides do not change an already loaded thread. Update its
+        // effective settings explicitly, then read those settings back. The
+        // nested thread may still carry the previous persisted metadata here.
+        self.request_typed::<EmptyResponse, _>(
+            THREAD_SETTINGS_UPDATE,
+            ThreadDirectoryParams { thread_id, cwd },
+        )
+        .await?;
+        let response = self
+            .request_typed::<ThreadResumeResponse, _>(
+                THREAD_RESUME,
+                thread_resume_params_with_config(thread_id, false, Some(service_tier), None),
+            )
+            .await?;
+        if response.thread.id != thread_id || response.cwd != cwd {
+            return Err(CodexThreadError::Protocol(
+                "Codex did not resume the same thread in the selected folder.".to_string(),
+            ));
+        }
+        Ok(Conversation {
+            cwd: response.cwd,
+            ..Conversation::from(&response.thread)
+        })
+    }
+
+    async fn resume_thread_in_directory(
+        &self,
+        thread_id: &str,
+        initial_turns_page: bool,
+        service_tier: &str,
+        cwd: Option<&str>,
+    ) -> Result<ThreadResumeResponse, CodexThreadError> {
         let reattachment = match &self.mcp {
             Some(bindings) => {
                 let token = bindings
@@ -1205,15 +1258,17 @@ impl CodexThreadClient {
             None => None,
         };
         let request = self
-            .request_typed::<ThreadResumeResponse, _>(
-                THREAD_RESUME,
-                thread_resume_params_with_config(
+            .request_typed::<ThreadResumeResponse, _>(THREAD_RESUME, {
+                let mut params = thread_resume_params_with_config(
                     thread_id,
                     initial_turns_page,
                     Some(service_tier),
                     reattachment.as_ref().map(|(_, _, config)| config.clone()),
-                ),
-            )
+                );
+                params.cwd = cwd;
+                params.runtime_workspace_roots = cwd.map(|cwd| vec![cwd]);
+                params
+            })
             .await
             .and_then(|response| {
                 if initial_turns_page {
@@ -1268,6 +1323,35 @@ impl CodexThreadClient {
             .request_typed(THREAD_ARCHIVE, thread_archive_params(thread_id))
             .await?;
         Ok(())
+    }
+
+    /// A retry after native archive but before local cleanup must not reopen
+    /// the conversation. Codex refuses a second archive, so verify membership
+    /// in its archive rather than treating a missing-rollout error as success.
+    pub(crate) async fn ensure_thread_archived(
+        &self,
+        thread_id: &str,
+    ) -> Result<(), CodexThreadError> {
+        let Err(error) = self.archive_thread(thread_id).await else {
+            return Ok(());
+        };
+        let mut cursor = None;
+        let mut seen = HashSet::new();
+        loop {
+            let page = self.list_archived_threads(cursor.as_deref(), 100).await?;
+            if page.data.iter().any(|thread| thread.id == thread_id) {
+                return Ok(());
+            }
+            let Some(next) = page.next_cursor else {
+                return Err(error);
+            };
+            if !seen.insert(next.clone()) {
+                return Err(CodexThreadError::Protocol(
+                    "Codex repeated an archived thread/list cursor.".into(),
+                ));
+            }
+            cursor = Some(next);
+        }
     }
 
     pub(crate) async fn delete_thread(&self, thread_id: &str) -> Result<(), CodexThreadError> {
@@ -1866,6 +1950,67 @@ mod tests {
     use super::*;
     use crate::agent::http_mcp::CAFFOLD_MCP_BINDING_HEADER;
     use tokio::io::AsyncWriteExt;
+
+    #[tokio::test]
+    async fn folder_reconnection_does_not_update_a_thread_that_became_busy_during_resume() {
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            THREAD_RESUME,
+            json!({"thread": {"id": "busy", "cwd": "/old", "status": {"type": "active"}}, "cwd": "/old"}),
+        )]);
+        assert!(
+            client
+                .move_working_directory("busy", "/new", "default")
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            [THREAD_RESUME]
+        );
+    }
+
+    #[tokio::test]
+    async fn archive_retry_requires_native_archived_membership() {
+        for present in [false, true] {
+            let thread = json!({"id": "retained", "preview": "history", "cwd": "/old",
+                "createdAt": 1.0, "updatedAt": 1.0, "status": {"type": "notLoaded"}, "turns": []});
+            let client = CodexThreadClient::mock(vec![
+                MockCodexResponse::error(
+                    THREAD_ARCHIVE,
+                    CodexThreadError::Protocol("no rollout found".into()),
+                ),
+                MockCodexResponse::ok(THREAD_LIST, json!({"data": [], "nextCursor": "next"})),
+                MockCodexResponse::ok(
+                    THREAD_LIST,
+                    json!({"data": if present {vec![thread]} else {vec![]}, "nextCursor": null}),
+                ),
+            ]);
+            assert_eq!(
+                client.ensure_thread_archived("retained").await.is_ok(),
+                present
+            );
+            let requests = client.mock_requests().await;
+            assert_eq!(requests.len(), 3);
+            assert_eq!(requests[1].1["archived"], true);
+            assert_eq!(requests[2].1["cursor"], "next");
+        }
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::error(
+                THREAD_ARCHIVE,
+                CodexThreadError::Protocol("no rollout found".into()),
+            ),
+            MockCodexResponse::ok(THREAD_LIST, json!({"data": [], "nextCursor": "same"})),
+            MockCodexResponse::ok(THREAD_LIST, json!({"data": [], "nextCursor": "same"})),
+        ]);
+        assert!(
+            matches!(client.ensure_thread_archived("retained").await, Err(CodexThreadError::Protocol(message)) if message.contains("repeated"))
+        );
+    }
 
     #[test]
     fn normalizes_current_service_tiers_to_normal_or_fast() {

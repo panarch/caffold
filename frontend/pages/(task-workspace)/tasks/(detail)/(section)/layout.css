@@ -17,6 +17,11 @@ caffold-task-create {
   margin: 0 auto;
 }
 
+caffold-section-folder-recovery {
+  width: min(calc(100% - 5.25rem), 896px);
+  margin: 0.875rem auto var(--interface-space-7);
+}
+
 caffold-section-conversation-shortcuts,
 caffold-section-github-shortcuts {
   width: min(calc(100% - 5.25rem), 896px);
@@ -33,7 +38,8 @@ caffold-section-conversation-shortcuts {
   }
 
   caffold-section-conversation-shortcuts,
-  caffold-section-github-shortcuts {
+  caffold-section-github-shortcuts,
+  caffold-section-folder-recovery {
     width: min(calc(100% - 3rem), 932px);
   }
 

@@ -106,7 +106,7 @@ arrives. What that mode does above the drivers belongs to
 
 ## Archive and permanent deletion
 
-Archive is a Caffold membership operation with a provider-specific side effect.
+Ordinary Archive is a Caffold membership operation with a provider-specific side effect.
 Caffold asks Codex to archive its thread. Claude has no corresponding archive
 state, so Caffold asks it to close any live session. Grok has none either:
 Caffold asks the leader to close the session, which keeps its record, and the
@@ -116,6 +116,13 @@ archive failure is logged and does not block the safe local worktree and
 membership transition. When no canonical conversation was read, the response
 uses the unavailable projection from Caffold's archived row rather than
 inventing provider state.
+
+Explicit discard of a managed checkout requires native closure before deleting
+files. Codex may refuse an already archived thread, so the adapter confirms its
+identity in the native Archived list before allowing a partial request to
+continue. Claude and Grok close their retained sessions. Failure to confirm
+closure leaves the files untouched. See
+[Explicit Discard And Archive](worktree-lifecycle.md#explicit-discard-and-archive).
 
 Restoring remains provider-dependent: it reverses the Codex archive, while a
 Claude restore makes the retained Task active again only when its transcript

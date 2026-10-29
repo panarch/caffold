@@ -6,6 +6,7 @@ import {
   ActionHints,
   mergeActionHintScopes,
 } from "#app/action-hints.js";
+import type { SectionDirectoryObservation } from "#app/api.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import {
   type TaskOperationsPresentation,
@@ -39,6 +40,7 @@ export interface ListedSection {
   id: string;
   name: string;
   repository: boolean;
+  directory?: SectionDirectoryObservation;
   label?: string;
   recovery?: boolean;
   tasks: ListedTask[];
@@ -346,11 +348,20 @@ export class CaffoldActiveTaskSection extends CaffoldElement {
       : section.repository
         ? ["FolderGit2", "Git repository"]
         : ["Folder", "Directory"];
+    const labelContent =
+      section.directory?.status === "missing"
+        ? html`
+            <span class="task-repository-name">${label}</span>
+            <span class="section-folder-warning" title="Folder not found">
+              ${inlineIcon("CircleAlert", "Folder not found")}
+            </span>
+          `
+        : label;
     const name = html`${inlineIcon(
       icon,
       iconLabel,
       "task-repository-icon",
-    )}<span class="task-repository-label">${label}</span>`;
+    )}<span class="task-repository-label">${labelContent}</span>`;
     const current = section.recovery
       ? nothing
       : selectedSectionId === section.id

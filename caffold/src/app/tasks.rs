@@ -13,6 +13,7 @@ mod push;
 mod recovery;
 mod routes;
 mod runtime;
+mod sections;
 mod sessions;
 mod startup;
 mod sync;
@@ -61,6 +62,7 @@ struct TaskState {
     task_list_events: TaskListEvents,
     task_store: TaskStore,
     lifecycle: TaskLifecycle,
+    section_directories: sections::SectionDirectories,
     push: PushService,
     shutdown: broadcast::Sender<()>,
 }
@@ -122,6 +124,12 @@ impl TaskState {
         let task_list_events = TaskListEvents::new();
         let managed_worktrees =
             ManagedWorktrees::new(fs.clone(), task_store.clone(), worktree_root)?;
+        let section_directories = sections::SectionDirectories::new(
+            fs.clone(),
+            task_store.clone(),
+            managed_worktrees.clone(),
+            terminals.clone(),
+        );
         let lifecycle = TaskLifecycle::new(
             fs.clone(),
             task_sessions.clone(),
@@ -177,6 +185,7 @@ impl TaskState {
             task_list_events,
             task_store,
             lifecycle,
+            section_directories,
             push,
             shutdown,
         })

@@ -7,6 +7,8 @@ use std::{
 use thiserror::Error;
 use uuid::Uuid;
 
+mod force_archive;
+
 use crate::app::error::ErrorBody;
 
 use crate::{
@@ -532,15 +534,24 @@ impl ManagedWorktrees {
         record: &ManagedWorktree,
     ) -> Result<ManagedWorktree, ManagedWorktreeError> {
         let path = self.owned_path(record)?;
-        let anchor = required_anchor(record)?;
         let next = match inspect_attached_worktree(
             &path,
             Path::new(&record.repository_git_dir),
-            Some(&anchor.branch_name),
+            record
+                .checkout_anchor
+                .as_ref()
+                .map(|anchor| anchor.branch_name.as_str()),
         ) {
             Ok(_) => ManagedWorktreeState::Ready,
             Err(WorktreeError::TargetMissing(_)) => {
-                remove_worktree_admin_entries(&path, Path::new(&record.repository_git_dir))?;
+                if let Err(error) =
+                    remove_worktree_admin_entries(&path, Path::new(&record.repository_git_dir))
+                {
+                    eprintln!(
+                        "could not clean removed worktree metadata {}: {error}",
+                        record.worktree_id
+                    );
+                }
                 ManagedWorktreeState::Archived
             }
             Err(error) => return Err(error.into()),
@@ -553,7 +564,7 @@ impl ManagedWorktrees {
                 if next == ManagedWorktreeState::Ready {
                     None
                 } else {
-                    Some(anchor.clone())
+                    record.checkout_anchor.clone()
                 },
                 now_ms()?,
             )
@@ -567,7 +578,14 @@ impl ManagedWorktrees {
         require_state(&record, ManagedWorktreeState::Archived)?;
         let path = self.owned_path(&record)?;
         let common_dir = PathBuf::from(&record.repository_git_dir);
-        let anchor = required_anchor(&record)?.clone();
+        let anchor = record.checkout_anchor.clone().ok_or_else(|| {
+            ManagedWorktreeError::Unavailable(unavailable_diagnostic(
+                &record,
+                "managed_worktree_restore_unavailable",
+                "the checkout could not be identified when this Task was archived".to_string(),
+                vec![],
+            ))
+        })?;
         self.store.transition_worktree(
             &record.worktree_id,
             ManagedWorktreeState::Archived,
@@ -722,7 +740,10 @@ impl ManagedWorktrees {
         Ok(())
     }
 
-    fn owned_path(&self, record: &ManagedWorktree) -> Result<PathBuf, ManagedWorktreeError> {
+    pub(super) fn owned_path(
+        &self,
+        record: &ManagedWorktree,
+    ) -> Result<PathBuf, ManagedWorktreeError> {
         Uuid::parse_str(&record.worktree_id)
             .map_err(|_| ManagedWorktreeError::InvalidId(record.worktree_id.clone()))?;
         let expected = self.root.join(&record.worktree_id);

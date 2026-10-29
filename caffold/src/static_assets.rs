@@ -1031,6 +1031,24 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.js"
             ))))
         }
+        "pages/(task-workspace)/tasks/(detail)/(section)/components/folder-recovery.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/folder-recovery.js"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(section)/components/folder-recovery.css.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/folder-recovery.css.js"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(section)/components/folder-recovery/control.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/folder-recovery/control.js"
+            ))))
+        }
         "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
@@ -1113,28 +1131,28 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/tasks/components/task-turn-options.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/components/task-create/components/directory-field.css.js" => {
+        "pages/(task-workspace)/tasks/components/directory-field.css.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/task-create/components/directory-field.css.js"
+                "/frontend/pages/(task-workspace)/tasks/components/directory-field.css.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/components/task-create/components/directory-field.js" => {
+        "pages/(task-workspace)/tasks/components/directory-field.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/task-create/components/directory-field.js"
+                "/frontend/pages/(task-workspace)/tasks/components/directory-field.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.js" => {
+        "pages/(task-workspace)/tasks/components/directory-field/control.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.js"
+                "/frontend/pages/(task-workspace)/tasks/components/directory-field/control.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/components/task-create/directory-path.js" => {
+        "pages/(task-workspace)/tasks/components/directory-path.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/task-create/directory-path.js"
+                "/frontend/pages/(task-workspace)/tasks/components/directory-path.js"
             ))))
         }
         "pages/(task-workspace)/tasks/components/archived-delete-dialog.css.js" => {
@@ -1573,6 +1591,18 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
                 "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/broken-delete-dialog.js"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/force-archive-dialog.css.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/force-archive-dialog.css.js"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/force-archive-dialog.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/force-archive-dialog.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css.js" => {
@@ -2543,7 +2573,7 @@ mod tests {
             "pages/(task-workspace)/tasks/components/navigator.css",
             "pages/(task-workspace)/tasks/components/task-absence.css",
             "pages/(task-workspace)/tasks/components/task-create.css",
-            "pages/(task-workspace)/tasks/components/task-create/components/directory-field.css",
+            "pages/(task-workspace)/tasks/components/directory-field.css",
             "pages/(task-workspace)/tasks/components/task-status-chip.css",
             "pages/(task-workspace)/tasks/components/task-store-recovery.css",
             "pages/(task-workspace)/tasks/components/task-switcher-dialog.css",
@@ -2832,8 +2862,8 @@ mod tests {
             "pages/(task-workspace)/settings/grok/page.js",
             "pages/(task-workspace)/settings/grok/display.js",
             "pages/(task-workspace)/settings/about/page.js",
-            "pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.js",
-            "pages/(task-workspace)/tasks/components/task-create/directory-path.js",
+            "pages/(task-workspace)/tasks/components/directory-field/control.js",
+            "pages/(task-workspace)/tasks/components/directory-path.js",
         ] {
             let asset = get(path).unwrap_or_else(|| panic!("missing frontend asset {path}"));
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
@@ -3158,7 +3188,7 @@ mod tests {
                 b"caffold-task-turn-options".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/task-create/components/directory-field.js",
+                "pages/(task-workspace)/tasks/components/directory-field.js",
                 b"caffold-task-directory-field".as_slice(),
             ),
             (

@@ -63,6 +63,16 @@ headings remain labels only. The selected Section is represented by local id;
 its managed logical path supplies the fixed cwd and its repository capability
 controls which shared review surfaces are available.
 
+A verified missing Section directory adds a small warning beside its name.
+Section Detail replaces creation with an inline folder reconnection form,
+using the same host-side directory picker as Global New. It shows the previous
+location, lets the user choose or type the new location, and reconnects only
+after an explicit action. It uses the existing content column on desktop,
+foldable, and phone. Unknown or unreadable folders offer recheck; they are not
+shown as missing. A failed active repair retains the candidate and names the Task and reason;
+previous successes remain usable. Archived repair failures do not appear in
+Section Detail; an unsuccessful Restore reports its own error when requested.
+
 Task reorder mode moves Tasks within their current Section. Section reorder
 mode presents the managed Section headers without their Task rows and moves the
 Sections as units. Only one mode is active at a time; recovery and Archived
@@ -252,6 +262,11 @@ native fork without an ID lookup, places the child at the source Task's Section
 project root, and opens the distinct managed child. Active Codex Tasks, Claude
 Tasks, and Grok Tasks keep the action disabled with an explicit reason. Forking
 remains separate from worktree isolation.
+
+Task details offers **Discard changes and archive** after an eligible ordinary
+Archive refusal. The action opens a native confirmation dialog naming the Task
+and its worktree folder, explaining file loss and conversation/branch retention.
+Cancel has initial focus; only confirmation sends the destructive request.
 
 ### Conversation
 
@@ -641,7 +656,6 @@ The browser UI does not provide:
   action;
 - automatic continuation after the setup turn;
 - external-worktree adoption or force cleanup;
-- force deletion of dirty managed worktrees;
 - split diff, hunk comments, or durable review annotations;
 - a Caffold-owned duplicate of an agent's conversation;
 - editing, checklist mutation, or archive controls for current plan documents;

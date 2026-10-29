@@ -18,7 +18,7 @@ import {
 import { cleanLogicalPath } from "../task-format.js";
 import "./composer.js";
 import type { CaffoldTaskComposer, ComposerSubmitDetail } from "./composer.js";
-import "./task-create/components/directory-field.js";
+import "./directory-field.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import type {
   TaskCreateIntentDetail,
@@ -29,11 +29,8 @@ import type { ComposerIntentDetail } from "./composer.js";
 import type {
   CaffoldTaskDirectoryField,
   DirectoryChosenDetail,
-} from "./task-create/components/directory-field.js";
-import {
-  directoryPathDisplay,
-  type ServerPaths,
-} from "./task-create/directory-path.js";
+} from "./directory-field.js";
+import { directoryPathDisplay, type ServerPaths } from "./directory-path.js";
 
 import styles from "./task-create.css.js";
 
