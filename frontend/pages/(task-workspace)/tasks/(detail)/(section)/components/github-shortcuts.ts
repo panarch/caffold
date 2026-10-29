@@ -29,7 +29,7 @@ type GitHubKind = "issues" | "pulls";
 
 /**
  * A Section's way into its repository's GitHub Issues and Pull Requests,
- * shown only while the repository is on GitHub.
+ * shown only while active and the repository is on GitHub.
  *
  * It asks GitHub about the repository while active, once for each directory.
  */
@@ -40,7 +40,8 @@ export class CaffoldSectionGithubShortcuts extends CaffoldElement {
 
   static override styles = styles;
 
-  private active = false;
+  @state()
+  private accessor active = false;
   private context: GitHubShortcutsContext = {
     key: "",
     path: "",
@@ -93,7 +94,7 @@ export class CaffoldSectionGithubShortcuts extends CaffoldElement {
   }
 
   protected override updated() {
-    const hidden = !this.githubStatus?.github;
+    const hidden = !this.active || !this.githubStatus?.github;
     if (this.hidden !== hidden) {
       this.hidden = hidden;
     }

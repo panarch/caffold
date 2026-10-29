@@ -129,7 +129,6 @@ export class CaffoldTaskCreate extends CaffoldElement {
   }
 
   activate() {
-    this.hidden = false;
     this.draw();
   }
 

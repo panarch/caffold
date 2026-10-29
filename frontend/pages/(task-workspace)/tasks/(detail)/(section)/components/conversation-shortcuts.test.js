@@ -90,12 +90,18 @@ test("asks what the server knows about Codex when shown and drops an answer that
     });
     await settled();
     assert.equal(owner.codexReadiness.status.readiness.state, "signInRequired");
+    owner.updated();
+    assert.equal(owner.hidden, false);
 
     owner.activate();
     assert.equal(requests.length, 1, "a row already shown does not ask again");
 
     owner.deactivate();
+    owner.updated();
+    assert.equal(owner.hidden, true);
     owner.activate();
+    owner.updated();
+    assert.equal(owner.hidden, false, "the retained row returns while readiness refreshes");
     assert.equal(requests.length, 2, "showing the row again asks again");
     owner.deactivate();
     requests[1].answer({
@@ -107,6 +113,8 @@ test("asks what the server knows about Codex when shown and drops an answer that
       "signInRequired",
       "an answer for a row no longer shown changes nothing",
     );
+    owner.updated();
+    assert.equal(owner.hidden, true);
   } finally {
     restore();
   }

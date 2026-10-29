@@ -280,7 +280,7 @@ function headerOwner(state, { menus = [], flags = [], summaries = [], choices = 
     terminalButton: { value: ({
       setSnapshot: (snapshot) => terminalButtons.push(snapshot),
     }) },
-    applySurfaceVisibility() {},
+    syncHeaderVisibility() {},
     selectedTaskContextPath: () => "",
     taskDetail: { value: { reconcileVisibleSurface() {} } },
     ...state,
@@ -319,7 +319,7 @@ test("uses managed identity only as a header fallback and prefers canonical Deta
     managedTaskRepository: true,
     streamState: "unavailable",
     activeSurface: () => "review",
-    applySurfaceVisibility(surface) {
+    syncHeaderVisibility(surface) {
       visibleSurfaces.push(surface);
     },
   }, { menus, flags, summaries, choices, terminalButtons });

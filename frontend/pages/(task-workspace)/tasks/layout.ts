@@ -679,16 +679,6 @@ export class CaffoldTasksPage extends CaffoldElement {
     if (this.hasAttribute("data-task-detail-header-hidden") !== headerHidden) {
       this.toggleAttribute("data-task-detail-header-hidden", headerHidden);
     }
-    // New Task and Detail also show and hide themselves as they open and
-    // close.
-    this.taskNew.value?.toggleAttribute(
-      "hidden",
-      takeover || (this.view !== "new" && this.view !== "home"),
-    );
-    this.taskDetail()?.toggleAttribute(
-      "hidden",
-      takeover || this.view !== "detail",
-    );
   }
 
   override render() {
@@ -709,12 +699,12 @@ export class CaffoldTasksPage extends CaffoldElement {
           ></caffold-task-store-recovery>
           <caffold-task-new
             ${drawn(this.taskNew)}
-            hidden
+            ?hidden=${takeover || (this.view !== "new" && this.view !== "home")}
             @caffold:task-new-route-intent=${this.newTaskRouteIntent}
           ></caffold-task-new>
           <caffold-detail-layout
             ${drawn(this.detail)}
-            hidden
+            ?hidden=${takeover || this.view !== "detail"}
             @caffold:task-detail-intent=${this.detailIntent}
             @caffold:task-detail-transport-change=${this.detailTransportChange}
             @caffold:detail-header-change=${this.detailHeaderChange}

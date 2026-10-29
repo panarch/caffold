@@ -738,13 +738,13 @@ export class CaffoldDetailLayout extends CaffoldElement {
           >
             <caffold-task-detail
               ${drawn(this.taskDetail)}
-              hidden
+              ?hidden=${kind !== "task" || surface !== subjectSurface}
               @caffold:task-subject-snapshot=${this.taskSubjectSnapshot}
               @caffold:task-detail-transport-change=${this.taskTransportChange}
             ></caffold-task-detail>
             <caffold-section-detail
               ${drawn(this.sectionDetail)}
-              hidden
+              ?hidden=${kind !== "section" || surface !== subjectSurface}
               @caffold:section-detail-intent=${this.handleSectionDetailIntent}
             ></caffold-section-detail>
           </div>
@@ -783,7 +783,6 @@ export class CaffoldDetailLayout extends CaffoldElement {
 
   private activateSubject(kind: "task" | "section") {
     if (this.subjectKind === kind) {
-      this.hidden = false;
       return;
     }
     if (this.subjectKind === "task") {
@@ -795,7 +794,6 @@ export class CaffoldDetailLayout extends CaffoldElement {
       this.section = null;
     }
     this.subjectKind = kind;
-    this.hidden = false;
     this.draw();
     this.syncActivePresentation();
   }
@@ -875,7 +873,7 @@ export class CaffoldDetailLayout extends CaffoldElement {
       available: Boolean(canonicalTask?.cwdPath),
       pressed: surface === "terminal",
     });
-    this.applySurfaceVisibility(surface);
+    this.syncHeaderVisibility(surface);
     this.taskDetail.value?.reconcileVisibleSurface();
   }
 
@@ -916,7 +914,7 @@ export class CaffoldDetailLayout extends CaffoldElement {
       available: Boolean(this.terminalDirectory()),
       pressed: surface === "terminal",
     });
-    this.applySurfaceVisibility(surface);
+    this.syncHeaderVisibility(surface);
     if (surface === "new") {
       this.sectionDetail.value?.activate();
     } else {
@@ -1010,22 +1008,6 @@ export class CaffoldDetailLayout extends CaffoldElement {
         this.domainActivationPromise = null;
       }
     }
-  }
-
-  // The subject's own screen shows only on its surface. The slots follow the
-  // drawn surface; the subject's screens also hide themselves when they go.
-  private applySurfaceVisibility(surface: string) {
-    const subjectActive =
-      surface === (this.subjectKind === "task" ? "conversation" : "new");
-    this.taskDetail.value?.toggleAttribute(
-      "hidden",
-      !subjectActive || this.subjectKind !== "task",
-    );
-    this.sectionDetail.value?.toggleAttribute(
-      "hidden",
-      !subjectActive || this.subjectKind !== "section",
-    );
-    this.syncHeaderVisibility(surface);
   }
 
   // The terminal screen may give the header's height to the terminal. Tasks

@@ -453,11 +453,11 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   }
   assert.match(
     detailLayout,
-    /<caffold-task-detail\s+\$\{drawn\(this\.taskDetail\)\}\s+hidden\b/,
+    /<caffold-task-detail\s+\$\{drawn\(this\.taskDetail\)\}/,
   );
   assert.match(
     detailLayout,
-    /<caffold-section-detail\s+\$\{drawn\(this\.sectionDetail\)\}\s+hidden\b/,
+    /<caffold-section-detail\s+\$\{drawn\(this\.sectionDetail\)\}/,
   );
   assert.match(detailLayout, /class="detail-review-slot"/);
   assert.match(detailLayout, /class="detail-git-slot"/);
@@ -487,11 +487,11 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(sectionLayout, /<caffold-task-create\b/);
   assert.match(
     sectionLayout,
-    /<caffold-section-conversation-shortcuts\s+\$\{drawn\(this\.conversations\)\}\s+hidden\s*>/,
+    /<caffold-section-conversation-shortcuts\s+\$\{drawn\(this\.conversations\)\}/,
   );
   assert.match(
     sectionLayout,
-    /<caffold-section-github-shortcuts\s+\$\{drawn\(this\.github\)\}\s+hidden\s*>/,
+    /<caffold-section-github-shortcuts\s+\$\{drawn\(this\.github\)\}/,
   );
   assert.doesNotMatch(
     sectionLayout,
