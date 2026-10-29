@@ -1027,6 +1027,11 @@ Section route is a root query route whose Managed Section ID is resolved from
 the navigator projection; a missing Section replaces the destination with Tasks
 home.
 
+Tasks binds the New Task and Detail hosts' `hidden` from its selected view and
+Task-store takeover. Detail binds its Task and Section hosts from the subject
+and presented surface. Their children prepare and deactivate their work without
+changing those parent-owned display choices.
+
 `caffold-detail-layout` owns:
 
 - the active Task or Section subject identity;
@@ -1212,10 +1217,17 @@ replaces its Task Create instance and closes any read-only source preview. The
 shared Task Create and cwd contracts are defined in
 [New Task and directories](#new-task-and-directories).
 
-`caffold-section-conversation-shortcuts` derives only capability presentation
-from the workspace Codex-status snapshot. It remains hidden while capability
-is unknown, exposes one provider-specific Codex row once known, and gives a
-blocked row the backend diagnostic instead of removing it. Its private native
+Section binds Task Create's `hidden` from folder availability. It activates or
+deactivates its two shortcut components through their public methods; each
+shortcut owns its own `hidden`, derived from its active state and data.
+A GitHub answer for the same repository may fill an inactive shortcut's cache,
+but cannot show it. Reactivation uses that answer; a context change invalidates
+it through the shortcut's existing request identity.
+
+`caffold-section-conversation-shortcuts` owns its Codex readiness request and
+derives capability presentation from that answer. It hides while inactive,
+while installation is unknown, or when Codex is missing. An installed but
+blocked row shows the backend diagnostic. Its private native
 dialog owns Thread-ID input, cancellable preview generations, read-only preview
 DOM, fork request state, focus restoration, and the synchronous created-Task
 handoff. Input changes invalidate the preview. Preview loading may be cancelled;

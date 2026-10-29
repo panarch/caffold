@@ -66,14 +66,12 @@ export class CaffoldTaskNew extends CaffoldElement {
   }
 
   open() {
-    this.hidden = false;
     this.syncTaskCreate();
     this.create.value?.activate();
   }
 
   deactivate() {
     this.create.value?.deactivate();
-    this.hidden = true;
   }
 
   setServerPaths(server: ServerPaths) {

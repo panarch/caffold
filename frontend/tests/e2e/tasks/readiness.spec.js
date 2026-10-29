@@ -185,6 +185,38 @@ test("waits for explicit route activation when readiness settles first", { tag: 
   });
 });
 
+test("New Task activation preserves the parent's Task-store takeover", { tag: "@viewport-independent" }, async ({ page }) => {
+  await page.goto("/tasks/new");
+  const newTask = page.locator("caffold-task-new");
+  const prompt = newTask.locator("textarea[name=prompt]");
+  await expect(prompt).toBeVisible();
+  await prompt.fill("Keep this draft through Task setup");
+  const textarea = await prompt.elementHandle();
+  const workspace = page.locator("caffold-task-workspace");
+  await workspace.evaluate((owner, readiness) => {
+    owner.setTaskStoreStatusSnapshot({ readiness, retryAvailable: true });
+  }, mockTaskStoreStatus({ state: "failed", blocksTaskOperations: true }));
+  await expect(newTask).toBeHidden();
+  await expect(page.locator("caffold-task-store-recovery")).toBeVisible();
+
+  // The child's public activation prepares its form; only its parent may
+  // decide whether that form takes the place of Task setup.
+  const hiddenAfterActivation = await newTask.evaluate(async (owner) => {
+    owner.open();
+    await owner.updateComplete;
+    return owner.hidden;
+  });
+  expect(hiddenAfterActivation).toBe(true);
+  await expect(prompt).toBeHidden();
+
+  await workspace.evaluate((owner, readiness) => {
+    owner.setTaskStoreStatusSnapshot({ readiness, retryAvailable: false });
+  }, mockTaskStoreStatus());
+  await expect(prompt).toBeVisible();
+  await expect(prompt).toHaveValue("Keep this draft through Task setup");
+  expect(await prompt.evaluate((current, previous) => current === previous, textarea)).toBe(true);
+});
+
 test("a failed Task-store migration has its own explicit retry lifecycle", { tag: "@all-viewports" }, async ({
   page,
 }) => {

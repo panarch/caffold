@@ -57,7 +57,8 @@ export class CaffoldSectionConversationShortcuts extends CaffoldElement {
 
   static override styles = styles;
 
-  private active = false;
+  @state()
+  private accessor active = false;
   // Asked for whenever the row is shown: whether Codex is installed, and why
   // it is blocked. The previous answer stays on show while the next is asked.
   private codexReadinessRequest = 0;

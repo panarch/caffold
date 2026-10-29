@@ -148,6 +148,52 @@ async function fixture(
   return state;
 }
 
+test("a late GitHub answer cannot uncover shortcuts during folder recovery", { tag: "@viewport-independent" }, async ({ page }) => {
+  let releaseCheck;
+  const holdCheck = new Promise((resolve) => { releaseCheck = resolve; });
+  let releaseGitHub;
+  const holdGitHub = new Promise((resolve) => { releaseGitHub = resolve; });
+  const state = await fixture(page, { status: "available", holdCheck });
+  let githubRequests = 0;
+  await page.route("**/api/github/status*", async (route) => {
+    githubRequests += 1;
+    await holdGitHub;
+    await route.fulfill({ json: {
+      repository: { rootPath: OLD, branch: "main", dirty: false },
+      github: { owner: "example", name: "project", nameWithOwner: "example/project", url: "https://github.com/example/project" },
+      ghAvailable: true,
+      authenticated: true,
+      issuesAvailable: true,
+      pullsAvailable: true,
+      message: null,
+    } });
+  });
+  await page.goto("/?section=source");
+  await expect.poll(() => state.checks).toBeGreaterThan(0);
+  await expect.poll(() => githubRequests).toBeGreaterThan(0);
+  const shortcuts = page.locator("caffold-section-github-shortcuts");
+  state.status = "missing";
+  releaseCheck();
+  await expect(page.locator("caffold-section-folder-recovery")).toBeVisible();
+  await expect(shortcuts).toBeHidden();
+  releaseGitHub();
+  // Wait for the answer's rendered content, rather than an unrelated turn
+  // of the event loop, before checking that the deactivated row stays hidden.
+  await expect(shortcuts.locator(".section-github-name")).toHaveText("example/project");
+  await expect(shortcuts).toHaveAttribute("hidden", "");
+  await expect(shortcuts).toBeHidden();
+  await expect(page.locator("caffold-section-detail caffold-task-create")).toBeHidden();
+  await expect(page.locator("caffold-section-conversation-shortcuts")).toBeHidden();
+
+  state.status = "available";
+  await page.locator("caffold-section-folder-recovery").getByRole("button", { name: "Check again" }).click();
+  await expect(page.locator("caffold-section-folder-recovery")).toBeHidden();
+  await expect(shortcuts).toBeVisible();
+  await expect(shortcuts.getByRole("button", { name: "Issues", exact: true })).toBeEnabled();
+  await expect(page.locator("caffold-section-detail caffold-task-create")).toBeVisible();
+  await expect(page.locator("caffold-section-conversation-shortcuts")).toBeVisible();
+});
+
 test("a live list refresh before the mutation reply leaves the completed Section ready", { tag: "@viewport-independent" }, async ({ page }) => {
   await fixture(page, {
     beforePostReply: async () => {

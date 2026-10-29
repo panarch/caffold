@@ -373,7 +373,6 @@ export class CaffoldTaskDetail extends CaffoldElement {
       this.selectedThreadId === targetThreadId &&
       taskDetailThreadId(this.taskDetail) === targetThreadId
     ) {
-      this.hidden = false;
       const nextReviewView = taskDetailSurface(options.route, targetThreadId);
       if (
         this.reviewView === "conversation" &&
@@ -406,7 +405,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       this.reviewView = "conversation";
       this.detailSession.deactivate();
     }
-    this.hidden = false;
+
     this.selectedThreadId = targetThreadId;
     this.history.activate(targetThreadId);
     this.reviewView = taskDetailSurface(options.route, targetThreadId);
@@ -512,7 +511,6 @@ export class CaffoldTaskDetail extends CaffoldElement {
       this.deactivateFollowUpComposer();
     }
     this.currentPlanComponent.value?.deactivate();
-    this.hidden = true;
   }
 
   // Ends what the open Task's surfaces have in flight: its requests, older

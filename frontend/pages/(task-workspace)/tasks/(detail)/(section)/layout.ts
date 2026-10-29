@@ -87,7 +87,6 @@ export class CaffoldSectionDetail extends CaffoldElement {
 
   activate() {
     this.ensureDrawn();
-    this.hidden = false;
     const activated = this.setActive(true);
     if (!this.unavailable()) {
       this.conversationShortcuts()?.activate();
@@ -252,11 +251,9 @@ export class CaffoldSectionDetail extends CaffoldElement {
       )}
       <caffold-section-conversation-shortcuts
         ${drawn(this.conversations)}
-        hidden
       ></caffold-section-conversation-shortcuts>
       <caffold-section-github-shortcuts
         ${drawn(this.github)}
-        hidden
       ></caffold-section-github-shortcuts>
     `;
   }
@@ -316,10 +313,6 @@ export class CaffoldSectionDetail extends CaffoldElement {
     if (!recovering) {
       recovery.deactivate();
     }
-    const create = this.taskCreate();
-    if (create) {
-      create.hidden = this.unavailable();
-    }
     recovery.setContext(
       this.section?.directory
         ? { id: this.section.id, path: this.section.name }
@@ -337,12 +330,6 @@ export class CaffoldSectionDetail extends CaffoldElement {
       this.taskCreate()?.deactivate();
       this.conversationShortcuts()?.deactivate();
       this.githubShortcuts()?.deactivate();
-      if (this.conversations.value) {
-        this.conversations.value.hidden = true;
-      }
-      if (this.github.value) {
-        this.github.value.hidden = true;
-      }
     }
   }
 
