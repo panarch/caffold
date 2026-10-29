@@ -86,3 +86,10 @@ caffold-file-tree {
   grid-row: 3;
   min-height: 0;
 }
+
+:host([hidden]),
+.notes-picker-back[hidden],
+.notes-picker-close[hidden],
+.notes-navigator-status[hidden] {
+  display: none;
+}

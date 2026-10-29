@@ -76,3 +76,7 @@
 .task-suggested-prompt-label {
   min-width: 0;
 }
+
+:host([hidden]) {
+  display: none;
+}

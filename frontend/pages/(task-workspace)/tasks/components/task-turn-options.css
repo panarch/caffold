@@ -156,6 +156,7 @@
 .task-model-popover,
 .task-permission-popover {
   position: fixed;
+  position-anchor: var(--task-menu-anchor);
   inset: auto;
   position-try-fallbacks: flip-block, flip-inline;
   width: max-content;
@@ -324,7 +325,7 @@
   .task-permission-popover,
   :host([data-placement="above"]) .task-model-popover,
   :host([data-placement="above"]) .task-permission-popover {
-    position-anchor: none !important;
+    position-anchor: none;
     position-area: none;
     position-try-fallbacks: none;
     inset: auto 0.625rem 0.625rem;

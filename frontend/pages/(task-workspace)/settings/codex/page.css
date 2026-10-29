@@ -433,3 +433,10 @@
     flex-direction: column;
   }
 }
+
+:host([hidden]),
+.settings-codex-repair[hidden],
+.settings-codex-diagnostic[hidden],
+.settings-codex-command[hidden] {
+  display: none;
+}

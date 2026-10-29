@@ -213,3 +213,7 @@ button:disabled {
     align-self: start;
   }
 }
+
+:host([hidden]) {
+  display: none;
+}

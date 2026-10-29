@@ -21,10 +21,6 @@
   }
 }
 
-[hidden] {
-  display: none !important;
-}
-
 .surface-message {
   margin: 0;
   padding: var(--interface-space-7);

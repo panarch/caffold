@@ -230,3 +230,8 @@ button:disabled {
     flex-basis: 100%;
   }
 }
+
+:host([hidden]),
+button[hidden] {
+  display: none;
+}

@@ -459,3 +459,7 @@ dd {
     max-width: none;
   }
 }
+
+.image-preview[hidden] {
+  display: none;
+}

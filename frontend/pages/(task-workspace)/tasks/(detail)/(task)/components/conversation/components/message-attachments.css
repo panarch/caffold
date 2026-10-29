@@ -104,3 +104,8 @@
   height: var(--interface-icon-size);
   color: var(--muted);
 }
+
+:host([hidden]),
+.task-message-attachment-preview > img[hidden] {
+  display: none;
+}

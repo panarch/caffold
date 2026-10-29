@@ -245,3 +245,8 @@
     max-width: none;
   }
 }
+
+.task-current-plan-segment[hidden],
+.task-current-plan-refresh[hidden] {
+  display: none;
+}

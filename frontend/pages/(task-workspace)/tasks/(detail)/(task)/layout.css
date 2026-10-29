@@ -166,3 +166,7 @@ caffold-loading-text {
     --task-detail-header-padding-inline: var(--interface-space-4);
   }
 }
+
+.task-detail[hidden] {
+  display: none;
+}

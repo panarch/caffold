@@ -1877,6 +1877,7 @@ test("keeps an idle task active when the archive request fails", { tag: "@all-vi
   await page.goto("/tasks/thread_archive_failure");
   await emitTaskDetailBootstrap(page, detail);
   await page.getByRole("button", { name: /Task details/ }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
   await page.getByRole("button", { name: "Archive task" }).click();
 
   await expect(page).toHaveURL(/\/tasks\/thread_archive_failure$/);

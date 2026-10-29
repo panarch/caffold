@@ -1486,7 +1486,7 @@ test("each document preview scrolls as one vertical surface named after its file
     const described = [];
     for (const kind of ["pdf", "docx", "pptx"]) {
       const element = document.createElement(`caffold-${kind}-viewer`);
-      element.style.cssText = "display: block; height: 100px; overflow: auto;";
+      element.style.cssText = "height: 100px; overflow: auto;";
       document.body.append(element);
       await new Promise(requestAnimationFrame);
       described.push(element.scrollSurfaceScope({

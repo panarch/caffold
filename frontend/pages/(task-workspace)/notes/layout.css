@@ -15,3 +15,7 @@ caffold-notes-navigator {
   min-width: 0;
   min-height: 0;
 }
+
+:host([hidden]) {
+  display: none;
+}

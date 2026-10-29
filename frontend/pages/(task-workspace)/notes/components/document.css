@@ -239,3 +239,11 @@
     padding-inline: var(--interface-space-5);
   }
 }
+
+:host([hidden]),
+.notes-workspace-detail-header[hidden],
+.notes-workspace-detail-pane > .notes-workspace-status[hidden],
+.note-document-split[hidden],
+.note-document-close[hidden] {
+  display: none;
+}

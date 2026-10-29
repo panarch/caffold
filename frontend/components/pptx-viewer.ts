@@ -22,23 +22,22 @@ const PPTX_RENDERER_IMPORT =
 
 const MEDIA_NOTICE = "Media is not played in this preview.";
 
-// The renderer styles each slide inline; these replace its shadowed, 20px-apart
-// slides with pages framed and spaced like the other document viewers'.
+// The viewer owns page spacing and frames; the renderer owns slide contents.
 const DOCUMENT_STYLES = `
   .pptx-viewer-slides {
     margin-inline: auto;
   }
 
   [data-slide-index] {
-    margin-bottom: 1rem !important;
+    margin-bottom: 1rem;
   }
 
   [data-slide-index]:last-child {
-    margin-bottom: 0 !important;
+    margin-bottom: 0;
   }
 
   [data-slide-index] > div {
-    box-shadow: 0 0 0 1px var(--border) !important;
+    box-shadow: 0 0 0 1px var(--border);
   }
 
   .pptx-viewer-media-poster {
@@ -279,6 +278,7 @@ class CaffoldPptxViewer extends CaffoldElement {
     container.className = "pptx-viewer-slides";
     root.append(style, container);
     this.slideObserver = new MutationObserver(() => {
+      releaseSlideChrome(container);
       withholdMedia(container);
       exposeShapeLinks(container);
     });
@@ -298,6 +298,21 @@ class CaffoldPptxViewer extends CaffoldElement {
 
   private isCurrent(generation: number) {
     return this.isConnected && this.generation === generation;
+  }
+}
+
+// pptx-renderer 1.3.0 gives every list item an inline bottom margin and its
+// immediate frame an inline shadow. Release just those two declarations as
+// items are created, including unmounted placeholders and rebuilt lists.
+function releaseSlideChrome(container: HTMLElement) {
+  for (const slide of container.querySelectorAll<HTMLElement>(
+    ":scope > [data-slide-index]",
+  )) {
+    slide.style.removeProperty("margin-bottom");
+    const frame = slide.firstElementChild;
+    if (frame instanceof HTMLElement) {
+      frame.style.removeProperty("box-shadow");
+    }
   }
 }
 

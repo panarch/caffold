@@ -80,3 +80,7 @@
 .task-assistant-message-copy-status[data-feedback="danger"] {
   color: var(--danger);
 }
+
+:host([hidden]) {
+  display: none;
+}
