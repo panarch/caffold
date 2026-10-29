@@ -266,6 +266,9 @@ export class CaffoldDetailLayout extends CaffoldElement {
     this.sectionRoute = sectionDetailRoute({
       ...route,
       sectionId: section.id,
+      ...(section.directory && section.directory.status !== "available"
+        ? { sectionSurface: "new" }
+        : {}),
     });
     this.keepTerminalTakeFor(
       this.sectionRoute?.sectionSurface === "terminal"
@@ -327,9 +330,10 @@ export class CaffoldDetailLayout extends CaffoldElement {
 
   setManagedTask(
     task: ListedTask | null | undefined,
-    { repository = false } = {},
+    { repository = false, missingSectionId = "" } = {},
   ) {
     this.performUpdate();
+    this.taskDetail.value?.setMissingSection(missingSectionId);
     const selectedThreadId = `${this.taskRoute?.threadId ?? ""}`;
     const nextTask =
       selectedThreadId && taskThreadId(task) === selectedThreadId
@@ -371,10 +375,16 @@ export class CaffoldDetailLayout extends CaffoldElement {
     if (this.subjectKind === "task") {
       this.taskDetail.value?.suspendForeground();
     }
+    if (this.subjectKind === "section") {
+      this.sectionDetail.value?.deactivate();
+    }
     this.terminalPage.value?.suspendForeground();
   }
 
   recoverForeground() {
+    if (this.subjectKind === "section" && this.presentedSurface() === "new") {
+      this.sectionDetail.value?.activate();
+    }
     const task =
       this.subjectKind === "task"
         ? this.taskDetail.value?.recoverForeground()
@@ -642,6 +652,13 @@ export class CaffoldDetailLayout extends CaffoldElement {
     );
   }
 
+  ownsEditingEscape(element: Element | null) {
+    return (
+      this.subjectKind === "section" &&
+      Boolean(this.sectionDetail.value?.ownsEditingEscape(element))
+    );
+  }
+
   get headerHidden() {
     return this.hasAttribute("data-header-hidden");
   }
@@ -867,7 +884,7 @@ export class CaffoldDetailLayout extends CaffoldElement {
     if (this.subjectKind !== "section" || !section) {
       return;
     }
-    const repository = Boolean(section.repository);
+    const repository = this.hasRepository();
     this.rebindSharedDomainContext();
     const surface = this.sectionRoute?.sectionSurface ?? "new";
     this.draw();
@@ -896,7 +913,7 @@ export class CaffoldDetailLayout extends CaffoldElement {
     this.gitMenu.value?.setSnapshot({ available: repository });
     this.githubMenu.value?.setSnapshot({ available: repository });
     this.terminalButton.value?.setSnapshot({
-      available: true,
+      available: Boolean(this.terminalDirectory()),
       pressed: surface === "terminal",
     });
     this.applySurfaceVisibility(surface);
@@ -1116,9 +1133,14 @@ export class CaffoldDetailLayout extends CaffoldElement {
   }
 
   private hasRepository() {
-    return this.subjectKind === "section"
-      ? Boolean(this.section?.repository)
-      : Boolean(this.taskSnapshot?.task?.worktree?.rootPath);
+    if (this.subjectKind === "section") {
+      return (
+        Boolean(this.section?.repository) &&
+        (!this.section?.directory ||
+          this.section.directory.status === "available")
+      );
+    }
+    return Boolean(this.taskSnapshot?.task?.worktree?.rootPath);
   }
 
   private reviewRootPath() {
@@ -1215,6 +1237,10 @@ export class CaffoldDetailLayout extends CaffoldElement {
     event.stopPropagation();
     if (event.detail?.type === "archive") {
       void this.taskDetail.value?.archiveSelectedTask();
+    } else if (event.detail?.type === "force-archive") {
+      this.taskDetail.value?.openForceArchiveConfirmation(
+        this.taskSummary.value?.detailsButton(),
+      );
     } else if (event.detail?.type === "fork") {
       void this.taskDetail.value?.forkSelectedTask();
     } else if (event.detail?.type === "permission-instructions") {
@@ -1501,9 +1527,13 @@ export class CaffoldDetailLayout extends CaffoldElement {
   }
 
   private terminalDirectory() {
-    return this.subjectKind === "section"
-      ? `${this.section?.name ?? ""}`
-      : `${this.taskSnapshot?.task?.cwdPath ?? ""}`;
+    if (this.subjectKind === "section") {
+      const directory = this.section?.directory;
+      return directory && directory.status !== "available"
+        ? ""
+        : `${this.section?.name ?? ""}`;
+    }
+    return `${this.taskSnapshot?.task?.cwdPath ?? ""}`;
   }
 
   private subjectHomeRoute(): TaskRoute | SectionRouteRequest {

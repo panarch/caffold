@@ -5,6 +5,7 @@ import {
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
+import type { TaskResponseError } from "#app/api.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import { scopedStyle } from "#app/scoped-style.js";
 import {
@@ -47,7 +48,11 @@ export interface TaskInfoActionsSnapshot {
   forkState: TaskActionState;
 }
 
-type TaskInfoAction = "archive" | "fork" | "permission-instructions";
+type TaskInfoAction =
+  | "archive"
+  | "force-archive"
+  | "fork"
+  | "permission-instructions";
 
 export interface TaskInfoActionIntent {
   type: TaskInfoAction;
@@ -84,6 +89,12 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
     const forkError = actionErrorMessage(snapshot.forkState.error);
     const archiving = snapshot.archiveState.loading;
     const archiveError = actionErrorMessage(snapshot.archiveState.error);
+    const archiveFailure = snapshot.archiveState
+      .error as TaskResponseError | null;
+    const canForceArchive = Boolean(
+      archiveFailure?.allowedActions?.includes("forceArchive") &&
+        archiveFailure.worktreeId,
+    );
     const threadId = taskThreadId(snapshot.task);
     return html`
       <div
@@ -157,6 +168,29 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
           role="alert"
           ?hidden=${!archiveError}
         >${archiveError}</p>
+        ${
+          canForceArchive
+            ? html`
+                <button
+                  ${this.hints.button({
+                    id: `${threadId}:force-archive`,
+                    label: "Discard changes and archive",
+                    action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                    badgeAtEnd: true,
+                  })}
+                  type="button"
+                  class="task-secondary-button"
+                  data-task-info-action="force-archive"
+                  ?disabled=${
+                    archiving ||
+                    snapshot.forkState.loading ||
+                    snapshot.archiveBlockedByActive
+                  }
+                  @click=${this.requestAction}
+                >Discard changes and archive</button>
+              `
+            : nothing
+        }
       </div>
     `;
   }

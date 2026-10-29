@@ -1056,6 +1056,12 @@ Markdown preview dialog, current-plan strip, follow-up Composer, and Task
 mutations. It publishes a subject snapshot upward; it does not mount Integrated
 Review, Git, GitHub, or their Summary controls.
 
+Task Detail's `force-archive-dialog` owns only native confirmation, the captured
+Task/worktree identity, and focus return to the stable Task details button.
+Cancel/Escape send no mutation. Task Detail owns the archive request, checks the
+captured identity against the current failure, and ignores stale completions.
+Leaving the Task resets the confirmation without returning focus to the old Task.
+
 For keyboard navigation, each of these layout owners merges only the public
 scope of the child it currently presents. `caffold-tasks-page` composes Task
 Navigator with the visible New, Recovery, Task-store recovery, or Detail owner.
@@ -1737,7 +1743,8 @@ is still present. Only Global New represents its selected directory in
 Where the surface lets the cwd change, Task Create mounts the directory field;
 otherwise it draws the fixed path in the same place with the same insets. The
 field owns its folder list, typed path, and the listing requests behind them.
-One transition function in `task-create/components/directory-field/control.ts`
+One transition function in
+`frontend/pages/(task-workspace)/tasks/components/directory-field/control.ts`
 decides its closed, browsing, and editing states, so a listing answer counts
 only for the request in flight. A chosen folder leaves the field as a
 `choose-cwd` Task Create intent, and Global New updates its cwd and route. The
@@ -1747,6 +1754,25 @@ button, and folder rows as Action Hints and its list as a scroll surface
 through Task Create's scopes. Escape in its path input belongs to the field:
 the workspace gives that input no editing escape target, as it does for the
 terminal, and the field steps back to its list.
+
+The directory field and path helpers live at the common Tasks component
+boundary. Section folder recovery reuses that field in the existing Section
+content column when the backend confirms a missing directory. Its inline
+browser stays open when focus leaves, preventing a pointer press on the
+Reconnect action from moving the action before click; Global New retains its
+ordinary dismiss-on-leave behavior. Escape and the disclosure still close the
+list. Recovery's own control model accepts checks and explicit mutations by
+request generation, rejecting old completions after a context change.
+An active Section owns the read-only location check while its directory is
+available. The recovery component is activated only while its form is shown;
+it owns that form's checks and explicit reconnection request. Section changes,
+deactivation, and disconnection invalidate the parent's pending observation,
+so a hidden recovery component has no active request lifetime.
+An unavailable inspection offers recheck without claiming a missing folder.
+After reconnection, the Tasks list supplies the canonical Section metadata;
+neither a selected candidate nor a local success hint becomes a durable path.
+Archived repair failures have no Section presentation or browser state. Restore
+reports failure at its own action boundary when the user requests it.
 
 The Section-owned Existing conversations card is adjacent to, but independent
 of, Task Create. Its external Codex preview and native fork requests do not
@@ -2044,7 +2070,7 @@ frontend/
 |           |   |       |-- section.ts
 |           |   |       `-- section/components/row.ts
 |           |   |-- task-create.ts
-|           |   |-- task-create/components/directory-field.ts
+|           |   |-- directory-field.ts
 |           |   |-- task-turn-options.ts
 |           |   |-- composer.ts
 |           |   |-- composer/components/attachments.ts

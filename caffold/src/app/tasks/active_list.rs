@@ -21,6 +21,7 @@ use crate::{
     },
 };
 
+use super::sections::DirectoryObservation;
 use super::{
     TaskRecord,
     recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason},
@@ -34,6 +35,7 @@ pub(in crate::app::tasks) struct ActiveTaskSection {
     pub(in crate::app::tasks) id: String,
     pub(in crate::app::tasks) name: String,
     pub(in crate::app::tasks) repository: bool,
+    pub(in crate::app::tasks) directory: DirectoryObservation,
     pub(in crate::app::tasks) composer_settings: Option<ActiveTaskComposerSettings>,
     pub(in crate::app::tasks) tasks: Vec<ActiveTask>,
 }
@@ -129,7 +131,20 @@ pub(in crate::app::tasks) async fn load_cached(
         .cloned()
         .map(|section| (section.section_id.clone(), section))
         .collect::<BTreeMap<_, _>>();
-    let repository_sections = repository_sections(fs, &sections).await;
+    let repository_sections = repository_sections(fs.clone(), &sections).await;
+    let section_fs = fs.clone();
+    let directory_paths = stored_sections
+        .iter()
+        .map(|section| (section.section_id.clone(), section.logical_path.clone()))
+        .collect::<Vec<_>>();
+    let mut directories = tokio::task::spawn_blocking(move || {
+        directory_paths
+            .into_iter()
+            .map(|(id, path)| (id, DirectoryObservation::read(&section_fs, &path)))
+            .collect::<BTreeMap<_, _>>()
+    })
+    .await
+    .map_err(|error| ApiError::Internal(format!("Section directory worker failed: {error}")))?;
     let isolated = tasks_in_managed_worktrees(&worktrees);
     let stored_task = |managed: &ManagedThread| {
         ActiveTask::stored(managed, isolated.contains(managed.thread_id.as_str()))
@@ -162,6 +177,9 @@ pub(in crate::app::tasks) async fn load_cached(
             });
             Some(ActiveTaskSection {
                 id: section.section_id.clone(),
+                directory: directories
+                    .remove(&section.section_id)
+                    .expect("every stored Section was observed"),
                 name: section.logical_path,
                 repository: repository_sections.contains(&section.section_id),
                 composer_settings: section

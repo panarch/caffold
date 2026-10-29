@@ -457,6 +457,14 @@ Review, Git, and GitHub when that Task is the active Detail subject. Outside
 Git, cwd remains useful as the thread's creation and file-review context, but
 it does not filter Tasks.
 
+Explicit Section folder reconnection updates a direct Task through
+`thread/settings/update` after confirming an idle native thread. It verifies
+the new effective `thread/resume.cwd`; the nested `thread.cwd` can temporarily
+lag this update. Ordinary resume keeps canonical thread cwd distinct from the
+active turn's runtime cwd. Archived candidates are identified with
+`thread/read`, since `thread/list` can retain an older cwd; reconnection
+unarchives, updates, and rearchives them without changing Caffold membership.
+
 The derived worktree context contains only RootedFs-relative paths plus live
 branch, HEAD, linked-worktree, and relative-cwd information. Caffold does not
 persist that derived projection in Codex metadata. Task Detail owns the

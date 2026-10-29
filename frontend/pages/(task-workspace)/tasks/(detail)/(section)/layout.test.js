@@ -34,6 +34,7 @@ test("combines New Task actions with direct Section shortcuts", () => {
   };
   const owner = {
     section: { id: "section-a" },
+    recovery: { value: null },
     ensureDrawn() {},
     taskCreate: () => taskCreate,
     conversationShortcuts: () => conversations,

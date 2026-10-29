@@ -90,6 +90,11 @@ pub(super) struct TaskTerminals {
 }
 
 impl TaskTerminals {
+    pub(super) fn close_section(&self, section_id: &str) {
+        self.registry
+            .close(&Subject::Section(section_id.to_string()));
+    }
+
     /// Closes the Task's terminal, if it has one.
     pub(super) fn close(&self, thread_id: &str) {
         self.registry.close(&Subject::Task(thread_id.to_string()));

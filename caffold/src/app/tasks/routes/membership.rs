@@ -5,7 +5,7 @@ use super::store::{
 };
 use super::{
     SectionReorderRequest, SectionReorderResponse, TaskDeleteRequest, TaskDeleteResponse,
-    TaskReorderRequest, TaskReorderResponse, TaskRestoreResponse,
+    TaskForceArchiveRequest, TaskReorderRequest, TaskReorderResponse, TaskRestoreResponse,
 };
 use crate::agent;
 use crate::agent::{Conversation, Driver};
@@ -102,6 +102,15 @@ pub(super) async fn task_archive(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskRecord>, ApiError> {
+    let result = archive_task(&state, &thread_id).await;
+    match result {
+        Ok(task) => Ok(task),
+        Err(error) => Err(archive_failure(&state, &thread_id, error).await),
+    }
+}
+
+async fn archive_task(state: &TaskState, thread_id: &str) -> Result<Json<TaskRecord>, ApiError> {
+    let thread_id = thread_id.to_string();
     active_record(&state.task_store, &thread_id).await?;
     let _mutation = state.task_sessions.reserve_mutation(&thread_id).await;
     let managed = active_record(&state.task_store, &thread_id).await?;
@@ -109,7 +118,7 @@ pub(super) async fn task_archive(
         .lifecycle
         .preflight_archive_worktree(thread_id.clone())
         .await?;
-    let driver = match task_provider_driver(&state, &managed).await? {
+    let driver = match task_provider_driver(state, &managed).await? {
         Ok(driver) => Some(driver),
         Err(error) => {
             eprintln!(
@@ -120,7 +129,7 @@ pub(super) async fn task_archive(
     };
     let task = match &driver {
         Some(driver) => match driver.describe(&managed.thread_id).await {
-            Ok(described) => Some(task_described_as(&state, driver, &managed, described).await?),
+            Ok(described) => Some(task_described_as(state, driver, &managed, described).await?),
             Err(error) => {
                 eprintln!(
                     "failed to describe the provider conversation while archiving Task {thread_id}; continuing with Caffold archive: {error}"
@@ -155,11 +164,11 @@ pub(super) async fn task_archive(
             return Err(error);
         }
     };
-    let archived = match task_store_archive(&state, &thread_id).await {
+    let archived = match task_store_archive(state, &thread_id).await {
         Ok(Some(archived)) => archived,
         Ok(None) => {
             rollback_task_archive(
-                &state,
+                state,
                 driver.as_ref(),
                 &thread_id,
                 provider_archived,
@@ -170,7 +179,7 @@ pub(super) async fn task_archive(
         }
         Err(error) => {
             rollback_task_archive(
-                &state,
+                state,
                 driver.as_ref(),
                 &thread_id,
                 provider_archived,
@@ -180,10 +189,107 @@ pub(super) async fn task_archive(
             return Err(error);
         }
     };
-    notify_task_removed(&state, &thread_id, "archived");
+    notify_task_removed(state, &thread_id, "archived");
     Ok(Json(
         task.unwrap_or_else(|| unavailable_archived_task(&archived)),
     ))
+}
+
+pub(super) async fn task_force_archive(
+    State(state): State<TaskState>,
+    AxumPath(thread_id): AxumPath<String>,
+    Json(request): Json<TaskForceArchiveRequest>,
+) -> Result<Json<TaskRecord>, ApiError> {
+    // Own an accepted destructive request even if its browser leaves.
+    tokio::spawn(force_archive_task(state, thread_id, request))
+        .await
+        .map_err(task_store_join_error)?
+}
+
+async fn force_archive_task(
+    state: TaskState,
+    thread_id: String,
+    request: TaskForceArchiveRequest,
+) -> Result<Json<TaskRecord>, ApiError> {
+    let _mutation = state.task_sessions.reserve_mutation(&thread_id).await;
+    let managed = active_record(&state.task_store, &thread_id).await?;
+    state
+        .lifecycle
+        .preflight_force_archive(thread_id.clone(), request.expected_worktree_id.clone())
+        .await?;
+    let driver = task_provider_driver(&state, &managed)
+        .await?
+        .map_err(ApiError::from)?;
+    let observed = match driver.describe(&thread_id).await {
+        Ok(observed) => observed,
+        Err(agent::AgentError::ConversationGone(_)) => None,
+        Err(error) => return Err(error.into()),
+    };
+    if observed.as_ref().is_some_and(|conversation| {
+        matches!(conversation.status, agent::ThreadStatus::Active { .. })
+    }) || state
+        .task_sessions
+        .snapshot(&thread_id)
+        .await
+        .is_some_and(|snapshot| snapshot.active_turn_id.is_some())
+    {
+        return Err(ApiError::BadRequest {
+            code: "task_active",
+            message: "Finish or stop the running Task before archiving it.".to_string(),
+        });
+    }
+    state
+        .lifecycle
+        .preflight_force_archive(thread_id.clone(), request.expected_worktree_id.clone())
+        .await?;
+    state.lifecycle.close_terminal(&thread_id);
+    // Closing the native conversation precedes removal so it cannot continue
+    // writing into the checkout. No conversation history is deleted.
+    driver.ensure_conversation_archived(&thread_id).await?;
+    state
+        .lifecycle
+        .force_archive_worktree(thread_id.clone(), request.expected_worktree_id)
+        .await?;
+    let archived = task_store_archive(&state, &thread_id)
+        .await?
+        .ok_or_else(|| ApiError::Conflict {
+            code: "task_archive_changed",
+            message: "The Task changed while archiving. Reload its current state.".to_string(),
+        })?;
+    state.task_sessions.forget_thread(&thread_id).await;
+    notify_task_removed(&state, &thread_id, "archived");
+    // Git may be unavailable, so the retained Task row owns this response.
+    // Never recreate the discarded checkout as a rollback after removal.
+    Ok(Json(unavailable_archived_task(&archived)))
+}
+
+async fn archive_failure(state: &TaskState, thread_id: &str, error: ApiError) -> ApiError {
+    let code = match &error {
+        ApiError::Diagnostic(body) => body.code,
+        ApiError::BadRequest { code, .. } | ApiError::Conflict { code, .. } => code,
+        _ => return error,
+    };
+    if !code.starts_with("managed_worktree_") {
+        return error;
+    }
+    let Ok(Some(record)) = task_store_worktree_for_thread(state, thread_id).await else {
+        return error;
+    };
+    if state
+        .lifecycle
+        .preflight_force_archive(thread_id.to_string(), record.worktree_id.clone())
+        .await
+        .is_err()
+    {
+        return error;
+    }
+    let mut body = error.into_error_body();
+    body.allowed_actions
+        .get_or_insert_with(Vec::new)
+        .push("forceArchive");
+    body.worktree_id = Some(record.worktree_id);
+    body.worktree_path = Some(record.worktree_path);
+    ApiError::Diagnostic(body)
 }
 
 /// Resolve every Caffold-owned input before exposing provider acquisition as
@@ -533,6 +639,7 @@ pub(super) async fn task_restore(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskRestoreResponse>, ApiError> {
+    let _mutation = state.task_sessions.reserve_mutation(&thread_id).await;
     let archived = archived_record(&state.task_store, &thread_id).await?;
     let agent = state.task_runtime.agent_for(&archived).await?;
     let driver = agent.driver();
@@ -875,7 +982,9 @@ mod tests {
         assert!(initial["payload"]["detail"]["task"].is_null());
         let archive = task_archive(State(state.clone()), AxumPath(id.to_string())).await;
         assert!(matches!(archive, Err(ApiError::Diagnostic(ref diagnosis))
-            if serde_json::to_value(diagnosis).unwrap() == body["error"]));
+            if diagnosis.code == "managed_worktree_not_repository"
+                && diagnosis.allowed_actions.as_ref().unwrap().contains(&"forceArchive")
+                && diagnosis.worktree_id.as_deref() == Some(worktree.worktree_id.as_str())));
         assert!(client.mock_requests().await.is_empty());
 
         let unconfirmed = task_delete(State(state.clone()), AxumPath(id.to_string()), None).await;
@@ -1920,10 +2029,8 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(ApiError::BadRequest {
-                code: "managed_worktree_dirty",
-                ..
-            })
+            Err(ApiError::Diagnostic(body)) if body.code == "managed_worktree_dirty"
+                && body.allowed_actions == Some(vec!["forceArchive"])
         ));
         assert_eq!(
             state
@@ -1946,6 +2053,158 @@ mod tests {
                 .collect::<Vec<_>>(),
             Vec::<String>::new()
         );
+    }
+
+    #[tokio::test]
+    async fn force_archive_http_discards_only_the_confirmed_checkout_and_keeps_the_task() {
+        for missing_repository in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let source = root.path().join("source");
+            initialize_git_repository(&source);
+            let id = "force-archive-http";
+            let client = CodexThreadClient::mock(vec![
+                MockCodexResponse::ok(
+                    "thread/read",
+                    json!({"thread": broken_thread(id, &source, "idle")}),
+                ),
+                MockCodexResponse::ok("thread/archive", json!({})),
+            ]);
+            let state =
+                task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone())
+                    .await;
+            manage_test_thread(&state, id, &source).await;
+            let worktree = isolate_broken_fixture(&state, id, &source).await;
+            std::fs::write(
+                std::path::Path::new(&worktree.worktree_path).join("untracked.txt"),
+                "discard",
+            )
+            .unwrap();
+            if missing_repository {
+                std::fs::rename(&source, root.path().join("moved")).unwrap();
+            }
+            let refused = router(state.clone())
+                .oneshot(
+                    axum::http::Request::post(format!("/api/tasks/{id}/archive"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(refused.status(), axum::http::StatusCode::CONFLICT);
+            let body: JsonValue = serde_json::from_slice(
+                &axum::body::to_bytes(refused.into_body(), 8192)
+                    .await
+                    .unwrap(),
+            )
+            .unwrap();
+            assert!(
+                body["error"]["allowedActions"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("forceArchive"))
+            );
+            assert_eq!(body["error"]["worktreeId"], worktree.worktree_id);
+            assert!(client.mock_requests().await.is_empty());
+
+            let stale = router(state.clone())
+                .oneshot(
+                    axum::http::Request::post(format!("/api/tasks/{id}/archive/force"))
+                        .header("content-type", "application/json")
+                        .body(Body::from(
+                            json!({"expectedWorktreeId": "not-the-worktree"}).to_string(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert!(!stale.status().is_success());
+            assert!(std::path::Path::new(&worktree.worktree_path).exists());
+            assert!(client.mock_requests().await.is_empty());
+            let response = router(state.clone())
+                .oneshot(
+                    axum::http::Request::post(format!("/api/tasks/{id}/archive/force"))
+                        .header("content-type", "application/json")
+                        .body(Body::from(
+                            json!({"expectedWorktreeId": worktree.worktree_id}).to_string(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), axum::http::StatusCode::OK);
+            assert!(!std::path::Path::new(&worktree.worktree_path).exists());
+            assert!(state.task_store.get(id).unwrap().is_none());
+            let archived = state.task_store.get_archived(id).unwrap().unwrap();
+            assert_eq!(archived.thread_id, id);
+            assert_eq!(
+                state
+                    .task_store
+                    .worktree_for_thread(id)
+                    .unwrap()
+                    .unwrap()
+                    .state,
+                ManagedWorktreeState::Archived
+            );
+            assert_eq!(
+                client
+                    .mock_requests()
+                    .await
+                    .iter()
+                    .map(|(method, _)| method.as_str())
+                    .collect::<Vec<_>>(),
+                ["thread/read", "thread/archive"]
+            );
+            if missing_repository {
+                assert!(root.path().join("moved/.git").is_dir());
+            } else {
+                assert!(source.join(".git").is_dir());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn force_archive_refuses_a_running_task_and_an_unmanaged_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        initialize_git_repository(&source);
+        let id = "force-archive-busy";
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/read",
+            json!({"thread": broken_thread(id, &source, "active")}),
+        )]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, id, &source).await;
+        let worktree = isolate_broken_fixture(&state, id, &source).await;
+        let result = task_force_archive(
+            State(state.clone()),
+            AxumPath(id.to_string()),
+            Json(TaskForceArchiveRequest {
+                expected_worktree_id: worktree.worktree_id,
+            }),
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(ApiError::BadRequest {
+                code: "task_active",
+                ..
+            })
+        ));
+        assert!(std::path::Path::new(&worktree.worktree_path).exists());
+        assert!(state.task_store.get(id).unwrap().is_some());
+        manage_test_thread(&state, "direct", &source).await;
+        let result = task_force_archive(
+            State(state.clone()),
+            AxumPath("direct".into()),
+            Json(TaskForceArchiveRequest {
+                expected_worktree_id: "anything".into(),
+            }),
+        )
+        .await;
+        assert!(result.is_err());
+        assert!(source.join(".git").is_dir());
+        assert_eq!(client.mock_requests().await.len(), 1);
     }
 
     #[tokio::test]

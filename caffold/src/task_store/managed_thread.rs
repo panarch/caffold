@@ -525,6 +525,43 @@ where
     Ok(Some(thread))
 }
 
+pub(super) fn reconnect_cwd<S>(
+    glue: &mut Glue<S>,
+    expected: &ManagedThread,
+    cwd: &str,
+) -> Result<()>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let membership = if expected.archived_at_ms.is_some() {
+        Membership::Archived
+    } else {
+        Membership::Active
+    };
+    let current = match membership {
+        Membership::Active => get(glue, &expected.thread_id)?,
+        Membership::Archived => get_archived(glue, &expected.thread_id)?,
+    };
+    if current.as_ref() != Some(expected) {
+        return Err(TaskStoreError::InvalidRow(
+            "Section changed during reconnection",
+        ));
+    }
+    if matches!(expected.run_by, RunBy::Codex) {
+        return Ok(());
+    }
+    if cwd.trim().is_empty() {
+        return Err(TaskStoreError::InvalidRow("cwd"));
+    }
+    table(TABLE_NAME)
+        .update()
+        .filter(col("thread_id").eq(text(expected.thread_id.clone())))
+        .filter(membership.filter())
+        .set("cwd", text(cwd.to_string()))
+        .execute(glue)?;
+    Ok(())
+}
+
 pub(super) fn archive<S>(
     glue: &mut Glue<S>,
     thread_id: &str,

@@ -9,6 +9,7 @@ import {
 import {
   archiveTask,
   discardTaskUploads,
+  forceArchiveTask,
   forkTask,
   getTask,
   interruptTask,
@@ -102,6 +103,11 @@ import type {
 import { TASK_DETAIL_INTENT_EVENT } from "../task-detail-intent-event.js";
 import type { TaskDetailTransportChangeDetail } from "../task-detail-transport-change-event.js";
 import { TASK_DETAIL_TRANSPORT_CHANGE_EVENT } from "../task-detail-transport-change-event.js";
+import "./components/force-archive-dialog.js";
+import type {
+  CaffoldTaskForceArchiveDialog,
+  ForceArchiveConfirmation,
+} from "./components/force-archive-dialog.js";
 import type { CaffoldTaskPermissionInstructionsDialog } from "./components/permission-instructions-dialog.js";
 import {
   ConversationProjection,
@@ -241,6 +247,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
   private selectedThreadId = "";
   private liveUpdates: WorkspaceLiveUpdates | null = null;
   private managedTask: { threadId: string; title?: string } | null = null;
+  private missingSectionId = "";
   private readonly detailSession: TaskDetailSession = new TaskDetailSession({
     subscribe: (threadId, listener) => {
       if (!this.liveUpdates) {
@@ -322,6 +329,8 @@ export class CaffoldTaskDetail extends CaffoldElement {
   private readonly followUpComposerSlot = new DrawnRef<HTMLDivElement>(this);
   private readonly brokenDeleteDialog =
     new DrawnRef<CaffoldBrokenTaskDeleteDialog>(this);
+  private readonly forceArchiveDialog =
+    new DrawnRef<CaffoldTaskForceArchiveDialog>(this);
   private readonly absenceNotice = new DrawnRef<CaffoldTaskAbsence>(this);
 
   override connectedCallback() {
@@ -381,6 +390,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
 
     if (this.selectedThreadId !== targetThreadId) {
       this.brokenDeleteDialog.value?.reset();
+      this.forceArchiveDialog.value?.reset();
       this.deactivateFollowUpComposer();
       this.history.deactivate();
       this.interruptActionToken += 1;
@@ -509,6 +519,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
   // history, and the dialogs opened over its conversation.
   private endTaskRequests() {
     this.brokenDeleteDialog.value?.reset();
+    this.forceArchiveDialog.value?.reset();
     this.history.deactivate();
     this.interruptActionToken += 1;
     this.interruptStateValue = { loading: false, error: null };
@@ -595,8 +606,10 @@ export class CaffoldTaskDetail extends CaffoldElement {
   }
 
   keyboardNavigationContexts() {
-    const deletionContexts =
-      this.brokenDeleteDialog.value?.keyboardNavigationContexts() ?? [];
+    const deletionContexts = mergeKeyboardNavigationContexts(
+      this.brokenDeleteDialog.value?.keyboardNavigationContexts() ?? [],
+      this.forceArchiveDialog.value?.keyboardNavigationContexts() ?? [],
+    );
     if (
       this.hidden ||
       this.reviewView !== "conversation" ||
@@ -1604,7 +1617,37 @@ export class CaffoldTaskDetail extends CaffoldElement {
     }
   }
 
-  async archiveSelectedTask() {
+  openForceArchiveConfirmation(opener?: Element | null) {
+    const failure = this.archiveStateValue.error as TaskResponseError | null;
+    if (
+      !this.selectedThreadId ||
+      this.archiveStateValue.loading ||
+      this.forkStateValue.loading ||
+      !failure?.allowedActions?.includes("forceArchive") ||
+      !failure.worktreeId
+    ) {
+      return;
+    }
+    this.forceArchiveDialog.value?.openTask(
+      {
+        threadId: this.selectedThreadId,
+        worktreeId: failure.worktreeId,
+        title:
+          this.taskDetail?.task?.title ||
+          this.managedTask?.title ||
+          this.selectedThreadId,
+        path: failure.worktreePath ?? "",
+      },
+      opener,
+    );
+  }
+
+  private forceArchiveConfirmed(event: CustomEvent<ForceArchiveConfirmation>) {
+    event.stopPropagation();
+    void this.archiveSelectedTask(event.detail);
+  }
+
+  async archiveSelectedTask(confirmation?: ForceArchiveConfirmation) {
     if (
       !this.selectedThreadId ||
       this.archiveStateValue.loading ||
@@ -1612,12 +1655,30 @@ export class CaffoldTaskDetail extends CaffoldElement {
     ) {
       return;
     }
+    const failure = this.archiveStateValue.error as TaskResponseError | null;
+    const expectedWorktreeId =
+      confirmation && failure?.allowedActions?.includes("forceArchive")
+        ? failure.worktreeId
+        : undefined;
+    if (
+      confirmation &&
+      (!expectedWorktreeId ||
+        confirmation.threadId !== this.selectedThreadId ||
+        confirmation.worktreeId !== expectedWorktreeId)
+    ) {
+      return;
+    }
     const actionToken = ++this.archiveActionToken;
     const threadId = this.selectedThreadId;
-    this.archiveStateValue = { loading: true, error: null };
+    this.archiveStateValue = {
+      loading: true,
+      error: confirmation ? failure : null,
+    };
     this.emitSubjectSnapshot();
     try {
-      const task = await archiveTask(threadId);
+      const task = expectedWorktreeId
+        ? await forceArchiveTask(threadId, expectedWorktreeId)
+        : await archiveTask(threadId);
       if (
         actionToken !== this.archiveActionToken ||
         threadId !== this.selectedThreadId
@@ -1644,7 +1705,10 @@ export class CaffoldTaskDetail extends CaffoldElement {
       if (this.reportTaskAbsence(threadId, failure)) {
         return;
       }
-      if (Array.isArray(failure.allowedActions)) {
+      if (
+        Array.isArray(failure.allowedActions) &&
+        !failure.allowedActions.includes("forceArchive")
+      ) {
         this.detailLoadError = failure;
         this.loading = false;
         this.draw();
@@ -1833,6 +1897,14 @@ export class CaffoldTaskDetail extends CaffoldElement {
     return shownDetail
       ? Boolean(this.taskDetail?.historyLoading) && this.events.length === 0
       : this.loading;
+  }
+
+  setMissingSection(sectionId: string) {
+    if (this.missingSectionId === sectionId) {
+      return;
+    }
+    this.missingSectionId = sectionId;
+    this.requestUpdate();
   }
 
   setManagedTask(task: { threadId: string; title?: string } | null) {
@@ -2199,6 +2271,10 @@ export class CaffoldTaskDetail extends CaffoldElement {
       <caffold-loading-text ?hidden=${!this.waitsForConversation()}
         >Loading conversation…</caffold-loading-text
       >
+      <caffold-task-force-archive-dialog
+        ${drawn(this.forceArchiveDialog)}
+        @caffold:task-force-archive-confirmed=${this.forceArchiveConfirmed}
+      ></caffold-task-force-archive-dialog>
       <caffold-broken-task-delete-dialog
         ${drawn(this.brokenDeleteDialog)}
         @caffold:task-detail-intent=${this.brokenDeleteIntent}
@@ -2252,6 +2328,22 @@ export class CaffoldTaskDetail extends CaffoldElement {
   // What may still be done with a Task that could not be read: what the
   // server allows, or Retry when it named nothing.
   private loadErrorAction() {
+    if (
+      this.missingSectionId &&
+      this.detailLoadError?.code?.startsWith("managed_worktree_") &&
+      this.detailLoadError.code !== "managed_worktree_missing"
+    ) {
+      return html`<button
+        ${this.hints.button({
+          id: "load-error",
+          label: "Reconnect Section folder",
+          action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        })}
+        type="button"
+        class="task-secondary-button"
+        @click=${this.openSectionRecovery}
+      >Reconnect Section folder</button>`;
+    }
     const actions = this.detailLoadError?.allowedActions;
     if (actions?.includes("deleteTask")) {
       return html`<button
@@ -2280,6 +2372,26 @@ export class CaffoldTaskDetail extends CaffoldElement {
       >Retry</button>`;
     }
     return nothing;
+  }
+
+  private openSectionRecovery() {
+    if (!this.missingSectionId) {
+      return;
+    }
+    this.dispatchEvent(
+      new CustomEvent<TaskDetailIntent>(TASK_DETAIL_INTENT_EVENT, {
+        bubbles: true,
+        composed: true,
+        detail: {
+          type: "domain-route",
+          route: {
+            kind: "tasks",
+            sectionId: this.missingSectionId,
+            sectionSurface: "new",
+          },
+        },
+      }),
+    );
   }
 
   // Git or GitHub before the Task they belong to could be read.

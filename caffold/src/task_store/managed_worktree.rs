@@ -334,6 +334,24 @@ pub(super) fn columns() -> Vec<ExprNode<'static>> {
         .collect()
 }
 
+pub(super) fn reconnect<S>(
+    glue: &mut Glue<S>,
+    expected: &ManagedWorktree,
+    common_dir: &str,
+) -> Result<()>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    if get(glue, &expected.worktree_id)?.as_ref() != Some(expected) {
+        return Err(TaskStoreError::InvalidRow(
+            "worktree changed during reconnection",
+        ));
+    }
+    let mut updated = expected.clone();
+    updated.repository_git_dir = common_dir.to_string();
+    update_all(glue, &updated)
+}
+
 fn select_one<S>(glue: &mut Glue<S>, filter: ExprNode<'static>) -> Result<Option<ManagedWorktree>>
 where
     S: GStore + GStoreMut + Planner,
@@ -388,7 +406,11 @@ fn validate_checkout_anchor(
     state: ManagedWorktreeState,
     anchor: Option<&CheckoutAnchor>,
 ) -> Result<()> {
-    if (state == ManagedWorktreeState::Ready) == anchor.is_none() {
+    if matches!(
+        state,
+        ManagedWorktreeState::Removing | ManagedWorktreeState::Archived
+    ) || (state == ManagedWorktreeState::Ready) == anchor.is_none()
+    {
         Ok(())
     } else {
         Err(invalid_checkout_anchor(state))

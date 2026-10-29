@@ -5,6 +5,9 @@ use std::{
 
 use thiserror::Error;
 
+mod reconnect;
+pub(crate) use reconnect::{WorktreeReconnection, prepare_reconnection};
+
 use super::{head_sha, repository_for, repository_metadata_paths};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
