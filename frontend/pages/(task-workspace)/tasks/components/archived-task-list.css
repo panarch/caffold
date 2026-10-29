@@ -228,7 +228,8 @@ caffold-task-status-chip {
   inset: max(
     0px,
     calc(
-      (var(--task-list-row-height) - var(--interface-compact-visual-size)) / 2
+      (var(--task-list-row-height) - var(--interface-compact-visual-size)) /
+      2
     )
   );
   border: 1px solid transparent;

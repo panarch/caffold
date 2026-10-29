@@ -65,7 +65,8 @@
   inset: min(
     0px,
     calc(
-      (var(--keyboard-choice-visual-size) - var(--interface-target-floor)) / 2
+      (var(--keyboard-choice-visual-size) - var(--interface-target-floor)) /
+      2
     )
   );
   content: "";

@@ -17,7 +17,8 @@
   border-bottom: 1px solid var(--border);
   padding: 0 var(--interface-space-6);
   padding-left: calc(
-    var(--interface-space-6) + var(--task-header-leading-space, 0rem)
+    var(--interface-space-6) +
+    var(--task-header-leading-space, 0rem)
   );
   box-shadow: var(--structural-shadow-block-end);
 }
@@ -28,7 +29,10 @@
   min-height: 0;
   overflow: auto;
   padding: var(--interface-space-4) 0
-    max(var(--interface-space-5), var(--task-workspace-navigation-clearance, 0rem));
+    max(
+      var(--interface-space-5),
+      var(--task-workspace-navigation-clearance, 0rem)
+    );
   scroll-padding-bottom: var(--task-workspace-navigation-clearance, 0rem);
   scrollbar-width: none;
 }

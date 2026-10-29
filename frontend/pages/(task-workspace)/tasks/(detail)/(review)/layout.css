@@ -5,23 +5,27 @@
   --review-navigator-axis-inline-size: 7rem;
   --review-navigator-control-inline-size: calc(
     var(--review-navigator-choice-count, 1) *
-      var(--review-navigator-axis-inline-size) / 2
+    var(--review-navigator-axis-inline-size) /
+    2
   );
   --review-viewer-action-inline-end: calc(
-    var(--interface-space-7) + var(--interface-compact-hit-outset)
+    var(--interface-space-7) +
+    var(--interface-compact-hit-outset)
   );
   --review-viewer-axis-inline-size: 7.5rem;
   --review-viewer-control-inline-size: calc(
     var(--review-viewer-choice-count, 1) *
-      var(--review-viewer-axis-inline-size) / 2
+    var(--review-viewer-axis-inline-size) /
+    2
   );
   --review-pane-title-size: 0.82rem;
   --review-pane-title-line-height: 1.05;
   --review-pane-meta-size: 0.74rem;
   --review-pane-meta-line-height: 1.1;
   --review-header-height: calc(
-    var(--interface-compact-hit-size) + var(--review-header-padding-block) +
-      var(--review-header-padding-block)
+    var(--interface-compact-hit-size) +
+    var(--review-header-padding-block) +
+    var(--review-header-padding-block)
   );
   display: block;
   min-width: 0;
@@ -101,15 +105,17 @@ caffold-review-selected-file {
 .task-review-navigator-pane {
   --review-pane-action-clearance: calc(
     var(--review-navigator-action-inline-end) +
-      var(--review-navigator-control-inline-size) + var(--interface-space-5)
+    var(--review-navigator-control-inline-size) +
+    var(--interface-space-5)
   );
 }
 
 .task-review-viewer-pane {
   --review-pane-action-clearance: calc(
     var(--review-viewer-action-inline-end) +
-      var(--review-viewer-control-inline-size) + var(--interface-space-5) -
-      var(--interface-compact-hit-outset)
+    var(--review-viewer-control-inline-size) +
+    var(--interface-space-5) -
+    var(--interface-compact-hit-outset)
   );
 }
 
@@ -222,7 +228,8 @@ caffold-review-selected-file {
 @media (max-width: 520px) {
   :host {
     --review-viewer-action-inline-end: calc(
-      var(--interface-space-4) + var(--interface-compact-hit-outset)
+      var(--interface-space-4) +
+      var(--interface-compact-hit-outset)
     );
   }
 }

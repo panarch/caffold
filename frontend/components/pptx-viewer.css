@@ -23,15 +23,3 @@
   font-size: var(--interface-meta-font-size);
   line-height: var(--interface-line-height);
 }
-
-.pptx-viewer-document {
-  display: block;
-  min-width: 0;
-}
-
-.pptx-viewer-message {
-  margin: 0;
-  padding: 1rem;
-  color: var(--muted);
-  text-align: center;
-}

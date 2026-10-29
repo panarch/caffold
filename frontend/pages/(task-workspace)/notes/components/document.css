@@ -26,7 +26,8 @@
   border-bottom: 1px solid var(--border);
   padding: var(--interface-space-5) var(--interface-space-7);
   padding-left: calc(
-    var(--interface-space-7) + var(--task-header-leading-space, 0rem)
+    var(--interface-space-7) +
+    var(--task-header-leading-space, 0rem)
   );
   box-shadow: var(--structural-shadow-block-end);
 }
@@ -54,8 +55,8 @@
     0rem,
     calc(
       var(--interface-toolbar-gap) -
-        var(--interface-compact-hit-outset) -
-        var(--interface-compact-hit-outset)
+      var(--interface-compact-hit-outset) -
+      var(--interface-compact-hit-outset)
     )
   );
   /* The button is taller than the title row; it must not grow the header
@@ -121,7 +122,10 @@
 }
 
 .notes-workspace-detail-pane > caffold-markdown-preview {
-  --markdown-preview-scroll-end-clearance: var(--task-workspace-navigation-clearance, 0rem);
+  --markdown-preview-scroll-end-clearance: var(
+    --task-workspace-navigation-clearance,
+    0rem
+  );
   grid-row: 4;
   min-height: 0;
 }
@@ -207,7 +211,9 @@
 }
 
 @container task-workspace (min-width: 641px) {
-  :host([data-split="true"]) .notes-workspace-detail-header > .note-document-back {
+  :host([data-split="true"])
+    .notes-workspace-detail-header
+    > .note-document-back {
     display: none;
   }
 

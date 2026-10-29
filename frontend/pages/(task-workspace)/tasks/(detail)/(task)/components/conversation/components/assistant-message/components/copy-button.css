@@ -15,7 +15,8 @@
   width: var(--interface-compact-hit-size);
   height: var(--interface-compact-hit-size);
   margin: calc(
-    (var(--interface-icon-small-size) - var(--interface-compact-hit-size)) / 2
+    (var(--interface-icon-small-size) - var(--interface-compact-hit-size)) /
+    2
   );
   padding: 0;
   border: 0;
@@ -56,7 +57,7 @@
   opacity: 0.65;
 }
 
-:is( .task-assistant-message-copy-icon, .task-assistant-message-copy-icon-svg ) {
+:is(.task-assistant-message-copy-icon, .task-assistant-message-copy-icon-svg) {
   display: block;
   width: var(--interface-icon-small-size);
   height: var(--interface-icon-small-size);

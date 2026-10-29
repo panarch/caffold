@@ -14,6 +14,7 @@ const baseStyles = "caffold-element/base.css";
 const shadowRootStyles = new Map([
   ["action-hints/components/dialog.css", "caffold-action-hint-dialog"],
   ["components/docx-viewer.css", "caffold-docx-viewer"],
+  ["components/docx-viewer/components/document.css", "caffold-docx-document"],
   ["components/file-navigator.css", "caffold-file-navigator"],
   ["components/file-navigator/components/list.css", "caffold-file-list"],
   ["components/file-tree.css", "caffold-file-tree"],
@@ -29,6 +30,7 @@ const shadowRootStyles = new Map([
   ["components/pane-resizer.css", "caffold-pane-resizer"],
   ["components/pdf-viewer.css", "caffold-pdf-viewer"],
   ["components/pptx-viewer.css", "caffold-pptx-viewer"],
+  ["components/pptx-viewer/components/document.css", "caffold-pptx-document"],
   ["components/segmented-control.css", "caffold-segmented-control"],
   ["components/terminal-view.css", "caffold-terminal-view"],
   ["components/xlsx-viewer.css", "caffold-xlsx-viewer"],

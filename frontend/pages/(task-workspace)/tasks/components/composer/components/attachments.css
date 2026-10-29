@@ -5,10 +5,14 @@
 
 .task-composer-attachments {
   --task-composer-attachment-remove-overhang: calc(
-    var(--interface-compact-hit-size) / 2 - var(--interface-compact-visual-size) / 4
+    var(--interface-compact-hit-size) /
+    2 -
+    var(--interface-compact-visual-size) /
+    4
   );
   --task-composer-attachment-remove-clearance: calc(
-    var(--task-composer-attachment-remove-overhang) + var(--interface-space-2)
+    var(--task-composer-attachment-remove-overhang) +
+    var(--interface-space-2)
   );
   display: flex;
   gap: var(--task-composer-attachment-remove-clearance);

@@ -1,6 +1,9 @@
 :host {
   --file-tree-guide-origin: calc(
-    0.1875rem + var(--file-tree-padding-left) + var(--file-tree-icon-slot-size) / 2
+    0.1875rem +
+    var(--file-tree-padding-left) +
+    var(--file-tree-icon-slot-size) /
+    2
   );
   display: block;
   min-width: 0;
@@ -46,8 +49,7 @@
   min-height: var(--file-tree-row-height);
   align-items: center;
   padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
-    var(--file-tree-padding-y)
-    calc(0.1875rem + var(--file-tree-padding-left));
+    var(--file-tree-padding-y) calc(0.1875rem + var(--file-tree-padding-left));
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -60,10 +62,17 @@
 
 :host([data-status-column="true"]) .file-tree-entry {
   --file-tree-guide-origin: calc(
-    0.1875rem + var(--file-tree-padding-left) + var(--file-tree-status-slot-size) +
-      var(--file-tree-status-gap) + var(--file-tree-icon-slot-size) / 2
+    0.1875rem +
+    var(--file-tree-padding-left) +
+    var(--file-tree-status-slot-size) +
+    var(--file-tree-status-gap) +
+    var(--file-tree-icon-slot-size) /
+    2
   );
-  grid-template-columns: var(--file-tree-status-slot-size) minmax(0, max-content);
+  grid-template-columns: var(--file-tree-status-slot-size) minmax(
+      0,
+      max-content
+    );
   gap: var(--file-tree-status-gap);
 }
 
@@ -76,7 +85,9 @@
   position: absolute;
   inset-block: 0;
   left: calc(
-    var(--file-tree-guide-origin) + var(--tree-guide-depth) * var(--file-tree-indent)
+    var(--file-tree-guide-origin) +
+    var(--tree-guide-depth) *
+    var(--file-tree-indent)
   );
   width: 1px;
   background: var(--tree-indent-guide);
@@ -92,7 +103,9 @@
 [data-file-tree-parent-key] .file-tree-guides::before {
   inset-block: 0;
   left: calc(
-    var(--file-tree-guide-origin) + (var(--tree-depth, 0) - 1) * var(--file-tree-indent)
+    var(--file-tree-guide-origin) +
+    (var(--tree-depth, 0) - 1) *
+    var(--file-tree-indent)
   );
   width: 1px;
 }
@@ -108,8 +121,10 @@
 [data-file-tree-parent-key] .file-tree-guides::after {
   top: 50%;
   left: calc(
-    var(--file-tree-guide-origin) + (var(--tree-depth, 0) - 1) * var(--file-tree-indent) +
-      1px
+    var(--file-tree-guide-origin) +
+    (var(--tree-depth, 0) - 1) *
+    var(--file-tree-indent) +
+    1px
   );
   width: calc(var(--file-tree-indent) - var(--file-tree-icon-size) / 2 - 1px);
   height: 1px;
@@ -166,7 +181,8 @@
   color: var(--file-status-copied-fg);
 }
 
-.file-tree-entry[data-file-tree-status-tone="type-changed"] .file-tree-status-code {
+.file-tree-entry[data-file-tree-status-tone="type-changed"]
+  .file-tree-status-code {
   color: var(--file-status-type-changed-fg);
 }
 
@@ -245,9 +261,12 @@
   padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
     var(--file-tree-padding-y)
     calc(
-      0.1875rem + var(--file-tree-padding-left) + var(--file-tree-icon-slot-size) +
-        var(--file-tree-column-gap) +
-        var(--file-tree-status-name-depth) * var(--file-tree-indent)
+      0.1875rem +
+      var(--file-tree-padding-left) +
+      var(--file-tree-icon-slot-size) +
+      var(--file-tree-column-gap) +
+      var(--file-tree-status-name-depth) *
+      var(--file-tree-indent)
     );
   color: var(--muted);
   font-size: var(--file-tree-font-size);

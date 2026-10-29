@@ -18,8 +18,8 @@
 }
 
 .task-directory-field-frame:has(
-    > .task-directory-field-box > .task-directory-field-toggle:focus-visible
-  ),
+  > .task-directory-field-box > .task-directory-field-toggle:focus-visible
+),
 :host([data-node="editing"]) > .task-directory-field-frame {
   --task-directory-field-edge: var(--border-strong);
   outline: 2px solid var(--focus-ring);
@@ -116,8 +116,18 @@
   position: relative;
   display: grid;
   place-items: center;
-  width: calc(var(--task-directory-field-height) - 2px - 2 * var(--interface-space-2));
-  height: calc(var(--task-directory-field-height) - 2px - 2 * var(--interface-space-2));
+  width: calc(
+    var(--task-directory-field-height) -
+    2px -
+    2 *
+    var(--interface-space-2)
+  );
+  height: calc(
+    var(--task-directory-field-height) -
+    2px -
+    2 *
+    var(--interface-space-2)
+  );
   padding: 0;
   border: 0;
   border-radius: 5px;

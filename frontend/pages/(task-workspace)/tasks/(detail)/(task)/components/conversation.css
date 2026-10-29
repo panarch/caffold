@@ -1,6 +1,8 @@
 :host {
   --task-conversation-block-end-padding: calc(
-    1.125rem + var(--interface-control-hit-size) + var(--interface-space-3)
+    1.125rem +
+    var(--interface-control-hit-size) +
+    var(--interface-space-3)
   );
 }
 
@@ -173,7 +175,8 @@
   overflow-wrap: anywhere;
 }
 
-.task-message[data-message-role="assistant"] > caffold-task-message-attachments {
+.task-message[data-message-role="assistant"]
+  > caffold-task-message-attachments {
   justify-self: start;
   width: min(100%, 700px);
 }
@@ -266,7 +269,13 @@
   width: min(100%, 850px);
 }
 
-:host(:is( [data-transport-state="reconnecting"], [data-transport-state="unavailable"] )) .task-turn-active {
+:host(
+    :is(
+      [data-transport-state="reconnecting"],
+      [data-transport-state="unavailable"]
+    )
+  )
+  .task-turn-active {
   display: none;
 }
 
@@ -283,7 +292,9 @@
 @media (max-width: 860px) {
   :host {
     --task-conversation-block-end-padding: calc(
-      0.875rem + var(--interface-control-hit-size) + var(--interface-space-3)
+      0.875rem +
+      var(--interface-control-hit-size) +
+      var(--interface-space-3)
     );
   }
 

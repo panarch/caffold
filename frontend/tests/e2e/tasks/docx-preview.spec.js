@@ -195,7 +195,44 @@ test("renders a Word document as the only representation its file supports", { t
   await expect(viewer.getByText("Quarterly review"))
     .toHaveCSS("box-sizing", "content-box");
 
+  // Viewer chrome overrides the renderer inside the document without applying
+  // the outer host's padding or background to the document mount.
+  const wrapper = viewer.locator(".docx-wrapper");
+  await expect(wrapper).toHaveCSS("display", "flex");
+  await expect(wrapper).toHaveCSS("padding", "0px");
+  await expect(wrapper).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(pages.first()).toHaveCSS("box-shadow", "none");
+  await expect(pages.first()).toHaveCSS("border-top-style", "solid");
+  await expect(viewer.locator(".docx-viewer-document")).toHaveCSS("padding", "0px");
+  const notice = viewer.getByText("Embedded HTML content is not shown in this preview.");
+  await expect(notice).toHaveCSS("border-top-style", "dashed");
+  await expect(notice).toHaveCSS("border-top-color", "rgb(179, 179, 179)");
+  await expect(notice).toHaveCSS("color", "rgb(89, 89, 89)");
+
   await captureReviewScreenshot(page, testInfo, "tasks-docx-preview");
+
+  // A parent update retains the document component, rendered pages and scroll.
+  expect(await viewer.evaluate(async (element) => {
+    const child = element.shadowRoot.querySelector("caffold-docx-document");
+    const page = child.shadowRoot.querySelector("section.docx");
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(page.querySelector("p"));
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const selected = selection.toString();
+    element.scrollTop = 120;
+    const top = element.scrollTop;
+    element.requestUpdate();
+    await element.updateComplete;
+    await child.updateComplete;
+    return {
+      child: element.shadowRoot.querySelector("caffold-docx-document") === child,
+      page: child.shadowRoot.querySelector("section.docx") === page,
+      scroll: element.scrollTop === top,
+      selection: selected.includes("Quarterly review") && selection.toString() === selected,
+    };
+  })).toEqual({ child: true, page: true, scroll: true, selection: true });
 });
 
 test("shows a document's text without its links or embedded HTML", { tag: "@viewport-independent" }, async ({

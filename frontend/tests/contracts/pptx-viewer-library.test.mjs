@@ -9,7 +9,7 @@ function read(path) {
 }
 
 test("the browser and the browser suite load the same pptx-renderer release", () => {
-  const viewer = read("components/pptx-viewer.ts");
+  const viewer = read("components/pptx-viewer/components/document.ts");
   const manifest = JSON.parse(read("package.json"));
 
   const [, sourceVersion] =

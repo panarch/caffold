@@ -146,7 +146,8 @@ footer {
 
   footer {
     padding-bottom: calc(
-      var(--interface-space-8) + env(safe-area-inset-bottom)
+      var(--interface-space-8) +
+      env(safe-area-inset-bottom)
     );
   }
 }

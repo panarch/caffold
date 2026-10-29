@@ -250,7 +250,10 @@
   --interface-badge-size: 0.875rem;
   --keyboard-choice-visual-size: 1.25rem;
   --keyboard-choice-slot-size: calc(
-    var(--keyboard-choice-visual-size) + 2 * var(--interface-space-2) + 2px
+    var(--keyboard-choice-visual-size) +
+    2 *
+    var(--interface-space-2) +
+    2px
   );
   --interface-control-visual-size: 2rem;
   --interface-control-hit-size: max(
@@ -259,7 +262,10 @@
   );
   --interface-control-hit-outset: max(
     0px,
-    calc((var(--interface-target-floor) - var(--interface-control-visual-size)) / 2)
+    calc(
+      (var(--interface-target-floor) - var(--interface-control-visual-size)) /
+      2
+    )
   );
   --interface-control-size: var(--interface-control-hit-size);
   --interface-compact-control-size: max(1.75rem, var(--interface-target-floor));
@@ -270,7 +276,10 @@
   );
   --interface-compact-hit-outset: max(
     0px,
-    calc((var(--interface-target-floor) - var(--interface-compact-visual-size)) / 2)
+    calc(
+      (var(--interface-target-floor) - var(--interface-compact-visual-size)) /
+      2
+    )
   );
   --interface-row-size: max(2.25rem, var(--interface-target-floor));
   --interface-header-size: max(2.125rem, var(--interface-target-floor));
@@ -284,6 +293,8 @@
   --document-ink: #000000;
   --document-gridline: #e1e1e1;
   --document-link: #0563c1;
+  --document-notice-border: #b3b3b3;
+  --document-notice-text: #595959;
 
   --line-gutter-width: calc(var(--code-font-size) * 4.9);
   --file-tree-font-size: 0.8125rem;
