@@ -6,7 +6,8 @@
   overscroll-behavior: contain;
   padding: clamp(1rem, 3vw, 2rem);
   padding-bottom: calc(
-    clamp(1rem, 3vw, 2rem) + var(--markdown-preview-scroll-end-clearance, 0rem)
+    clamp(1rem, 3vw, 2rem) +
+    var(--markdown-preview-scroll-end-clearance, 0rem)
   );
   scroll-padding-bottom: var(--markdown-preview-scroll-end-clearance, 0rem);
   color: var(--text);
@@ -29,7 +30,8 @@
   overflow-wrap: anywhere;
 }
 
-.markdown-preview-body :is( p, ul, ol, blockquote, pre, .markdown-preview-table-scroll ) {
+.markdown-preview-body
+  :is(p, ul, ol, blockquote, pre, .markdown-preview-table-scroll) {
   margin: 0 0 0.875rem;
 }
 

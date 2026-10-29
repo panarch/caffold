@@ -17,8 +17,8 @@
 }
 
 .task-follow-up-form .task-composer-panel {
-  --task-composer-panel-shadow: var(--structural-shadow-block-start),
-    var(--structural-shadow-panel);
+  --task-composer-panel-shadow:
+    var(--structural-shadow-block-start), var(--structural-shadow-panel);
   width: min(100%, 980px);
   margin: 0 auto;
 }
@@ -41,7 +41,9 @@
 
 .task-composer-panel[data-drop-target] {
   border-color: var(--focus-ring);
-  box-shadow: 0 0 0 1px var(--focus-ring), var(--task-composer-panel-shadow);
+  box-shadow:
+    0 0 0 1px var(--focus-ring),
+    var(--task-composer-panel-shadow);
 }
 
 .task-composer-attachment-error {
@@ -135,7 +137,8 @@
     [data-voice-state="recording"],
     [data-voice-state="transcribing"]
   )
-  .task-composer-actions > caffold-task-context-usage {
+  .task-composer-actions
+  > caffold-task-context-usage {
   display: none;
 }
 

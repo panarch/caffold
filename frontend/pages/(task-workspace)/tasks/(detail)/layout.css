@@ -6,8 +6,8 @@
     0rem,
     calc(
       var(--interface-toolbar-gap) -
-        var(--interface-compact-hit-outset) -
-        var(--interface-compact-hit-outset)
+      var(--interface-compact-hit-outset) -
+      var(--interface-compact-hit-outset)
     )
   );
   display: block;
@@ -56,13 +56,11 @@
   align-items: center;
   gap: var(--detail-layout-summary-gap);
   min-height: var(--task-workspace-header-size, auto);
-  padding:
-    var(--interface-space-4)
-    var(--task-detail-header-padding-inline)
+  padding: var(--interface-space-4) var(--task-detail-header-padding-inline)
     var(--interface-space-4)
     calc(
       var(--task-detail-header-padding-inline) +
-        var(--task-header-leading-space, 0rem)
+      var(--task-header-leading-space, 0rem)
     );
   border-bottom: 1px solid var(--border);
   box-shadow: var(--structural-shadow-block-end);
@@ -92,7 +90,8 @@ caffold-segmented-control[data-detail-view-switch] {
 }
 
 /* A Section outside Git has no actions to keep a place for. */
-:host([data-detail-subject="section"]) .detail-layout-actions:not(:has(> :not([hidden]))) {
+:host([data-detail-subject="section"])
+  .detail-layout-actions:not(:has(> :not([hidden]))) {
   display: none;
 }
 
@@ -119,7 +118,8 @@ caffold-segmented-control[data-detail-view-switch] {
   /* On the actions' row, the terminal button keeps their spacing. */
   .detail-layout-summary > caffold-task-detail-terminal {
     margin-inline-start: calc(
-      var(--detail-layout-control-gap) - var(--detail-layout-summary-gap)
+      var(--detail-layout-control-gap) -
+      var(--detail-layout-summary-gap)
     );
   }
 }
@@ -131,7 +131,7 @@ caffold-segmented-control[data-detail-view-switch] {
       0.375rem,
       calc(
         var(--interface-compact-hit-outset) +
-          var(--interface-compact-hit-outset)
+        var(--interface-compact-hit-outset)
       )
     );
   }

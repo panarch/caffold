@@ -5,6 +5,7 @@ import type { DocumentPreviewFile } from "./dom.js";
 import "./loading-text.js";
 import { CaffoldElement } from "../caffold-element.js";
 
+import documentStyles from "./docx-viewer/document.css.js";
 import styles from "./docx-viewer.css.js";
 
 const DOCX_PREVIEW_VERSION = "0.4.1";
@@ -22,35 +23,6 @@ const RENDER_OPTIONS = {
 
 const EMBEDDED_HTML_NOTICE =
   "Embedded HTML content is not shown in this preview.";
-
-// The library's own rules come first in the shadow root; these follow them to
-// replace its grey backdrop and shadowed pages with the viewer's surface.
-const DOCUMENT_STYLES = `
-  .docx-wrapper {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1rem;
-    padding: 0;
-    background: transparent;
-  }
-
-  .docx-wrapper > section.docx {
-    margin: 0;
-    border: 1px solid var(--border);
-    box-shadow: none;
-  }
-
-  .docx-viewer-embedded-html {
-    margin: 0;
-    padding: 0.5rem 0.75rem;
-    border: 1px dashed #b3b3b3;
-    color: #595959;
-    font-family: var(--font-ui);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-  }
-`;
 
 // The parts of docx-preview the viewer uses.
 interface DocxPreview {
@@ -175,15 +147,14 @@ class CaffoldDocxViewer extends CaffoldElement {
     content.append(...nodes);
     withholdActiveContent(content);
     dropEmptyPages(content);
-    const style = window.document.createElement("style");
-    style.textContent = DOCUMENT_STYLES;
 
     // The document's styles apply only inside this root, and the app's
     // stylesheet does not reach the document.
     const mount = window.document.createElement("div");
     mount.className = "docx-viewer-document";
     const root = mount.attachShadow({ mode: "open" });
-    root.append(content, style);
+    root.adoptedStyleSheets = [documentStyles];
+    root.append(content);
     this.mount = mount;
     this.renderState = "docx";
     await this.updateComplete;

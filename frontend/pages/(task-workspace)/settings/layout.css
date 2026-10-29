@@ -1,7 +1,6 @@
 :host {
   --settings-content-max-width: 48rem;
-  --settings-content-padding-block:
-    var(--interface-space-14)
+  --settings-content-padding-block: var(--interface-space-14)
     calc(var(--interface-space-12) + var(--interface-space-12));
   --settings-content-padding-inline: var(--interface-space-12);
   --settings-small-text-size: max(14px, 0.8125rem);
@@ -43,7 +42,8 @@
   border-bottom: 1px solid var(--border);
   padding: var(--interface-space-5) var(--interface-space-7);
   padding-left: calc(
-    var(--interface-space-7) + var(--task-header-leading-space, 0rem)
+    var(--interface-space-7) +
+    var(--task-header-leading-space, 0rem)
   );
   box-shadow: var(--structural-shadow-block-end);
 }
@@ -111,8 +111,7 @@
 
 @media (max-width: 700px) {
   :host {
-    --settings-content-padding-block:
-      var(--interface-space-10)
+    --settings-content-padding-block: var(--interface-space-10)
       calc(var(--interface-space-14) + var(--interface-space-4));
     --settings-content-padding-inline: var(--interface-space-8);
   }

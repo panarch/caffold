@@ -16,7 +16,7 @@ npx playwright install chromium
 | Command | Boundary |
 | --- | --- |
 | `npm run typecheck` | TypeScript types of the frontend's `.ts` modules |
-| `npm run lint` | Biome formatting, import order, and lint rules of the frontend's `.ts` modules; `npx biome check --write` applies the fixes |
+| `npm run lint` | Biome formatting and lint rules for `.ts` and `.css` files, plus TypeScript import order; `npx biome check --write` applies the fixes |
 | `npm run test:unit` | colocated frontend unit tests |
 | `npm run test:contract` | frontend contracts in `tests/contracts/` |
 | `npm run test:e2e` | deterministic fixture-backed browser coverage |
@@ -25,6 +25,13 @@ npx playwright install chromium
 [Testing](../docs/development/testing.md) documents what each boundary proves,
 and indexes the suites other owners run — the macOS application tests under
 `desktop/macos/` and the Rust checks at the repository root.
+
+CSS uses Biome's recommended lint rules with `noDescendingSpecificity`
+disabled. `noImportantStyles` is an error, and `noDuplicateProperties` keeps
+its recommended error level. Property sorting is disabled so formatting
+preserves declaration order and the cascade. Styles in plain TypeScript
+strings are not checked as CSS; document preview styles live in their owners'
+`document.css` files so they are covered by the same command.
 
 ## Paths outside the package
 

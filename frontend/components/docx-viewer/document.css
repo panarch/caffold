@@ -1,0 +1,25 @@
+/* Override the document renderer's backdrop and page chrome inside its root. */
+.docx-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 0;
+  background: transparent;
+}
+
+.docx-wrapper > section.docx {
+  margin: 0;
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+
+.docx-viewer-embedded-html {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--document-notice-border);
+  color: var(--document-notice-text);
+  font-family: var(--font-ui);
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+}

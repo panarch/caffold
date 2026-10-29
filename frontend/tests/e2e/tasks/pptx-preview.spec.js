@@ -128,6 +128,8 @@ test("page spacing and frames survive lazy mounting and resizing", { tag: "@all-
   await expect(viewer).toHaveAttribute("data-render-state", "pptx");
   const slides = viewer.locator("[data-slide-index]");
   await expect(slides).toHaveCount(24);
+  await expect(viewer.locator(".pptx-viewer-document")).toHaveCSS("padding", "0px");
+  await expect(viewer.locator(".pptx-viewer-document")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   const spacing = await page.evaluate(() => `${parseFloat(getComputedStyle(document.documentElement).fontSize)}px`);
   for (const width of [null, "320px", "900px"]) {
     await viewer.evaluate((element, value) => { element.style.width = value ?? ""; }, width);
@@ -193,6 +195,16 @@ test("renders a PowerPoint deck as the only representation its file supports", {
     element.style.width = "";
     element.style.maxWidth = "";
   });
+  await expect.poll(() => slide.evaluate((element) => element.getBoundingClientRect().width))
+    .toBeCloseTo(Math.min(SLIDE_WIDTH, available), 0);
+
+  // Both visible slides load pictures asynchronously after their text. Capture
+  // the completed document rather than whichever images have arrived so far.
+  await expect(slide.locator("img")).toHaveCount(2);
+  await expect(viewer.locator('[data-slide-index="1"] img')).toHaveCount(2);
+  await expect.poll(() => viewer.locator("img").evaluateAll((images) =>
+    images.every((image) => image.complete && image.naturalWidth > 0)))
+    .toBe(true);
 
   await captureReviewScreenshot(page, testInfo, "tasks-pptx-preview");
 });
@@ -276,6 +288,7 @@ test("shows a deck's media as its pictures without playing it", { tag: "@viewpor
   // picture.
   await expect(mediaSlide.locator("img.pptx-viewer-media-poster")).toHaveCount(1);
   await expect(mediaSlide.locator("img.pptx-viewer-media-poster")).toBeVisible();
+  await expect(mediaSlide.locator("img.pptx-viewer-media-poster")).toHaveCSS("object-fit", "contain");
   await expect(mediaSlide.locator("img")).toHaveCount(2);
   await expect(viewer.locator("video, audio")).toHaveCount(0);
   await expect(viewer.getByText("Media is not played in this preview.")).toHaveCount(0);

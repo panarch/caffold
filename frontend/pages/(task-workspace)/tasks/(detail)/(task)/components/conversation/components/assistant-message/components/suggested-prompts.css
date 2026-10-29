@@ -61,7 +61,8 @@
   width: var(--interface-icon-small-size);
   height: var(--interface-icon-small-size);
   margin-top: calc(
-    (1em * var(--interface-line-height) - var(--interface-icon-small-size)) / 2
+    (1em * var(--interface-line-height) - var(--interface-icon-small-size)) /
+    2
   );
   color: var(--muted);
 }

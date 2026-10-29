@@ -1,0 +1,39 @@
+/* The viewer owns page spacing and frames; the renderer owns slide contents. */
+.pptx-viewer-slides {
+  margin-inline: auto;
+}
+
+[data-slide-index] {
+  margin-bottom: 1rem;
+}
+
+[data-slide-index]:last-child {
+  margin-bottom: 0;
+}
+
+[data-slide-index] > div {
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.pptx-viewer-media-poster {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.pptx-viewer-media-notice {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  box-sizing: border-box;
+  border: 1px dashed var(--document-notice-border);
+  color: var(--document-notice-text);
+  font-family: var(--font-ui);
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+  text-align: center;
+}

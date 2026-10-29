@@ -1,7 +1,9 @@
 :host {
   display: grid;
-  grid-template-columns:
-    var(--interface-icon-small-size) max-content minmax(0, 1fr);
+  grid-template-columns: var(--interface-icon-small-size) max-content minmax(
+      0,
+      1fr
+    );
   align-items: center;
   gap: 0.5rem;
   width: 100%;

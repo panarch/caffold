@@ -36,10 +36,13 @@
   margin-top: var(--interface-space-8);
 }
 
-:host([data-reorder-mode="sections"]) .task-repository-group + .task-repository-group {
+:host([data-reorder-mode="sections"])
+  .task-repository-group
+  + .task-repository-group {
   margin-top: var(--interface-space-2);
 }
 
-:host([data-reorder-mode="sections"]) .task-repository-group[data-task-recovery] {
+:host([data-reorder-mode="sections"])
+  .task-repository-group[data-task-recovery] {
   display: none;
 }

@@ -27,13 +27,11 @@
   display: flex;
   align-items: center;
   min-height: var(--task-workspace-header-size);
-  padding:
-    var(--interface-space-4)
-    var(--task-absence-header-padding-inline)
+  padding: var(--interface-space-4) var(--task-absence-header-padding-inline)
     var(--interface-space-4)
     calc(
       var(--task-absence-header-padding-inline) +
-        var(--task-header-leading-space, 0rem)
+      var(--task-header-leading-space, 0rem)
     );
   border-bottom: 1px solid var(--border);
   box-shadow: var(--structural-shadow-block-end);

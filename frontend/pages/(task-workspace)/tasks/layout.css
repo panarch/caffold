@@ -24,7 +24,9 @@
 /* The Task store takeover has no header row for the corner controls to sit
    in, so it leaves a header-high band above itself. */
 :host([data-tasks-view="new"]) .tasks-detail-pane > caffold-task-store-recovery,
-:host([data-tasks-view="home"]) .tasks-detail-pane > caffold-task-store-recovery {
+:host([data-tasks-view="home"])
+  .tasks-detail-pane
+  > caffold-task-store-recovery {
   margin-top: var(--task-header-block-space, 0rem);
 }
 

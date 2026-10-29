@@ -10,17 +10,17 @@
     var(--interface-compact-hit-size),
     calc(
       var(--interface-compact-visual-size) +
-        var(--interface-space-4) +
-        var(--interface-space-4) +
-        1px
+      var(--interface-space-4) +
+      var(--interface-space-4) +
+      1px
     )
   );
   --task-workspace-route-control-gap: max(
     0rem,
     calc(
       var(--interface-toolbar-gap) -
-        var(--interface-compact-hit-outset) -
-        var(--interface-compact-hit-outset)
+      var(--interface-compact-hit-outset) -
+      var(--interface-compact-hit-outset)
     )
   );
   /* Room a header leaves between the corner controls and its own content. */
@@ -112,17 +112,29 @@
   user-select: none;
 }
 
-:host([data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-presentation="code"]) .task-workspace-master-pane,
-:host([data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-presentation="code"]) .task-workspace-master-detail > caffold-pane-resizer {
+:host(
+    [data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-presentation="code"]
+  )
+  .task-workspace-master-pane,
+:host(
+    [data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-presentation="code"]
+  )
+  .task-workspace-master-detail
+  > caffold-pane-resizer {
   display: none;
 }
 
-:host([data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-presentation="code"]) .task-workspace-master-detail {
+:host(
+    [data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-presentation="code"]
+  )
+  .task-workspace-master-detail {
   grid-template-columns: minmax(0, 1fr);
 }
 
 :host([data-side-pane-collapsed]) .task-workspace-master-pane,
-:host([data-side-pane-collapsed]) .task-workspace-master-detail > caffold-pane-resizer {
+:host([data-side-pane-collapsed])
+  .task-workspace-master-detail
+  > caffold-pane-resizer {
   display: none;
 }
 
@@ -137,7 +149,7 @@
 :host([data-side-pane-toggle="detail"]) .task-workspace-detail-pane {
   --task-header-leading-space: calc(
     var(--interface-compact-visual-size) +
-      var(--task-workspace-route-control-clearance)
+    var(--task-workspace-route-control-clearance)
   );
   --task-header-block-space: var(--task-workspace-header-size);
 }
@@ -149,9 +161,9 @@
 :host([data-workspace-route-control-visible]) {
   --task-header-leading-space: calc(
     var(--interface-compact-hit-size) +
-      var(--task-workspace-route-control-gap) +
-      var(--interface-compact-hit-size) +
-      var(--task-workspace-route-control-clearance)
+    var(--task-workspace-route-control-gap) +
+    var(--interface-compact-hit-size) +
+    var(--task-workspace-route-control-clearance)
   );
   --task-header-block-space: var(--task-workspace-header-size);
 }
@@ -167,7 +179,8 @@
 
 /* They stand on the Detail header, so they leave when the terminal takes its
    height. */
-:host([data-workspace-mode="tasks"][data-task-detail-header-hidden]) > .task-workspace-route-controls {
+:host([data-workspace-mode="tasks"][data-task-detail-header-hidden])
+  > .task-workspace-route-controls {
   display: none;
 }
 
@@ -206,8 +219,9 @@
     grid-template-rows: minmax(0, 1fr);
     --task-workspace-navigation-clearance: calc(
       var(--task-workspace-navigation-height) +
-        var(--task-workspace-navigation-inset) +
-        env(safe-area-inset-bottom) + var(--interface-space-4)
+      var(--task-workspace-navigation-inset) +
+      env(safe-area-inset-bottom) +
+      var(--interface-space-4)
     );
   }
 
@@ -216,65 +230,91 @@
     z-index: 4;
     left: var(--task-workspace-navigation-inset);
     bottom: calc(
-      var(--task-workspace-navigation-inset) + env(safe-area-inset-bottom)
+      var(--task-workspace-navigation-inset) +
+      env(safe-area-inset-bottom)
     );
     width: max-content;
     max-width: calc(100% - 2 * var(--task-workspace-navigation-inset));
   }
 
-  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-master-detail {
+  :host([data-workspace-mode="notes"][data-notes-view="split"])
+    .task-workspace-master-detail {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: var(--task-workspace-divider-width);
     background: var(--border);
   }
 
-  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-master-pane {
+  :host([data-workspace-mode="notes"][data-notes-view="split"])
+    .task-workspace-master-pane {
     display: grid;
     border-right: 0;
   }
 
-  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-detail-pane {
+  :host([data-workspace-mode="notes"][data-notes-view="split"])
+    .task-workspace-detail-pane {
     display: block;
   }
 
-  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-master-detail > caffold-pane-resizer {
+  :host([data-workspace-mode="notes"][data-notes-view="split"])
+    .task-workspace-master-detail
+    > caffold-pane-resizer {
     display: none;
   }
 
-  :host([data-workspace-mode="notes"][data-notes-view="split"]) .notes-primary-slot {
+  :host([data-workspace-mode="notes"][data-notes-view="split"])
+    .notes-primary-slot {
     display: block;
   }
 
-  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-master-pane > caffold-notes-navigator {
+  :host([data-workspace-mode="notes"][data-notes-view="split"])
+    .task-workspace-master-pane
+    > caffold-notes-navigator {
     display: none;
   }
 
-  :host([data-workspace-mode="notes"][data-notes-view="split"][data-notes-picker="primary"]) .notes-primary-slot {
+  :host(
+      [data-workspace-mode="notes"][data-notes-view="split"][data-notes-picker="primary"]
+    )
+    .notes-primary-slot {
     display: none;
   }
 
-  :host([data-workspace-mode="notes"][data-notes-view="split"][data-notes-picker="primary"]) .task-workspace-master-pane > caffold-notes-navigator {
+  :host(
+      [data-workspace-mode="notes"][data-notes-view="split"][data-notes-picker="primary"]
+    )
+    .task-workspace-master-pane
+    > caffold-notes-navigator {
     display: grid;
   }
 }
 
 @container task-workspace (max-width: 640px) {
-  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-master-detail {
+  :host([data-workspace-mode="notes"][data-notes-view="split"])
+    .task-workspace-master-detail {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-master-pane {
+  :host([data-workspace-mode="notes"][data-notes-view="split"])
+    .task-workspace-master-pane {
     display: grid;
   }
 
-  :host([data-workspace-mode="notes"][data-notes-view="split"]) .notes-primary-slot {
+  :host([data-workspace-mode="notes"][data-notes-view="split"])
+    .notes-primary-slot {
     display: block;
   }
 
-  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-detail-pane,
-  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-master-detail > caffold-pane-resizer,
-  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-master-pane > caffold-notes-navigator,
-  :host([data-workspace-mode="notes"][data-notes-view="split"]) .task-workspace-master-pane > caffold-task-workspace-navigation {
+  :host([data-workspace-mode="notes"][data-notes-view="split"])
+    .task-workspace-detail-pane,
+  :host([data-workspace-mode="notes"][data-notes-view="split"])
+    .task-workspace-master-detail
+    > caffold-pane-resizer,
+  :host([data-workspace-mode="notes"][data-notes-view="split"])
+    .task-workspace-master-pane
+    > caffold-notes-navigator,
+  :host([data-workspace-mode="notes"][data-notes-view="split"])
+    .task-workspace-master-pane
+    > caffold-task-workspace-navigation {
     display: none;
   }
 }
@@ -306,9 +346,9 @@
   :host([data-workspace-route-control-visible]) {
     --task-header-leading-space: calc(
       var(--interface-compact-hit-size) +
-        var(--task-workspace-route-control-gap) +
-        var(--interface-compact-hit-size) +
-        0.5rem
+      var(--task-workspace-route-control-gap) +
+      var(--interface-compact-hit-size) +
+      0.5rem
     );
   }
 
@@ -332,6 +372,10 @@
 
 :host([hidden]),
 .task-workspace-route-control[hidden],
-:host([data-workspace-mode="notes"][data-notes-view="split"][data-notes-picker="primary"]) .task-workspace-master-pane > caffold-notes-navigator[hidden] {
+:host(
+    [data-workspace-mode="notes"][data-notes-view="split"][data-notes-picker="primary"]
+  )
+  .task-workspace-master-pane
+  > caffold-notes-navigator[hidden] {
   display: none;
 }

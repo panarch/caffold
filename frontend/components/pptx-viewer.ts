@@ -13,6 +13,7 @@ import type { DocumentPreviewFile } from "./dom.js";
 import "./loading-text.js";
 import { CaffoldElement } from "../caffold-element.js";
 
+import documentStyles from "./pptx-viewer/document.css.js";
 import styles from "./pptx-viewer.css.js";
 
 const PPTX_RENDERER_VERSION = "1.3.0";
@@ -21,48 +22,6 @@ const PPTX_RENDERER_IMPORT =
   "/dist/aiden0z-pptx-renderer.browser.es.js";
 
 const MEDIA_NOTICE = "Media is not played in this preview.";
-
-// The viewer owns page spacing and frames; the renderer owns slide contents.
-const DOCUMENT_STYLES = `
-  .pptx-viewer-slides {
-    margin-inline: auto;
-  }
-
-  [data-slide-index] {
-    margin-bottom: 1rem;
-  }
-
-  [data-slide-index]:last-child {
-    margin-bottom: 0;
-  }
-
-  [data-slide-index] > div {
-    box-shadow: 0 0 0 1px var(--border);
-  }
-
-  .pptx-viewer-media-poster {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-  }
-
-  .pptx-viewer-media-notice {
-    display: grid;
-    place-items: center;
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    padding: 0.5rem 0.75rem;
-    box-sizing: border-box;
-    border: 1px dashed #b3b3b3;
-    color: #595959;
-    font-family: var(--font-ui);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-    text-align: center;
-  }
-`;
 
 // The parts of the PowerPoint renderer the viewer uses.
 interface PptxViewer {
@@ -272,11 +231,10 @@ class CaffoldPptxViewer extends CaffoldElement {
     const mount = window.document.createElement("div");
     mount.className = "pptx-viewer-document";
     const root = mount.attachShadow({ mode: "open" });
-    const style = window.document.createElement("style");
-    style.textContent = DOCUMENT_STYLES;
+    root.adoptedStyleSheets = [documentStyles];
     const container = window.document.createElement("div");
     container.className = "pptx-viewer-slides";
-    root.append(style, container);
+    root.append(container);
     this.slideObserver = new MutationObserver(() => {
       releaseSlideChrome(container);
       withholdMedia(container);

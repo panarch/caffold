@@ -12,7 +12,9 @@ caffold-git-diff-changes-tree {
   position: absolute;
   z-index: 2;
   inset: calc(
-      var(--review-header-height) + var(--interface-space-16) + var(--interface-space-8)
+      var(--review-header-height) +
+      var(--interface-space-16) +
+      var(--interface-space-8)
     )
     var(--interface-space-5) auto;
   box-sizing: border-box;

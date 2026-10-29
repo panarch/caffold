@@ -2152,6 +2152,14 @@ components inside a root query is named on an element in that root rather than
 on `:host`: WebKit hides a host's container name from the shadow roots of the
 components drawn inside it.
 
+DOCX and PPTX viewers keep rendered document content in another shadow root
+inside the component. Each viewer adopts its private `document.css.js` sheet
+into that inner root; its outer stylesheet and the component base rules stay
+outside. Document chrome and media notices therefore share the CSS formatting
+and lint boundary without applying app control styles to rendered content.
+Document notice colors use the theme-independent `--document-notice-*` tokens
+in `styles.css`.
+
 An event heard outside the root it starts in is `composed`, such as
 `caffold:change-page`, the Scroll selector's choice, and the File Viewer's
 close and refresh. A listener outside the root sees the host as the event's

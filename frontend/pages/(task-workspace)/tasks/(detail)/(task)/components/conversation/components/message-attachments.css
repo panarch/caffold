@@ -36,12 +36,14 @@
 }
 
 .task-message-attachment > button.task-message-attachment-preview:hover,
-.task-message-attachment > button.task-message-attachment-preview:focus-visible {
+.task-message-attachment
+  > button.task-message-attachment-preview:focus-visible {
   border-color: var(--border-strong);
   outline: none;
 }
 
-.task-message-attachment > button.task-message-attachment-preview:focus-visible {
+.task-message-attachment
+  > button.task-message-attachment-preview:focus-visible {
   box-shadow: inset 0 0 0 1px var(--focus-ring);
 }
 

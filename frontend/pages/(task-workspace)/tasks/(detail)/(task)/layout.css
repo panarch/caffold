@@ -18,7 +18,8 @@
 
 .task-detail-state-message {
   padding-inline-start: calc(
-    var(--interface-space-7) + var(--task-header-leading-space, 0rem)
+    var(--interface-space-7) +
+    var(--task-header-leading-space, 0rem)
   );
 }
 

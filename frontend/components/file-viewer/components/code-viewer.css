@@ -19,8 +19,9 @@
 .code-lines {
   --code-line-number-padding: 0.625rem;
   --code-line-number-width: calc(
-    var(--code-line-number-columns) + var(--code-line-number-padding) +
-      var(--code-line-number-padding)
+    var(--code-line-number-columns) +
+    var(--code-line-number-padding) +
+    var(--code-line-number-padding)
   );
   display: grid;
   min-width: 0;

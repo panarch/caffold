@@ -51,10 +51,10 @@ const typefaceOwners = new Set([
   "caffold-element/base.css",
   "components/file-viewer/components/code-viewer.css",
   "components/file-viewer/components/diff-viewer.css",
-  "components/docx-viewer.ts",
+  "components/docx-viewer/document.css",
   "components/file-tree.css",
   "components/markdown-preview.css",
-  "components/pptx-viewer.ts",
+  "components/pptx-viewer/document.css",
   "components/terminal-view.ts",
   "components/xlsx-viewer.css",
   "fonts.ts",
@@ -375,7 +375,7 @@ test("structural shadows separate fixed regions from floating elevation", () => 
     /box-shadow: var\(--task-composer-panel-shadow\)/,
   ]);
   cssBlockMatching(composer, ".task-follow-up-form .task-composer-panel", [
-    /--task-composer-panel-shadow: var\(--structural-shadow-block-start\),\s+var\(--structural-shadow-panel\)/,
+    /--task-composer-panel-shadow:\s+var\(--structural-shadow-block-start\),\s+var\(--structural-shadow-panel\)/,
   ]);
   assert.doesNotMatch(
     cssBlock(composer, ".task-composer.task-follow-up-form"),
@@ -1204,11 +1204,11 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
   assert.match(reviewLayout, /--review-viewer-axis-inline-size: 7\.5rem;/);
   assert.match(
     reviewLayout,
-    /--review-navigator-control-inline-size: calc\([\s\S]*var\(--review-navigator-axis-inline-size\) \/ 2/,
+    /--review-navigator-control-inline-size: calc\([\s\S]*var\(--review-navigator-axis-inline-size\)\s+\/\s+2/,
   );
   assert.match(
     reviewLayout,
-    /--review-viewer-control-inline-size: calc\([\s\S]*var\(--review-viewer-axis-inline-size\) \/ 2/,
+    /--review-viewer-control-inline-size: calc\([\s\S]*var\(--review-viewer-axis-inline-size\)\s+\/\s+2/,
   );
   assert.doesNotMatch(reviewLayout, /4\.125rem/);
   assert.match(
@@ -1251,7 +1251,7 @@ test("task rows use full-width selection and compact repository grouping", () =>
   );
   const selectedSection = cssBlock(
     sectionOwner,
-    '\n.task-repository-header:has(> button.task-repository-select[aria-current="page"]),',
+    /\n\.task-repository-header:has\(\s*> button\.task-repository-select\[aria-current="page"\]\s*\),/,
   );
 
   assert.doesNotMatch(row, /border-left/);
@@ -1451,7 +1451,7 @@ function readFrontendModule(stem) {
 }
 
 function cssBlock(source, selector) {
-  const start = source.indexOf(selector);
+  const start = typeof selector === "string" ? source.indexOf(selector) : source.search(selector);
   assert.notEqual(start, -1, `missing selector ${selector}`);
   const open = source.indexOf("{", start);
   const close = source.indexOf("}", open);

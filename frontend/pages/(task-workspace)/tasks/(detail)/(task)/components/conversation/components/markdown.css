@@ -10,14 +10,7 @@
   min-width: 0;
   overflow-wrap: anywhere;
 
-  & :is(
-    p,
-    ul,
-    ol,
-    blockquote,
-    .markdown-pre,
-    .markdown-table-scroll
-  ) {
+  & :is(p, ul, ol, blockquote, .markdown-pre, .markdown-table-scroll) {
     margin: 0 0 0.625rem;
   }
 

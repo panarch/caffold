@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "includes": ["**/*.ts"]
+    "includes": ["**/*.ts", "**/*.css"]
   },
   "formatter": {
     "indentStyle": "space"
@@ -9,6 +9,7 @@
   "assist": {
     "actions": {
       "source": {
+        "useSortedProperties": "off",
         "organizeImports": {
           "level": "on",
           "options": {
@@ -24,6 +25,12 @@
   },
   "linter": {
     "rules": {
+      "complexity": {
+        "noImportantStyles": "error"
+      },
+      "style": {
+        "noDescendingSpecificity": "off"
+      },
       "nursery": {
         "noFloatingPromises": "error"
       }

@@ -10,6 +10,11 @@ const frontendRoot = fileURLToPath(new URL("../../", import.meta.url));
 const sharedStyles = discoverFiles(frontendRoot, ".css").filter((path) =>
   /(?:^|\/)component-styles\/[^/]+\.css$/.test(path));
 const baseStyles = "caffold-element/base.css";
+// Renderer content has a separate shadow root, without the component base styles.
+const documentRootStyles = [
+  "components/docx-viewer/document.css",
+  "components/pptx-viewer/document.css",
+];
 // Stylesheets a component puts in the shadow root it renders into, by owner.
 const shadowRootStyles = new Map([
   ["action-hints/components/dialog.css", "caffold-action-hint-dialog"],
@@ -205,6 +210,7 @@ test("frontend CSS manifest covers every stylesheet", () => {
   const discovered = discoverFiles(frontendRoot, ".css");
   const declared = [
     ...shadowRootStyles.keys(),
+    ...documentRootStyles,
     ...sharedStyles,
     baseStyles,
     "styles.css",

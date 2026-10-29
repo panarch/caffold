@@ -27,7 +27,8 @@
   justify-content: flex-end;
   min-width: 0;
   margin-inline-start: calc(
-    var(--detail-layout-control-gap) - var(--detail-layout-summary-gap)
+    var(--detail-layout-control-gap) -
+    var(--detail-layout-summary-gap)
   );
 }
 

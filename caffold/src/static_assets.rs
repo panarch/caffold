@@ -2183,6 +2183,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/components/docx-viewer.css.js"
         )))),
+        "components/docx-viewer/document.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/docx-viewer/document.css.js"
+        )))),
         "components/docx-viewer.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/components/docx-viewer.js"
@@ -2190,6 +2194,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "components/pptx-viewer.css.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/components/pptx-viewer.css.js"
+        )))),
+        "components/pptx-viewer/document.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/pptx-viewer/document.css.js"
         )))),
         "components/pptx-viewer.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
@@ -2443,6 +2451,14 @@ mod tests {
     #[test]
     fn serves_a_shadow_root_stylesheet_as_the_module_the_build_writes_beside_it() {
         for (path, stylesheet) in [
+            (
+                "components/docx-viewer/document.css.js",
+                include_str!("../../frontend/components/docx-viewer/document.css"),
+            ),
+            (
+                "components/pptx-viewer/document.css.js",
+                include_str!("../../frontend/components/pptx-viewer/document.css"),
+            ),
             (
                 "caffold-element/base.css.js",
                 include_str!("../../frontend/caffold-element/base.css"),

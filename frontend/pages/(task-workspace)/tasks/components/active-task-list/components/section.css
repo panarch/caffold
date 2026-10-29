@@ -61,7 +61,9 @@ button.task-repository-select {
   outline-offset: -2px;
 }
 
-.task-repository-header:has(> button.task-repository-select[aria-current="page"]),
+.task-repository-header:has(
+  > button.task-repository-select[aria-current="page"]
+),
 .task-repository-header:has(> div.task-repository-select[aria-current="page"]) {
   background: var(--selection-bg);
   color: var(--text);
