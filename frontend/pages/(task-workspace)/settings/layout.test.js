@@ -102,3 +102,36 @@ test("hands a navigator that connects later the update states it missed", () => 
   workspace.setUpdateStatus.call(owner, settled);
   assert.equal(navigator.reloadReady, false);
 });
+
+test("only the selected visible page activates, including after a hidden responsive update", () => {
+  let active = false;
+  let reads = 0;
+  const claude = {
+    activate() { if (!active) reads += 1; active = true; },
+    deactivate() { active = false; },
+  };
+  const owner = elementStandIn(workspace, {
+    section: "claude", wide: true, active: false, foreground: true,
+    pages: { get: (section) => section === "claude" ? claude : undefined },
+    performUpdate() {}, dispatchEvent() {},
+  });
+  owner.syncPresentation();
+  assert.equal(reads, 0);
+  owner.prepareRoute({ kind: "settings", section: "claude" });
+  owner.prepareRoute({ kind: "settings", section: "claude" });
+  assert.equal(reads, 1);
+  owner.deactivate();
+  owner.wide = false;
+  owner.syncPresentation();
+  assert.equal(active, false);
+  assert.equal(reads, 1);
+  owner.prepareRoute({ kind: "settings", section: "claude" });
+  assert.equal(reads, 2);
+  owner.suspendForeground();
+  assert.equal(active, false);
+  owner.resumeForeground();
+  assert.equal(active, true);
+  assert.equal(reads, 3);
+  owner.resumeForeground();
+  assert.equal(reads, 3);
+});

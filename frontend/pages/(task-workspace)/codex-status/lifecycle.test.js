@@ -40,6 +40,36 @@ function loadedSnapshot(status) {
   return createCodexStatusSnapshot({ phase: "loaded", status });
 }
 
+for (const action of ["restart", "update"]) {
+  test(`${action} reads the changed runtime after a status read begun during the action`, async () => {
+    const old = deferred();
+    const accepted = deferred();
+    let reads = 0;
+    const lifecycle = new CodexStatusLifecycle({
+      loadStatus: async () => ++reads === 2 ? old.promise : codexStatus("ready", false),
+      restartRuntime: () => accepted.promise,
+      updateRuntime: async () => {
+        await accepted.promise;
+        return { status: "updated" };
+      },
+    });
+    lifecycle.connect();
+    await lifecycle.refresh();
+    const mutation = action === "restart" ? lifecycle.requestRuntimeRestart() : lifecycle.requestRuntimeUpdate();
+    const pending = lifecycle.refresh();
+    accepted.resolve({});
+    await settle();
+    assert.equal(reads, 2);
+    old.resolve(codexStatus("restartRequired"));
+    await pending;
+    await mutation;
+    assert.equal(reads, 3);
+    assert.equal(lifecycle.snapshot().status.readiness.state, "ready");
+    assert.equal(lifecycle.runtimeAction(), "idle");
+    lifecycle.disconnect();
+  });
+}
+
 function resetCreditStatus(count = 1) {
   return {
     ...codexStatus("ready", false),
@@ -325,6 +355,8 @@ test("a failed foreground status refresh preserves the last useful readiness", a
 
   assert.equal(lifecycle.snapshot().phase, "failed");
   assert.equal(lifecycle.snapshot().status?.readiness?.state, "ready");
+  assert.equal(lifecycle.canRestartRuntime(), false);
+  assert.equal(lifecycle.canUpdateRuntime(), false);
   assert.equal(codexBlocksTaskOperations(lifecycle.snapshot().status), false);
   lifecycle.disconnect();
 });
@@ -620,4 +652,26 @@ test("a later readiness change clears a finished update message", async () => {
   await lifecycle.refresh();
 
   assert.equal(lifecycle.updateSnapshot().state, "idle");
+});
+
+test("a resumed status read waits for the invalidated physical request before asking again", async () => {
+  const old = deferred();
+  let reads = 0;
+  const lifecycle = new CodexStatusLifecycle({
+    loadStatus: () => {
+      reads += 1;
+      return reads === 1 ? old.promise : Promise.resolve(codexStatus("ready", false));
+    },
+  });
+  lifecycle.connect();
+  const first = lifecycle.refresh();
+  lifecycle.suspend();
+  lifecycle.resume();
+  const resumed = lifecycle.refresh();
+  assert.equal(reads, 1);
+  old.resolve(codexStatus("restartRequired"));
+  assert.equal(await first, null);
+  assert.equal((await resumed).readiness.state, "ready");
+  assert.equal(reads, 2);
+  lifecycle.disconnect();
 });

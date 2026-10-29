@@ -63,6 +63,11 @@ export class CaffoldSettingsClaudePage extends CaffoldElement {
     this,
   );
 
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    this.deactivate();
+  }
+
   activate() {
     if (this.active) {
       return;
@@ -72,11 +77,13 @@ export class CaffoldSettingsClaudePage extends CaffoldElement {
   }
 
   deactivate() {
+    if (!this.active) return;
     this.active = false;
     this.operation += 1;
   }
 
   async reconcile() {
+    if (!this.active || document.visibilityState === "hidden") return;
     const operation = ++this.operation;
     this.statusState = "loading";
     try {

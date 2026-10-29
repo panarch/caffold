@@ -131,22 +131,26 @@ export class CaffoldSettingsCodexPage extends CaffoldElement {
   }
 
   activate() {
-    if (this.active) {
-      return;
-    }
+    if (this.active) return;
     this.active = true;
+    this.refreshStatus();
+    void this.reconcileUpdates();
+  }
+
+  deactivate() {
+    if (!this.active) return;
+    this.active = false;
+    this.updatesOperation += 1;
+  }
+
+  private refreshStatus() {
+    if (!this.active || document.visibilityState === "hidden") return;
     this.dispatchEvent(
       new CustomEvent(CODEX_STATUS_REFRESH_REQUEST_EVENT, {
         bubbles: true,
         composed: true,
       }),
     );
-    void this.reconcileUpdates();
-  }
-
-  deactivate() {
-    this.active = false;
-    this.updatesOperation += 1;
   }
 
   setRestartState(value: RuntimeRequestState | null | undefined) {
@@ -173,7 +177,7 @@ export class CaffoldSettingsCodexPage extends CaffoldElement {
    * checked only here, never in the background.
    */
   async reconcileUpdates() {
-    if (!this.active) {
+    if (!this.active || document.visibilityState === "hidden") {
       return;
     }
     const operation = ++this.updatesOperation;
@@ -218,7 +222,9 @@ export class CaffoldSettingsCodexPage extends CaffoldElement {
           ? "Restarting…"
           : "Restart runtime…";
     const restartDisabled =
-      !codexRuntimeRestartAvailable(status) || runtimeBusy;
+      snapshot?.phase !== "loaded" ||
+      !codexRuntimeRestartAvailable(status) ||
+      runtimeBusy;
     const reason = readiness?.reasonCode ?? "unknown";
     const diagnostic = readiness?.diagnosticMessage ?? "";
     const loadError = snapshot?.phase === "failed" ? snapshot.error : "";
@@ -571,6 +577,7 @@ export class CaffoldSettingsCodexPage extends CaffoldElement {
     );
     const updateDisabled =
       runtimeBusy ||
+      this.snapshot?.phase !== "loaded" ||
       !codexRuntimeUpdateAvailable(status) ||
       !["available", "unknown"].includes(availability ?? "");
     return html`
@@ -640,12 +647,7 @@ export class CaffoldSettingsCodexPage extends CaffoldElement {
 
   private refresh(event: Event) {
     event.stopPropagation();
-    this.dispatchEvent(
-      new CustomEvent(CODEX_STATUS_REFRESH_REQUEST_EVENT, {
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    this.refreshStatus();
     void this.reconcileUpdates();
   }
 

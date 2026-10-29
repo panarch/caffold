@@ -334,6 +334,9 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
     if (previousMode === "notes" && this.mode !== "notes") {
       this.notesWorkspace.deactivate();
     }
+    if (previousMode === "settings" && this.mode !== "settings") {
+      this.settingsWorkspace.deactivate();
+    }
     if (this.mode === "tasks") {
       this.tasksPage.prepareRoute(route, options);
     } else if (this.mode === "notes") {
@@ -364,6 +367,7 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
     this.taskStoreStatusLifecycle.suspend();
     this.codexStatusLifecycle.suspend();
     this.tasksPage.suspendForeground();
+    this.settingsWorkspace.suspendForeground();
   }
 
   async recoverForeground({
@@ -392,6 +396,9 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
     }
     if (!isCurrent()) {
       return { stale: true, retry: false };
+    }
+    if (!storeError) {
+      this.settingsWorkspace.resumeForeground();
     }
     if (this.mode === "notes" && !initialActivation) {
       this.notesWorkspace.reload();

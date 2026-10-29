@@ -45,6 +45,10 @@ Each agent's page opens with your plan's usage as the agent reports it,
 followed by what Caffold found: the installed version and path, the signed-in
 account, and the state of the process Caffold talks to. **Service status**
 opens the provider's status page, and **Refresh** reads everything again.
+Status refreshes when you enter the page or return to the window. It does not
+refresh periodically while you leave the page open; use **Refresh** to read it
+again. Codex's newest release is checked on entry, return, Refresh, and after a
+runtime restart or update.
 
 - **Codex** also says how to fix an installation that is not ready, and offers
   **Restart runtime…** and **Update Codex…**. See
@@ -73,6 +77,9 @@ not use a second credit for it.
 update ended. **Check for Updates** looks for a new release right away. When
 Caffold can install one, the button becomes **Update Caffold**, which starts an
 update; see [Updates](updates.md#caffold).
+The page reads its server and update status on entry and when you return to
+the window. These reads can use cached release information and do not repeat
+periodically while the page stays open.
 
 **This window** shows the build this window runs. **Reload to update** loads a
 new version into this window, and **Copy diagnostics** copies the details to

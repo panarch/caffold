@@ -26,6 +26,32 @@ after(() => {
   buildInfoHook.deregister();
 });
 
+test("leaving Settings ends its active lifetime before the retained page is reopened", () => {
+  let active = false;
+  let reads = 0;
+  const owner = {
+    mode: "tasks",
+    performUpdate() {},
+    updateChrome() {},
+    tasksPage: { prepareRoute() {}, deactivate() {} },
+    notesWorkspace: { prepareRoute() {}, deactivate() {} },
+    settingsWorkspace: {
+      prepareRoute() {
+        if (!active) reads += 1;
+        active = true;
+      },
+      deactivate() { active = false; },
+    },
+  };
+  workspace.prepareRoute.call(owner, { kind: "settings", section: "claude" });
+  workspace.prepareRoute.call(owner, { kind: "settings", section: "claude" });
+  assert.equal(reads, 1);
+  workspace.prepareRoute.call(owner, { kind: "tasks" });
+  assert.equal(active, false);
+  workspace.prepareRoute.call(owner, { kind: "settings", section: "claude" });
+  assert.equal(reads, 2);
+});
+
 test("keeps the visible Task navigator scope when the detail-side Tasks host is hidden", () => {
   const navigatorSurface = { id: "task-list" };
   let calls = 0;
@@ -395,6 +421,7 @@ function recoveryOwner({
       retry: () => calls.push("live:retry"),
     },
     notesWorkspace: { reload() {} },
+    settingsWorkspace: { resumeForeground() {} },
   };
   return { owner, calls };
 }
