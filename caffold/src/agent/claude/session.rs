@@ -7,8 +7,11 @@
 //! and hands over every question it is still held up by.
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64};
+
+use crate::agent::{Conversation, ThreadStatus};
 
 use serde_json::Value;
 use tokio::sync::{Mutex as AsyncMutex, Notify, RwLock};
@@ -49,9 +52,25 @@ impl ClaudeClient {
         start: SessionStart,
         options: &ClaudeTurnOptions,
     ) -> Result<Arc<Session>, ClaudeError> {
+        self.open_session_at(id, cwd, cwd, start, options)
+            .await
+            .map(|(session, _)| session)
+    }
+
+    // During explicit folder recovery the original directory no longer exists.
+    // Resume from an existing parent while keeping the original transcript
+    // locator until the CLI's set_cwd moves both the session and its history.
+    async fn open_session_at(
+        &self,
+        id: &str,
+        cwd: &str,
+        spawn_cwd: &str,
+        start: SessionStart,
+        options: &ClaudeTurnOptions,
+    ) -> Result<(Arc<Session>, bool), ClaudeError> {
         let spawn = caffold_claude_runner::protocol::SpawnRequest {
             argv: session_argv(id, start, options),
-            cwd: cwd.to_string(),
+            cwd: spawn_cwd.to_string(),
             env: SESSION_ENVIRONMENT
                 .iter()
                 .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
@@ -158,7 +177,87 @@ impl ClaudeClient {
                 self.ask_how_full_the_context_is(&session);
             }
         }
-        Ok(session)
+        Ok((session, info.spawned))
+    }
+
+    pub(crate) async fn prepare_directory_reconnection(
+        &self,
+        id: &str,
+        original: &str,
+        destination: &str,
+    ) -> Result<Conversation, ClaudeError> {
+        if let Some(session) = self.session(id).await {
+            return Ok(self.conversation_of(&session).await);
+        }
+        let history_cwd = if self.was_written_down(original, id).await {
+            original
+        } else if self.was_written_down(destination, id).await {
+            destination
+        } else {
+            return Err(ClaudeError::History(format!(
+                "Cannot find the existing conversation {id} at either folder."
+            )));
+        };
+        let parent = Path::new(destination)
+            .parent()
+            .ok_or_else(|| ClaudeError::History("The destination has no parent.".to_string()))?;
+        let spawn_cwd = if history_cwd == destination {
+            destination.to_string()
+        } else {
+            parent.to_string_lossy().into_owned()
+        };
+        let (session, spawned) = self
+            .open_session_at(
+                id,
+                history_cwd,
+                &spawn_cwd,
+                SessionStart::Resume,
+                &ClaudeTurnOptions::default(),
+            )
+            .await?;
+        let conversation = self.conversation_of(&session).await;
+        if session.state.lock().await.activity.is_none() {
+            if spawned {
+                self.close_conversation(id).await?;
+            }
+            return Err(ClaudeError::Protocol(
+                "Claude did not report its current state for folder recovery.".to_string(),
+            ));
+        }
+        if matches!(conversation.status, ThreadStatus::Active { .. }) {
+            if spawned {
+                self.close_conversation(id).await?;
+                return Err(ClaudeError::TurnRunning(
+                    "Claude resumed a busy conversation; folder recovery stopped.".to_string(),
+                ));
+            }
+            return Ok(conversation);
+        }
+        if history_cwd != destination {
+            match self.move_working_directory(id, destination).await {
+                Ok(WorkingDirectoryMove::Moved) => {}
+                result => {
+                    if spawned {
+                        self.close_conversation(id).await?;
+                    }
+                    return Err(match result {
+                        Err(error) => error,
+                        _ => ClaudeError::TurnRunning(
+                            "Claude became busy during folder recovery.".to_string(),
+                        ),
+                    });
+                }
+            }
+        }
+        if !self.was_written_down(destination, id).await {
+            if spawned {
+                self.close_conversation(id).await?;
+            }
+            return Err(ClaudeError::History(
+                "Claude did not retain the conversation at the selected folder.".to_string(),
+            ));
+        }
+        Ok(self.conversation_of(&session).await)
     }
 
     /// Move a watched conversation's session into another directory.
@@ -172,7 +271,8 @@ impl ClaudeClient {
     /// The agent may not trust the destination yet. It answers `needs_trust`
     /// with the directory it wants accepted, and the acceptance is echoed
     /// back on the user's behalf: the only directories Caffold moves a
-    /// session into are worktrees Caffold itself made.
+    /// session into are worktrees Caffold made or a folder explicitly selected
+    /// by the user to reconnect a missing Section.
     pub(crate) async fn move_working_directory(
         &self,
         conversation_id: &str,
@@ -193,7 +293,7 @@ impl ClaudeClient {
                 .await?;
         }
         match answer.payload.get("status").and_then(Value::as_str) {
-            Some("ok") => {
+            Some("ok") if answer.payload.get("cwd").and_then(Value::as_str) == Some(path) => {
                 *session.cwd.lock().await = path.to_string();
                 Ok(WorkingDirectoryMove::Moved)
             }

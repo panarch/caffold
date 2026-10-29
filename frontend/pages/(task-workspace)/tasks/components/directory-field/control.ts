@@ -6,7 +6,7 @@ import {
   readTypedDirectoryPath,
   type ServerPaths,
   type TypedDirectoryPath,
-} from "../../directory-path.js";
+} from "../directory-path.js";
 
 // The directory field's control model.
 //

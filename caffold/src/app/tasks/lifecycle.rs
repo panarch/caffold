@@ -301,6 +301,28 @@ impl TaskLifecycle {
             .map_err(worktree_api_error)
     }
 
+    pub(in crate::app::tasks) async fn preflight_force_archive(
+        &self,
+        thread_id: String,
+        expected_id: String,
+    ) -> Result<ManagedWorktree, ApiError> {
+        self.worktrees
+            .preflight_force_archive(thread_id, expected_id)
+            .await
+            .map_err(worktree_api_error)
+    }
+
+    pub(in crate::app::tasks) async fn force_archive_worktree(
+        &self,
+        thread_id: String,
+        expected_id: String,
+    ) -> Result<ArchiveOutcome, ApiError> {
+        self.worktrees
+            .force_archive_for_thread(thread_id, expected_id)
+            .await
+            .map_err(worktree_api_error)
+    }
+
     pub(in crate::app::tasks) async fn restore_worktree(
         &self,
         thread_id: String,

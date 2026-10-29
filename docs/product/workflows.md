@@ -221,6 +221,26 @@ ordinary files in Files.
 
 Caffold keeps no Note history: rewritten or deleted content is gone.
 
+### Reconnect a moved Section folder
+
+1. After moving or renaming the original folder outside Caffold, select the
+   Section showing a missing-folder warning.
+2. In the Section's content area, review the previous location and use the
+   existing folder picker to choose its current location on the host computer.
+3. Choose **Reconnect folder**. Direct Tasks follow that folder, and surviving
+   managed worktree links are verified and repaired. Git and worktrees are not
+   required for reconnecting ordinary folders. Affected Tasks must be inactive.
+4. Successful Task repairs remain usable if a later Task fails. The form names
+   the failure, retains the candidate, and supports retry at the same location.
+   The Section's path changes only after required active repairs succeed.
+5. Related Archived Tasks are updated best effort during this operation.
+   Failures are logged without blocking Section completion. Later Restore
+   uses the remaining records and leaves a failed Task Archived.
+
+This does not move folders or recreate deleted individual worktrees. Surviving
+managed worktrees still require the moved repository's retained Git links.
+There is no additional Restore recovery picker or historical path mapping.
+
 ### Start from a GitHub Issue or Pull Request
 
 Issue and Pull Request detail expose the same `Start Task` action from a
@@ -278,7 +298,7 @@ cwd movement, ownership, archive, and restore follow the
 
 ### Archive and restore
 
-- Archiving a Task moves its Caffold-owned membership out of the active
+- Ordinary Archive moves a Task's Caffold-owned membership out of the active
   navigator and retains its local metadata. Caffold also asks the recorded
   agent to archive or close the conversation, but provider acquisition, read,
   or archive failure does not strand the local Task in Active.
@@ -286,8 +306,12 @@ cwd movement, ownership, archive, and restore follow the
   ownership record remain available for restore.
 - The Task's terminal closes once the archive checks pass.
 - Dirty managed worktrees and a successfully read current Active status block
-  archive. An unavailable provider is not presented as idle; it leaves the
+  ordinary Archive. An unavailable provider is not presented as idle; it leaves the
   provider state unknown while the explicit local Archive proceeds.
+- After a dirty or broken managed checkout refuses ordinary Archive, Task
+  details can offer **Discard changes and archive**. After confirmation, it
+  deletes the owned checkout's files while retaining the Task, conversation,
+  and Git branches. It requires native closure before deleting files.
 - The archived Task remains visible from its durable row when its provider is
   unavailable. Restore is withheld until the provider can confirm that the
   conversation exists; permanent deletion remains available.
@@ -299,7 +323,8 @@ cwd movement, ownership, archive, and restore follow the
   restored elsewhere meanwhile simply reopens, and a restore the agent cannot
   honor because the conversation is gone reports why.
 - Restoring recreates an archived managed worktree from its retained branch and
-  returns the same Task to the active navigator.
+  returns the same Task to the active navigator. An unavailable repository or
+  missing checkout anchor leaves the Task Archived with an error.
 - Tasks without a managed-worktree ownership record retain their cwd and files.
 - Ordinary permanent deletion requires archive. It removes the
   agent-owned conversation through that Task's driver — the Codex thread, the
@@ -314,7 +339,7 @@ cwd movement, ownership, archive, and restore follow the
 
 Archive and filesystem cleanup are coordinated but distinct state changes. An
 external worktree is never deleted merely because a Task uses it. Failed
-removal keeps a broken worktree's anchor and exposes its cleanup path;
+removal keeps its ownership record and exposes its cleanup path;
 [Worktree Lifecycle](../architecture/worktree-lifecycle.md#archive-and-restore)
 owns the reconciliation and deletion safety contract.
 

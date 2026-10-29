@@ -316,8 +316,10 @@ export class CaffoldTasksPage extends CaffoldElement {
 
   ownsEditingEscape(element: Element | null) {
     return (
-      (this.view === "home" || this.view === "new") &&
-      Boolean(this.taskNew.value?.ownsEditingEscape(element))
+      ((this.view === "home" || this.view === "new") &&
+        Boolean(this.taskNew.value?.ownsEditingEscape(element))) ||
+      (this.view === "detail" &&
+        Boolean(this.taskDetail()?.ownsEditingEscape(element)))
     );
   }
 
@@ -716,6 +718,7 @@ export class CaffoldTasksPage extends CaffoldElement {
             @caffold:task-detail-intent=${this.detailIntent}
             @caffold:task-detail-transport-change=${this.detailTransportChange}
             @caffold:detail-header-change=${this.detailHeaderChange}
+            @caffold:section-directory-changed=${this.sectionDirectoryChanged}
           ></caffold-detail-layout>
           <caffold-task-recovery
             ${drawn(this.taskRecovery)}
@@ -735,6 +738,10 @@ export class CaffoldTasksPage extends CaffoldElement {
     if (event.detail?.route) {
       this.requestRoute(event.detail.route);
     }
+  }
+
+  private sectionDirectoryChanged() {
+    void this.taskNavigator()?.activate({ force: true });
   }
 
   private detailIntent(event: CustomEvent<TaskDetailIntent>) {
@@ -918,7 +925,12 @@ export class CaffoldTasksPage extends CaffoldElement {
     const repository =
       Boolean(selected) &&
       Boolean(navigator?.sectionForTask(this.selectedThreadId)?.repository);
-    this.taskDetail()?.setManagedTask(selected, { repository });
+    const section = navigator?.sectionForTask(this.selectedThreadId);
+    this.taskDetail()?.setManagedTask(selected, {
+      repository,
+      missingSectionId:
+        section?.directory?.status === "missing" ? section.id : "",
+    });
   }
 
   private reconcileSelectedTask(state: Partial<TaskNavigatorListState>) {

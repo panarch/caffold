@@ -22,6 +22,7 @@ mod fork;
 mod grok;
 mod list;
 mod membership;
+mod sections;
 mod store;
 mod uploads;
 
@@ -41,8 +42,8 @@ use conversation::{mark_task_seen, task_detail, task_generated_image};
 use grok::grok_status;
 use list::{list_archived_tasks, list_managed_tasks};
 use membership::{
-    section_reorder, task_archive, task_delete, task_recovery_archive, task_recovery_recheck,
-    task_recovery_remove, task_recovery_restore, task_reorder, task_restore,
+    section_reorder, task_archive, task_delete, task_force_archive, task_recovery_archive,
+    task_recovery_recheck, task_recovery_remove, task_recovery_restore, task_reorder, task_restore,
 };
 #[cfg(test)]
 use store::{task_store_claim, task_store_get, task_store_update_composer_settings};
@@ -208,6 +209,12 @@ struct TaskDeleteRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct TaskForceArchiveRequest {
+    expected_worktree_id: String,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TaskReorderRequest {
     before_thread_id: Option<String>,
@@ -307,11 +314,23 @@ pub(super) fn router(state: TaskState) -> Router {
             get(task_generated_image),
         )
         .route("/api/tasks/{thread_id}/archive", post(task_archive))
+        .route(
+            "/api/tasks/{thread_id}/archive/force",
+            post(task_force_archive),
+        )
         .route("/api/tasks/{thread_id}/restore", post(task_restore))
         .route("/api/tasks/{thread_id}/reorder", post(task_reorder))
         .route(
             "/api/tasks/sections/{section_id}/reorder",
             post(section_reorder),
+        )
+        .route(
+            "/api/tasks/sections/{section_id}/directory",
+            get(sections::directory),
+        )
+        .route(
+            "/api/tasks/sections/{section_id}/reconnect",
+            post(sections::reconnect),
         )
         .route(
             "/api/tasks/{thread_id}/recovery/recheck",

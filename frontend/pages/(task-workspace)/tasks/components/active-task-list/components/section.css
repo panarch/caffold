@@ -87,6 +87,32 @@ button.task-repository-select:focus-visible,
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+
+  &:has(.section-folder-warning) {
+    display: flex;
+    align-items: center;
+    gap: var(--interface-space-3);
+    min-width: 0;
+  }
+
+  .task-repository-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .section-folder-warning {
+    display: inline-grid;
+    color: var(--warning-strong);
+    flex: 0 0 auto;
+
+    svg {
+      width: var(--task-list-icon-size);
+      height: var(--task-list-icon-size);
+      stroke-width: 1.8;
+    }
+  }
 }
 
 .task-repository-count {

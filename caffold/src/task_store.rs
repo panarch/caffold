@@ -151,7 +151,6 @@ impl TaskStoreTables<'_> {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn upsert_managed_section(&mut self, section: &ManagedSection) -> Result<()> {
         match self {
             Self::Memory(glue) => managed_section::upsert(glue, section),
@@ -316,6 +315,28 @@ impl TaskStoreTables<'_> {
                 next_anchor,
                 updated_at_ms,
             ),
+        }
+    }
+
+    pub(crate) fn reconnect_managed_worktree(
+        &mut self,
+        expected: &ManagedWorktree,
+        common_dir: &str,
+    ) -> Result<()> {
+        match self {
+            Self::Memory(glue) => managed_worktree::reconnect(glue, expected, common_dir),
+            Self::Redb(glue) => managed_worktree::reconnect(glue, expected, common_dir),
+        }
+    }
+
+    pub(crate) fn reconnect_managed_thread(
+        &mut self,
+        expected: &ManagedThread,
+        cwd: &str,
+    ) -> Result<()> {
+        match self {
+            Self::Memory(glue) => managed_thread::reconnect_cwd(glue, expected, cwd),
+            Self::Redb(glue) => managed_thread::reconnect_cwd(glue, expected, cwd),
         }
     }
 
@@ -964,6 +985,157 @@ mod tests {
     use gluesql::core::query_builder::table;
 
     use super::*;
+
+    #[test]
+    fn reconnect_task_success_survives_a_later_failure_and_redb_restart() {
+        let temp = tempfile::tempdir().unwrap();
+        let database = temp.path().join("tasks.redb");
+        let store = TaskStore::redb(&database).unwrap();
+        let mut originals = Vec::new();
+        for (id, run_by, archived) in [
+            (
+                "active",
+                RunBy::Claude {
+                    cwd: "/old/sub".into(),
+                },
+                false,
+            ),
+            ("archived", RunBy::Grok { cwd: "/old".into() }, true),
+        ] {
+            let task = store
+                .claim(ManagedThread::new(id, run_by, Some(1), None, None), 1)
+                .unwrap();
+            originals.push(if archived {
+                store.archive(id, 2).unwrap().unwrap()
+            } else {
+                task
+            });
+        }
+        store
+            .transaction(|tables| tables.reconnect_managed_thread(&originals[0], "/new/sub"))
+            .unwrap();
+        let mut stale = originals[1].clone();
+        stale.display_name = "Changed elsewhere".into();
+        assert!(
+            store
+                .transaction(|tables| {
+                    tables.reconnect_managed_thread(&originals[1], "/new")?;
+                    tables.reconnect_managed_thread(&stale, "/wrong")
+                })
+                .is_err()
+        );
+        assert_eq!(
+            store.get_archived("archived").unwrap(),
+            Some(originals[1].clone())
+        );
+        store
+            .transaction(|tables| tables.reconnect_managed_thread(&originals[1], "/new"))
+            .unwrap();
+        let mut unavailable = worktree("unavailable", "archived");
+        unavailable.state = ManagedWorktreeState::Removing;
+        unavailable.checkout_anchor = None;
+        store.create_worktree(unavailable).unwrap();
+        store
+            .transition_worktree(
+                "unavailable",
+                ManagedWorktreeState::Removing,
+                ManagedWorktreeState::Archived,
+                None,
+                5,
+            )
+            .unwrap();
+        drop(store);
+
+        let reopened = TaskStore::redb(&database).unwrap();
+        originals[0].run_by = RunBy::Claude {
+            cwd: "/new/sub".into(),
+        };
+        originals[1].run_by = RunBy::Grok { cwd: "/new".into() };
+        assert_eq!(reopened.get("active").unwrap(), Some(originals[0].clone()));
+        assert_eq!(
+            reopened.get_archived("archived").unwrap(),
+            Some(originals[1].clone())
+        );
+        let record = reopened.worktree("unavailable").unwrap().unwrap();
+        assert_eq!(record.state, ManagedWorktreeState::Archived);
+        assert_eq!(record.checkout_anchor, None);
+        assert!(
+            reopened
+                .transition_worktree(
+                    "unavailable",
+                    ManagedWorktreeState::Archived,
+                    ManagedWorktreeState::Restoring,
+                    None,
+                    6
+                )
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn reconnect_paths_roll_back_together_and_survive_redb_restart() {
+        let temp = tempfile::tempdir().unwrap();
+        let database = temp.path().join("tasks.redb");
+        let store = TaskStore::redb(&database).unwrap();
+        let section = ManagedSection {
+            section_id: "section".into(),
+            logical_path: "old".into(),
+            position: 4096,
+            last_composer_settings: None,
+        };
+        store
+            .transaction(|tables| tables.upsert_managed_section(&section))
+            .unwrap();
+        let mut one = worktree("one", "thread-one");
+        one.state = ManagedWorktreeState::Ready;
+        one.checkout_anchor = None;
+        let mut two = worktree("two", "thread-two");
+        two.state = ManagedWorktreeState::Archived;
+        two.repository_git_dir = one.repository_git_dir.clone();
+        store.create_worktree(one.clone()).unwrap();
+        store.create_worktree(two.clone()).unwrap();
+        let mut stale = two.clone();
+        stale.updated_at_ms += 1;
+        let result = store.transaction(|tables| {
+            tables.reconnect_managed_worktree(&one, "/new/.git")?;
+            let mut moved = section.clone();
+            moved.logical_path = "new".into();
+            tables.upsert_managed_section(&moved)?;
+            tables.reconnect_managed_worktree(&stale, "/new/.git")
+        });
+        assert!(result.is_err());
+        assert_eq!(store.worktree("one").unwrap(), Some(one.clone()));
+        assert_eq!(
+            store
+                .read(|tables| tables.managed_sections())
+                .unwrap()
+                .as_slice(),
+            std::slice::from_ref(&section)
+        );
+        store
+            .transaction(|tables| {
+                tables.reconnect_managed_worktree(&one, "/new/.git")?;
+                tables.reconnect_managed_worktree(&two, "/new/.git")?;
+                let mut moved = section.clone();
+                moved.logical_path = "new".into();
+                tables.upsert_managed_section(&moved)
+            })
+            .unwrap();
+        drop(store);
+        let reopened = TaskStore::redb(&database).unwrap();
+        let mut expected = one;
+        expected.repository_git_dir = "/new/.git".into();
+        assert_eq!(reopened.worktree("one").unwrap(), Some(expected));
+        let mut expected = two;
+        expected.repository_git_dir = "/new/.git".into();
+        assert_eq!(reopened.worktree("two").unwrap(), Some(expected));
+        let mut moved = section;
+        moved.logical_path = "new".into();
+        assert_eq!(
+            reopened.read(|tables| tables.managed_sections()).unwrap(),
+            [moved]
+        );
+    }
 
     fn thread(id: &str) -> ManagedThread {
         ManagedThread::new(id, RunBy::Codex, Some(20), None, None)

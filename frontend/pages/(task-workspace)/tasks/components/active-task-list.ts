@@ -76,6 +76,7 @@ export interface SectionSummary {
   id: string;
   name: string;
   repository: boolean;
+  directory?: ActiveTaskSection["directory"];
   composerSettings: SectionComposerSettings | null;
 }
 
@@ -553,6 +554,7 @@ export class CaffoldActiveTaskList extends CaffoldElement {
           id: section.id,
           name: section.name,
           repository: section.repository,
+          ...(section.directory ? { directory: section.directory } : {}),
           composerSettings: section.composerSettings
             ? { ...section.composerSettings }
             : null,
@@ -1700,6 +1702,7 @@ function heldSections(
       id: section.id,
       name: section.name,
       repository: section.repository,
+      directory: section.directory,
       composerSettings: composerSettings(section.composerSettings),
       tasks: listed(section.tasks).map((task) =>
         withRuntime(task, runtimeByThread.get(taskThreadId(task))),

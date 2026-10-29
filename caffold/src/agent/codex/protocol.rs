@@ -34,6 +34,7 @@ pub(crate) const THREAD_FORK: &str = "thread/fork";
 pub(crate) const THREAD_NAME_SET: &str = "thread/name/set";
 pub(crate) const THREAD_INJECT_ITEMS: &str = "thread/inject_items";
 pub(crate) const THREAD_RESUME: &str = "thread/resume";
+pub(crate) const THREAD_SETTINGS_UPDATE: &str = "thread/settings/update";
 pub(crate) const THREAD_ARCHIVE: &str = "thread/archive";
 pub(crate) const THREAD_DELETE: &str = "thread/delete";
 pub(crate) const THREAD_UNARCHIVE: &str = "thread/unarchive";
@@ -667,6 +668,13 @@ pub(crate) struct ThreadInjectItemsParams<'a> {
     pub thread_id: &'a str,
     /// Codex accepts raw Responses API items at this protocol boundary.
     pub items: [Value; 1],
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ThreadDirectoryParams<'a> {
+    pub thread_id: &'a str,
+    pub cwd: &'a str,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

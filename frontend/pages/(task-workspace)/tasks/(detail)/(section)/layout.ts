@@ -2,9 +2,17 @@ import { html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
 import { mergeActionHintScopes } from "#app/action-hints.js";
-import type { ActiveTaskSection } from "#app/api.js";
+import {
+  type ActiveTaskSection,
+  getSectionDirectory,
+  type SectionDirectory,
+} from "#app/api.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
-import type { TaskStoreStatusSnapshot } from "#app/pages/(task-workspace)/task-store-status.js";
+import {
+  type TaskStoreStatusSnapshot,
+  taskStoreBlocksTaskOperations,
+} from "#app/pages/(task-workspace)/task-store-status.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
@@ -17,8 +25,9 @@ import { cleanLogicalPath } from "../../task-format.js";
 import "./components/conversation-shortcuts.js";
 import type { CaffoldSectionConversationShortcuts } from "./components/conversation-shortcuts.js";
 import "./components/github-shortcuts.js";
-import { CaffoldElement } from "#app/caffold-element.js";
 import type { CaffoldSectionGithubShortcuts } from "./components/github-shortcuts.js";
+import "./components/folder-recovery.js";
+import type { CaffoldSectionFolderRecovery } from "./components/folder-recovery.js";
 
 import styles from "./layout.css.js";
 
@@ -26,7 +35,7 @@ import styles from "./layout.css.js";
 // that is a Git repository, and what a new Task there starts from.
 export type DetailSection = Pick<
   ActiveTaskSection,
-  "id" | "name" | "repository" | "composerSettings"
+  "id" | "name" | "repository" | "composerSettings" | "directory"
 >;
 
 /**
@@ -48,6 +57,9 @@ export class CaffoldSectionDetail extends CaffoldElement {
   private transportAvailable = true;
   private taskStoreStatusSnapshot: TaskStoreStatusSnapshot | null = null;
   private drawn = false;
+  private active = false;
+  private directoryCheckGeneration = 0;
+  private readonly recovery = new DrawnRef<CaffoldSectionFolderRecovery>(this);
   private readonly create = new DrawnRef<CaffoldTaskCreate>(this);
   private readonly conversations =
     new DrawnRef<CaffoldSectionConversationShortcuts>(this);
@@ -55,30 +67,54 @@ export class CaffoldSectionDetail extends CaffoldElement {
 
   setSection(section: DetailSection | null | undefined) {
     this.ensureDrawn();
+    const changed =
+      sectionContextKey(this.section) !== sectionContextKey(section ?? null) ||
+      this.section?.directory?.status !== section?.directory?.status ||
+      this.section?.directory?.message !== section?.directory?.message;
+    if (changed) {
+      this.directoryCheckGeneration += 1;
+    }
     this.section = section ? { ...section } : null;
     this.draw();
     this.syncTaskCreate();
     this.syncConversationShortcuts();
     this.syncGitHubShortcuts();
+    this.syncRecovery();
+    if (changed) {
+      this.checkAvailableDirectory();
+    }
   }
 
   activate() {
     this.ensureDrawn();
     this.hidden = false;
-    this.conversationShortcuts()?.activate();
-    this.githubShortcuts()?.activate();
-    this.taskCreate()?.activate();
+    const activated = this.setActive(true);
+    if (!this.unavailable()) {
+      this.conversationShortcuts()?.activate();
+      this.githubShortcuts()?.activate();
+      this.taskCreate()?.activate();
+    }
+    this.syncRecovery();
+    if (activated) {
+      this.checkAvailableDirectory();
+    }
   }
 
   deactivate() {
+    this.setActive(false);
+    this.recovery.value?.deactivate();
     this.conversationShortcuts()?.deactivate();
     this.githubShortcuts()?.deactivate();
     this.taskCreate()?.deactivate();
   }
 
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    this.deactivate();
+  }
+
   clear() {
-    this.conversationShortcuts()?.deactivate();
-    this.taskCreate()?.deactivate();
+    this.deactivate();
     this.drawn = false;
     this.section = null;
     this.draw();
@@ -87,14 +123,23 @@ export class CaffoldSectionDetail extends CaffoldElement {
   setServerPaths(server: { root?: string; homePath?: string | null }) {
     this.server = { ...server };
     this.taskCreate()?.setServerPaths(this.server);
+    this.syncRecovery();
   }
 
   setTransportAvailable(available: boolean) {
+    const regained = available && !this.transportAvailable;
+    if (!available) {
+      this.directoryCheckGeneration += 1;
+    }
     this.transportAvailable = Boolean(available);
     this.taskCreate()?.setTransportAvailable(this.transportAvailable);
     this.conversationShortcuts()?.setTransportAvailable(
       this.transportAvailable,
     );
+    this.syncRecovery();
+    if (regained) {
+      this.checkAvailableDirectory();
+    }
   }
 
   setTaskStoreStatusSnapshot(snapshot: TaskStoreStatusSnapshot | null) {
@@ -103,10 +148,15 @@ export class CaffoldSectionDetail extends CaffoldElement {
     this.conversationShortcuts()?.setTaskStoreStatusSnapshot(
       this.taskStoreStatusSnapshot,
     );
+    this.syncRecovery();
   }
 
   selectedContextPath() {
     return `${this.section?.name ?? ""}`;
+  }
+
+  ownsEditingEscape(element: Element | null) {
+    return Boolean(this.recovery.value?.ownsEditingEscape(element));
   }
 
   actionHintScope() {
@@ -127,6 +177,7 @@ export class CaffoldSectionDetail extends CaffoldElement {
         scopeId,
         clipRoots: [this],
       }),
+      this.recovery.value?.actionHintScope({ scopeId, clipRoots: [this] }),
     );
   }
 
@@ -161,6 +212,9 @@ export class CaffoldSectionDetail extends CaffoldElement {
         scopeId: `section:${sectionId}`,
         clipRoots: [this],
       }),
+      this.recovery.value?.scrollSurfaceScope({
+        scopeId: `section:${sectionId}`,
+      }),
     );
   }
 
@@ -182,9 +236,19 @@ export class CaffoldSectionDetail extends CaffoldElement {
       return nothing;
     }
     return html`
+      <caffold-section-folder-recovery
+        ${drawn(this.recovery)}
+        ?hidden=${!this.unavailable()}
+        @caffold:section-directory-observed=${this.directoryObserved}
+      ></caffold-section-folder-recovery>
       ${keyed(
         sectionContextKey(this.section),
-        html`<caffold-task-create ${drawn(this.create)}></caffold-task-create>`,
+        html`
+          <caffold-task-create
+            ${drawn(this.create)}
+            ?hidden=${this.unavailable()}
+          ></caffold-task-create>
+        `,
       )}
       <caffold-section-conversation-shortcuts
         ${drawn(this.conversations)}
@@ -235,6 +299,138 @@ export class CaffoldSectionDetail extends CaffoldElement {
     taskCreate.setServerPaths(this.server);
     taskCreate.setTransportAvailable(this.transportAvailable);
     taskCreate.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshot);
+  }
+
+  private unavailable() {
+    return Boolean(
+      this.section?.directory && this.section.directory.status !== "available",
+    );
+  }
+
+  private syncRecovery() {
+    const recovery = this.recovery.value;
+    if (!recovery) {
+      return;
+    }
+    const recovering = this.active && this.unavailable();
+    if (!recovering) {
+      recovery.deactivate();
+    }
+    const create = this.taskCreate();
+    if (create) {
+      create.hidden = this.unavailable();
+    }
+    recovery.setContext(
+      this.section?.directory
+        ? { id: this.section.id, path: this.section.name }
+        : null,
+      this.server,
+    );
+    recovery.setAvailable(
+      this.transportAvailable,
+      taskStoreBlocksTaskOperations(this.taskStoreStatusSnapshot),
+    );
+    if (recovering) {
+      recovery.activate();
+    }
+    if (this.unavailable()) {
+      this.taskCreate()?.deactivate();
+      this.conversationShortcuts()?.deactivate();
+      this.githubShortcuts()?.deactivate();
+      if (this.conversations.value) {
+        this.conversations.value.hidden = true;
+      }
+      if (this.github.value) {
+        this.github.value.hidden = true;
+      }
+    }
+  }
+
+  private directoryObserved(event: CustomEvent<SectionDirectory>) {
+    event.stopPropagation();
+    this.observeDirectory(event.detail);
+  }
+
+  private observeDirectory(directory: SectionDirectory) {
+    if (!this.section || directory.sectionId !== this.section.id) {
+      return;
+    }
+    const changed =
+      directory.path !== this.section.name ||
+      directory.directory.status !== this.section.directory?.status ||
+      directory.directory.message !== this.section.directory?.message;
+    if (!changed) {
+      return;
+    }
+    // The Tasks list remains the owner of Section metadata. A refreshed list
+    // supplies the new path; the local observation only gates this surface.
+    if (directory.path === this.section.name) {
+      this.section = { ...this.section, directory: directory.directory };
+    }
+    this.draw();
+    this.syncTaskCreate();
+    this.syncConversationShortcuts();
+    this.syncGitHubShortcuts();
+    if (this.active && !this.unavailable()) {
+      this.taskCreate()?.activate();
+      this.conversationShortcuts()?.activate();
+      this.githubShortcuts()?.activate();
+    }
+    this.syncRecovery();
+    this.refreshSectionList();
+  }
+
+  // The Section has two lifetime nodes, written only here. Activation starts
+  // its current child or one directory check; deactivation invalidates both.
+  // Context and transport changes rebind effects without adding control nodes.
+  private setActive(active: boolean) {
+    if (this.active === active) {
+      return false;
+    }
+    this.active = active;
+    this.directoryCheckGeneration += 1;
+    return true;
+  }
+
+  private checkAvailableDirectory() {
+    const section = this.section;
+    if (
+      !this.active ||
+      !this.transportAvailable ||
+      section?.directory?.status !== "available"
+    ) {
+      return;
+    }
+    const generation = ++this.directoryCheckGeneration;
+    const current = () =>
+      this.active &&
+      generation === this.directoryCheckGeneration &&
+      section.id === this.section?.id &&
+      section.name === this.section?.name;
+
+    void getSectionDirectory(section.id).then(
+      (directory) => {
+        if (current()) {
+          this.observeDirectory(directory);
+        }
+      },
+      () => {
+        // A failed read cannot become a guessed directory state. Let the
+        // canonical list reconcile Section removal or an unavailable store.
+        if (current()) {
+          this.refreshSectionList();
+        }
+      },
+    );
+  }
+
+  private refreshSectionList() {
+    this.dispatchEvent(
+      new CustomEvent("caffold:section-directory-changed", {
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   private syncGitHubShortcuts() {

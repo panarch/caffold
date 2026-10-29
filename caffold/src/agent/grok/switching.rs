@@ -41,7 +41,7 @@ use tokio::sync::OwnedMutexGuard;
 use uuid::Uuid;
 
 use super::{
-    GrokClient, GrokError, GrokRuntimeEvent,
+    Conversation, GrokClient, GrokError, GrokRuntimeEvent,
     binding::{Binding, ClosedSession, NativeSession, Switch, SwitchPhase},
     protocol::{self, CloseResult},
     same_directory,
@@ -86,6 +86,35 @@ pub(super) fn turn_refusal(switch: &Switch) -> String {
 }
 
 impl GrokClient {
+    /// Explicit recovery uses the same native switch as isolation, keeping the
+    /// Caffold Task and its history while Grok forks to the selected directory.
+    pub(crate) async fn reconnect_directory(
+        &self,
+        thread_id: &str,
+        destination: &str,
+    ) -> Result<Conversation, GrokError> {
+        self.ensure_loaded(thread_id).await?;
+        if !self.source_is_idle(thread_id).await {
+            return Err(GrokError::Agent(
+                "Finish the running Task before reconnecting its folder.".to_string(),
+            ));
+        }
+        self.plan_switch(thread_id, destination).await?;
+        if let Some(switch) = self.advance_switch(thread_id, true).await? {
+            return Err(GrokError::Agent(turn_refusal(&switch)));
+        }
+        let conversation = self
+            .watched_conversation(thread_id)
+            .await
+            .ok_or_else(|| GrokError::ConversationGone(thread_id.to_string()))?;
+        if !same_directory(&conversation.cwd, destination) {
+            return Err(GrokError::Protocol(
+                "Grok did not confirm the selected directory.".to_string(),
+            ));
+        }
+        Ok(conversation)
+    }
+
     /// Write down that this Task is to move into `target_cwd`, and move it
     /// now if nothing is running. A Task already moving somewhere else is
     /// refused; one already there, or already moving there, has nothing to
@@ -718,6 +747,47 @@ mod tests {
             .unwrap();
         client.plan_switch(&other.id, CWD).await.unwrap();
         assert!(binding_of(&client, &other.id).await.switch.is_none());
+    }
+
+    #[tokio::test]
+    async fn folder_reconnection_preserves_the_task_and_uses_the_new_binding_for_the_next_prompt() {
+        let dir = tempfile::tempdir().unwrap();
+        let (client, bridges) = GrokClient::mock(dir.path());
+        let (leader, _memory) = scripted_leader(bridges);
+        client.watch();
+        let conversation = client
+            .start_conversation(CWD, &GrokTurnOptions::default())
+            .await
+            .unwrap();
+        let destination = "/Users/example/moved-plain-folder";
+        let moved = client
+            .reconnect_directory(&conversation.id, destination)
+            .await
+            .unwrap();
+        assert_eq!(moved.id, conversation.id);
+        assert_eq!(moved.cwd, destination);
+        let binding = binding_of(&client, &conversation.id).await;
+        assert_eq!(binding.current.cwd, destination);
+        assert!(binding.switch.is_none());
+        assert_ne!(binding.current.session_id, conversation.id);
+        assert_eq!(leader.requests("_x.ai/session/fork").len(), 1);
+        client
+            .reconnect_directory(&conversation.id, destination)
+            .await
+            .unwrap();
+        assert_eq!(leader.requests("_x.ai/session/fork").len(), 1);
+        client
+            .start_turn(
+                &conversation.id,
+                destination,
+                "Continue the same Task",
+                &[],
+                &GrokTurnOptions::default(),
+            )
+            .await
+            .unwrap();
+        let prompt = leader.wait_for("session/prompt").await;
+        assert_eq!(prompt["sessionId"], binding.current.session_id);
     }
 
     #[tokio::test]

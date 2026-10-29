@@ -368,6 +368,20 @@ export async function archiveTask(threadId: string) {
   );
 }
 
+export async function forceArchiveTask(
+  threadId: string,
+  expectedWorktreeId: string,
+) {
+  return requestJson<Task>(
+    `/api/tasks/${encodeURIComponent(threadId)}/archive/force`,
+    {},
+    {
+      method: "POST",
+      body: { expectedWorktreeId },
+    },
+  );
+}
+
 // A new Task that starts from this one's conversation.
 export async function forkTask(threadId: string) {
   return requestJson<CreatedTask>(
@@ -1513,8 +1527,42 @@ export interface ActiveTaskSection {
   id: string;
   name: string;
   repository: boolean;
+  directory?: SectionDirectoryObservation;
   composerSettings: ActiveTaskComposerSettings | null;
   tasks: ActiveTask[];
+}
+
+export interface SectionDirectoryObservation {
+  status: "available" | "missing" | "unavailable" | "notDirectory";
+  message: string | null;
+}
+
+export interface SectionDirectory {
+  sectionId: string;
+  path: string;
+  directory: SectionDirectoryObservation;
+  browsePath: string;
+  reconnectUnavailableReason: string | null;
+}
+
+export function getSectionDirectory(sectionId: string) {
+  return requestJson<SectionDirectory>(
+    `/api/tasks/sections/${encodeURIComponent(sectionId)}/directory`,
+  );
+}
+
+export function reconnectSectionFolder(
+  sectionId: string,
+  request: { expectedPath: string; path: string },
+) {
+  return requestJson<SectionDirectory>(
+    `/api/tasks/sections/${encodeURIComponent(sectionId)}/reconnect`,
+    {},
+    // This accepted operation may relocate many native conversations. The
+    // server bounds each provider call; a browser read timeout would hide its
+    // final result while that work keeps running.
+    { method: "POST", body: request },
+  );
 }
 
 // Where a Task newly at the top of the Active list goes.

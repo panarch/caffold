@@ -106,9 +106,10 @@ The existing `managed_worktrees` record is the recovery anchor; no separate
 operation ledger is used. Its persisted state distinguishes clean branch
 creation, clean branch handoff, and dirty-state transfer before Git mutation.
 `anchor_branch` and `anchor_head_sha` are a paired checkout anchor: both are
-present in every non-ready operation or recovery state, including legacy
-`creating` recovery, and both are null in `ready`. Partial pairs and states with
-the wrong anchor presence are invalid.
+present during creation, isolation, transfer, and restoration, including legacy
+`creating` recovery, and both are null in `ready`. `removing` and `archived` can
+also have no anchor when explicit discard could not inspect Git. A partial pair
+is always invalid; an absent anchor prevents Restore.
 Interrupted operations are recovered at startup using the matching mode; clean
 recovery never creates or applies a stash snapshot. Dirty transfers additionally
 use the unique stash marker and protected ref.
@@ -151,10 +152,34 @@ removing any Git ref.
 
 A failed removal is reinspected against the recorded repository and anchor
 branch. An intact checkout returns to `ready` and clears the anchor, even if
-it has become dirty. A verified missing UUID slot completes `archived` after
-scoped administrative cleanup. A broken or unverifiable checkout stays in
-`removing` with its anchor. Startup uses the same reconciliation; it does not
-automatically delete broken worktrees.
+it has become dirty. A verified missing UUID slot completes `archived`; scoped
+administrative cleanup is best effort when the original repository is missing.
+A broken or unverifiable checkout stays in `removing`. Startup uses the same
+reconciliation; it does not automatically delete broken worktrees.
+
+### Explicit Discard And Archive
+
+When ordinary Archive refuses a dirty or broken managed checkout, its error
+can offer `forceArchive` with the owned `worktreeId`. Task details offers
+**Discard changes and archive**, which opens a native confirmation dialog with
+the Task, worktree path, loss explanation, and retained conversation/branches.
+The dialog defaults to Cancel. Task Detail rechecks the captured Task/worktree
+identity before sending a confirmed request. Its POST to
+`/api/tasks/{thread_id}/archive/force` requires that `expectedWorktreeId`.
+
+The operation reserves the Task, rechecks active membership and UUID ownership,
+refuses running Tasks, and closes its native conversation before deletion.
+It removes the owned folder, including staged, unstaged, untracked, and ignored
+files. It never removes an ordinary Task's original project folder. Git
+connectivity is not required for deleting this owned slot; administrative
+cleanup affects only verified backlinks. No local branch or conversation is
+deleted. A readable checkout supplies its actual branch/HEAD anchor; if Git
+cannot supply one, `archived` retains no anchor and Restore reports that limit.
+
+A failed discard keeps its completed filesystem and record steps. A retry
+accepts the same owned `removing` slot, or an already `archived` absent slot,
+without recreating discarded files. Native, filesystem, and Task membership
+changes are not one transaction.
 
 ### Broken Task Deletion
 
@@ -196,6 +221,54 @@ startup from the ownership record and actual filesystem state. A mismatched or
 otherwise unsafe target remains in its persisted non-ready state without
 preventing unrelated Tasks or the Caffold server from starting.
 
+## Reconnect A Moved Section Folder
+
+When a Section's original directory is verified missing, its inline picker
+accepts the user-selected current location. Permission and inspection errors
+remain unavailable. Ordinary folders and Git repositories without managed
+worktrees use the same operation; neither Git nor a retained worktree is a
+prerequisite for reconnecting the Section itself.
+
+For surviving active managed worktrees, the candidate must contain the moved
+repository's existing administrative evidence. Reconnection verifies each owned
+UUID slot, forward pointer, administrative backlink, common directory, and
+attached HEAD. It changes only verified owned markers and their repository
+records, without broad repair, pruning external worktrees, switching branches,
+or changing the index or working files. Missing individual worktrees are not
+recreated, and in-progress lifecycle records prevent reconnection.
+
+Direct active Tasks under the old directory retain their relative subpaths.
+Each provider confirms the same Task at the destination: Codex updates native
+thread settings and reads effective cwd; Claude resumes existing history and
+moves its session/transcript; Grok switches its durable native binding while
+keeping the Caffold Task identity. Independently moved Task directories outside
+both source and target stay unchanged. Caffold persists Claude/Grok's new cwd;
+Codex remains the owner of its native cwd. Moved Task terminals close.
+
+Affected active Task mutations are reserved in stable order. Running or unknown
+Task state blocks repair. Each successful Task repair is persisted separately;
+a later failure retains those successes, keeps the Section's old path, and
+names the failing Task. Repeating with the same selected folder recognizes
+already repaired pointers and native directories. No recovery job or movement
+history is stored. The Section commits last after rechecking membership,
+records, and destination uniqueness, then closes its terminal. Task identities,
+placement, history, and worktree Task directories are preserved.
+
+Before that final commit, matching Archived worktree repository records and
+direct Archived conversations are updated best effort. Codex requires native
+unarchive, cwd update, and rearchive; its native read, not its potentially stale
+archived list cwd, identifies the directory. Caffold Archived membership stays
+unchanged. Failures are recorded in server diagnostics and do not create a
+Section warning or a mandatory Git/provider gate for completion. Later Restore uses the surviving
+records and reports an error while keeping Archived membership when the folder,
+repository, or checkout anchor is unavailable. There is no additional Restore
+folder picker, empty-Section retention, or mapping from historical paths.
+
+Git markers, native sessions, and store writes are not atomic together. A retry
+can finish an interrupted repair, but replacement clones without the evidence
+needed by surviving managed worktrees are not adopted. A repeated completed
+request to the same destination is harmless.
+
 ## Coordination And Recovery Limits
 
 Coordination across Git, the selected agent runtime, and the Caffold task store
@@ -213,19 +286,20 @@ are scenario orchestration outside this lifecycle.
 - No operation removes a path outside the canonical managed root.
 - The record ID must be a UUID and its recorded path must exactly equal the
   UUID-derived owned path.
-- Repository common Git directory is always verified. Operation and recovery
-  states also retain and verify their persisted branch identity before Git
-  mutation; transfer recovery additionally uses the anchored HEAD.
-- Dirty ready worktrees are never removed by archive. Recovery never resets an
-  existing dirty target automatically; the exact dirty snapshot remains
+- Git mutation verifies the repository common directory and applicable checkout
+  anchor. Explicit discard can remove an owned UUID folder with broken Git
+  links; it never invents a checkout anchor or deletes Git refs.
+- Ordinary Archive never removes a dirty ready worktree. Explicit discard
+  requires a separate user action after a loss explanation. Recovery never
+  resets an existing dirty target automatically; the exact dirty snapshot remains
   protected by its transfer ref for manual recovery. Clean isolation recovery
   likewise never resets a dirty target.
 - A `ready` record accepts its live named branch after verifying the owned path,
   symlink boundary, repository common directory, and attached HEAD. Task detail,
   prompt, restart reconciliation, and serialization reads do not persist the
   observed branch or HEAD.
-- A detached `ready` worktree, repository mismatch, unowned path, or symlinked
-  owned slot fails closed.
+- Detached checkouts and repository mismatches block ordinary Git operations.
+  Unowned paths and symlinked owned slots also block explicit discard.
 - Normal archive preserves the branch that was live when archive began.
 - Caffold never manages or deletes an external worktree merely because a Task
   uses it as cwd.

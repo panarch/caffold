@@ -163,6 +163,7 @@ test("merges composer popovers, Current Plan, Command, Markdown preview, and per
     selectedThreadId: "thread-a",
     performUpdate() {},
     brokenDeleteDialog: { value: undefined },
+    forceArchiveDialog: { value: { keyboardNavigationContexts: () => [{ id: "force-archive" }] } },
     followUpComposer: () => composer,
     followUpComposerSlot: { value: slot },
     currentPlanComponent: {
@@ -184,6 +185,7 @@ test("merges composer popovers, Current Plan, Command, Markdown preview, and per
   assert.deepEqual(
     taskDetail.keyboardNavigationContexts.call(owner),
     [
+      { id: "force-archive" },
       composerContext,
       planContext,
       commandContext,
@@ -195,6 +197,7 @@ test("merges composer popovers, Current Plan, Command, Markdown preview, and per
   assert.deepEqual(
     taskDetail.keyboardNavigationContexts.call(owner),
     [
+      { id: "force-archive" },
       composerContext,
       commandContext,
       markdownPreviewContext,
@@ -204,12 +207,12 @@ test("merges composer popovers, Current Plan, Command, Markdown preview, and per
   owner.markdownPreviewDialog = { value: undefined };
   assert.deepEqual(
     taskDetail.keyboardNavigationContexts.call(owner),
-    [composerContext, commandContext, permissionInstructionsContext],
+    [{ id: "force-archive" }, composerContext, commandContext, permissionInstructionsContext],
   );
   owner.permissionInstructionsDialog = { value: undefined };
   assert.deepEqual(
     taskDetail.keyboardNavigationContexts.call(owner),
-    [composerContext, commandContext],
+    [{ id: "force-archive" }, composerContext, commandContext],
   );
 });
 
@@ -277,4 +280,16 @@ test("one phrase covers an opening conversation until its Task details and histo
     true,
     "kept entries are not on screen until their Task is read",
   );
+});
+
+
+test("force archive rejects a confirmation captured for another Task or worktree", async () => {
+  const owner = screen({
+    archiveStateValue: { loading: false, error: { allowedActions: ["forceArchive"], worktreeId: "current" } },
+    forkStateValue: { loading: false },
+    emitSubjectSnapshot() { assert.fail("a stale confirmation must not start a request"); },
+  });
+  await owner.archiveSelectedTask({ threadId: "thread-b", worktreeId: "current" });
+  await owner.archiveSelectedTask({ threadId: "thread-a", worktreeId: "previous" });
+  assert.equal(owner.archiveStateValue.loading, false);
 });

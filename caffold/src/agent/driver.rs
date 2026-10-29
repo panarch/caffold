@@ -29,14 +29,15 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::Serialize;
 use serde_json::Value;
 
-use super::claude::{ClaudeClient, ClaudeTurnOptions, claude_turn_options};
+use super::claude::{ClaudeClient, ClaudeTurnOptions, WorkingDirectoryMove, claude_turn_options};
 use super::codex::{
     CodexThreadClient, CodexTurnOptions, codex_mode_id, codex_models, codex_permission_mode_name,
     codex_permission_modes, codex_turn_options, is_fast_service_tier, service_tier_for_fast_mode,
 };
 use super::grok::{GrokClient, GrokTurnOptions, grok_turn_options};
 use super::{
-    ActivityStatus, Conversation, ConversationItem, ItemKind, MessageContent, TurnPage, TurnState,
+    ActivityStatus, Conversation, ConversationItem, ItemKind, MessageContent, ThreadStatus,
+    TurnPage, TurnState,
 };
 
 /// How many turns come back with a conversation that has just been opened.
@@ -770,6 +771,122 @@ impl Driver {
         }
     }
 
+    /// Observe a direct Task before its missing folder is reconnected. Claude
+    /// can resume from an existing parent without losing its old history path.
+    pub(crate) async fn prepare_directory_reconnection(
+        &self,
+        conversation_id: &str,
+        destination: &str,
+    ) -> Result<Option<Conversation>, AgentError> {
+        match self {
+            Self::Claude(claude) => Ok(Some(
+                claude
+                    .client
+                    .prepare_directory_reconnection(conversation_id, &claude.cwd, destination)
+                    .await?,
+            )),
+            Self::Codex(_) | Self::Grok(_) => self.describe(conversation_id).await,
+        }
+    }
+
+    pub(crate) async fn move_working_directory(
+        &self,
+        conversation_id: &str,
+        destination: &str,
+        fast_mode: bool,
+    ) -> Result<Conversation, AgentError> {
+        match self {
+            Self::Codex(client) => Ok(client
+                .move_working_directory(
+                    conversation_id,
+                    destination,
+                    service_tier_for_fast_mode(fast_mode),
+                )
+                .await?),
+            Self::Claude(claude) => {
+                match claude
+                    .client
+                    .move_working_directory(conversation_id, destination)
+                    .await?
+                {
+                    WorkingDirectoryMove::Moved => {}
+                    WorkingDirectoryMove::TurnRunning => {
+                        return Err(AgentError::TurnRunning(
+                            "Finish the running Task before reconnecting its folder.".to_string(),
+                        ));
+                    }
+                }
+                claude
+                    .client
+                    .watched_conversation(conversation_id)
+                    .await
+                    .ok_or_else(|| {
+                        AgentError::Failed(
+                            "Claude's conversation disappeared during reconnection.".to_string(),
+                        )
+                    })
+            }
+            Self::Grok(client) => Ok(client
+                .reconnect_directory(conversation_id, destination)
+                .await?),
+        }
+    }
+
+    /// Reconnect a retained conversation without leaving it running or native-
+    /// unarchived. Caffold's Archived membership remains unchanged throughout.
+    pub(crate) async fn reconnect_archived_directory(
+        &self,
+        conversation_id: &str,
+        destination: &str,
+        fast_mode: bool,
+    ) -> Result<Conversation, AgentError> {
+        match self {
+            Self::Codex(client) => {
+                client.unarchive_thread(conversation_id).await?;
+                let moved = self
+                    .move_working_directory(conversation_id, destination, fast_mode)
+                    .await;
+                let archived = client.archive_thread(conversation_id).await;
+                match (moved, archived) {
+                    (Ok(conversation), Ok(())) => Ok(conversation),
+                    (Err(error), archived) => {
+                        if let Err(archive_error) = archived {
+                            eprintln!(
+                                "could not rearchive Codex Task {conversation_id}: {archive_error}"
+                            );
+                        }
+                        Err(error)
+                    }
+                    (Ok(_), Err(error)) => Err(error.into()),
+                }
+            }
+            Self::Claude(_) => {
+                let prepared = self
+                    .prepare_directory_reconnection(conversation_id, destination)
+                    .await?;
+                if prepared.is_some_and(|conversation| {
+                    matches!(conversation.status, ThreadStatus::Active { .. })
+                }) {
+                    return Err(AgentError::TurnRunning(
+                        "Finish the running Task before reconnecting its folder.".into(),
+                    ));
+                }
+                let conversation = self
+                    .move_working_directory(conversation_id, destination, fast_mode)
+                    .await?;
+                self.archive_conversation(conversation_id).await?;
+                Ok(conversation)
+            }
+            Self::Grok(_) => {
+                let conversation = self
+                    .move_working_directory(conversation_id, destination, fast_mode)
+                    .await?;
+                self.archive_conversation(conversation_id).await?;
+                Ok(conversation)
+            }
+        }
+    }
+
     /// Open a conversation, and watch it from here on.
     ///
     /// Opening is what starts the watching; there is no separate step, and
@@ -869,6 +986,18 @@ impl Driver {
                 .read_turns(conversation_id, cursor, limit)
                 .await
                 .map_err(Into::into),
+        }
+    }
+
+    /// Confirm native closure before removing its checkout, including a retry
+    /// whose earlier request already closed the conversation.
+    pub(crate) async fn ensure_conversation_archived(
+        &self,
+        conversation_id: &str,
+    ) -> Result<(), AgentError> {
+        match self {
+            Self::Codex(client) => Ok(client.ensure_thread_archived(conversation_id).await?),
+            Self::Claude(_) | Self::Grok(_) => self.archive_conversation(conversation_id).await,
         }
     }
 
