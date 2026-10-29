@@ -41,7 +41,8 @@
   grid-template-rows: minmax(0, 1fr);
 }
 
-:host([data-header-hidden]) > .common-detail-shell > .detail-layout-summary {
+:host([data-header-hidden]) > .common-detail-shell > .detail-layout-summary,
+.detail-layout-summary[hidden] {
   display: none;
 }
 

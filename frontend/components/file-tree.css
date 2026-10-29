@@ -262,3 +262,7 @@
 .file-tree-status.is-error {
   color: var(--danger);
 }
+
+:host([hidden]) {
+  display: none;
+}

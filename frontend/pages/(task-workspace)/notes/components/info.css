@@ -103,3 +103,8 @@
     margin-top: 0.5rem;
   }
 }
+
+:host([hidden]),
+.notes-info-popover dl div[hidden] {
+  display: none;
+}

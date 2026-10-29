@@ -109,6 +109,46 @@ test.afterEach(async ({}, testInfo) => {
   await rm(documentPath(testInfo), { force: true });
 });
 
+test("page spacing and frames survive lazy mounting and resizing", { tag: "@all-viewports" }, async ({ page }) => {
+  const bytes = await presentationDeck((presentation) => {
+    for (let index = 1; index <= 24; index += 1) {
+      presentation.addSlide().addText(`Page ${index}`, { x: 1, y: 1, w: 6, h: 1 });
+    }
+  });
+  await page.goto("/settings/files");
+  await page.evaluate(async (data) => {
+    await import("/assets/components/pptx-viewer.js");
+    const viewer = document.createElement("caffold-pptx-viewer");
+    viewer.id = "page-chrome-viewer";
+    viewer.style.cssText = "position: fixed; inset: 80px 1rem 1rem; max-width: calc(100vw - 2rem);";
+    viewer.file = { file: new Blob([new Uint8Array(data)]), newerCopy: false };
+    document.body.append(viewer);
+  }, [...bytes]);
+  const viewer = page.locator("#page-chrome-viewer");
+  await expect(viewer).toHaveAttribute("data-render-state", "pptx");
+  const slides = viewer.locator("[data-slide-index]");
+  await expect(slides).toHaveCount(24);
+  const spacing = await page.evaluate(() => `${parseFloat(getComputedStyle(document.documentElement).fontSize)}px`);
+  for (const width of [null, "320px", "900px"]) {
+    await viewer.evaluate((element, value) => { element.style.width = value ?? ""; }, width);
+    await expect.poll(() => viewer.evaluate((element) => {
+      const container = element.shadowRoot.querySelector(".pptx-viewer-document").shadowRoot
+        .querySelector(".pptx-viewer-slides");
+      const frame = container.querySelector("[data-slide-index] > div");
+      return Math.abs(frame.getBoundingClientRect().width - Math.min(960, container.clientWidth)) <= 1;
+    })).toBe(true);
+    await expect(slides.first()).toHaveCSS("margin-bottom", spacing);
+    await expect(slides.nth(22)).toHaveCSS("margin-bottom", spacing);
+    await expect(slides.last()).toHaveCSS("margin-bottom", "0px");
+    // Chrome serializes the shadow's color first; its geometry distinguishes
+    // the page frame from the renderer's offset, blurred shadow.
+    await expect(slides.first().locator(":scope > div")).toHaveCSS("box-shadow", / 0px 0px 0px 1px$/);
+    await viewer.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await expect(slides.last()).toContainText("Page 24");
+    await expect(slides.last().locator(":scope > div")).toHaveCSS("box-shadow", / 0px 0px 0px 1px$/);
+  }
+});
+
 test("renders a PowerPoint deck as the only representation its file supports", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {

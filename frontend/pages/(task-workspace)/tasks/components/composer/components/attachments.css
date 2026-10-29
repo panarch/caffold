@@ -182,3 +182,8 @@
   width: var(--interface-icon-small-size);
   height: var(--interface-icon-small-size);
 }
+
+.task-composer-attachments[hidden],
+.task-composer-files[hidden] {
+  display: none;
+}

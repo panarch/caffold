@@ -98,3 +98,8 @@ caffold-github-task-start-dialog {
   grid-template-rows: minmax(0, 1fr);
   height: 100%;
 }
+
+.github-mode-issues[hidden],
+.github-mode-pulls[hidden] {
+  display: none;
+}

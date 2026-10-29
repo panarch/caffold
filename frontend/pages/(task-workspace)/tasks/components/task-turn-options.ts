@@ -532,9 +532,9 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     const permission = `--caffold-task-permission-anchor-${this.instanceId}`;
     this.modelButton.value?.style.setProperty("anchor-name", model);
     this.permissionButton.value?.style.setProperty("anchor-name", permission);
-    this.modelPopover.value?.style.setProperty("position-anchor", model);
+    this.modelPopover.value?.style.setProperty("--task-menu-anchor", model);
     this.permissionPopover.value?.style.setProperty(
-      "position-anchor",
+      "--task-menu-anchor",
       permission,
     );
   }

@@ -158,3 +158,8 @@
     width: 100%;
   }
 }
+
+.git-mode-compare[hidden],
+.git-mode-log[hidden] {
+  display: none;
+}

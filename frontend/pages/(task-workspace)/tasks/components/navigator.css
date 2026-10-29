@@ -195,3 +195,7 @@
     transform: none;
   }
 }
+
+:host([hidden]) {
+  display: none;
+}

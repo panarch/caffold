@@ -162,3 +162,7 @@
     flex-direction: column;
   }
 }
+
+:host([hidden]) {
+  display: none;
+}

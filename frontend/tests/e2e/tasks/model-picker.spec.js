@@ -2,6 +2,29 @@ import { expect, test } from "@playwright/test";
 import { installTaskApiFixture, taskDetailFixture } from "../support/task-api-fixture.js";
 import { captureReviewScreenshot, emitTaskDetailBootstrap } from "../support/task-fixtures.js";
 
+test("menus switch between their own anchors and mobile placement when resized", { tag: "@all-viewports" }, async ({ page }) => {
+  await installCatalog(page);
+  await page.goto("/tasks/new?cwd=src");
+  const picker = page.locator(".task-new-form caffold-task-turn-options");
+  const viewport = page.viewportSize();
+  for (const kind of ["model", "permission"]) {
+    const button = picker.locator(`.task-${kind}-button`);
+    const menu = picker.locator(`.task-${kind}-popover`);
+    await button.focus();
+    await page.keyboard.press("Enter");
+    await expect(menu).toBeVisible();
+    const anchor = await button.evaluate((element) => getComputedStyle(element).anchorName);
+    expect(anchor).toMatch(/^--caffold-task-/);
+    for (const width of [viewport.width, 1000, 899, viewport.width]) {
+      await page.setViewportSize({ width, height: viewport.height });
+      await expect(menu).toHaveCSS("position-anchor", width <= 899 ? "none" : anchor);
+      await expect(menu).toBeVisible();
+    }
+    await page.keyboard.press("Escape");
+    await expect(button).toBeFocused();
+  }
+});
+
 test("browses providers without changing the selected model or requesting its permissions", { tag: "@viewport-independent" }, async ({ page }) => {
   const requests = await installCatalog(page);
   await page.goto("/tasks/new?cwd=src");

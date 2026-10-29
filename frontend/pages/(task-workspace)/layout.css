@@ -329,3 +329,9 @@
     display: none;
   }
 }
+
+:host([hidden]),
+.task-workspace-route-control[hidden],
+:host([data-workspace-mode="notes"][data-notes-view="split"][data-notes-picker="primary"]) .task-workspace-master-pane > caffold-notes-navigator[hidden] {
+  display: none;
+}

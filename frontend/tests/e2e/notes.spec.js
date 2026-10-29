@@ -162,6 +162,31 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
+test("Note details hides the changed-in row when the creating Task also made the last edit", { tag: "@all-viewports" }, async ({ page }) => {
+  await page.goto("/settings/files");
+  await page.evaluate(async () => {
+    await import("/assets/pages/(task-workspace)/notes/components/info.js");
+    const info = document.createElement("caffold-notes-info");
+    info.id = "visibility-note-info";
+    info.style.cssText = "position: fixed; top: 80px; right: 1rem;";
+    document.body.append(info);
+  });
+  const info = page.locator("#visibility-note-info");
+  for (const id of ["inbox", "storage", "inbox"]) {
+    await info.evaluate((element, value) => { element.note = value; }, NOTES[id]);
+    await info.getByRole("button", { name: "Note details" }).click();
+    const changed = info.locator("[data-notes-info-changed-by]");
+    if (id === "storage") {
+      await expect(changed).toBeVisible();
+      await expect(changed).toContainText("a deleted task");
+    } else {
+      await expect(changed).toHaveCSS("display", "none");
+      await expect(changed.getByText("Changed in", { exact: true })).toBeHidden();
+    }
+    await page.keyboard.press("Escape");
+  }
+});
+
 test("Note details keeps compact paint, touch targets and native keyboard disclosure across Interface scales", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   await stubNotes(page);
   await page.goto("/notes/storage");

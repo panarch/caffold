@@ -1,6 +1,6 @@
 # Frontend Architecture
 
-The frontend is a small Light-DOM Web Component application. Application
+The frontend is a small Lit Web Component application. Application
 navigation enters one Task workspace. Its Tasks Detail layout binds a Task or
 Section subject and owns the shared terminal, Integrated Review, Git, and
 GitHub surfaces; subject-specific work stays below the matching Task or Section
@@ -1515,7 +1515,10 @@ document is mounted and whenever the viewer's width changes.
 parses the deck, and then draws its slides inside a shadow root of its own,
 only those near the viewport. A slide fits the viewer's width; the renderer
 scales a slide to its container, so the container is no wider than the slide
-and a wide panel does not enlarge it. Only http, https, and mailto links become
+and a wide panel does not enlarge it. The viewer's CSS owns page spacing and
+frames; as the renderer adds list items, the viewer removes their inline bottom
+margin and frame shadow without changing slide contents or dimensions.
+Only http, https, and mailto links become
 links out of the deck, opening in a new tab, and a link to another slide
 scrolls the viewer to it, whether the link is on text or on a whole shape or
 picture. Video and audio never play: as the renderer adds a video it becomes
@@ -2174,13 +2177,20 @@ The document's own stylesheet, `styles.css`, holds the theme tokens, the fonts,
 and the rules for the page itself; it imports no component's stylesheet.
 
 `caffold-element/base.css` holds the rules every component's elements take: box
-sizing, form control and code fonts, `[hidden]`, `.surface-message`, and
+sizing, form control and code fonts, `.surface-message`, and
 `.sr-only`. `styles.css` imports it, and `CaffoldElement` puts it before the
 `static styles` of every component, so a component lists only its own. The box
 sizing and font rules sit in its `base` layer, beneath the shared styles'
 `component-styles` layer, so a shared style sets the font of a control it
 draws. Theme tokens and inherited text properties reach a shadow root from the
 document.
+
+Display and hidden placement stay with their local stylesheet owners. Where
+author display overrides the browser's hidden default, the owner declares the
+hidden state with the same local selector and `[hidden]`, or `:host([hidden])`
+for its host. An existing parent-owned hidden placement rule can cover a child
+host. Browser-default display needs no extra declaration. Stateful children
+stay mounted while hidden; the existing owner controls their lifetime.
 
 A shared style is a stylesheet directly under a `component-styles/` directory
 at the nearest common owner of the components that use it.

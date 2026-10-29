@@ -36,3 +36,7 @@
 .settings-navigator-list::-webkit-scrollbar {
   display: none;
 }
+
+:host([hidden]) {
+  display: none;
+}

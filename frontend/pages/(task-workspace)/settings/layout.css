@@ -127,3 +127,7 @@
     padding-inline: var(--interface-space-5);
   }
 }
+
+:host([hidden]) {
+  display: none;
+}

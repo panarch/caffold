@@ -143,3 +143,7 @@ h2 {
     border-bottom: 1px solid var(--border);
   }
 }
+
+.compare-line-stats[hidden] {
+  display: none;
+}

@@ -102,3 +102,7 @@
     min-width: 0;
   }
 }
+
+.review-compare-ref-controls[hidden] {
+  display: none;
+}

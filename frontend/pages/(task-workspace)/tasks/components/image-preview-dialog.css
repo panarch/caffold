@@ -161,3 +161,7 @@ dialog::backdrop {
     padding: var(--interface-space-8);
   }
 }
+
+.task-image-preview-body img[hidden] {
+  display: none;
+}

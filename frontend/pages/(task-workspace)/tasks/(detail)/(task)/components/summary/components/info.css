@@ -84,3 +84,7 @@
     margin-top: 0.5rem;
   }
 }
+
+.task-detail-popover dl div[hidden] {
+  display: none;
+}

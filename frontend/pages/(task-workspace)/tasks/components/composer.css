@@ -385,3 +385,7 @@ textarea {
     padding: 0;
   }
 }
+
+.task-voice-cancel-button[hidden] {
+  display: none;
+}

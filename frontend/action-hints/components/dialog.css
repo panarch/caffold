@@ -69,3 +69,7 @@
   outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
 }
+
+.action-hint-badge[hidden] {
+  display: none;
+}

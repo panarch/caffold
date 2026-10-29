@@ -104,3 +104,7 @@
   font-size: var(--settings-field-description-size);
   line-height: var(--interface-line-height);
 }
+
+:host([hidden]) {
+  display: none;
+}

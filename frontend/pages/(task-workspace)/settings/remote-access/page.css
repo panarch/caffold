@@ -242,3 +242,8 @@ figcaption {
     text-align: left;
   }
 }
+
+:host([hidden]),
+button[hidden] {
+  display: none;
+}
