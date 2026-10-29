@@ -133,12 +133,12 @@ export class CodexStatusLifecycle {
     });
     this.runtimeRestart = new CodexRuntimeRestartLifecycle({
       restartRuntime,
-      refreshStatus: () => this.refresh(),
+      refreshStatus: () => this.refreshAfterRuntimeChange(),
       onStateChange: onRestartStateChange,
     });
     this.runtimeUpdate = new CodexRuntimeUpdateLifecycle({
       updateRuntime,
-      refreshStatus: () => this.refresh(),
+      refreshStatus: () => this.refreshAfterRuntimeChange(),
       onStateChange: onUpdateStateChange,
     });
   }
@@ -174,7 +174,6 @@ export class CodexStatusLifecycle {
     }
     this.suspended = true;
     this.statusRequestId += 1;
-    this.statusRequest = null;
   }
 
   resume() {
@@ -336,6 +335,7 @@ export class CodexStatusLifecycle {
   canRestartRuntime() {
     return (
       this.runtimeActionValue === "idle" &&
+      this.snapshotValue.phase === "loaded" &&
       codexRuntimeRestartAvailable(this.statusSnapshot())
     );
   }
@@ -343,6 +343,7 @@ export class CodexStatusLifecycle {
   canUpdateRuntime() {
     return (
       this.runtimeActionValue === "idle" &&
+      this.snapshotValue.phase === "loaded" &&
       codexRuntimeUpdateAvailable(this.statusSnapshot())
     );
   }
@@ -405,7 +406,8 @@ export class CodexStatusLifecycle {
       return null;
     }
     if (this.statusRequest) {
-      return await this.statusRequest;
+      const status = await this.statusRequest;
+      return status ?? this.refresh();
     }
     const request = this.performRefresh();
     this.statusRequest = request;
@@ -416,6 +418,13 @@ export class CodexStatusLifecycle {
         this.statusRequest = null;
       }
     }
+  }
+
+  private async refreshAfterRuntimeChange() {
+    // A read started before the mutation finishes cannot describe its result.
+    // Keep the physical request single, then ask for the changed runtime.
+    if (this.statusRequest) await this.statusRequest.catch(() => {});
+    return this.refresh();
   }
 
   private async performRefresh() {

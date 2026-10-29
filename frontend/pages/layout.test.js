@@ -47,6 +47,35 @@ after(() => {
   restoreGlobal("matchMedia", previousMatchMedia);
 });
 
+test("About and bootstrap share health requests and expose failure before retry", async (t) => {
+  const prior = globalThis.window;
+  globalThis.window = { location: { origin: "http://caffold.test" }, setTimeout, clearTimeout };
+  t.after(() => { globalThis.window = prior; });
+  const requests = [];
+  const health = { build: { id: "current" } };
+  t.mock.method(globalThis, "fetch", () => new Promise((resolve, reject) => requests.push({ resolve, reject })));
+  const published = [];
+  const owner = Object.create(appShell, Object.getOwnPropertyDescriptors({
+    healthRequest: null,
+    updateBuildStatus: value => published.push(value),
+    refreshCaffoldUpdate: async () => {},
+  }));
+  const bootstrap = owner.readBuildHealth();
+  const about = owner.refreshAboutStatus();
+  assert.equal(requests.length, 1);
+  requests[0].resolve(Response.json(health));
+  await Promise.all([bootstrap, about]);
+  assert.deepEqual(published, [health]);
+  const failed = owner.refreshAboutStatus();
+  requests[1].reject(new Error("offline"));
+  await assert.rejects(failed, /offline/);
+  assert.equal(published.at(-1), null);
+  const retry = owner.refreshAboutStatus();
+  requests[2].resolve(Response.json(health));
+  await retry;
+  assert.deepEqual(published.at(-1), health);
+});
+
 test("composes one App Shell workspace context with public child contexts", () => {
   const presentation = {};
   const taskChild = { id: "task-child" };

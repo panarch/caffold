@@ -848,6 +848,10 @@ test("prepares and reloads the latest consecutive replacement through the real b
     await expect(about).toContainText("browser-build-a");
 
     fixture.setBuild("browser-build-b", 2);
+    // Re-enter About: asking for the already-active route is not a new read.
+    await page.locator("caffold-app-shell").evaluate((shell) => {
+      shell.navigateToRoute({ kind: "settings", section: "appearance" });
+    });
     await openAboutWithoutReload(page);
 
     const updateDialog = page.getByRole("dialog", {
@@ -891,6 +895,9 @@ test("prepares and reloads the latest consecutive replacement through the real b
     await expect(updateDialog).toBeHidden();
 
     fixture.setBuild("browser-build-c", 3);
+    await page.locator("caffold-app-shell").evaluate((shell) => {
+      shell.navigateToRoute({ kind: "settings", section: "appearance" });
+    });
     await openAboutWithoutReload(page);
     await expect(about).toContainText("browser-build-c");
     await expect(page.locator("caffold-build-mismatch-alert")).toBeHidden();

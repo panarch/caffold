@@ -65,6 +65,9 @@ const CHECKING_UPDATE: CaffoldUpdateSnapshot = {
   error: null,
 };
 
+export const ABOUT_STATUS_REFRESH_REQUEST_EVENT =
+  "caffold:refresh-about-status";
+
 @customElement("caffold-settings-about-page")
 export class CaffoldSettingsAboutPage extends CaffoldElement {
   @property({ attribute: false })
@@ -81,11 +84,33 @@ export class CaffoldSettingsAboutPage extends CaffoldElement {
 
   static override styles = styles;
 
+  private active = false;
+
   private readonly hints: ActionHints = new ActionHints(this, {
     clipRoots: () => [this, this.scrollport.value],
   });
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    this.deactivate();
+  }
+
+  activate() {
+    if (this.active) return;
+    this.active = true;
+    this.dispatchEvent(
+      new CustomEvent(ABOUT_STATUS_REFRESH_REQUEST_EVENT, {
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  deactivate() {
+    this.active = false;
+  }
 
   override render() {
     const updates = this.caffoldUpdate ?? CHECKING_UPDATE;

@@ -75,6 +75,32 @@ function detailValue(section, key) {
   return section.locator(`caffold-settings-detail-list [data-key="${key}"] dd`);
 }
 
+test("leaving Settings pauses download polling and preserves an unsaved key on return", { tag: "@viewport-independent" }, async ({ page }) => {
+  await installVoiceSettings(page, { downloading: true });
+  let reads = 0;
+  await page.route("**/api/voice/settings", async route => {
+    reads += 1;
+    await route.fallback();
+  });
+  await page.clock.install();
+  await page.goto("/settings/voice");
+  const voice = page.locator("caffold-settings-voice-page");
+  const key = voice.locator('[data-provider="openai"]').getByLabel("API key", { exact: true });
+  await expect(key).toBeEnabled();
+  await key.fill("unsaved-test-key");
+  await page.locator('caffold-task-workspace-navigation button[data-workspace-mode="tasks"]').click();
+  await expect(voice).toBeHidden();
+  const away = reads;
+  await page.clock.runFor(60_000);
+  expect(reads).toBe(away);
+  await page.locator('caffold-task-workspace-navigation button[data-workspace-mode="settings"]').click();
+  await expect(key).toBeEnabled();
+  await expect(key).toHaveValue("unsaved-test-key");
+  await expect.poll(() => reads).toBe(away + 1);
+  await page.clock.runFor(2_000);
+  await expect.poll(() => reads).toBeGreaterThan(away + 1);
+});
+
 test("chooses a provider and saves, replaces, and removes an API key without showing it again", { tag: "@all-viewports" }, async ({
   page,
 }) => {

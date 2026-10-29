@@ -31,6 +31,28 @@ test.beforeEach(async ({ page }) => {
   await mockAgentModels(page);
 });
 
+test("leaving Settings pauses Serve progress reads and re-entry reads the server again", { tag: "@viewport-independent" }, async ({ page }) => {
+  let reads = 0;
+  let state = "configuring";
+  await page.route("**/api/tailscale/status", route => {
+    reads += 1;
+    return route.fulfill({ json: tailscaleStatus(state) });
+  });
+  await page.clock.install();
+  await page.goto("/settings/remote-access");
+  const remote = page.locator("caffold-settings-remote-access-page");
+  await expect(remote.getByRole("heading", { name: "Configuring private access" })).toBeVisible();
+  await page.locator('caffold-task-workspace-navigation button[data-workspace-mode="tasks"]').click();
+  await expect(remote).toBeHidden();
+  const away = reads;
+  await page.clock.runFor(60_000);
+  expect(reads).toBe(away);
+  state = "ready";
+  await page.locator('caffold-task-workspace-navigation button[data-workspace-mode="settings"]').click();
+  await expect(remote.getByRole("heading", { name: "Private access is ready" })).toBeVisible();
+  expect(reads).toBe(away + 1);
+});
+
 test("presents every canonical Tailscale state with only its available action", { tag: "@all-viewports" }, async ({
   page,
 }) => {

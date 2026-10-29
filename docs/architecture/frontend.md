@@ -346,9 +346,10 @@ navigation and the Settings navigator, which show the green dot while a
 prepared update waits for a reload; presentation components emit user intent
 without inspecting service-worker state.
 
-The app shell also asks `GET /api/caffold/update` at bootstrap, whenever About
-opens, and after every foreground recovery that reached the server, so a window
-left open during an update learns how it ended. About's **Check for Updates**
+The app shell owns `GET /api/caffold/update` and the health request used by
+About. It reads update status at bootstrap and after successful foreground
+recovery outside About; while About is selected, its page-owned
+[refresh lifecycle](#settings) requests the reads. About's **Check for Updates**
 emits a check request, for which the shell sends `POST
 /api/caffold/update/check` and republishes its last answer marked as checking
 until the server, having asked GitHub, replies. Concurrent reads merge, and a
@@ -975,12 +976,15 @@ thirty seconds, keeps the last answer and stops rechecking until another check
 is requested, such as by foreground recovery.
 
 A separate workspace lifecycle owns backend-owned Codex readiness requests and
-forwards a request snapshot to Settings. It asks when Codex Settings opens, on
-its Refresh, and after a restart or update, the way Claude's and Grok's pages
-ask for theirs; connecting the workspace and foreground recovery ask Codex
-nothing. That snapshot keeps frontend request phase (`checking`, `loaded`, or
+forwards a request snapshot to Settings. Codex Settings requests reads through
+its [page refresh lifecycle](#settings), and confirmed runtime actions request
+their own completion read. Connecting the workspace or recovering another
+surface asks Codex nothing. A runtime completion read waits for any in-flight
+status request, then reads the changed runtime. That
+snapshot keeps frontend request phase (`checking`, `loaded`, or
 `failed`) separate from the canonical backend status payload. A refresh may
-retain the previous status while the request is checking.
+retain the previous status while the request is checking. Retained readiness
+does not enable restart or update controls until a status read succeeds.
 
 Codex readiness gates only Codex surfaces and is consumed as derived
 presentation rather than routing state: Codex Settings presents it, and routes
@@ -1915,8 +1919,27 @@ update request snapshots, repair guidance, diagnostics, and intents for
 Refresh, restart, or update. The workspace Codex status lifecycle remains
 active across Tasks, Notes, and Settings route changes and owns the generations
 of those requests. The Codex page itself reads the update report, only while it
-is shown: when it opens, on Refresh, and after a restart or update finishes. A
-report that arrives after the page is hidden or asked again is discarded.
+is shown: on entry or foreground return, on Refresh, and after a restart or
+update finishes. Its request generation rejects reports invalidated by hiding
+or a newer read.
+
+Claude, Codex, Grok, and About request a read on entry, re-entry, and foreground
+return. They do not poll while left open. Manual Refresh and runtime-action
+completion keep their existing reads. Failure uses the existing error
+presentation; another entry, foreground return, or manual Refresh can retry.
+
+Task Workspace deactivates Settings when leaving for Tasks or Notes and
+forwards foreground suspension and recovery. Settings activates only the
+selected visible page and deactivates the rest. Deactivation invalidates
+page-owned responses. Repeated activation has no effect. Rendering preserves
+the retained page and its rows, focus, selection, and scroll.
+
+Claude and Grok use their existing diagnostic requests. Codex emits its status
+refresh intent to the workspace owner, whose shared request merges concurrent
+reads. About emits a read intent to the App Shell for health and ordinary
+update status, joining existing requests when present. These reads preserve
+the server release cache and the separate PWA update lifecycle; they never
+force a release check or reload the window.
 
 Each Settings page explicitly provides its current visible native buttons and
 exact page scrollport. The Settings workspace merges responsive Back with only

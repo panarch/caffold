@@ -36,6 +36,7 @@ import "./(task-workspace)/layout.js";
 import type { CaffoldTaskWorkspace } from "./(task-workspace)/layout.js";
 import { LIVE_CONNECTION_REPORT_EVENT } from "./(task-workspace)/live-updates.js";
 import {
+  ABOUT_STATUS_REFRESH_REQUEST_EVENT,
   CAFFOLD_UPDATE_CHECK_REQUEST_EVENT,
   type CaffoldUpdateSnapshot,
 } from "./(task-workspace)/settings/about/page.js";
@@ -134,7 +135,7 @@ export class CaffoldAppShell extends CaffoldElement {
   private usesNavigationApi = false;
   private initialPath = "";
   private bootstrapError: { message?: string } | null = null;
-  private aboutHealthRequest: Promise<Health | null> | null = null;
+  private healthRequest: Promise<Health> | null = null;
   private buildHealth: Health | null = null;
   private caffoldUpdate: CaffoldUpdateSnapshot | null = null;
   private caffoldUpdateRead: Promise<void> | null = null;
@@ -219,6 +220,10 @@ export class CaffoldAppShell extends CaffoldElement {
     );
     this.foregroundRecoverySnapshot =
       this.foregroundRecoveryLifecycle.snapshot();
+    this.addEventListener(ABOUT_STATUS_REFRESH_REQUEST_EVENT, (event) => {
+      event.stopPropagation();
+      void this.refreshAboutStatus().catch(() => {});
+    });
     const initialRoute = parseRoute(window.location.href);
     // The entries this writes are the shell's own scaffolding, so they go in
     // while nothing is listening for navigation.
@@ -503,27 +508,27 @@ export class CaffoldAppShell extends CaffoldElement {
   }
 
   private refreshAboutStatus() {
-    void this.pwaUpdateLifecycle.checkForUpdate();
-    void this.refreshCaffoldUpdate();
-    if (this.aboutHealthRequest) {
-      return this.aboutHealthRequest;
-    }
+    return Promise.all([this.readBuildHealth(), this.refreshCaffoldUpdate()]);
+  }
 
-    const request: Promise<Health | null> = getHealth()
+  private readBuildHealth() {
+    // About can enter before bootstrap finishes. Both callers share the read.
+    if (this.healthRequest) return this.healthRequest;
+    const request = getHealth()
       .then((health) => {
         this.updateBuildStatus(health);
         return health;
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         this.updateBuildStatus(null);
-        return null;
+        throw error;
       })
       .finally(() => {
-        if (this.aboutHealthRequest === request) {
-          this.aboutHealthRequest = null;
+        if (this.healthRequest === request) {
+          this.healthRequest = null;
         }
       });
-    this.aboutHealthRequest = request;
+    this.healthRequest = request;
     return request;
   }
 
@@ -759,13 +764,12 @@ export class CaffoldAppShell extends CaffoldElement {
   private async bootstrap() {
     this.setBootstrapError(null);
     try {
-      const health = await getHealth();
+      const health = await this.readBuildHealth();
       this.initialPath = health.initialPath ?? "";
       this.taskWorkspace.setServerPaths({
         root: health.root ?? "",
         homePath: health.homePath ?? null,
       });
-      this.updateBuildStatus(health);
       void this.refreshCaffoldUpdate();
       const route = parseRoute(window.location.href);
       if (route) {
@@ -820,7 +824,13 @@ export class CaffoldAppShell extends CaffoldElement {
     // Caffold answering again may mean an update just ended, so a window left
     // open learns how. Asking only after recovery succeeded keeps a server that
     // is still down from showing as a failed check, and recovery never waits.
-    if (!initialActivation && !recovery?.stale && !recovery?.retry) {
+    if (
+      !initialActivation &&
+      !recovery?.stale &&
+      !recovery?.retry &&
+      !(recoveryRoute?.kind === "settings" && recoveryRoute.section === "about")
+    ) {
+      // About already requested its status when Settings reactivated it.
       void this.refreshCaffoldUpdate();
     }
     return recovery;
@@ -887,7 +897,7 @@ export class CaffoldAppShell extends CaffoldElement {
       defaultCwdPath: this.initialPath || ".",
     });
     if (route.kind === "settings" && route.section === "about") {
-      void this.refreshAboutStatus();
+      void this.pwaUpdateLifecycle.checkForUpdate();
     }
     return true;
   }

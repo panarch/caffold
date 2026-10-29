@@ -62,6 +62,7 @@ const TITLES: Readonly<Record<string, string>> = {
 const SETTINGS_MASTER_DETAIL_MEDIA_QUERY = "(min-width: 900px)";
 // The pages that read while they are shown and stop when they are not.
 const ACTIVE_PAGES = [
+  "about",
   "codex",
   "claude",
   "grok",
@@ -107,6 +108,8 @@ export class CaffoldSettingsWorkspace extends CaffoldElement {
   private readonly masterDetailMedia = window.matchMedia(
     SETTINGS_MASTER_DETAIL_MEDIA_QUERY,
   );
+  private active = false;
+  private foreground = document.visibilityState !== "hidden";
   private connectedSettingsNavigator: CaffoldSettingsNavigator | null = null;
   private readonly responsiveChange = () => {
     this.wide = this.masterDetailMedia.matches;
@@ -278,8 +281,26 @@ export class CaffoldSettingsWorkspace extends CaffoldElement {
   }
 
   prepareRoute(route: { kind?: string; section?: string } | null | undefined) {
+    this.active = route?.kind === "settings";
     this.section = route?.kind === "settings" ? (route.section ?? "") : "";
     this.syncPresentation();
+  }
+
+  deactivate() {
+    this.active = false;
+    this.syncPageLifetimes();
+  }
+
+  suspendForeground() {
+    if (!this.foreground) return;
+    this.foreground = false;
+    this.syncPageLifetimes();
+  }
+
+  resumeForeground() {
+    if (this.foreground) return;
+    this.foreground = true;
+    this.syncPageLifetimes();
   }
 
   // Where Escape takes focus from a field being edited in Settings.
@@ -379,15 +400,7 @@ export class CaffoldSettingsWorkspace extends CaffoldElement {
   // are told, and the workspace hears of the presentation afterwards.
   private syncPresentation() {
     this.performUpdate();
-    const presented = this.presentedSection();
-    for (const section of ACTIVE_PAGES) {
-      const page = this.page(section);
-      if (section === presented) {
-        page?.activate?.();
-      } else {
-        page?.deactivate?.();
-      }
-    }
+    this.syncPageLifetimes();
     for (const section of ROUTED_PAGES) {
       this.page(section)?.prepareRoute?.();
     }
@@ -396,6 +409,18 @@ export class CaffoldSettingsWorkspace extends CaffoldElement {
         bubbles: true,
       }),
     );
+  }
+
+  private syncPageLifetimes() {
+    const presented = this.presentedSection();
+    for (const section of ACTIVE_PAGES) {
+      const page = this.page(section);
+      if (!this.active || !this.foreground || section !== presented) {
+        page?.deactivate?.();
+      } else {
+        page?.activate?.();
+      }
+    }
   }
 
   private requestSection(section: string | null | undefined) {
