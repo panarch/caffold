@@ -1,3 +1,8 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
 /* The viewer owns page spacing and frames; the renderer owns slide contents. */
 .pptx-viewer-slides {
   margin-inline: auto;
@@ -35,5 +40,12 @@
   font-family: var(--font-ui);
   font-size: var(--interface-meta-font-size);
   line-height: var(--interface-line-height);
+  text-align: center;
+}
+
+.pptx-viewer-message {
+  margin: 0;
+  padding: 1rem;
+  color: var(--muted);
   text-align: center;
 }

@@ -662,13 +662,13 @@ root as mutation dependencies.
 
 Document viewers find their links when a session is captured, among the slides
 or cells they have drawn at that moment, since both draw only what is near the
-viewport. The PowerPoint viewer enumerates the anchors and `role="link"`
-elements in its own open Shadow DOM and publishes its host and Shadow root as
-mutation dependencies. Its renderer draws a link to another slide as a
-focusable span with no `href`, and a link on a whole shape or picture as an
-element that only a click reaches; as such an element is drawn, the viewer
+viewport. The PowerPoint document component enumerates the anchors and
+`role="link"` elements in its own open Shadow DOM and publishes its host and
+Shadow root as mutation dependencies. Its renderer draws a link to another
+slide as a focusable span with no `href`, and a link on a whole shape or picture
+as an element that only a click reaches; as such an element is drawn, the component
 gives it the `link` role, a tab stop, and activation by Enter and Space. The
-viewer names these targets itself from the title the renderer gives them:
+component names these targets itself from the title the renderer gives them:
 `Go to <text> (slide N)` for a link to another slide, `Open <text or address>`
 for a link out of the deck, and `Go to <text>` when the deck gives the link a
 tooltip. The Excel viewer enumerates the anchors of its drawn cells and merges
@@ -1496,10 +1496,10 @@ document until it is handed another file or a newer copy of this one.
 `caffold-pdf-viewer` imports its pinned pdf.js release at first use, hands it
 the fetched bytes rather than the address, and draws a page as it approaches
 the viewport.
-`caffold-docx-viewer` imports its pinned docx-preview release at first use and
-draws the whole document inside a shadow root of its own, so the document's
-styles and the app's stylesheet do not reach each other; embedded fonts are not
-loaded. Before the document is attached, embedded HTML (`altChunk`), which the
+The DOCX document component imports its pinned docx-preview release at first
+use and draws the whole document inside a shadow root of its own, so the
+document's styles and the app's stylesheet do not reach each other; embedded
+fonts are not loaded. Before the document is attached, embedded HTML (`altChunk`), which the
 library would run in an iframe of the app's origin, becomes a notice, and links
 keep only their text. Pages split at the document's own page breaks and changes
 of page size and where Word last broke a page when it saved the document, but
@@ -1508,16 +1508,17 @@ Word also marks the first line of a page that the document's own page break
 already started, which leaves an empty page between the two; a page after the
 first whose body is empty is therefore not shown. A Word page keeps the width
 its document declares, which CSS cannot scale to the space available, so the
-viewer zooms each wider page down to its own width from JavaScript when the
-document is mounted and whenever the viewer's width changes.
+document component zooms each wider page down to its own width from JavaScript
+when the document is mounted and whenever the component's width changes.
 
-`caffold-pptx-viewer` imports its pinned pptx-renderer release at first use,
-parses the deck, and then draws its slides inside a shadow root of its own,
+The PPTX document component imports its pinned pptx-renderer release at first
+use, parses the deck, and then draws its slides inside a shadow root of its own,
 only those near the viewport. A slide fits the viewer's width; the renderer
 scales a slide to its container, so the container is no wider than the slide
-and a wide panel does not enlarge it. The viewer's CSS owns page spacing and
-frames; as the renderer adds list items, the viewer removes their inline bottom
-margin and frame shadow without changing slide contents or dimensions.
+and a wide panel does not enlarge it. The document component's CSS owns page
+spacing and frames; as the renderer adds list items, the component removes
+their inline bottom margin and frame shadow without changing slide contents
+or dimensions.
 Only http, https, and mailto links become
 links out of the deck, opening in a new tab, and a link to another slide
 scrolls the viewer to it, whether the link is on text or on a whole shape or
@@ -2105,7 +2106,9 @@ frontend/
     |-- pagination/components/button.ts
     |-- pdf-viewer.ts
     |-- docx-viewer.ts
+    |-- docx-viewer/components/document.ts
     |-- pptx-viewer.ts
+    |-- pptx-viewer/components/document.ts
     |-- xlsx-viewer.ts
     |-- xlsx-viewer/workbook.ts
     |-- xlsx-viewer/window.ts
@@ -2152,11 +2155,18 @@ components inside a root query is named on an element in that root rather than
 on `:host`: WebKit hides a host's container name from the shadow roots of the
 components drawn inside it.
 
-DOCX and PPTX viewers keep rendered document content in another shadow root
-inside the component. Each viewer adopts its private `document.css.js` sheet
-into that inner root; its outer stylesheet and the component base rules stay
-outside. Document chrome and media notices therefore share the CSS formatting
-and lint boundary without applying app control styles to rendered content.
+DOCX and PPTX viewers each mount a document component from their own
+`components/document.js`, paired with `components/document.css.js`. The outer
+viewer owns its accessible region and scroll surface. The document component
+owns the file's rendering request, loading and error display, rendered DOM,
+observers, and cleanup. It publishes its render state to the outer viewer;
+the PPTX viewer passes its scroll container and delegates Action Hints to the
+document's public scope.
+
+The outer viewer and document component each render into their own shadow
+root. The document component uses `CaffoldElement` for root registration and
+connection lifecycle, and finalizes only its own stylesheet through Lit so
+app control and box-sizing resets do not alter Office document layout.
 Document notice colors use the theme-independent `--document-notice-*` tokens
 in `styles.css`.
 
@@ -2184,11 +2194,11 @@ had it as it opened, as the browser does for a popover in the document.
 The document's own stylesheet, `styles.css`, holds the theme tokens, the fonts,
 and the rules for the page itself; it imports no component's stylesheet.
 
-`caffold-element/base.css` holds the rules every component's elements take: box
+`caffold-element/base.css` holds the shared component defaults: box
 sizing, form control and code fonts, `.surface-message`, and
-`.sr-only`. `styles.css` imports it, and `CaffoldElement` puts it before the
-`static styles` of every component, so a component lists only its own. The box
-sizing and font rules sit in its `base` layer, beneath the shared styles'
+`.sr-only`. `styles.css` imports it, and the default `CaffoldElement` style
+finalizer puts it before the component's `static styles`, so a component lists
+only its own. The box sizing and font rules sit in its `base` layer, beneath the shared styles'
 `component-styles` layer, so a shared style sets the font of a control it
 draws. Theme tokens and inherited text properties reach a shadow root from the
 document.

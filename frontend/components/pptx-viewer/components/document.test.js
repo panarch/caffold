@@ -3,11 +3,11 @@ import test, { after } from "node:test";
 
 import {
   installCustomElementUnitRegistry,
-} from "../tests/support/custom-element-unit.js";
+} from "../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./pptx-viewer.js");
-const pptxViewer = registry.element("caffold-pptx-viewer").prototype;
+await import("./document.js");
+const pptxDocument = registry.element("caffold-pptx-document").prototype;
 after(() => registry.restore());
 
 // A viewer drawing a document, ready to be handed another file.
@@ -16,10 +16,11 @@ function drawingViewer() {
   return {
     opened,
     owner: {
+      isConnected: true,
       generation: 4,
       renderState: "pptx",
       release() {
-        pptxViewer.release.call(this);
+        pptxDocument.release.call(this);
       },
       open(generation, file) {
         opened.push({ generation, file });
@@ -58,8 +59,8 @@ function deckViewer(slides) {
   return {
     root,
     owner: {
-      renderRoot: { id: "viewer-root" },
-      mount: { shadowRoot: root },
+      renderRoot: root,
+      scrollContainer: { id: "viewer-scrollport" },
       isConnected: true,
       hidden: false,
       renderState: "pptx",
@@ -72,7 +73,7 @@ test("lets go of the deck shown and opens the file it is handed", () => {
   const file = Promise.resolve(new Blob(["bytes"]));
 
   owner.file = { file, newerCopy: false };
-  pptxViewer.willUpdate.call(owner, new Map([["file", null]]));
+  pptxDocument.willUpdate.call(owner, new Map([["file", null]]));
 
   assert.equal(owner.renderState, "loading", "it says the file is loading until it is drawn");
   assert.deepEqual(opened, [{ generation: 5, file }], "the deck shown before is let go of first");
@@ -97,7 +98,7 @@ test("offers the links out of the deck and to other slides on the slides drawn n
   ]);
   const fileViewer = { id: "file-viewer" };
 
-  const scope = pptxViewer.actionHintScope.call(owner, {
+  const scope = pptxDocument.actionHintScope.call(owner, {
     scopeId: "review:viewer:document",
     actions: { link: "link.open" },
     clipRoots: [fileViewer],
@@ -130,9 +131,9 @@ test("offers the links out of the deck and to other slides on the slides drawn n
     },
   ]);
   assert.deepEqual(scope.targets[0].clipRoots, [owner, fileViewer]);
-  // A slide drawn or released inside the deck's shadow root changes the
-  // links, and so does the mount the viewer's own root draws.
-  assert.deepEqual(scope.mutationRoots, [owner, owner.renderRoot, root]);
+  // Link invalidation belongs to the document; scrolling belongs to its host viewer.
+  assert.deepEqual(scope.mutationRoots, [owner, root]);
+  assert.deepEqual(scope.scrollRoots, [owner.scrollContainer]);
 });
 
 test("offers no links before the deck is drawn or without a link action", () => {
@@ -140,11 +141,11 @@ test("offers no links before the deck is drawn or without a link action", () => 
     slide(0, [control("a", { href: "https://example.com", target: "_blank" }, "Site")]),
   ]);
 
-  assert.deepEqual(pptxViewer.actionHintScope.call(owner, {
+  assert.deepEqual(pptxDocument.actionHintScope.call(owner, {
     scopeId: "review:viewer:document",
   }).targets, []);
   owner.renderState = "loading";
-  assert.deepEqual(pptxViewer.actionHintScope.call(owner, {
+  assert.deepEqual(pptxDocument.actionHintScope.call(owner, {
     scopeId: "review:viewer:document",
     actions: { link: "link.open" },
   }).targets, []);
@@ -156,14 +157,14 @@ test("stops watching slides and drawing them when released", () => {
     generation: 2,
     slideObserver: { disconnect: () => events.push("disconnect") },
     viewer: { destroy: () => events.push("destroy") },
-    mount: {},
+    container: {},
   };
 
-  pptxViewer.release.call(owner);
+  pptxDocument.release.call(owner);
 
   assert.deepEqual(events, ["disconnect", "destroy"]);
   assert.equal(owner.generation, 3);
   assert.equal(owner.slideObserver, null);
   assert.equal(owner.viewer, null);
-  assert.equal(owner.mount, null);
+  assert.equal(owner.container, null);
 });

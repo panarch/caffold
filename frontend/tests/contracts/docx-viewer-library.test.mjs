@@ -9,7 +9,7 @@ function read(path) {
 }
 
 test("the browser and the browser suite load the same docx-preview release", () => {
-  const viewer = read("components/docx-viewer.ts");
+  const viewer = read("components/docx-viewer/components/document.ts");
   const manifest = JSON.parse(read("package.json"));
 
   const [, sourceVersion] =

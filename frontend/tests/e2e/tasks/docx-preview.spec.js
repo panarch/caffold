@@ -210,6 +210,29 @@ test("renders a Word document as the only representation its file supports", { t
   await expect(notice).toHaveCSS("color", "rgb(89, 89, 89)");
 
   await captureReviewScreenshot(page, testInfo, "tasks-docx-preview");
+
+  // A parent update retains the document component, rendered pages and scroll.
+  expect(await viewer.evaluate(async (element) => {
+    const child = element.shadowRoot.querySelector("caffold-docx-document");
+    const page = child.shadowRoot.querySelector("section.docx");
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(page.querySelector("p"));
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const selected = selection.toString();
+    element.scrollTop = 120;
+    const top = element.scrollTop;
+    element.requestUpdate();
+    await element.updateComplete;
+    await child.updateComplete;
+    return {
+      child: element.shadowRoot.querySelector("caffold-docx-document") === child,
+      page: child.shadowRoot.querySelector("section.docx") === page,
+      scroll: element.scrollTop === top,
+      selection: selected.includes("Quarterly review") && selection.toString() === selected,
+    };
+  })).toEqual({ child: true, page: true, scroll: true, selection: true });
 });
 
 test("shows a document's text without its links or embedded HTML", { tag: "@viewport-independent" }, async ({

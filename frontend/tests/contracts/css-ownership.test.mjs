@@ -10,15 +10,11 @@ const frontendRoot = fileURLToPath(new URL("../../", import.meta.url));
 const sharedStyles = discoverFiles(frontendRoot, ".css").filter((path) =>
   /(?:^|\/)component-styles\/[^/]+\.css$/.test(path));
 const baseStyles = "caffold-element/base.css";
-// Renderer content has a separate shadow root, without the component base styles.
-const documentRootStyles = [
-  "components/docx-viewer/document.css",
-  "components/pptx-viewer/document.css",
-];
 // Stylesheets a component puts in the shadow root it renders into, by owner.
 const shadowRootStyles = new Map([
   ["action-hints/components/dialog.css", "caffold-action-hint-dialog"],
   ["components/docx-viewer.css", "caffold-docx-viewer"],
+  ["components/docx-viewer/components/document.css", "caffold-docx-document"],
   ["components/file-navigator.css", "caffold-file-navigator"],
   ["components/file-navigator/components/list.css", "caffold-file-list"],
   ["components/file-tree.css", "caffold-file-tree"],
@@ -34,6 +30,7 @@ const shadowRootStyles = new Map([
   ["components/pane-resizer.css", "caffold-pane-resizer"],
   ["components/pdf-viewer.css", "caffold-pdf-viewer"],
   ["components/pptx-viewer.css", "caffold-pptx-viewer"],
+  ["components/pptx-viewer/components/document.css", "caffold-pptx-document"],
   ["components/segmented-control.css", "caffold-segmented-control"],
   ["components/terminal-view.css", "caffold-terminal-view"],
   ["components/xlsx-viewer.css", "caffold-xlsx-viewer"],
@@ -210,7 +207,6 @@ test("frontend CSS manifest covers every stylesheet", () => {
   const discovered = discoverFiles(frontendRoot, ".css");
   const declared = [
     ...shadowRootStyles.keys(),
-    ...documentRootStyles,
     ...sharedStyles,
     baseStyles,
     "styles.css",

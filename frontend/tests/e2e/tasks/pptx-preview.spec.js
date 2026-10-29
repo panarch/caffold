@@ -149,6 +149,19 @@ test("page spacing and frames survive lazy mounting and resizing", { tag: "@all-
     await expect(slides.last()).toContainText("Page 24");
     await expect(slides.last().locator(":scope > div")).toHaveCSS("box-shadow", / 0px 0px 0px 1px$/);
   }
+  expect(await viewer.evaluate(async (element) => {
+    const child = element.shadowRoot.querySelector("caffold-pptx-document");
+    const slide = child.shadowRoot.querySelector('[data-slide-index="23"] > div');
+    const top = element.scrollTop;
+    element.requestUpdate();
+    await element.updateComplete;
+    await child.updateComplete;
+    return {
+      child: element.shadowRoot.querySelector("caffold-pptx-document") === child,
+      slide: child.shadowRoot.querySelector('[data-slide-index="23"] > div') === slide,
+      scroll: element.scrollTop === top,
+    };
+  })).toEqual({ child: true, slide: true, scroll: true });
 });
 
 test("renders a PowerPoint deck as the only representation its file supports", { tag: "@all-viewports" }, async ({
