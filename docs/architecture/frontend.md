@@ -1647,8 +1647,10 @@ Section the Detail layout activates it for. It owns the terminal screen's
 control model and WebSocket (private `page/model.ts`, `page/connection.ts`, and
 `page/keys.ts`), the empty and "open on another screen" states, the bar with
 the special-key toggle, Kill terminal, and the header toggle, the special key
-row (`components/special-keys.ts`), and the choice to give the Detail header's
-height to the terminal, which each browser keeps in `localStorage`.
+row (`components/special-keys.ts`), the clipboard reads and writes behind the
+row's Copy and Paste, whose outcome it hands back to the row to show, and the
+choice to give the Detail header's height to the terminal, which each browser
+keeps in `localStorage`.
 [Terminals](terminal.md#browser) owns the control model and the backend
 contract. The bar is as tall as the review file viewer's header. Detail passes
 the terminal page its header's inline padding and control gap, so the bar ends
@@ -1667,9 +1669,11 @@ snapshot for Task Workspace.
 reusable leaf that loads xterm.js, adopts xterm.js's stylesheet into its own
 shadow root, opens and closes its terminal, sizes it to
 its box, applies the Code typeface, Code size, and theme colors, scrolls the
-history under a dragged finger as [Terminals](terminal.md#browser) describes,
-and reports typed input and size changes. It owns no connection or terminal
-state.
+history under a dragged finger and selects text under a held one as
+[Terminals](terminal.md#browser) describes (private `terminal-view/touch-gesture.ts`
+and `terminal-view/word-range.ts`), and reports typed input, size changes, and
+whether text is selected. It pastes text and gives or clears its selection on
+request. It owns no connection or terminal state.
 
 An on-screen keyboard is the one layout value the terminal screen sets from
 JavaScript. Browsers keep the page laid out at full height when a phone's or
@@ -2175,7 +2179,9 @@ frontend/
     |-- xlsx-viewer/window.ts
     |-- pane-resizer.ts
     |-- segmented-control.ts
-    `-- terminal-view.ts
+    |-- terminal-view.ts
+    |-- terminal-view/touch-gesture.ts
+    `-- terminal-view/word-range.ts
 ```
 
 Parenthesized directories are pathless ownership nodes. A directory with its

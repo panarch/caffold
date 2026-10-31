@@ -2301,6 +2301,14 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/components/terminal-view.js"
         )))),
+        "components/terminal-view/touch-gesture.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/terminal-view/touch-gesture.js"
+        )))),
+        "components/terminal-view/word-range.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/terminal-view/word-range.js"
+        )))),
         "components/segmented-control.css.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/components/segmented-control.css.js"

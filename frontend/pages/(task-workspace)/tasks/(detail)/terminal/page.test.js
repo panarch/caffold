@@ -63,6 +63,113 @@ test("special keys follow the program's cursor mode and wait for a live screen",
   assert.deepEqual(typed, ["\x1bOA", "\x1b[1;5D", "\x1b"]);
 });
 
+test("Copy is available exactly while the terminal has text selected", () => {
+  const owner = clipboardOwner();
+
+  terminalPage.selectionChanged.call(owner, { detail: { hasSelection: true } });
+  assert.equal(owner.keys.copyAvailable, true);
+  terminalPage.selectionChanged.call(owner, { detail: { hasSelection: false } });
+  assert.equal(owner.keys.copyAvailable, false);
+});
+
+test("the row's Copy and Paste reach the screen's clipboard work", () => {
+  const owner = clipboardOwner();
+  const asked = [];
+  owner.copySelection = async () => asked.push("copy");
+  owner.pasteClipboard = async () => asked.push("paste");
+
+  for (const action of ["copy", "paste"]) {
+    terminalPage.useClipboard.call(owner, keyEvent({ action }));
+  }
+
+  assert.deepEqual(asked, ["copy", "paste"]);
+});
+
+test("Copy puts the selection on the clipboard and clears it; a failed copy keeps it", async () => {
+  const copied = clipboardOwner({ selection: "copy-word" });
+  await withClipboard({ writeText: async (text) => copied.written.push(text) }, () =>
+    terminalPage.copySelection.call(copied),
+  );
+  assert.deepEqual(copied.written, ["copy-word"]);
+  assert.equal(copied.selection, "");
+  assert.deepEqual(copied.results, [true]);
+
+  const refused = clipboardOwner({ selection: "copy-word" });
+  await withClipboard({ writeText: async () => Promise.reject(new Error("denied")) }, () =>
+    terminalPage.copySelection.call(refused),
+  );
+  assert.equal(refused.selection, "copy-word");
+  assert.deepEqual(refused.results, [false]);
+
+  const unavailable = clipboardOwner({ selection: "copy-word" });
+  await withClipboard(undefined, () => terminalPage.copySelection.call(unavailable));
+  assert.equal(unavailable.selection, "copy-word");
+  assert.deepEqual(unavailable.results, [false]);
+});
+
+test("Copy without a selection does nothing, and a selection made meanwhile stays", async () => {
+  const empty = clipboardOwner();
+  await withClipboard({ writeText: async () => assert.fail("nothing to copy") }, () =>
+    terminalPage.copySelection.call(empty),
+  );
+  assert.deepEqual(empty.results, []);
+
+  const replaced = clipboardOwner({ selection: "first" });
+  await withClipboard({ writeText: async () => { replaced.selection = "second"; } }, () =>
+    terminalPage.copySelection.call(replaced),
+  );
+  assert.equal(replaced.selection, "second");
+  assert.deepEqual(replaced.results, [true]);
+});
+
+test("Paste sends the clipboard only to the live connection it was read for", async () => {
+  const live = clipboardOwner({ node: TERMINAL_NODE.LIVE });
+  await withClipboard({ readText: async () => "echo pasted\n" }, () =>
+    terminalPage.pasteClipboard.call(live),
+  );
+  assert.deepEqual(live.pasted, ["echo pasted\n"]);
+
+  const connecting = clipboardOwner({ node: TERMINAL_NODE.CONNECTING });
+  await withClipboard({ readText: async () => assert.fail("not read") }, () =>
+    terminalPage.pasteClipboard.call(connecting),
+  );
+  assert.deepEqual(connecting.pasted, []);
+
+  const reconnected = clipboardOwner({ node: TERMINAL_NODE.LIVE });
+  await withClipboard({
+    readText: async () => {
+      reconnected.state = { ...reconnected.state, generation: 2 };
+      return "echo stale";
+    },
+  }, () => terminalPage.pasteClipboard.call(reconnected));
+  assert.deepEqual(reconnected.pasted, []);
+
+  const lost = clipboardOwner({ node: TERMINAL_NODE.LIVE });
+  await withClipboard({
+    readText: async () => {
+      lost.state = { ...lost.state, node: TERMINAL_NODE.DISCONNECTED };
+      return "echo lost";
+    },
+  }, () => terminalPage.pasteClipboard.call(lost));
+  assert.deepEqual(lost.pasted, []);
+
+  const empty = clipboardOwner({ node: TERMINAL_NODE.LIVE });
+  await withClipboard({ readText: async () => "" }, () =>
+    terminalPage.pasteClipboard.call(empty),
+  );
+  assert.deepEqual(empty.pasted, []);
+  assert.equal(empty.pasteFailures, 0);
+});
+
+test("a clipboard Paste cannot read shows a failure and sends nothing", async () => {
+  const refused = clipboardOwner({ node: TERMINAL_NODE.LIVE });
+  await withClipboard({ readText: async () => Promise.reject(new Error("denied")) }, () =>
+    terminalPage.pasteClipboard.call(refused),
+  );
+  assert.deepEqual(refused.pasted, []);
+  assert.equal(refused.pasteFailures, 1);
+});
+
 test("the backend's messages reset the screen and move the control model", () => {
   const applied = [];
   const resized = [];
@@ -216,6 +323,54 @@ function headerOwner() {
 
 function keyEvent(detail) {
   return { detail, stopPropagation() {} };
+}
+
+// A screen whose terminal holds `selection` and whose special key row records
+// what it was told.
+function clipboardOwner({ node = TERMINAL_NODE.LIVE, selection = "" } = {}) {
+  const owner = {
+    state: { node, generation: 1, mode: null, error: "" },
+    selection,
+    written: [],
+    pasted: [],
+    results: [],
+    pasteFailures: 0,
+    keys: {
+      copyAvailable: false,
+      showCopyResult: (copied) => owner.results.push(copied),
+      showPasteFailure: () => {
+        owner.pasteFailures += 1;
+      },
+    },
+  };
+  owner.terminalView = {
+    value: {
+      selectionText: () => owner.selection,
+      clearSelection: () => {
+        owner.selection = "";
+      },
+      paste: (text) => owner.pasted.push(text),
+    },
+  };
+  owner.specialKeys = { value: owner.keys };
+  return owner;
+}
+
+async function withClipboard(clipboard, run) {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  Object.defineProperty(globalThis, "navigator", {
+    value: { clipboard },
+    configurable: true,
+  });
+  try {
+    await run();
+  } finally {
+    if (previous) {
+      Object.defineProperty(globalThis, "navigator", previous);
+    } else {
+      delete globalThis.navigator;
+    }
+  }
 }
 
 function withWindow(window, run) {

@@ -1,19 +1,41 @@
 // The xterm.js terminal a terminal screen draws with. It fills the box CSS
 // gives it, draws in the Code font and size, follows the theme, scrolls its
-// history under a dragged finger, and reports typed input and its row and
-// column count. xterm.js and its fit addon load from a pinned jsDelivr release
-// the first time a terminal opens.
+// history under a dragged finger, selects text under a held one, and reports
+// typed input, its row and column count, and whether text is selected.
+// xterm.js and its fit addon load from a pinned jsDelivr release the first
+// time a terminal opens.
 
 import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import { CaffoldElement } from "../caffold-element.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
+import {
+  edgeScrollDirection,
+  TOUCH_GESTURE_EFFECT,
+  TOUCH_GESTURE_EVENT,
+  TOUCH_GESTURE_NODE,
+  type TouchGestureEffect,
+  type TouchGestureEvent,
+  type TouchGestureNode,
+  touchGestureTransition,
+} from "./terminal-view/touch-gesture.js";
+import {
+  type CellBuffer,
+  type CellPoint,
+  type CellRange,
+  stretchFromWord,
+  wordAt,
+} from "./terminal-view/word-range.js";
 
 import styles from "./terminal-view.css.js";
 
 export interface TerminalViewInputDetail {
   data: string;
   binary: boolean;
+}
+
+export interface TerminalViewSelectionDetail {
+  hasSelection: boolean;
 }
 
 const XTERM_VERSION = "6.0.0";
@@ -23,9 +45,15 @@ const FIT_ADDON_BASE = `https://cdn.jsdelivr.net/npm/@xterm/addon-fit@${FIT_ADDO
 // The backend keeps the same number of lines when it restores a screen.
 const SCROLLBACK_LINES = 5_000;
 const MIN_COLUMNS = 2;
+// How long a finger rests before it selects, how far it may wander and still
+// count as resting, and how often a selection at an edge row scrolls a row.
+const HOLD_MS = 500;
+const TAP_SLOP_PX = 10;
+const EDGE_SCROLL_MS = 100;
 
 export const TERMINAL_VIEW_INPUT_EVENT = "caffold:terminal-view-input";
 export const TERMINAL_VIEW_RESIZE_EVENT = "caffold:terminal-view-resize";
+export const TERMINAL_VIEW_SELECTION_EVENT = "caffold:terminal-view-selection";
 
 // The parts of xterm.js 6.0.0 and its fit addon this view uses.
 interface TerminalTheme {
@@ -42,6 +70,11 @@ interface TerminalOptions {
   theme: TerminalTheme;
   scrollback: number;
   disableStdin: boolean;
+  wordSeparator?: string;
+}
+
+interface TerminalBuffer extends CellBuffer {
+  readonly viewportY: number;
 }
 
 interface Terminal {
@@ -50,18 +83,25 @@ interface Terminal {
   readonly element: HTMLElement;
   readonly textarea: HTMLTextAreaElement | undefined;
   readonly modes: { applicationCursorKeysMode: boolean };
+  readonly buffer: { readonly active: TerminalBuffer };
   options: TerminalOptions;
   loadAddon(addon: FitAddon): void;
   open(parent: HTMLElement): void;
   onData(listener: (data: string) => void): void;
   onBinary(listener: (data: string) => void): void;
+  onSelectionChange(listener: () => void): void;
   dispose(): void;
   reset(): void;
   write(data: Uint8Array | string): void;
   focus(): void;
   input(data: string, wasUserInput: boolean): void;
+  paste(data: string): void;
   resize(columns: number, rows: number): void;
   scrollLines(amount: number): void;
+  select(column: number, row: number, length: number): void;
+  hasSelection(): boolean;
+  getSelection(): string;
+  clearSelection(): void;
 }
 
 interface FitAddon {
@@ -92,6 +132,7 @@ export class CaffoldTerminalView extends CaffoldElement {
   size: TerminalSize | null = null;
   private terminal: Terminal | null = null;
   private fitAddon: FitAddon | null = null;
+  private stopTouch: (() => void) | null = null;
   private fitFrame = 0;
   private readonly appearanceChanged = () => this.applyAppearance();
   private readonly resizeObserver = new ResizeObserver(() =>
@@ -141,10 +182,17 @@ export class CaffoldTerminalView extends CaffoldElement {
    * xterm.js still draws the output it had queued before the reset.
    */
   close() {
-    this.terminal?.dispose();
+    if (!this.terminal) {
+      return;
+    }
+    this.stopTouch?.();
+    this.stopTouch = null;
+    this.terminal.dispose();
     this.terminal = null;
     this.fitAddon = null;
     this.size = null;
+    // Whatever was selected went with it.
+    this.emitSelection(false);
   }
 
   reset() {
@@ -168,6 +216,19 @@ export class CaffoldTerminalView extends CaffoldElement {
   /** Types `text` as if it came from the keyboard. */
   sendInput(text: string) {
     this.terminal?.input(text, true);
+  }
+
+  /** Pastes `text` the way ⌘V does, bracketed when the program asked for it. */
+  paste(text: string) {
+    this.terminal?.paste(text);
+  }
+
+  selectionText() {
+    return this.terminal?.getSelection() ?? "";
+  }
+
+  clearSelection() {
+    this.terminal?.clearSelection();
   }
 
   applicationCursorKeys() {
@@ -213,7 +274,10 @@ export class CaffoldTerminalView extends CaffoldElement {
     terminal.open(this.screen.value as HTMLDivElement);
     terminal.onData((data) => this.emitInput(data, false));
     terminal.onBinary((data) => this.emitInput(data, true));
-    scrollOnTouch(terminal);
+    terminal.onSelectionChange(() =>
+      this.emitSelection(terminal.hasSelection()),
+    );
+    this.stopTouch = followTouch(terminal);
     this.terminal = terminal;
     this.fitAddon = fitAddon;
   }
@@ -223,6 +287,15 @@ export class CaffoldTerminalView extends CaffoldElement {
       new CustomEvent<TerminalViewInputDetail>(TERMINAL_VIEW_INPUT_EVENT, {
         detail: { data, binary },
       }),
+    );
+  }
+
+  private emitSelection(hasSelection: boolean) {
+    this.dispatchEvent(
+      new CustomEvent<TerminalViewSelectionDetail>(
+        TERMINAL_VIEW_SELECTION_EVENT,
+        { detail: { hasSelection } },
+      ),
     );
   }
 
@@ -342,41 +415,210 @@ function terminalAppearance(element: Element) {
 }
 
 /**
- * Scrolls the history a row for each row one finger drags over the screen,
- * which xterm.js 6.0.0 does only for the mouse wheel. A second finger leaves
- * the gesture to the browser.
+ * Follows one finger over the screen through the touch gesture model, since
+ * xterm.js 6.0.0 scrolls its history only for the mouse wheel and selects only
+ * with a mouse. The history scrolls a row for each row a finger drags; a
+ * finger held still selects. A second finger ends the gesture and leaves it,
+ * such as a pinch zoom, to the browser. Returns a function that ends a gesture
+ * in progress, timers included.
  */
-function scrollOnTouch(terminal: Terminal) {
+function followTouch(terminal: Terminal) {
   const screen = terminal.element.querySelector(".xterm-screen") as HTMLElement;
-  let dragging = false;
-  let lastY = 0;
-  let rowHeight = 0;
+  const { IDLE } = TOUCH_GESTURE_NODE;
+  const { PRESS, ABANDON, MOVE, HOLD_ELAPSED, EDGE_TICK, LIFT } =
+    TOUCH_GESTURE_EVENT;
+  let node: TouchGestureNode = IDLE;
+  let holdTimer = 0;
+  let edgeTimer = 0;
+  let pressed = { x: 0, y: 0 };
+  let finger = { x: 0, y: 0 };
+  let pressedRow = 0;
+  let scrolledToY = 0;
   let pixels = 0;
+  let word: CellRange | null = null;
+
   screen.addEventListener("touchstart", (event) => {
-    dragging = event.touches.length === 1;
-    lastY = event.touches[0].clientY;
-    rowHeight = screen.getBoundingClientRect().height / terminal.rows;
+    if (event.touches.length !== 1) {
+      apply({ type: ABANDON });
+      return;
+    }
+    // A first finger starts afresh, whatever an earlier touch left behind.
+    apply({ type: ABANDON });
+    const { clientX, clientY } = event.touches[0];
+    pressed = { x: clientX, y: clientY };
+    finger = pressed;
+    pressedRow = screenRow(clientY);
+    scrolledToY = clientY;
     pixels = 0;
+    apply({ type: PRESS });
   });
   screen.addEventListener(
     "touchmove",
     (event) => {
-      dragging &&= event.touches.length === 1;
-      if (!dragging) {
+      if (node === IDLE) {
+        return;
+      }
+      if (event.touches.length !== 1) {
+        apply({ type: ABANDON });
         return;
       }
       event.preventDefault();
-      const y = event.touches[0].clientY;
-      pixels += lastY - y;
-      lastY = y;
-      const rows = Math.trunc(pixels / rowHeight);
-      if (rows) {
-        pixels -= rows * rowHeight;
-        terminal.scrollLines(rows);
-      }
+      const { clientX, clientY } = event.touches[0];
+      finger = { x: clientX, y: clientY };
+      apply({
+        type: MOVE,
+        pastSlop:
+          Math.hypot(clientX - pressed.x, clientY - pressed.y) > TAP_SLOP_PX,
+      });
     },
     { passive: false },
   );
+  screen.addEventListener("touchend", (event) => {
+    if (event.touches.length === 0 && apply({ type: LIFT })) {
+      event.preventDefault();
+    }
+  });
+  screen.addEventListener("touchcancel", () => apply({ type: ABANDON }));
+  // Android sends a long press as a context menu, which xterm.js takes for a
+  // right click: it moves its input under the finger and focuses it.
+  terminal.element.addEventListener(
+    "contextmenu",
+    (event) => {
+      if (node !== IDLE) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    },
+    { capture: true },
+  );
+
+  // The only writer of `node`. Returns whether the touch's lift is the
+  // gesture's, so the browser makes no tap of it.
+  const apply = (event: TouchGestureEvent) => {
+    const result = touchGestureTransition(node, event);
+    if (!result) {
+      return false;
+    }
+    node = result.node;
+    let claimed = false;
+    for (const effect of result.effects) {
+      claimed = run(effect) || claimed;
+    }
+    return claimed;
+  };
+
+  const run = (effect: TouchGestureEffect) => {
+    switch (effect) {
+      case TOUCH_GESTURE_EFFECT.START_HOLD:
+        holdTimer = window.setTimeout(
+          () => apply({ type: HOLD_ELAPSED }),
+          HOLD_MS,
+        );
+        return false;
+      case TOUCH_GESTURE_EFFECT.CANCEL_HOLD:
+        window.clearTimeout(holdTimer);
+        return false;
+      case TOUCH_GESTURE_EFFECT.SCROLL:
+        scrollWithFinger();
+        return false;
+      case TOUCH_GESTURE_EFFECT.SELECT_WORD:
+        word = wordAt(
+          terminal.buffer.active,
+          terminal.cols,
+          cellUnder(pressed),
+          terminal.options.wordSeparator ?? "",
+        );
+        select(word);
+        return false;
+      case TOUCH_GESTURE_EFFECT.STRETCH_SELECTION:
+        stretchSelection();
+        return false;
+      case TOUCH_GESTURE_EFFECT.START_EDGE_SCROLL:
+        edgeTimer = window.setInterval(
+          () => apply({ type: EDGE_TICK }),
+          EDGE_SCROLL_MS,
+        );
+        return false;
+      case TOUCH_GESTURE_EFFECT.EDGE_SCROLL: {
+        const direction = edgeScrollDirection(
+          screenRow(finger.y),
+          terminal.rows,
+          pressedRow,
+        );
+        if (direction) {
+          terminal.scrollLines(direction);
+          stretchSelection();
+        }
+        return false;
+      }
+      case TOUCH_GESTURE_EFFECT.STOP_EDGE_SCROLL:
+        window.clearInterval(edgeTimer);
+        return false;
+      case TOUCH_GESTURE_EFFECT.DISMISS_SELECTION:
+        if (!terminal.hasSelection()) {
+          return false;
+        }
+        terminal.clearSelection();
+        return true;
+      case TOUCH_GESTURE_EFFECT.CLAIM_LIFT:
+        return true;
+    }
+  };
+
+  const scrollWithFinger = () => {
+    const rowHeight = screen.getBoundingClientRect().height / terminal.rows;
+    pixels += scrolledToY - finger.y;
+    scrolledToY = finger.y;
+    const rows = Math.trunc(pixels / rowHeight);
+    if (rows) {
+      pixels -= rows * rowHeight;
+      terminal.scrollLines(rows);
+    }
+  };
+
+  const stretchSelection = () => {
+    if (word) {
+      select(
+        stretchFromWord(
+          terminal.buffer.active,
+          terminal.cols,
+          word,
+          cellUnder(finger),
+        ),
+      );
+    }
+  };
+
+  const select = ({ x, y, length }: CellRange) => {
+    terminal.select(x, y, length);
+  };
+
+  // The screen row under a client y, which lies outside the screen when the
+  // finger does.
+  const screenRow = (y: number) => {
+    const box = screen.getBoundingClientRect();
+    return Math.floor((y - box.top) / (box.height / terminal.rows));
+  };
+
+  // The buffer cell under a point, the nearest one when it lies outside.
+  const cellUnder = ({ x, y }: { x: number; y: number }): CellPoint => {
+    const box = screen.getBoundingClientRect();
+    const column = Math.floor((x - box.left) / (box.width / terminal.cols));
+    return {
+      x: clamp(column, 0, terminal.cols - 1),
+      y:
+        terminal.buffer.active.viewportY +
+        clamp(screenRow(y), 0, terminal.rows - 1),
+    };
+  };
+
+  return () => {
+    apply({ type: ABANDON });
+  };
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
 }
 
 declare global {
@@ -387,5 +629,6 @@ declare global {
   interface HTMLElementEventMap {
     [TERMINAL_VIEW_RESIZE_EVENT]: CustomEvent<TerminalSize>;
     [TERMINAL_VIEW_INPUT_EVENT]: CustomEvent<TerminalViewInputDetail>;
+    [TERMINAL_VIEW_SELECTION_EVENT]: CustomEvent<TerminalViewSelectionDetail>;
   }
 }

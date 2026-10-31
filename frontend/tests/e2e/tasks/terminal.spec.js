@@ -930,11 +930,36 @@ test("the special key row starts on touch screens and keeps the choice", { tag: 
   await expectPrompt(page);
   const keys = page.locator("caffold-terminal-special-keys");
   await expect(keys).toBeVisible();
-  const row = await keys.evaluate((element) => ({
-    fits: element.scrollWidth <= element.clientWidth,
-    buttons: element.shadowRoot.querySelectorAll("button").length,
-  }));
-  expect(row).toEqual({ fits: true, buttons: 7 });
+  // Nine keys, Copy and Paste last, share the width equally and narrow
+  // together without clipping a label.
+  const row = () => keys.evaluate((element) => {
+    const buttons = [...element.shadowRoot.querySelectorAll("button")];
+    const boxes = buttons.map((button) => button.getBoundingClientRect());
+    const widths = boxes.map((box) => box.width);
+    return {
+      fits: element.scrollWidth <= element.clientWidth,
+      buttons: buttons.map((button) => button.getAttribute("aria-label")),
+      oneLine: new Set(boxes.map((box) => Math.round(box.top))).size === 1,
+      sameWidth: Math.max(...widths) - Math.min(...widths) < 0.5,
+      unclipped: buttons.every((button) => button.scrollWidth <= button.clientWidth),
+    };
+  });
+  const expected = {
+    fits: true,
+    buttons: [
+      "Escape", "Tab", "Control", "Left arrow", "Up arrow", "Down arrow", "Right arrow",
+      "Copy", "Paste",
+    ],
+    oneLine: true,
+    sameWidth: true,
+    unclipped: true,
+  };
+  expect(await row()).toEqual(expected);
+  await expect(clipboardKey(page, "copy")).toBeDisabled();
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: 320, height: viewport.height });
+  await expect.poll(row).toEqual(expected);
+  await page.setViewportSize(viewport);
 
   await page.keyboard.type("cat -v");
   await keys.getByRole("button", { name: "Tab" }).tap();
@@ -1010,6 +1035,257 @@ test("one finger dragged over the terminal scrolls its history, and two are left
   expect(await dragTerminal(page, -3)).not.toContain(false);
 
   await expect.poll(topRow).toBe(bottom - 2);
+});
+
+test("a finger that moves before the hold scrolls and selects nothing", { tag: "@foldable" }, async ({
+  page,
+}) => {
+  await page.clock.install();
+  const threadId = terminalTaskId("touch-scroll-no-select");
+  await openTask(page, threadId);
+  await terminalButton(page).click();
+  await expectLive(page);
+  await expectPrompt(page);
+  await page.keyboard.type("seq $((100 + 1)) $((200 * 2))");
+  await page.keyboard.press("Enter");
+  await expect(terminalRows(page)).toContainText("400");
+  await expectPrompt(page);
+  const copy = clipboardKey(page, "copy");
+
+  await touchCells(page, "touchstart", [{ column: 1, row: 10 }]);
+  expect(await touchCells(page, "touchmove", [{ column: 1, row: 13 }])).toBe(false);
+  await page.clock.runFor(2_000);
+
+  await expect(copy).toBeDisabled();
+  expect(await touchCells(page, "touchend", [{ column: 1, row: 13 }])).toBe(true);
+});
+
+test("a finger held on a word selects it, and Copy puts it on the clipboard and clears it", { tag: "@foldable" }, async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const threadId = terminalTaskId("touch-select");
+  await openTask(page, threadId);
+  await terminalButton(page).click();
+  await expectLive(page);
+  await expectPrompt(page);
+  await page.keyboard.type("echo 한글-단어 끝; echo copy-$((1 + 2)) tail");
+  await page.keyboard.press("Enter");
+  await expect(terminalRows(page)).toContainText("copy-3 tail");
+  await expectPrompt(page);
+  const copy = clipboardKey(page, "copy");
+  await expect(copy).toBeDisabled();
+
+  const hangul = { column: 3, row: await rowStarting(page, "한글-단어") };
+  expect(await touchCells(page, "touchstart", [hangul])).toBe(true);
+  await expect(copy).toBeEnabled();
+  // Lifting a selecting finger makes no tap of it.
+  expect(await touchCells(page, "touchend", [hangul])).toBe(false);
+  await copy.click();
+
+  await expect.poll(() => readClipboard(page)).toBe("한글-단어");
+  await expect(copy).toHaveAttribute("data-clipboard-result", "copied");
+  await expect(copy).toHaveAccessibleName("Copied");
+  // The check gives way to a disabled Copy, as the selection went with it.
+  await expect(copy).not.toHaveAttribute("data-clipboard-result", "copied");
+  await expect(copy).toBeDisabled();
+
+  const word = { column: 2, row: await rowStarting(page, "copy-3") };
+  await touchCells(page, "touchstart", [word]);
+  await expect(copy).toBeEnabled();
+  await touchCells(page, "touchend", [word]);
+  await copy.click();
+  await expect.poll(() => readClipboard(page)).toBe("copy-3");
+});
+
+test("a held finger stretches the selection and scrolls the history at the top row", { tag: "@foldable" }, async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const threadId = terminalTaskId("touch-stretch");
+  await openTask(page, threadId);
+  await terminalButton(page).click();
+  await expectLive(page);
+  await expectPrompt(page);
+  await page.keyboard.type("seq $((100 + 1)) $((200 * 2))");
+  await page.keyboard.press("Enter");
+  await expect(terminalRows(page)).toContainText("400");
+  await expectPrompt(page);
+  const rows = await terminalRows(page).locator(":scope > div").count();
+  const numberAt = async (row) =>
+    Number(await terminalRows(page).locator(":scope > div").nth(row).textContent());
+  const top = await numberAt(0);
+  const pressedRow = Math.floor(rows / 2);
+  const pressed = await numberAt(pressedRow);
+  const copy = clipboardKey(page, "copy");
+
+  await touchCells(page, "touchstart", [{ column: 1, row: pressedRow }]);
+  await expect(copy).toBeEnabled();
+  await touchCells(page, "touchmove", [{ column: 0, row: 0 }]);
+  await expect.poll(() => numberAt(0)).toBeLessThan(top - 5);
+  await touchCells(page, "touchend", [{ column: 0, row: 0 }]);
+  await copy.click();
+
+  // Every number from the top row the history reached down to the held one.
+  const lines = (await readClipboard(page)).trim().split("\n").map(Number);
+  expect(lines[0]).toBeLessThan(top - 5);
+  expect(lines.at(-1)).toBe(pressed);
+  expect(lines).toEqual(
+    Array.from({ length: pressed - lines[0] + 1 }, (_, index) => lines[0] + index),
+  );
+});
+
+test("a tap clears a selection without focusing the terminal or reaching a program that uses the mouse", { tag: "@foldable" }, async ({
+  page,
+}) => {
+  const threadId = terminalTaskId("touch-dismiss");
+  await openTask(page, threadId);
+  await terminalButton(page).click();
+  await expectLive(page);
+  await expectPrompt(page);
+  await page.keyboard.type("echo tap-word-$((2 + 5)); printf '\\033[?1000h'; cat -v");
+  await page.keyboard.press("Enter");
+  await expect(terminalRows(page)).toContainText("tap-word-7");
+  await terminalInput(page).evaluate((input) => input.blur());
+  const copy = clipboardKey(page, "copy");
+
+  // The program asked for the mouse, and a held finger still selects.
+  const word = { column: 1, row: await rowStarting(page, "tap-word-7") };
+  await touchCells(page, "touchstart", [word]);
+  await expect(copy).toBeEnabled();
+  await touchCells(page, "touchend", [word]);
+  const tapAt = await cellPoint(page, { column: 4, row: 1 });
+  await page.touchscreen.tap(tapAt.x, tapAt.y);
+
+  await expect(copy).toBeDisabled();
+  await expect(terminalInput(page)).not.toBeFocused();
+  await terminalInput(page).focus();
+  await page.keyboard.type("after-tap");
+  await page.keyboard.press("Enter");
+  await expect(terminalRows(page).locator(":scope > div", { hasText: /^after-tap\s*$/ })).toHaveCount(2);
+  await expect(terminalRows(page)).not.toContainText("^[[M");
+
+  // Without a selection the tap reaches the program as before.
+  await page.touchscreen.tap(tapAt.x, tapAt.y);
+  await page.keyboard.press("Enter");
+  await expect(terminalRows(page)).toContainText("^[[M");
+});
+
+test("a context menu while a finger is held does not reach xterm.js, and one from a mouse still does", { tag: "@foldable" }, async ({
+  page,
+}) => {
+  const threadId = terminalTaskId("touch-context-menu");
+  await openTask(page, threadId);
+  await terminalButton(page).click();
+  await expectLive(page);
+  await expectPrompt(page);
+  await page.keyboard.type("echo held-$((3 * 3))");
+  await page.keyboard.press("Enter");
+  await expect(terminalRows(page)).toContainText("held-9");
+  const input = terminalInput(page);
+  await input.evaluate((element) => element.blur());
+  const copy = clipboardKey(page, "copy");
+  // xterm.js answers a right click by moving its input under the pointer.
+  const contextMenu = (cell) =>
+    page.locator("caffold-terminal-page .xterm-screen").evaluate((screen, at) => {
+      const target = screen.getRootNode().elementFromPoint(at.x, at.y);
+      return target.dispatchEvent(new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        button: 2,
+        clientX: at.x,
+        clientY: at.y,
+      }));
+    }, cell);
+
+  const word = { column: 1, row: await rowStarting(page, "held-9") };
+  await touchCells(page, "touchstart", [word]);
+  await expect(copy).toBeEnabled();
+  expect(await contextMenu(await cellPoint(page, word))).toBe(false);
+  await touchCells(page, "touchend", [word]);
+
+  await expect(input).not.toBeFocused();
+  expect(await input.evaluate((element) => element.style.zIndex)).not.toBe("1000");
+
+  expect(await contextMenu(await cellPoint(page, word))).toBe(true);
+  await expect(input).toBeFocused();
+  expect(await input.evaluate((element) => element.style.zIndex)).toBe("1000");
+});
+
+test("Paste sends the clipboard to the shell and turns a waiting Ctrl off", { tag: "@phone" }, async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const threadId = terminalTaskId("paste");
+  await openTask(page, threadId);
+  await terminalButton(page).click();
+  await expectLive(page);
+  await expectPrompt(page);
+  const keys = page.locator("caffold-terminal-special-keys");
+  const control = keys.getByRole("button", { name: "Control" });
+  const paste = clipboardKey(page, "paste");
+
+  await writeClipboard(page, "echo pasted-$((40 + 2))");
+  await paste.tap();
+  // The clipboard is read on its own time; Enter waits for the text.
+  await expect(terminalRows(page)).toContainText("echo pasted-$((40 + 2))");
+  await page.keyboard.press("Enter");
+  await expect(terminalRows(page)).toContainText("pasted-42");
+  await expectPrompt(page);
+
+  // A single pasted letter would become a control character if Ctrl took it.
+  await writeClipboard(page, "e");
+  await control.tap();
+  await expect(control).toHaveAttribute("aria-pressed", "true");
+  await paste.tap();
+  await expect(control).toHaveAttribute("aria-pressed", "false");
+  await expect(
+    terminalRows(page).locator(":scope > div", { hasText: /[$#] e\s*$/ }),
+  ).toHaveCount(1);
+  await page.keyboard.type("cho ctrl-$((1 + 1))");
+  await page.keyboard.press("Enter");
+  await expect(terminalRows(page)).toContainText("ctrl-2");
+});
+
+test("a Copy or Paste the browser refuses shows a warning and keeps the selection", { tag: "@foldable" }, async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const refuse = () => Promise.reject(new DOMException("Refused", "NotAllowedError"));
+    Object.defineProperty(Navigator.prototype, "clipboard", {
+      configurable: true,
+      get: () => ({ writeText: refuse, readText: refuse }),
+    });
+  });
+  const threadId = terminalTaskId("clipboard-refused");
+  await openTask(page, threadId);
+  await terminalButton(page).click();
+  await expectLive(page);
+  await expectPrompt(page);
+  await page.keyboard.type("echo refused-$((4 * 4))");
+  await page.keyboard.press("Enter");
+  await expect(terminalRows(page)).toContainText("refused-16");
+  const copy = clipboardKey(page, "copy");
+  const paste = clipboardKey(page, "paste");
+
+  const word = { column: 1, row: await rowStarting(page, "refused-16") };
+  await touchCells(page, "touchstart", [word]);
+  await expect(copy).toBeEnabled();
+  await touchCells(page, "touchend", [word]);
+  await copy.click();
+
+  await expect(copy).toHaveAttribute("data-clipboard-result", "failed");
+  await expect(copy).toHaveAccessibleName("Copy failed");
+  await expect(copy).not.toHaveAttribute("data-clipboard-result", "failed");
+  await expect(copy).toBeEnabled();
+
+  await paste.click();
+  await expect(paste).toHaveAttribute("data-clipboard-result", "failed");
+  await expect(paste).toHaveAccessibleName("Paste failed");
 });
 
 // Prints the last two parts of the shell's directory, in a form its own
@@ -1185,4 +1461,69 @@ async function dragTerminal(page, rows, fingers = 1) {
     },
     { rows, fingers },
   );
+}
+
+function clipboardKey(page, action) {
+  return page.locator(`caffold-terminal-special-keys [data-terminal-clipboard="${action}"]`);
+}
+
+// The index of the last screen row whose text starts with `text`.
+function rowStarting(page, text) {
+  return terminalRows(page).locator(":scope > div").evaluateAll(
+    (rows, start) => rows.findLastIndex((row) => row.textContent.startsWith(start)),
+    text,
+  );
+}
+
+// The middle of a screen cell, which may lie outside the screen, in page
+// coordinates.
+function cellPoint(page, cell) {
+  return page.locator("caffold-terminal-page .xterm-screen").evaluate((screen, { column, row }) => {
+    const { cols, rows } = screen.getRootNode().host.size;
+    const box = screen.getBoundingClientRect();
+    return {
+      x: box.left + ((column + 0.5) * box.width) / cols,
+      y: box.top + ((row + 0.5) * box.height) / rows,
+    };
+  }, cell);
+}
+
+// Sends one touch event to the terminal screen with a finger on each cell, as
+// the browser would, and returns whether nothing prevented its default.
+function touchCells(page, type, cells) {
+  return page.locator("caffold-terminal-page .xterm-screen").evaluate(
+    (screen, { type, cells }) => {
+      const { cols, rows } = screen.getRootNode().host.size;
+      const box = screen.getBoundingClientRect();
+      // The screen sits in the terminal view's shadow root, where a touch lands.
+      const target = screen.getRootNode().elementFromPoint(
+        box.left + box.width / 2,
+        box.top + box.height / 2,
+      );
+      const fingers = cells.map(({ column, row }, identifier) => new Touch({
+        identifier,
+        target,
+        clientX: box.left + ((column + 0.5) * box.width) / cols,
+        clientY: box.top + ((row + 0.5) * box.height) / rows,
+      }));
+      const down = type === "touchend" ? [] : fingers;
+      return target.dispatchEvent(new TouchEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        touches: down,
+        targetTouches: down,
+        changedTouches: fingers,
+      }));
+    },
+    { type, cells },
+  );
+}
+
+function readClipboard(page) {
+  return page.evaluate(() => navigator.clipboard.readText());
+}
+
+function writeClipboard(page, text) {
+  return page.evaluate((value) => navigator.clipboard.writeText(value), text);
 }

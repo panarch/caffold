@@ -210,3 +210,36 @@ the screen, and the browser does not pan the page for that drag. The alternate
 screen has no history, so a program drawn there, such as an editor, does not
 move under a finger. A second finger ends the drag and leaves the gesture, such
 as a pinch zoom, to the browser.
+
+xterm.js 6.0.0 also selects text only with a mouse. A finger held still for
+half a second, moving no more than 10 px, selects the word under it instead of
+scrolling: the view finds the word's edges the way a desktop double-click does,
+at the terminal's word separators and at blank cells, across a row the
+terminal wrapped, and with both cells of a wide character, and selects it with
+xterm.js's `select()`. Because the selection does not go through mouse events,
+it works while a program uses the mouse. Moving the finger without lifting it
+stretches the selection from that word to the cell under the finger. While the
+finger rests on the screen's top or bottom row, other than the row it pressed,
+or beyond the screen, the history scrolls a row toward it every 100 ms and the
+selection follows. A tap while text is selected only clears the selection: the
+view cancels the tap's `touchend`, so the browser sends xterm.js no mouse
+events, the terminal's input does not take focus, and a program that uses the
+mouse receives no click. The lift that ends a selection is cancelled the same
+way. While a finger is down, a `contextmenu` event, which Android sends for a
+long press, does not reach xterm.js, which would answer it as a right click by
+moving its input under the finger and focusing it. A finger's progress through
+pressing, scrolling, and selecting is a control model with one transition
+function (`terminal-view/touch-gesture.ts`).
+
+The special key row ends with Copy and Paste. Copy is enabled while the
+terminal has text selected, by finger or mouse. It writes the selection with
+`navigator.clipboard.writeText` and then clears the selection, unless another
+selection replaced it meanwhile. Paste reads the clipboard with
+`navigator.clipboard.readText` and, if the connection it was read for is still
+live, hands the text to xterm.js's `paste()`, which sends it as ⌘V does,
+bracketed when the program asked for bracketed paste. Paste turns a waiting
+Ctrl off instead of applying it; Copy leaves Ctrl alone. A Copy shows a check
+for 1.8 seconds, and a Copy or Paste the browser refuses shows a warning for as
+long, with a refused Copy keeping the selection. xterm.js itself clears a
+selection on input and whenever the terminal's row count changes, such as when
+an on-screen keyboard opens or closes.

@@ -489,6 +489,8 @@ const APP_SHELL_ASSETS = [
   "/assets/components/segmented-control.js",
   "/assets/components/terminal-view.css.js",
   "/assets/components/terminal-view.js",
+  "/assets/components/terminal-view/touch-gesture.js",
+  "/assets/components/terminal-view/word-range.js",
 ];
 
 const APP_SHELL_ASSET_PATHS = new Set(APP_SHELL_ASSETS);

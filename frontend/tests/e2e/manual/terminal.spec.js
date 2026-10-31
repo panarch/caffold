@@ -66,8 +66,11 @@ test("a Task's terminal replaces its conversation and, when wide, the Task list"
   if (testInfo.project.name === "phone") {
     await expect(specialKeys).toBeVisible();
     await expect(specialKeys.getByRole("button")).toHaveText([
-      "Esc", "Tab", "Ctrl", "←", "↑", "↓", "→",
+      "Esc", "Tab", "Ctrl", "←", "↑", "↓", "→", "", "",
     ]);
+    // Copy waits for a selection; Paste is always there.
+    await expect(specialKeys.getByRole("button", { name: "Copy" })).toBeDisabled();
+    await expect(specialKeys.getByRole("button", { name: "Paste" })).toBeEnabled();
   } else {
     await expect(specialKeys).toBeHidden();
     await expect(page.locator(".task-workspace-master-pane")).toBeHidden();

@@ -490,6 +490,7 @@ export async function installExternalModuleDefaults(page) {
         export const CircleSlash = [["circle", { cx: "12", cy: "12", r: "10" }], ["path", { d: "m5 5 14 14" }]];
         export const Circle = [["circle", { cx: "12", cy: "12", r: "10" }]];
         export const Check = [["path", { d: "m20 6-11 11-5-5" }]];
+        export const ClipboardPaste = [["path", { d: "M11 14h10" }], ["path", { d: "M16 4h2a2 2 0 0 1 2 2v1.344" }], ["path", { d: "m17 18 4-4-4-4" }], ["path", { d: "M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 1.793-1.113" }], ["rect", { x: "8", y: "2", width: "8", height: "4", rx: "1" }]];
         export const Copy = [["rect", { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2" }], ["path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" }]];
         export const CornerDownRight = [["path", { d: "m15 10 5 5-5 5" }], ["path", { d: "M4 4v7a4 4 0 0 0 4 4h12" }]];
         export const Eye = [["path", { d: "M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" }], ["circle", { cx: "12", cy: "12", r: "3" }]];
