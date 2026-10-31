@@ -17,6 +17,11 @@
   overflow: hidden;
 }
 
+/* Keyboard focus rests here between actions; the pane is not a control. */
+.notes-workspace-detail-pane:focus-visible {
+  outline: none;
+}
+
 .notes-workspace-detail-header {
   grid-row: 1;
   display: grid;

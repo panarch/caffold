@@ -54,7 +54,11 @@ test("opens the recent Task list from a Task and moves to the chosen one", { tag
   await expect(dialog).toBeHidden();
   await expect(page).toHaveURL(/\/tasks\/switcher_middle$/);
   await expect(page.locator("caffold-task-detail")).toBeVisible();
-  await expect(page.locator(".tasks-detail-pane")).toBeFocused();
+  const pane = page.locator(".tasks-detail-pane");
+  await expect(pane).toBeFocused();
+  // The browser would ring this focus; the pane is not a control, so it does not.
+  expect(await pane.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+  await expect(pane).toHaveCSS("outline-style", "none");
 });
 
 test("keeps the order it opened with while Tasks keep moving", { tag: "@viewport-independent" }, async ({
@@ -241,7 +245,10 @@ test("closes the whole surface on one Escape and returns focus", { tag: "@viewpo
 
   await expect(dialog).toBeHidden();
   await expect(hintDialog(page)).toBeHidden();
-  await expect(page.locator(".task-workspace-surface")).toBeFocused();
+  const surface = page.locator(".task-workspace-surface");
+  await expect(surface).toBeFocused();
+  expect(await surface.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+  await expect(surface).toHaveCSS("outline-style", "none");
 });
 
 test("says an empty active list is empty instead of doing nothing", { tag: "@viewport-independent" }, async ({

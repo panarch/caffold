@@ -55,6 +55,11 @@
   container: task-workspace / inline-size;
 }
 
+/* Keyboard focus rests here between actions; the surface is not a control. */
+.task-workspace-surface:focus-visible {
+  outline: none;
+}
+
 .task-workspace-master-detail {
   position: relative;
   display: grid;

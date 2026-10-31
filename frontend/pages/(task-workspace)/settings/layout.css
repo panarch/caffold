@@ -34,6 +34,11 @@
   overflow: hidden;
 }
 
+/* Keyboard focus rests here between actions; the pane is not a control. */
+.settings-workspace-detail-pane:focus-visible {
+  outline: none;
+}
+
 .settings-workspace-detail-header {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
