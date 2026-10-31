@@ -63,10 +63,16 @@ dialog::backdrop {
   cursor: pointer;
 }
 
-.codex-update-dialog-card button:hover,
 .codex-update-dialog-card button:focus-visible {
   border-color: var(--border-strong);
   outline: none;
+}
+
+@media (hover: hover) {
+  .codex-update-dialog-card button:hover {
+    border-color: var(--border-strong);
+    outline: none;
+  }
 }
 
 .codex-update-dialog-card button[value="update"] {

@@ -68,10 +68,16 @@ dialog::backdrop {
   cursor: pointer;
 }
 
-.task-delete-dialog-button:hover,
 .task-delete-dialog-button:focus-visible {
   border-color: var(--border-strong);
   outline: none;
+}
+
+@media (hover: hover) {
+  .task-delete-dialog-button:hover {
+    border-color: var(--border-strong);
+    outline: none;
+  }
 }
 
 .task-delete-confirm {

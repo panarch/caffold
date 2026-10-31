@@ -92,8 +92,10 @@
   cursor: pointer;
 }
 
-.app-foreground-recovery button:hover {
-  background: var(--surface-muted);
+@media (hover: hover) {
+  .app-foreground-recovery button:hover {
+    background: var(--surface-muted);
+  }
 }
 
 .app-foreground-recovery button:focus-visible {

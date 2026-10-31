@@ -71,8 +71,14 @@
   cursor: pointer;
 }
 
-.task-github-popover > button[data-github-button-action]:hover,
 .task-github-popover > button[data-github-button-action]:focus-visible {
   background: var(--control-hover-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  .task-github-popover > button[data-github-button-action]:hover {
+    background: var(--control-hover-bg);
+    outline: none;
+  }
 }

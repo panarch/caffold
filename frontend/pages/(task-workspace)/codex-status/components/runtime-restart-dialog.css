@@ -63,10 +63,16 @@ dialog::backdrop {
   cursor: pointer;
 }
 
-.codex-runtime-dialog-card button:hover,
 .codex-runtime-dialog-card button:focus-visible {
   border-color: var(--border-strong);
   outline: none;
+}
+
+@media (hover: hover) {
+  .codex-runtime-dialog-card button:hover {
+    border-color: var(--border-strong);
+    outline: none;
+  }
 }
 
 .codex-runtime-dialog-card button[value="restart"] {

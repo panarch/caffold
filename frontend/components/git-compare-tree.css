@@ -97,9 +97,14 @@ h2 {
   cursor: pointer;
 }
 
-.compare-tree-primary:has(.compare-base select:hover) .compare-base,
 .compare-tree-primary:has(.compare-base select:focus-visible) .compare-base {
   color: var(--text);
+}
+
+@media (hover: hover) {
+  .compare-tree-primary:has(.compare-base select:hover) .compare-base {
+    color: var(--text);
+  }
 }
 
 .compare-tree-primary:has(.compare-base select:focus-visible) {

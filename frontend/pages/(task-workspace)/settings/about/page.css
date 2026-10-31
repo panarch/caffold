@@ -143,10 +143,16 @@
   text-underline-offset: 0.15em;
 }
 
-.settings-about-updates dd > a:hover,
 .settings-about-updates dd > a:focus-visible {
   outline: none;
   text-decoration-thickness: 2px;
+}
+
+@media (hover: hover) {
+  .settings-about-updates dd > a:hover {
+    outline: none;
+    text-decoration-thickness: 2px;
+  }
 }
 
 .settings-about-updates button {
@@ -175,15 +181,26 @@
   content: "";
 }
 
-.settings-about-updates button:hover:not(:disabled),
 .settings-about-updates button:focus-visible {
   outline: none;
 }
 
-.settings-about-updates button:hover:not(:disabled)::before,
+@media (hover: hover) {
+  .settings-about-updates button:hover:not(:disabled) {
+    outline: none;
+  }
+}
+
 .settings-about-updates button:focus-visible::before {
   border-color: var(--border-strong);
   background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  .settings-about-updates button:hover:not(:disabled)::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
 }
 
 .settings-about-updates button:disabled {
@@ -231,15 +248,26 @@
   content: "";
 }
 
-.settings-about-actions button:hover,
 .settings-about-actions button:focus-visible {
   outline: none;
 }
 
-.settings-about-actions button:hover::before,
+@media (hover: hover) {
+  .settings-about-actions button:hover {
+    outline: none;
+  }
+}
+
 .settings-about-actions button:focus-visible::before {
   border-color: var(--border-strong);
   background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  .settings-about-actions button:hover::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
 }
 
 .settings-about-actions [data-action="reload-update"] {
@@ -251,10 +279,16 @@
   background: var(--primary-action-bg);
 }
 
-.settings-about-actions [data-action="reload-update"]:hover::before,
 .settings-about-actions [data-action="reload-update"]:focus-visible::before {
   border-color: var(--border-strong);
   background: var(--primary-action-bg);
+}
+
+@media (hover: hover) {
+  .settings-about-actions [data-action="reload-update"]:hover::before {
+    border-color: var(--border-strong);
+    background: var(--primary-action-bg);
+  }
 }
 
 @container settings-about (max-width: 34rem) {

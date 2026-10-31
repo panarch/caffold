@@ -12,7 +12,7 @@ import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { TASK_PERMISSION_FIXTURE } from "../support/task-api-fixture.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
 import { elementHandles } from "../support/element-handles.js";
-import { focusLook } from "../support/focus-look.js";
+import { focusLook, pointerHovers } from "../support/focus-look.js";
 import {
   AGENT_MODELS_FIXTURE,
   activeTaskProjection,
@@ -929,14 +929,18 @@ test("opens direct and rendered Pull links through the Pull owner", { tag: "@all
   if (testInfo.project.name !== "phone") links.push(pullHeaderLink);
   for (const link of links) {
     await link.scrollIntoViewIfNeeded();
+    await page.mouse.move(0, 0);
     await link.evaluate((element) => element.blur());
+    const resting = await focusLook(link);
     await link.hover();
     const hovered = await focusLook(link);
     await page.mouse.move(0, 0);
     await page.keyboard.press("Shift");
     await link.evaluate((element) => element.focus());
     expect(await link.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
-    expect(await focusLook(link)).toEqual(hovered);
+    const focused = await focusLook(link);
+    expect(focused).not.toEqual(resting);
+    expect(hovered).toEqual(await pointerHovers(page) ? focused : resting);
   }
 });
 

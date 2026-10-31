@@ -231,10 +231,16 @@ footer {
   cursor: pointer;
 }
 
-.conversation-fork-button:hover,
 .conversation-fork-button:focus-visible {
   border-color: var(--border-strong);
   outline: none;
+}
+
+@media (hover: hover) {
+  .conversation-fork-button:hover {
+    border-color: var(--border-strong);
+    outline: none;
+  }
 }
 
 .conversation-fork-button.is-primary {

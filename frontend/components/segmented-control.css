@@ -55,18 +55,36 @@ button[aria-pressed="true"] > span {
   box-shadow: 0 0 0 1px var(--border);
 }
 
-button:hover,
 button:focus-visible {
   color: var(--text);
   outline: none;
 }
 
-button:not([aria-pressed="true"]):is(:hover, :focus-visible) > span {
+@media (hover: hover) {
+  button:hover {
+    color: var(--text);
+    outline: none;
+  }
+}
+
+button:not([aria-pressed="true"]):focus-visible > span {
   background: var(--control-hover-bg);
 }
 
-button[aria-pressed="true"]:is(:hover, :focus-visible) > span {
+@media (hover: hover) {
+  button:not([aria-pressed="true"]):hover > span {
+    background: var(--control-hover-bg);
+  }
+}
+
+button[aria-pressed="true"]:focus-visible > span {
   box-shadow: 0 0 0 1px var(--border-strong);
+}
+
+@media (hover: hover) {
+  button[aria-pressed="true"]:hover > span {
+    box-shadow: 0 0 0 1px var(--border-strong);
+  }
 }
 
 button + button::before {

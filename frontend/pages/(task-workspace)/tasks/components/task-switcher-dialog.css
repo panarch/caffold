@@ -78,15 +78,26 @@ dialog::backdrop {
   content: "";
 }
 
-.task-switcher-close:hover,
 .task-switcher-close:focus-visible {
   outline: none;
 }
 
-.task-switcher-close:hover::before,
+@media (hover: hover) {
+  .task-switcher-close:hover {
+    outline: none;
+  }
+}
+
 .task-switcher-close:focus-visible::before {
   border-color: var(--border-strong);
   background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  .task-switcher-close:hover::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
 }
 
 .task-switcher-close-icon {
@@ -148,10 +159,16 @@ dialog::backdrop {
   cursor: pointer;
 }
 
-.task-switcher-row:hover,
 .task-switcher-row:focus-visible {
   background: var(--row-hover-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  .task-switcher-row:hover {
+    background: var(--row-hover-bg);
+    outline: none;
+  }
 }
 
 .task-switcher-row-title {

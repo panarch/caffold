@@ -43,10 +43,16 @@
   content: "";
 }
 
-.task-suggested-prompt:hover,
 .task-suggested-prompt:focus-visible {
   border-color: var(--border-strong);
   outline: none;
+}
+
+@media (hover: hover) {
+  .task-suggested-prompt:hover {
+    border-color: var(--border-strong);
+    outline: none;
+  }
 }
 
 .task-suggested-prompt:disabled {

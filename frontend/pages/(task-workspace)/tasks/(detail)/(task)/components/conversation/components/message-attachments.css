@@ -35,11 +35,17 @@
   cursor: zoom-in;
 }
 
-.task-message-attachment > button.task-message-attachment-preview:hover,
 .task-message-attachment
   > button.task-message-attachment-preview:focus-visible {
   border-color: var(--border-strong);
   outline: none;
+}
+
+@media (hover: hover) {
+  .task-message-attachment > button.task-message-attachment-preview:hover {
+    border-color: var(--border-strong);
+    outline: none;
+  }
 }
 
 .task-message-attachment

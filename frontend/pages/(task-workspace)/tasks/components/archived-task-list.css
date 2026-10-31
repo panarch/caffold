@@ -265,32 +265,60 @@ caffold-task-status-chip {
   inset-block: calc(0px - var(--interface-compact-hit-outset));
 }
 
-.task-archived-action-button:not(:disabled):hover,
 .task-archived-action-button:focus-visible {
   color: var(--control-fg);
   outline: none;
 }
 
-.task-archived-action-button:not(:disabled):hover::before,
+@media (hover: hover) {
+  .task-archived-action-button:not(:disabled):hover {
+    color: var(--control-fg);
+    outline: none;
+  }
+}
+
 .task-archived-action-button:focus-visible::before {
   border-color: var(--border);
   background: var(--control-subtle-hover-bg);
 }
 
-.task-delete-button:not(:disabled):hover,
+@media (hover: hover) {
+  .task-archived-action-button:not(:disabled):hover::before {
+    border-color: var(--border);
+    background: var(--control-subtle-hover-bg);
+  }
+}
+
 .task-delete-button:focus-visible {
   color: var(--danger-strong);
 }
 
-.task-delete-button:not(:disabled):hover .task-archived-action-icon,
+@media (hover: hover) {
+  .task-delete-button:not(:disabled):hover {
+    color: var(--danger-strong);
+  }
+}
+
 .task-delete-button:focus-visible .task-archived-action-icon {
   opacity: 1;
 }
 
-.task-delete-button:not(:disabled):hover::before,
+@media (hover: hover) {
+  .task-delete-button:not(:disabled):hover .task-archived-action-icon {
+    opacity: 1;
+  }
+}
+
 .task-delete-button:focus-visible::before {
   border-color: var(--danger-border);
   background: var(--danger-faint);
+}
+
+@media (hover: hover) {
+  .task-delete-button:not(:disabled):hover::before {
+    border-color: var(--danger-border);
+    background: var(--danger-faint);
+  }
 }
 
 .task-archived-action-button:disabled {

@@ -8,7 +8,7 @@ import {
   workspaceTargets,
 } from "./support/action-hints.js";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
-import { focusLook } from "./support/focus-look.js";
+import { focusLook, pointerHovers } from "./support/focus-look.js";
 import { captureReviewScreenshot, mockAgentModels } from "./support/task-fixtures.js";
 import { openCompletedTaskForReview } from "./support/task-review-test.js";
 
@@ -297,14 +297,18 @@ test("the tree opens one directory at a time, directories first, beside the open
     .toEqual([new Date(2_000).toISOString(), new Date(1_000).toISOString()]);
   const writerLink = details.getByRole("link", { name: "Write storage notes" });
   await expect(writerLink).toHaveAttribute("href", "/tasks/task-writer");
+  await page.mouse.move(0, 0);
   await writerLink.evaluate((element) => element.blur());
+  const resting = await focusLook(writerLink);
   await writerLink.hover();
   const hovered = await focusLook(writerLink);
   await page.mouse.move(0, 0);
   await page.keyboard.press("Shift");
   await writerLink.evaluate((element) => element.focus());
   expect(await writerLink.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
-  expect(await focusLook(writerLink)).toEqual(hovered);
+  const focused = await focusLook(writerLink);
+  expect(focused).not.toEqual(resting);
+  expect(hovered).toEqual(await pointerHovers(page) ? focused : resting);
   await expect(details.locator("dl > div:not([hidden]) > dd").last()).toHaveText("a deleted task");
   await captureReviewScreenshot(page, testInfo, "notes-open-note");
   await detailsButton.click();
@@ -946,14 +950,18 @@ test("side-by-side selection replaces either pane, cancels, and closes to the co
   await expect(secondary.locator("caffold-markdown-preview h1")).toHaveText("Inbox");
   // A pair names each Note on its picker, inside a title row that clips.
   const picker = primary.getByRole("button", { name: /choose another note/ });
+  await page.mouse.move(0, 0);
   await picker.evaluate((element) => element.blur());
+  const resting = await focusLook(picker, "span");
   await picker.hover();
   const hovered = await focusLook(picker, "span");
   await page.mouse.move(0, 0);
   await page.keyboard.press("Shift");
   await picker.evaluate((element) => element.focus());
   expect(await picker.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
-  expect(await focusLook(picker, "span")).toEqual(hovered);
+  const focused = await focusLook(picker, "span");
+  expect(focused).not.toEqual(resting);
+  expect(hovered).toEqual(await pointerHovers(page) ? focused : resting);
   await primary.getByRole("button", { name: /choose another note/ }).click();
   await expect(treeEntry(page, "Inbox")).toBeDisabled();
   await secondary.getByRole("button", { name: "Close side by side" }).click();

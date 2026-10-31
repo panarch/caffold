@@ -60,9 +60,11 @@
   cursor: pointer;
 }
 
-.settings-files-options label:hover {
-  border-color: var(--border-strong);
-  background: var(--control-hover-bg);
+@media (hover: hover) {
+  .settings-files-options label:hover {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
 }
 
 .settings-files-options label:has(input:checked) {

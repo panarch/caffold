@@ -142,11 +142,17 @@
   content: "";
 }
 
-.task-directory-field-edit:hover,
 .task-directory-field-edit:focus-visible,
 .task-directory-field-edit[aria-pressed="true"] {
   background: var(--control-active-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  .task-directory-field-edit:hover {
+    background: var(--control-active-bg);
+    outline: none;
+  }
 }
 
 .task-directory-field-edit:disabled {

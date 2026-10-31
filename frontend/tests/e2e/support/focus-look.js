@@ -2,8 +2,9 @@
  * The paint a focus indicator can change, read from a control and from the
  * face it draws: its `::before`, or the child `face` names.
  *
- * A control shows keyboard focus the way it shows hover, so specs compare
- * this for the two states rather than pinning colors.
+ * A control shows keyboard focus the way it shows hover where the pointer
+ * hovers. Touch keeps :hover after a tap, so there hover changes nothing.
+ * Specs compare these states rather than pinning colors.
  */
 export function focusLook(locator, face = null) {
   return locator.evaluate((element, face) => {
@@ -23,4 +24,8 @@ export function focusLook(locator, face = null) {
         : getComputedStyle(element, "::before")),
     };
   }, face);
+}
+
+export function pointerHovers(page) {
+  return page.evaluate(() => matchMedia("(hover: hover)").matches);
 }

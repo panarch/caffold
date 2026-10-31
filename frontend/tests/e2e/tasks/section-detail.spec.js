@@ -9,7 +9,7 @@ import {
   activateActionHint,
   workspaceTargets,
 } from "../support/action-hints.js";
-import { focusLook } from "../support/focus-look.js";
+import { focusLook, pointerHovers } from "../support/focus-look.js";
 import {
   createdTaskFixture,
   taskDetailFixture,
@@ -307,14 +307,18 @@ test("offers GitHub work shortcuts from repository Task creation", { tag: "@all-
   // square ring of its own there.
   for (const name of ["Issues", "Pull Requests"]) {
     const row = shortcuts.getByRole("button", { name });
+    await page.mouse.move(0, 0);
     await row.evaluate((element) => element.blur());
+    const resting = await focusLook(row);
     await row.hover();
     const hovered = await focusLook(row);
     await page.mouse.move(0, 0);
     await page.keyboard.press("Shift");
     await row.evaluate((element) => element.focus());
     expect(await row.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
-    expect(await focusLook(row)).toEqual(hovered);
+    const focused = await focusLook(row);
+    expect(focused).not.toEqual(resting);
+    expect(hovered).toEqual(await pointerHovers(page) ? focused : resting);
   }
 
   await activateActionHint(page, /Open GitHub Issues$/);
@@ -434,14 +438,18 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
   await expect(openButton).toBeEnabled();
   await expect.poll(() => workspaceTargets(page, "section:fixture-section-1:"))
     .toContainEqual(["fork-conversation", "Fork from Codex thread ID"]);
+  await page.mouse.move(0, 0);
   await openButton.evaluate((element) => element.blur());
+  const resting = await focusLook(openButton);
   await openButton.hover();
   const hovered = await focusLook(openButton);
   await page.mouse.move(0, 0);
   await page.keyboard.press("Shift");
   await openButton.evaluate((element) => element.focus());
   expect(await openButton.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
-  expect(await focusLook(openButton)).toEqual(hovered);
+  const focused = await focusLook(openButton);
+  expect(focused).not.toEqual(resting);
+  expect(hovered).toEqual(await pointerHovers(page) ? focused : resting);
   await openButton.click();
 
   const dialog = page.getByRole("dialog", { name: "Fork a Codex thread" });

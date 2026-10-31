@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { enterActionHints, workspaceTargets } from "./support/action-hints.js";
-import { focusLook } from "./support/focus-look.js";
+import { focusLook, pointerHovers } from "./support/focus-look.js";
 import {
   installBrowserDefaults,
   mockCaffoldUpdate,
@@ -77,14 +77,18 @@ test("About tells whether a newer Caffold exists and how the last update ended",
   const latest = updates.locator("[data-updates-latest] a");
   await expect(latest).toHaveText("0.18.3");
   await expect(latest).toHaveAttribute("href", RELEASE_URL);
+  await page.mouse.move(0, 0);
   await latest.evaluate((element) => element.blur());
+  const resting = await focusLook(latest);
   await latest.hover();
   const hovered = await focusLook(latest);
   await page.mouse.move(0, 0);
   await page.keyboard.press("Shift");
   await latest.evaluate((element) => element.focus());
   expect(await latest.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
-  expect(await focusLook(latest)).toEqual(hovered);
+  const focused = await focusLook(latest);
+  expect(focused).not.toEqual(resting);
+  expect(hovered).toEqual(await pointerHovers(page) ? focused : resting);
   const last = updates.locator("[data-updates-last]");
   await expect(last).toContainText(
     "Rolled back to 0.18.2 — 0.18.3 could not start · ",

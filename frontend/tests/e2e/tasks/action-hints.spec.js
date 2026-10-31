@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { actionHintBadgePresentation, workspaceOcclusionTargets } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
-import { focusLook } from "../support/focus-look.js";
+import { focusLook, pointerHovers } from "../support/focus-look.js";
 import { TASK_PERMISSION_FIXTURE } from "../support/task-api-fixture.js";
 import {
   activeTaskProjection,
@@ -57,14 +57,18 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
   await expect(dialog).toHaveCSS("outline-style", "none");
   // A badge shows focus on its own face, as it shows hover, so no edge cuts it.
   const badge = dialog.locator('[data-action-hint-code="N"]');
+  await page.mouse.move(0, 0);
   await badge.evaluate((element) => element.blur());
+  const resting = await focusLook(badge);
   await badge.hover();
   const hovered = await focusLook(badge);
   await page.mouse.move(0, 0);
   await page.keyboard.press("Shift");
   await badge.evaluate((element) => element.focus());
   expect(await badge.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
-  expect(await focusLook(badge)).toEqual(hovered);
+  const focused = await focusLook(badge);
+  expect(focused).not.toEqual(resting);
+  expect(hovered).toEqual(await pointerHovers(page) ? focused : resting);
   await dialog.evaluate((element) => element.focus());
   await expect(dialog.locator(":scope > .action-hint-instructions"))
     .toHaveCount(0);

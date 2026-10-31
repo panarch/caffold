@@ -51,10 +51,16 @@
   cursor: pointer;
 }
 
-.section-conversations-action:hover,
 .section-conversations-action:focus-visible {
   background: var(--control-hover-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  .section-conversations-action:hover {
+    background: var(--control-hover-bg);
+    outline: none;
+  }
 }
 
 .section-conversations-action:disabled {

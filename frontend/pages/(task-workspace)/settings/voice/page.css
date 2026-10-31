@@ -68,11 +68,18 @@ button {
   cursor: pointer;
 }
 
-button:hover:not(:disabled),
 button:focus-visible {
   border-color: var(--border-strong);
   outline: none;
   background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  button:hover:not(:disabled) {
+    border-color: var(--border-strong);
+    outline: none;
+    background: var(--control-hover-bg);
+  }
 }
 
 button:disabled {
@@ -111,9 +118,11 @@ button:disabled {
   cursor: pointer;
 }
 
-.settings-voice-options label:hover {
-  border-color: var(--border-strong);
-  background: var(--control-hover-bg);
+@media (hover: hover) {
+  .settings-voice-options label:hover {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
 }
 
 .settings-voice-options label:has(input:disabled) {

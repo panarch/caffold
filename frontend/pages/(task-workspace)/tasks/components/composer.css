@@ -165,10 +165,16 @@
   content: "";
 }
 
-.task-toolbar-button:hover,
 .task-toolbar-button:focus-visible {
   background: var(--control-active-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  .task-toolbar-button:hover {
+    background: var(--control-active-bg);
+    outline: none;
+  }
 }
 
 .task-composer-attach-button,
@@ -213,15 +219,22 @@
   content: "";
 }
 
-.task-composer-attach-button:hover,
 .task-composer-attach-button:focus-visible,
-.task-voice-button:hover,
 .task-voice-button:focus-visible,
-.task-voice-cancel-button:hover,
 .task-voice-cancel-button:focus-visible {
   background: var(--control-active-bg);
   color: var(--text);
   outline: none;
+}
+
+@media (hover: hover) {
+  .task-composer-attach-button:hover,
+  .task-voice-button:hover,
+  .task-voice-cancel-button:hover {
+    background: var(--control-active-bg);
+    color: var(--text);
+    outline: none;
+  }
 }
 
 .task-voice-button.is-recording {
@@ -239,12 +252,16 @@
   opacity: 0.55;
 }
 
-.task-composer-attach-button:disabled:hover {
-  background: transparent;
+@media (hover: hover) {
+  .task-composer-attach-button:disabled:hover {
+    background: transparent;
+  }
 }
 
-.task-voice-button:disabled:hover {
-  background: transparent;
+@media (hover: hover) {
+  .task-voice-button:disabled:hover {
+    background: transparent;
+  }
 }
 
 .task-composer-attach-icon,
@@ -276,14 +293,24 @@
   content: "";
 }
 
-.task-primary-action-button:hover,
 .task-primary-action-button:focus-visible {
   outline: none;
 }
 
-.task-primary-action-button:hover::before,
+@media (hover: hover) {
+  .task-primary-action-button:hover {
+    outline: none;
+  }
+}
+
 .task-primary-action-button:focus-visible::before {
   background: var(--primary-control-hover-bg);
+}
+
+@media (hover: hover) {
+  .task-primary-action-button:hover::before {
+    background: var(--primary-control-hover-bg);
+  }
 }
 
 .task-primary-action-button:disabled {
@@ -297,12 +324,16 @@
   background: var(--surface-muted);
 }
 
-.task-primary-action-button:disabled:hover {
-  background: transparent;
+@media (hover: hover) {
+  .task-primary-action-button:disabled:hover {
+    background: transparent;
+  }
 }
 
-.task-primary-action-button:disabled:hover::before {
-  background: var(--surface-muted);
+@media (hover: hover) {
+  .task-primary-action-button:disabled:hover::before {
+    background: var(--surface-muted);
+  }
 }
 
 .task-primary-action-icon {

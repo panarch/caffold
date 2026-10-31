@@ -115,10 +115,16 @@ footer {
   cursor: pointer;
 }
 
-.github-task-start-button:hover,
 .github-task-start-button:focus-visible {
   border-color: var(--border-strong);
   outline: none;
+}
+
+@media (hover: hover) {
+  .github-task-start-button:hover {
+    border-color: var(--border-strong);
+    outline: none;
+  }
 }
 
 .github-task-start-button.is-primary {
@@ -127,9 +133,14 @@ footer {
   color: var(--primary-action-fg);
 }
 
-.github-task-start-button.is-primary:hover,
 .github-task-start-button.is-primary:focus-visible {
   border-color: var(--border-strong);
+}
+
+@media (hover: hover) {
+  .github-task-start-button.is-primary:hover {
+    border-color: var(--border-strong);
+  }
 }
 
 .github-task-start-button:disabled {

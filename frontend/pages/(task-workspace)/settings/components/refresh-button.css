@@ -32,14 +32,21 @@ button::before {
   content: "";
 }
 
-button:hover:not(:disabled),
 button:focus-visible {
   outline: none;
 }
 
-button:hover:not(:disabled)::before {
-  border-color: var(--border-strong);
-  background: var(--control-hover-bg);
+@media (hover: hover) {
+  button:hover:not(:disabled) {
+    outline: none;
+  }
+}
+
+@media (hover: hover) {
+  button:hover:not(:disabled)::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
 }
 
 button:focus-visible::before {

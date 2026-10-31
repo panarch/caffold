@@ -24,10 +24,16 @@
   color: var(--control-fg);
 }
 
-.git-review-refresh:hover::before,
 .git-review-refresh:focus-visible::before {
   border-color: var(--control-emphasis-border);
   background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  .git-review-refresh:hover::before {
+    border-color: var(--control-emphasis-border);
+    background: var(--control-hover-bg);
+  }
 }
 
 .git-review-refresh.is-unavailable,
@@ -83,10 +89,16 @@
   font-size: 0.78rem;
 }
 
-.review-compare-ref-controls select:hover,
 .review-compare-ref-controls select:focus-visible {
   border-color: var(--border-strong);
   outline: none;
+}
+
+@media (hover: hover) {
+  .review-compare-ref-controls select:hover {
+    border-color: var(--border-strong);
+    outline: none;
+  }
 }
 
 @media (max-width: 860px) {

@@ -70,10 +70,16 @@ h2 {
   color: var(--control-fg);
 }
 
-.file-refresh-button:hover::before,
 .file-refresh-button:focus-visible::before {
   border-color: var(--border);
   background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  .file-refresh-button:hover::before {
+    border-color: var(--border);
+    background: var(--control-hover-bg);
+  }
 }
 
 .file-refresh-button.is-unavailable {

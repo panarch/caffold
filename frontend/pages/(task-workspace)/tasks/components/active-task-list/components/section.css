@@ -47,12 +47,18 @@ button.task-repository-select {
   cursor: pointer;
 }
 
-.task-repository-header:has(> button.task-repository-select:hover),
 .task-repository-header:has(> button.task-repository-select:focus-visible),
-.task-repository-header:has(> .section-reorder-handle:hover),
 .task-repository-header:has(> .section-reorder-handle:focus-visible) {
   background: var(--surface-muted);
   color: var(--text);
+}
+
+@media (hover: hover) {
+  .task-repository-header:has(> button.task-repository-select:hover),
+  .task-repository-header:has(> .section-reorder-handle:hover) {
+    background: var(--surface-muted);
+    color: var(--text);
+  }
 }
 
 .task-repository-header:has(> button.task-repository-select:focus-visible),

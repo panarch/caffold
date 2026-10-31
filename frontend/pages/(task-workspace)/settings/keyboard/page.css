@@ -49,9 +49,11 @@
   cursor: pointer;
 }
 
-.settings-keyboard-toggle:hover {
-  border-color: var(--border-strong);
-  background: var(--control-hover-bg);
+@media (hover: hover) {
+  .settings-keyboard-toggle:hover {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
 }
 
 .settings-keyboard-toggle:has(input:focus-visible) {

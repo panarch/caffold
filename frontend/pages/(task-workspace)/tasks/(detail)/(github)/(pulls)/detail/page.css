@@ -73,14 +73,20 @@ h3 {
   text-decoration: none;
 }
 
-.github-pull-link:hover,
 .github-pull-link:focus-visible,
-.github-pull-comment-meta a:hover,
 .github-pull-comment-meta a:focus-visible,
-.github-pull-commit a:hover,
 .github-pull-commit a:focus-visible {
   text-decoration: underline;
   outline: none;
+}
+
+@media (hover: hover) {
+  .github-pull-link:hover,
+  .github-pull-comment-meta a:hover,
+  .github-pull-commit a:hover {
+    text-decoration: underline;
+    outline: none;
+  }
 }
 
 .github-pull-start-button,
@@ -108,13 +114,20 @@ h3 {
   content: "";
 }
 
-.github-pull-start-button:hover,
 .github-pull-start-button:focus-visible,
-.github-pull-files-button:hover,
 .github-pull-files-button:focus-visible {
   border-color: var(--control-emphasis-border);
   background: var(--control-subtle-hover-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  .github-pull-start-button:hover,
+  .github-pull-files-button:hover {
+    border-color: var(--control-emphasis-border);
+    background: var(--control-subtle-hover-bg);
+    outline: none;
+  }
 }
 
 .github-pull-start-icon,

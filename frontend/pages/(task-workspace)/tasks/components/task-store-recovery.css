@@ -74,11 +74,18 @@
   cursor: pointer;
 }
 
-.task-store-recovery-actions button:hover,
 .task-store-recovery-actions button:focus-visible {
   border-color: var(--border-strong);
   outline: none;
   background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  .task-store-recovery-actions button:hover {
+    border-color: var(--border-strong);
+    outline: none;
+    background: var(--control-hover-bg);
+  }
 }
 
 .task-store-recovery-diagnostic {

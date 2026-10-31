@@ -37,9 +37,14 @@
   content: "";
 }
 
-.task-detail-task-action .task-secondary-button:not(:disabled):hover::before,
 .task-detail-task-action .task-secondary-button:focus-visible::before {
   border-color: var(--border-strong);
+}
+
+@media (hover: hover) {
+  .task-detail-task-action .task-secondary-button:not(:disabled):hover::before {
+    border-color: var(--border-strong);
+  }
 }
 
 .task-detail-task-action .task-secondary-button:disabled {

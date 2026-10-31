@@ -15,7 +15,7 @@ import {
   activateActionHintIntoPopover,
   popoverActionHintDialog,
 } from "../support/action-hints.js";
-import { focusLook } from "../support/focus-look.js";
+import { focusLook, pointerHovers } from "../support/focus-look.js";
 import {
   installTaskApiFixture,
   taskDetailFixture,
@@ -758,14 +758,18 @@ test("shows keyboard focus on a strip segment the way it shows hover", { tag: "@
   const currentPlan = page.locator("caffold-task-current-plan");
   for (const name of [/^Open plan:/, /^Open checklist:/]) {
     const segment = currentPlan.getByRole("button", { name });
+    await page.mouse.move(0, 0);
     await segment.evaluate((element) => element.blur());
+    const resting = await focusLook(segment);
     await segment.hover();
     const hovered = await focusLook(segment);
     await page.mouse.move(0, 0);
     await page.keyboard.press("Shift");
     await segment.evaluate((element) => element.focus());
     expect(await segment.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
-    expect(await focusLook(segment)).toEqual(hovered);
+    const focused = await focusLook(segment);
+    expect(focused).not.toEqual(resting);
+    expect(hovered).toEqual(await pointerHovers(page) ? focused : resting);
   }
 });
 

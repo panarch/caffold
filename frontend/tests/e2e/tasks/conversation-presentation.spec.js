@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { elementHandles } from "../support/element-handles.js";
-import { focusLook } from "../support/focus-look.js";
+import { focusLook, pointerHovers } from "../support/focus-look.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import { installTaskReviewFixture } from "../support/task-review-fixture.js";
 import {
@@ -830,15 +830,26 @@ test("names the work an agent did that Caffold draws no surface for", { tag: "@a
     "caffold-task-work-details > details > summary",
   );
   await workSummary.scrollIntoViewIfNeeded();
+  await page.mouse.move(0, 0);
   await workSummary.evaluate((element) => element.blur());
+  const resting = await focusLook(workSummary);
   await workSummary.hover();
   const hovered = await focusLook(workSummary);
   await page.mouse.move(0, 0);
   await page.keyboard.press("Shift");
   await workSummary.evaluate((element) => element.focus());
   expect(await workSummary.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
-  expect(await focusLook(workSummary)).toEqual(hovered);
-  await workSummary.click();
+  const focused = await focusLook(workSummary);
+  expect(focused).not.toEqual(resting);
+  expect(hovered).toEqual(await pointerHovers(page) ? focused : resting);
+  if (await pointerHovers(page)) {
+    await workSummary.click();
+  } else {
+    // A tap leaves :hover on the summary, which a touch screen does not draw.
+    await workSummary.evaluate((element) => element.blur());
+    await workSummary.tap();
+    expect(await focusLook(workSummary)).toEqual(resting);
+  }
 
   const toolCalls = tasksPage.locator(
     '.task-work-details-item[data-event-type="tool_call"]',

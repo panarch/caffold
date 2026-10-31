@@ -153,10 +153,16 @@ details[open] .task-command-disclosure-chevron-expanded {
   cursor: pointer;
 }
 
-.task-command-summary-action:hover,
 .task-command-summary-action:focus-visible {
   background: var(--control-hover-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  .task-command-summary-action:hover {
+    background: var(--control-hover-bg);
+    outline: none;
+  }
 }
 
 .task-command-summary-action:focus-visible {

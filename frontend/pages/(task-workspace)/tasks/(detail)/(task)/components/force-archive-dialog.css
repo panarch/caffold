@@ -68,10 +68,16 @@ dialog {
     line-height: var(--interface-line-height);
     cursor: pointer;
 
-    &:hover,
     &:focus-visible {
       border-color: var(--border-strong);
       outline: none;
+    }
+
+    @media (hover: hover) {
+      &:hover {
+        border-color: var(--border-strong);
+        outline: none;
+      }
     }
 
     &.confirm {

@@ -195,9 +195,14 @@
   font: inherit;
 }
 
-.task-workspace-route-control:hover::before,
 .task-workspace-route-control:focus-visible::before {
   background: var(--surface);
+}
+
+@media (hover: hover) {
+  .task-workspace-route-control:hover::before {
+    background: var(--surface);
+  }
 }
 
 .task-workspace-route-control:disabled {
@@ -206,9 +211,14 @@
   opacity: 0.55;
 }
 
-.task-workspace-route-control:disabled::before,
-.task-workspace-route-control:disabled:hover::before {
+.task-workspace-route-control:disabled::before {
   border-color: var(--border);
+}
+
+@media (hover: hover) {
+  .task-workspace-route-control:disabled:hover::before {
+    border-color: var(--border);
+  }
 }
 
 .task-workspace-route-control-icon {

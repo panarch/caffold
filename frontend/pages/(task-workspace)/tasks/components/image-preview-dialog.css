@@ -90,15 +90,26 @@ dialog::backdrop {
   content: "";
 }
 
-.task-image-preview-close:hover,
 .task-image-preview-close:focus-visible {
   outline: none;
 }
 
-.task-image-preview-close:hover::before,
+@media (hover: hover) {
+  .task-image-preview-close:hover {
+    outline: none;
+  }
+}
+
 .task-image-preview-close:focus-visible::before {
   border-color: var(--border-strong);
   background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  .task-image-preview-close:hover::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
 }
 
 .task-image-preview-close-icon {

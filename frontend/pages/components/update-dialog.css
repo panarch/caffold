@@ -63,10 +63,16 @@ dialog::backdrop {
   cursor: pointer;
 }
 
-.update-dialog-card button:hover,
 .update-dialog-card button:focus-visible {
   border-color: var(--border-strong);
   outline: none;
+}
+
+@media (hover: hover) {
+  .update-dialog-card button:hover {
+    border-color: var(--border-strong);
+    outline: none;
+  }
 }
 
 .update-dialog-card button[value="reload"] {
@@ -75,9 +81,14 @@ dialog::backdrop {
   color: var(--primary-action-fg);
 }
 
-.update-dialog-card button[value="reload"]:hover,
 .update-dialog-card button[value="reload"]:focus-visible {
   border-color: var(--border-strong);
+}
+
+@media (hover: hover) {
+  .update-dialog-card button[value="reload"]:hover {
+    border-color: var(--border-strong);
+  }
 }
 
 @media (max-width: 520px) {

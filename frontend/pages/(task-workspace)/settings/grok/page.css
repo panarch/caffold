@@ -56,10 +56,16 @@
   text-underline-offset: 0.15em;
 }
 
-.settings-service-status:hover,
 .settings-service-status:focus-visible {
   outline: none;
   text-decoration-thickness: 2px;
+}
+
+@media (hover: hover) {
+  .settings-service-status:hover {
+    outline: none;
+    text-decoration-thickness: 2px;
+  }
 }
 
 .settings-content-section > section {

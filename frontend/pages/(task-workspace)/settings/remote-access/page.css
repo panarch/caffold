@@ -84,13 +84,20 @@ button,
   cursor: pointer;
 }
 
-button:hover:not(:disabled),
 button:focus-visible,
-.settings-remote-link-actions a:hover,
 .settings-remote-link-actions a:focus-visible {
   border-color: var(--border-strong);
   outline: none;
   background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  button:hover:not(:disabled),
+  .settings-remote-link-actions a:hover {
+    border-color: var(--border-strong);
+    outline: none;
+    background: var(--control-hover-bg);
+  }
 }
 
 button:disabled {

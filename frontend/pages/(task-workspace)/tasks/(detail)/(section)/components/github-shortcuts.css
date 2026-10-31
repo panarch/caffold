@@ -60,8 +60,14 @@ button + button {
   border-top: 1px solid var(--border-subtle);
 }
 
-button:hover,
 button:focus-visible {
   background: var(--control-hover-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  button:hover {
+    background: var(--control-hover-bg);
+    outline: none;
+  }
 }
