@@ -120,7 +120,9 @@ fn mark_what_changed(state: &mut SessionState, kind: &SessionEventKind) {
             state.status_revision = state.revision;
             state.name_revision = state.revision;
         }
-        SessionEventKind::StatusChanged { .. } | SessionEventKind::ActivityChanged { .. } => {
+        SessionEventKind::StatusChanged { .. }
+        | SessionEventKind::ActivityChanged { .. }
+        | SessionEventKind::BackgroundWorkChanged { .. } => {
             state.status_revision = state.revision;
         }
         SessionEventKind::TitleChanged { .. } => state.name_revision = state.revision,
@@ -160,6 +162,7 @@ fn apply_session_event_state(
             state.terminal_candidate_turn_id = next_active_turn_id;
             state.conversation = Some(conversation.clone());
             state.pending_thread_status = None;
+            state.pending_background_work = None;
             SessionEventEffect::CanonicalStateChanged
         }
         SessionEventKind::StatusChanged { status } => {
@@ -192,6 +195,22 @@ fn apply_session_event_state(
                     return SessionEventEffect::Ignored;
                 }
                 state.pending_thread_status = Some(status.clone());
+            }
+            SessionEventEffect::CanonicalStateChanged
+        }
+        // Beside the turn ledger like activity: background work neither opens
+        // nor ends a turn.
+        SessionEventKind::BackgroundWorkChanged { background_work } => {
+            if let Some(conversation) = state.conversation.as_mut() {
+                if conversation.background_work == *background_work {
+                    return SessionEventEffect::Ignored;
+                }
+                conversation.background_work = *background_work;
+            } else {
+                if state.pending_background_work == Some(*background_work) {
+                    return SessionEventEffect::Ignored;
+                }
+                state.pending_background_work = Some(*background_work);
             }
             SessionEventEffect::CanonicalStateChanged
         }
@@ -759,6 +778,43 @@ mod tests {
         assert!(snapshot.fast_mode);
         assert_eq!(snapshot.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(snapshot.reasoning_effort.as_deref(), Some("low"));
+    }
+
+    #[tokio::test]
+    async fn background_work_moves_the_status_revision_and_leaves_the_status_alone() {
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
+        )]);
+        let sessions = TaskSessions::default();
+        let initial = sessions
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
+            .await
+            .expect("subscribe");
+        let reported = |background_work| {
+            session_event(
+                "thread-1",
+                SessionEventKind::BackgroundWorkChanged { background_work },
+            )
+        };
+
+        let started = sessions
+            .apply_session_event_with_outcome(1, &reported(true))
+            .await;
+
+        assert!(started.accepted && started.canonical_state_changed);
+        let snapshot = sessions.snapshot("thread-1").await.unwrap();
+        assert_eq!(snapshot.revision, initial.revision + 1);
+        let conversation = snapshot.conversation.expect("canonical thread");
+        assert!(conversation.background_work);
+        assert_eq!(conversation.status, ThreadStatus::Idle);
+        let entry = sessions.existing_entry("thread-1").await.unwrap();
+        assert_eq!(entry.state.lock().await.status_revision, snapshot.revision);
+
+        let repeated = sessions
+            .apply_session_event_with_outcome(1, &reported(true))
+            .await;
+        assert!(!repeated.canonical_state_changed && repeated.revision.is_none());
     }
 
     #[tokio::test]

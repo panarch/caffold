@@ -314,6 +314,7 @@ fn changes_task_state_only(kind: &SessionEventKind) -> bool {
     match kind {
         SessionEventKind::StatusChanged { .. }
         | SessionEventKind::ActivityChanged { .. }
+        | SessionEventKind::BackgroundWorkChanged { .. }
         | SessionEventKind::TitleChanged { .. }
         | SessionEventKind::SettingsChanged { .. }
         | SessionEventKind::ContextReported { .. } => true,

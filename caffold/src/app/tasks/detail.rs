@@ -3705,6 +3705,7 @@ mod request_tests {
                 title: "Bootstrap regression".to_string(),
                 preview: "canonical assistant response".to_string(),
                 thread_status: ThreadStatus::Idle,
+                background_work: false,
                 latest_turn_status: Some(TurnStatus::Completed),
                 active_turn: None,
                 cwd: "/tmp".to_string(),

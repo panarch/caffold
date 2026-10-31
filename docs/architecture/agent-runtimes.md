@@ -250,6 +250,17 @@ An initialize answer is only a current snapshot: until this backend sees a live
 activity frame, it retains the turn-based fallback for a child that may have
 survived from before activity events were enabled.
 
+Background work is a third Claude fact beside activity and the turn ledger.
+Claude sends the whole set of background tasks it has running, the commands and
+subagents it sent to the background, each time that set changes and right
+after every `initialize`, even when the set is empty. The conversation's
+`background_work` is whether that set holds any task; Caffold does not pair
+`task_started` and `task_notification` frames to rebuild it. Every session
+Caffold opens begins with `initialize`, so a backend taking up a surviving child
+learns of work started before it. A child that exits has none. Codex and Grok
+report no background work, so their conversations never have any. The Task's
+status chip shows it while the Task is otherwise idle.
+
 Claude's turn ledger is written by Caffold's prompt and steering submissions,
 Claude's result frames, the child's exit, and the transcript: when a
 replacement takes up a session that is working or requiring action, and when

@@ -50,6 +50,7 @@ pub(in crate::app) struct ActiveTask {
     pub(in crate::app::tasks) thread_id: String,
     pub(in crate::app::tasks) title: String,
     pub(in crate::app::tasks) thread_status: ThreadStatus,
+    pub(in crate::app::tasks) background_work: bool,
     pub(in crate::app::tasks) unseen: bool,
     pub(in crate::app::tasks) last_completed_ms: Option<u64>,
     pub(in crate::app::tasks) recency_ms: Option<u64>,
@@ -327,6 +328,7 @@ impl ActiveTask {
             thread_id: managed.thread_id.clone(),
             title: managed.display_name.clone(),
             thread_status: ThreadStatus::NotLoaded,
+            background_work: false,
             unseen: managed.unseen(),
             last_completed_ms: managed.last_completed_at_ms,
             recency_ms: Some(activity_ms),
@@ -341,6 +343,7 @@ impl ActiveTask {
             thread_id: managed.thread_id.clone(),
             title: managed.display_name.clone(),
             thread_status: conversation.status.clone(),
+            background_work: conversation.background_work,
             unseen: managed.unseen(),
             last_completed_ms: managed.last_completed_at_ms,
             recency_ms: conversation.recency_at_ms,
@@ -356,6 +359,7 @@ impl ActiveTask {
             thread_id: task.thread_id.clone(),
             title: task.title.clone(),
             thread_status: task.thread_status.clone(),
+            background_work: task.background_work,
             unseen: task.unseen,
             last_completed_ms: task.last_completed_ms,
             recency_ms: task.recency_ms,
@@ -425,6 +429,7 @@ async fn repository_sections(
 #[cfg(test)]
 mod tests {
     use std::path::Path;
+    use std::time::Duration;
 
     use super::*;
     use crate::agent;
@@ -505,6 +510,68 @@ mod tests {
             )]),
             generation,
         }
+    }
+
+    #[tokio::test]
+    async fn a_watched_claude_conversations_background_work_reaches_its_row() {
+        let store = TaskStore::memory().unwrap();
+        let cwd = "/Users/example/project";
+        store
+            .claim(
+                ManagedThread::new(
+                    "claude-1",
+                    RunBy::Claude {
+                        cwd: cwd.to_string(),
+                    },
+                    Some(500),
+                    None,
+                    None,
+                ),
+                500,
+            )
+            .unwrap();
+        let (claude, runner) = agent::claude::ClaudeClient::mock();
+        runner
+            .greet_next_session_with(vec![serde_json::json!({
+                "type": "system",
+                "subtype": "background_tasks_changed",
+                "tasks": [{ "task_id": "b4muz4nik", "task_type": "local_bash", "description": "sleep 8" }],
+                "session_id": "claude-1",
+            })])
+            .await;
+        claude
+            .open_conversation("claude-1", cwd, &Default::default())
+            .await
+            .expect("the conversation opens");
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !claude
+                .watched_conversation("claude-1")
+                .await
+                .is_some_and(|conversation| conversation.background_work)
+            {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("Claude's set of background tasks is read");
+
+        let projection = load_runtime_snapshot(
+            store,
+            &sessions::TaskSessions::default(),
+            Some(&an_empty_codex(1)),
+            &claude,
+            &agent::grok::GrokClient::unreachable(),
+        )
+        .await
+        .unwrap();
+
+        let row = projection
+            .snapshot
+            .tasks
+            .iter()
+            .find(|task| task.thread_id == "claude-1")
+            .expect("the watched conversation is a row");
+        assert!(row.background_work);
     }
 
     #[tokio::test]

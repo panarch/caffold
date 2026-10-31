@@ -41,6 +41,8 @@ The Task list shows where each Task stands:
 - a spinner while a turn is running;
 - an alert when the Task is waiting for your approval, a question mark when it
   is waiting for your answer, and a warning when its turn failed;
+- a dashed circle when its turn has finished but the agent still has work
+  running in the background;
 - a dot when a turn finished since you last opened the Task;
 - otherwise, how long ago its last turn finished.
 

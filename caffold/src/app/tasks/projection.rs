@@ -17,6 +17,7 @@ pub(in crate::app) struct TaskRecord {
     pub(in crate::app::tasks) title: String,
     pub(in crate::app::tasks) preview: String,
     pub(in crate::app::tasks) thread_status: ThreadStatus,
+    pub(in crate::app::tasks) background_work: bool,
     pub(in crate::app::tasks) latest_turn_status: Option<TurnStatus>,
     pub(in crate::app::tasks) active_turn: Option<TaskActiveTurn>,
     pub(in crate::app::tasks) cwd: String,
@@ -79,6 +80,7 @@ pub(in crate::app::tasks) fn task_record_from_conversation(
         title,
         preview,
         thread_status,
+        background_work: conversation.background_work,
         latest_turn_status: None,
         active_turn: None,
         cwd_path: resolved_cwd.and_then(|resolved| resolved.logical_cwd.clone()),
@@ -388,6 +390,24 @@ mod tests {
                 started_at_ms: Some(1_750_000_000_000)
             })
         );
+    }
+
+    #[test]
+    fn the_agents_background_work_reaches_the_task_beside_its_status() {
+        let mut conversation = decoded_thread(json!({
+            "id": "thread_background",
+            "preview": "Background work",
+            "cwd": "/tmp",
+            "status": { "type": "idle" },
+            "turns": []
+        }));
+        conversation.background_work = true;
+
+        let task = task_record_from_conversation(&conversation, &[], None);
+
+        let value = serde_json::to_value(&task).unwrap();
+        assert_eq!(value["threadStatus"], json!({ "type": "idle" }));
+        assert_eq!(value["backgroundWork"], json!(true));
     }
 
     #[test]

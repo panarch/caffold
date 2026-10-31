@@ -1486,6 +1486,8 @@ impl GrokClient {
                 })
                 .unwrap_or_default(),
             status: translate::thread_status(state.working, state.waiting_on_approval()),
+            // Grok's leader reports no work of its own running outside a turn.
+            background_work: false,
             cwd,
             transcript_path: None,
             created_at_ms: state.opened_at_ms,
@@ -2039,6 +2041,18 @@ mod tests {
             }],
             "nothing without a window or a used count; the model list's window stands in for the leader's; an older ask is dropped"
         );
+    }
+
+    #[tokio::test]
+    async fn a_grok_conversation_reports_no_background_work() {
+        let (client, _leader, _dir) = client().await;
+
+        let conversation = client
+            .start_conversation(CWD, &GrokTurnOptions::default())
+            .await
+            .expect("the conversation opens");
+
+        assert!(!conversation.background_work);
     }
 
     #[tokio::test]

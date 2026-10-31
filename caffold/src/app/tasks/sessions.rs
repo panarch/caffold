@@ -283,6 +283,9 @@ struct SessionState {
     status_revision: u64,
     name_revision: u64,
     pending_thread_status: Option<ThreadStatus>,
+    /// Background work reported before the conversation was read, held like
+    /// `pending_thread_status` and moved with the status.
+    pending_background_work: Option<bool>,
     last_sync_ms: Option<u64>,
     last_error: Option<String>,
     permission_mode: Option<String>,
@@ -317,6 +320,7 @@ impl Default for SessionState {
             status_revision: 0,
             name_revision: 0,
             pending_thread_status: None,
+            pending_background_work: None,
             last_sync_ms: None,
             last_error: None,
             permission_mode: None,

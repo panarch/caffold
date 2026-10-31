@@ -36,6 +36,7 @@ impl TaskSessions {
             state.terminal_candidate_turn_id = None;
             state.driver = None;
             state.pending_thread_status = None;
+            state.pending_background_work = None;
             state.last_sync_ms = None;
             state.revision = state.revision.saturating_add(1);
             state.status_revision = state.revision;
@@ -99,14 +100,17 @@ impl TaskSessions {
         if let Some(current) = state.conversation.as_ref() {
             *thread = Conversation {
                 status: current.status.clone(),
+                background_work: current.background_work,
                 turns: current.turns.clone(),
                 ..thread.clone()
             };
-        } else if let Some(status) = state.pending_thread_status.clone() {
-            *thread = Conversation {
-                status,
-                ..thread.clone()
-            };
+        } else {
+            if let Some(status) = state.pending_thread_status.clone() {
+                thread.status = status;
+            }
+            if let Some(background_work) = state.pending_background_work {
+                thread.background_work = background_work;
+            }
         }
         if state.conversation.as_ref() == Some(thread) {
             return;
@@ -115,6 +119,7 @@ impl TaskSessions {
         update_active_turn(&mut state, next_active_turn_id, Some(thread.cwd.clone()));
         state.conversation = Some(thread.clone());
         state.pending_thread_status = None;
+        state.pending_background_work = None;
         state.revision = state.revision.saturating_add(1);
         state.name_revision = state.revision;
         if status_changed {
@@ -289,12 +294,95 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn listed_metadata_does_not_overwrite_the_live_background_work() {
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
+        )]);
+        let sessions = TaskSessions::default();
+        let _viewer = sessions
+            .acquire_viewer(&client.driver(), 1, "thread-1")
+            .await
+            .expect("viewer");
+        sessions
+            .apply_session_event(
+                1,
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::BackgroundWorkChanged {
+                        background_work: true,
+                    },
+                ),
+            )
+            .await;
+
+        let mut updated_metadata = thread(ThreadStatus::Idle, Vec::new());
+        updated_metadata.updated_at = 2.0;
+        sessions
+            .observe_thread_metadata(Conversation::from(&updated_metadata))
+            .await;
+
+        let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
+        assert!(
+            snapshot
+                .conversation
+                .is_some_and(|thread| thread.background_work)
+        );
+    }
+
+    #[tokio::test]
+    async fn listed_metadata_takes_up_background_work_reported_before_the_conversation_was_read() {
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::delayed_ok(
+            "thread/resume",
+            resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
+            Duration::from_millis(100),
+        )]);
+        let sessions = TaskSessions::default();
+        let _viewer = sessions.reserve_viewer("thread-1").await;
+        let subscribing_sessions = sessions.clone();
+        let subscribing_client = client.clone();
+        let subscription = tokio::spawn(async move {
+            subscribing_sessions
+                .ensure_subscribed(&subscribing_client.driver(), 1, "thread-1")
+                .await
+        });
+        wait_for_method_count(&client, "thread/resume", 1).await;
+        sessions
+            .apply_session_event(
+                1,
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::BackgroundWorkChanged {
+                        background_work: true,
+                    },
+                ),
+            )
+            .await;
+
+        sessions
+            .observe_listed_thread_metadata(1, listed_thread("thread-1", ThreadStatus::Idle))
+            .await;
+        subscription
+            .await
+            .expect("subscription task joins")
+            .expect("subscription baseline succeeds");
+
+        let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
+        assert!(
+            snapshot
+                .conversation
+                .is_some_and(|thread| thread.background_work)
+        );
+    }
+
     fn listed_thread(id: &str, status: ThreadStatus) -> Conversation {
         Conversation {
             id: id.to_string(),
             title: None,
             preview: id.to_string(),
             status,
+            background_work: false,
             cwd: "/tmp".to_string(),
             transcript_path: None,
             created_at_ms: 1_000,

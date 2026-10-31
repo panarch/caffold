@@ -1452,6 +1452,8 @@ export interface Task {
   conversationAvailable: boolean;
   title: string;
   threadStatus: TaskThreadStatus;
+  // Whether the agent says work it sent to the background is still running.
+  backgroundWork: boolean;
   activeTurn: { id: string; startedAtMs: number | null } | null;
   cwd: string;
   cwdPath: string | null;
@@ -1494,6 +1496,7 @@ export interface ActiveTask {
   threadId: string;
   title: string;
   threadStatus: TaskThreadStatus;
+  backgroundWork: boolean;
   unseen: boolean;
   lastCompletedMs: number | null;
   recencyMs: number | null;

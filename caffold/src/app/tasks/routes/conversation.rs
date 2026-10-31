@@ -125,6 +125,7 @@ fn unavailable_task_record(managed: &ManagedThread) -> TaskRecord {
         title: managed.display_name.clone(),
         preview: "Conversation unavailable".to_string(),
         thread_status: ThreadStatus::NotLoaded,
+        background_work: false,
         latest_turn_status: None,
         active_turn: None,
         cwd: String::new(),

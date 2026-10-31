@@ -60,6 +60,7 @@ export function activeListTask(task) {
     threadId: task.threadId ?? task.id,
     title: task.title,
     threadStatus: task.threadStatus,
+    backgroundWork: Boolean(task.backgroundWork),
     unseen: Boolean(task.unseen),
     lastCompletedMs: task.lastCompletedMs ?? null,
     recencyMs: task.recencyMs ?? null,

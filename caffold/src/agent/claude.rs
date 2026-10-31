@@ -240,6 +240,12 @@ struct SessionState {
     /// Until a frame proves the stream exists, lifecycle reports retain the
     /// established turn-based fallback.
     activity_stream_observed: bool,
+    /// Whether the set of background tasks Claude last sent holds any.
+    ///
+    /// Claude sends the whole set whenever it changes and again right after
+    /// every `initialize`, so the newest set stands on its own. The set is the
+    /// process's own: an ended session has none.
+    background_work: bool,
     /// Tool calls waiting on their results.
     calls: ToolCalls,
     /// The turn Caffold opened and the agent has not answered.
@@ -1105,6 +1111,7 @@ impl ClaudeClient {
                 .map(preview_of)
                 .unwrap_or_default(),
             status: status_of(&state),
+            background_work: state.background_work && !state.ended,
             cwd: introduction
                 .cwd
                 .clone()
@@ -1969,6 +1976,7 @@ mod test_support {
             SessionEventKind::ConversationStarted { .. } => "conversation started",
             SessionEventKind::StatusChanged { .. } => "status change",
             SessionEventKind::ActivityChanged { .. } => "activity change",
+            SessionEventKind::BackgroundWorkChanged { .. } => "background work change",
             SessionEventKind::TitleChanged { .. } => "title change",
             SessionEventKind::SettingsChanged { .. } => "settings",
             SessionEventKind::TurnStarted { .. } => "turn start",

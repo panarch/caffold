@@ -25,16 +25,20 @@ export type PromptSubmissionState =
 
 // Any Task shape that carries the agent's status: a Task, or a Task as the
 // Active list shows it.
-type StatusOf = { threadStatus?: TaskThreadStatus | null } | null | undefined;
+type StatusOf =
+  | { threadStatus?: TaskThreadStatus | null; backgroundWork?: boolean }
+  | null
+  | undefined;
 
-// How a Task's status reads where it is shown. Only these four are shown; a
+// How a Task's status reads where it is shown. Only these five are shown; a
 // Task in any other state shows none.
 export interface TaskStatusView {
   status:
     | "running"
     | "waiting_for_approval"
     | "waiting_on_user_input"
-    | "failed";
+    | "failed"
+    | "background";
   label: string;
   // The Lucide icon name, or "" for the spinner of a running Task.
   icon: string;
@@ -74,6 +78,9 @@ export function taskStatusKey(task: StatusOf) {
     }
     return "running";
   }
+  if (type === "idle" && task?.backgroundWork) {
+    return "background";
+  }
   return type === "systemError" ? "failed" : type;
 }
 
@@ -99,6 +106,11 @@ export function taskStatusView(task: StatusOf): TaskStatusView | null {
       icon: "MessageCircleQuestion",
     },
     failed: { status: "failed", label: "failed", icon: "TriangleAlert" },
+    background: {
+      status: "background",
+      label: "background",
+      icon: "CircleDashed",
+    },
   };
   return views[taskStatusKey(task)] ?? null;
 }
@@ -110,6 +122,7 @@ export function formatTaskStatus(task: StatusOf) {
     waiting_for_approval: "waiting for approval",
     waiting_on_user_input: "waiting for input",
     running: "active",
+    background: "background work",
     notLoaded: "not loaded",
   };
   return words[key] ?? key;
