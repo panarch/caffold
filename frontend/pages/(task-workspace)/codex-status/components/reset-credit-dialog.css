@@ -64,10 +64,16 @@ dialog::backdrop {
   cursor: pointer;
 }
 
-.codex-reset-credit-dialog-card button:hover,
 .codex-reset-credit-dialog-card button:focus-visible {
   border-color: var(--border-strong);
   outline: none;
+}
+
+@media (hover: hover) {
+  .codex-reset-credit-dialog-card button:hover {
+    border-color: var(--border-strong);
+    outline: none;
+  }
 }
 
 .codex-reset-credit-dialog-card button[value="use"] {

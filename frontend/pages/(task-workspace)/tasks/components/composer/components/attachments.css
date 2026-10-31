@@ -80,17 +80,30 @@
   content: "";
 }
 
-.task-composer-attachment-remove:hover,
 .task-composer-attachment-remove:focus-visible {
   outline: none;
   color: var(--text-inverse);
 }
 
-.task-composer-attachment-remove:hover::before,
+@media (hover: hover) {
+  .task-composer-attachment-remove:hover {
+    outline: none;
+    color: var(--text-inverse);
+  }
+}
+
 .task-composer-attachment-remove:focus-visible::before {
   background: var(--text);
   outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
+}
+
+@media (hover: hover) {
+  .task-composer-attachment-remove:hover::before {
+    background: var(--text);
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+  }
 }
 
 .task-composer-attachment-remove-icon {
@@ -169,17 +182,30 @@
   content: "";
 }
 
-.task-composer-file-remove:hover,
 .task-composer-file-remove:focus-visible {
   color: var(--text);
   outline: none;
 }
 
-.task-composer-file-remove:is(:hover, :focus-visible)
-  .task-composer-file-remove-icon {
+@media (hover: hover) {
+  .task-composer-file-remove:hover {
+    color: var(--text);
+    outline: none;
+  }
+}
+
+.task-composer-file-remove:focus-visible .task-composer-file-remove-icon {
   border-radius: 3px;
   background: var(--control-hover-bg);
   box-shadow: 0 0 0 3px var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  .task-composer-file-remove:hover .task-composer-file-remove-icon {
+    border-radius: 3px;
+    background: var(--control-hover-bg);
+    box-shadow: 0 0 0 3px var(--control-hover-bg);
+  }
 }
 
 .task-composer-file-remove-icon {

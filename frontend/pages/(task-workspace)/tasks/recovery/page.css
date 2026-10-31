@@ -149,12 +149,20 @@ h3 {
   font-size: var(--interface-meta-font-size);
 }
 
-.task-recovery-recheck-button:hover,
 .task-recovery-recheck-button:focus-visible {
   color: var(--text);
   outline: none;
   text-decoration: underline;
   text-underline-offset: 0.2em;
+}
+
+@media (hover: hover) {
+  .task-recovery-recheck-button:hover {
+    color: var(--text);
+    outline: none;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
 }
 
 .task-recovery-remove-button {

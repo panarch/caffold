@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { activateActionHint, workspaceTargets } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
-import { focusLook } from "../support/focus-look.js";
+import { focusLook, pointerHovers } from "../support/focus-look.js";
 import {
   activeTaskProjection,
   canonicalTaskState,
@@ -1095,14 +1095,18 @@ test("attaches files from the picker, the clipboard, and a drop onto the Compose
   await expect(files).toHaveCount(1);
   // Remove sits at the chip's rounded end; its face stays inside the chip.
   const remove = files.first().getByRole("button", { name: /^Remove / });
+  await page.mouse.move(0, 0);
   await remove.evaluate((element) => element.blur());
+  const resting = await focusLook(remove, ".task-composer-file-remove-icon");
   await remove.hover();
   const hovered = await focusLook(remove, ".task-composer-file-remove-icon");
   await page.mouse.move(0, 0);
   await page.keyboard.press("Shift");
   await remove.evaluate((element) => element.focus());
   expect(await remove.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
-  expect(await focusLook(remove, ".task-composer-file-remove-icon")).toEqual(hovered);
+  const focused = await focusLook(remove, ".task-composer-file-remove-icon");
+  expect(focused).not.toEqual(resting);
+  expect(hovered).toEqual(await pointerHovers(page) ? focused : resting);
 
   await prompt.evaluate((textarea) => {
     const clipboardData = new DataTransfer();

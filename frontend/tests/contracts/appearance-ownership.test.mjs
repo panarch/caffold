@@ -1240,7 +1240,8 @@ test("task rows use full-width selection and compact repository grouping", () =>
   );
   const row = cssBlock(activeRow, "\n.task-row {");
   const archivedRow = cssBlock(archivedList, "\n.task-archived-row {");
-  const hover = cssBlock(activeRow, "\n.task-row:hover,");
+  const focus = cssBlock(activeRow, "\n.task-row:focus-visible,");
+  const hover = cssBlock(activeRow, /\n\s*\.task-row:hover \{/);
   const selected = cssBlock(
     activeRow,
     '\n.task-row[aria-current="true"]',
@@ -1255,6 +1256,7 @@ test("task rows use full-width selection and compact repository grouping", () =>
   );
 
   assert.doesNotMatch(row, /border-left/);
+  assert.doesNotMatch(focus, /border-left/);
   assert.doesNotMatch(hover, /border-left/);
   assert.doesNotMatch(selected, /border-left/);
   assert.doesNotMatch(section, /border-left/);

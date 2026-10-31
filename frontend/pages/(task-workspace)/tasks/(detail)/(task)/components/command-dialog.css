@@ -80,15 +80,26 @@ dialog::backdrop {
   content: "";
 }
 
-.task-command-dialog-close:hover,
 .task-command-dialog-close:focus-visible {
   outline: none;
 }
 
-.task-command-dialog-close:hover::before,
+@media (hover: hover) {
+  .task-command-dialog-close:hover {
+    outline: none;
+  }
+}
+
 .task-command-dialog-close:focus-visible::before {
   border-color: var(--border-strong);
   background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  .task-command-dialog-close:hover::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
 }
 
 .task-command-dialog-close-icon {

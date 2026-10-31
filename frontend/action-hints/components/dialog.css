@@ -67,12 +67,20 @@
   content: "";
 }
 
-.action-hint-badge:hover,
 .action-hint-badge:focus-visible {
   border-color: var(--primary-control-bg);
   background: var(--surface);
   color: var(--text);
   outline: none;
+}
+
+@media (hover: hover) {
+  .action-hint-badge:hover {
+    border-color: var(--primary-control-bg);
+    background: var(--surface);
+    color: var(--text);
+    outline: none;
+  }
 }
 
 .action-hint-badge[hidden] {

@@ -84,11 +84,18 @@ header form {
   cursor: pointer;
 }
 
-[data-current-plan-dialog-action="retry"]:hover,
 [data-current-plan-dialog-action="retry"]:focus-visible {
   border-color: var(--border-strong);
   background: var(--control-hover-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  [data-current-plan-dialog-action="retry"]:hover {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+    outline: none;
+  }
 }
 
 .current-plan-document-close {
@@ -113,15 +120,26 @@ header form {
   content: "";
 }
 
-.current-plan-document-close:hover,
 .current-plan-document-close:focus-visible {
   outline: none;
 }
 
-.current-plan-document-close:hover::before,
+@media (hover: hover) {
+  .current-plan-document-close:hover {
+    outline: none;
+  }
+}
+
 .current-plan-document-close:focus-visible::before {
   border-color: var(--border-strong);
   background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  .current-plan-document-close:hover::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
 }
 
 .current-plan-document-close-icon {

@@ -110,10 +110,16 @@ footer {
   cursor: pointer;
 }
 
-.update-task-dialog-button:hover,
 .update-task-dialog-button:focus-visible {
   border-color: var(--border-strong);
   outline: none;
+}
+
+@media (hover: hover) {
+  .update-task-dialog-button:hover {
+    border-color: var(--border-strong);
+    outline: none;
+  }
 }
 
 .update-task-dialog-button.is-primary {
@@ -122,9 +128,14 @@ footer {
   color: var(--primary-action-fg);
 }
 
-.update-task-dialog-button.is-primary:hover,
 .update-task-dialog-button.is-primary:focus-visible {
   border-color: var(--border-strong);
+}
+
+@media (hover: hover) {
+  .update-task-dialog-button.is-primary:hover {
+    border-color: var(--border-strong);
+  }
 }
 
 .update-task-dialog-button:disabled {

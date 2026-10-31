@@ -63,10 +63,16 @@ dialog::backdrop {
   cursor: pointer;
 }
 
-.update-result-dialog-card button:hover,
 .update-result-dialog-card button:focus-visible {
   border-color: var(--border-strong);
   outline: none;
+}
+
+@media (hover: hover) {
+  .update-result-dialog-card button:hover {
+    border-color: var(--border-strong);
+    outline: none;
+  }
 }
 
 /* Its only button would be as narrow as "OK" without a floor. */
@@ -77,9 +83,14 @@ dialog::backdrop {
   color: var(--primary-action-fg);
 }
 
-.update-result-dialog-card button[value="ok"]:hover,
 .update-result-dialog-card button[value="ok"]:focus-visible {
   border-color: var(--border-strong);
+}
+
+@media (hover: hover) {
+  .update-result-dialog-card button[value="ok"]:hover {
+    border-color: var(--border-strong);
+  }
 }
 
 @media (max-width: 520px) {

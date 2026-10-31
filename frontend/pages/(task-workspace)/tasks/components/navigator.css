@@ -155,11 +155,17 @@
 }
 
 .task-list-reorder-popover
-  > button[data-task-action="select-reorder-mode"]:hover,
-.task-list-reorder-popover
   > button[data-task-action="select-reorder-mode"]:focus-visible {
   background: var(--control-hover-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  .task-list-reorder-popover
+    > button[data-task-action="select-reorder-mode"]:hover {
+    background: var(--control-hover-bg);
+    outline: none;
+  }
 }
 
 .task-list-reorder:has(~ .task-list-reorder-popover:popover-open)::before {

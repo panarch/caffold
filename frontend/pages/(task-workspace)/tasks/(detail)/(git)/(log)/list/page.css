@@ -53,9 +53,14 @@
   font: inherit;
 }
 
-.log-summary-toggle:hover .log-subject,
 .log-summary-toggle:focus-visible .log-subject {
   color: var(--link-fg);
+}
+
+@media (hover: hover) {
+  .log-summary-toggle:hover .log-subject {
+    color: var(--link-fg);
+  }
 }
 
 .log-summary-toggle:focus-visible {
@@ -131,11 +136,18 @@
   line-height: 1;
 }
 
-.log-review-button:hover,
 .log-review-button:focus-visible {
   border-color: var(--control-emphasis-border);
   background: var(--control-subtle-hover-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  .log-review-button:hover {
+    border-color: var(--control-emphasis-border);
+    background: var(--control-subtle-hover-bg);
+    outline: none;
+  }
 }
 
 .error-panel {

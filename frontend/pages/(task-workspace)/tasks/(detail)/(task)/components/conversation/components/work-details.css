@@ -21,12 +21,17 @@ details > summary {
   cursor: pointer;
 }
 
-details > summary:hover,
 details > summary:focus-visible {
   outline: none;
 }
 
-details > summary:is(:hover, :focus-visible)::before {
+@media (hover: hover) {
+  details > summary:hover {
+    outline: none;
+  }
+}
+
+details > summary:focus-visible::before {
   position: absolute;
   inset: calc(0rem - var(--interface-space-1))
     calc(0rem - var(--interface-space-3));
@@ -34,6 +39,18 @@ details > summary:is(:hover, :focus-visible)::before {
   border-radius: 4px;
   background: var(--control-hover-bg);
   content: "";
+}
+
+@media (hover: hover) {
+  details > summary:hover::before {
+    position: absolute;
+    inset: calc(0rem - var(--interface-space-1))
+      calc(0rem - var(--interface-space-3));
+    z-index: -1;
+    border-radius: 4px;
+    background: var(--control-hover-bg);
+    content: "";
+  }
 }
 
 details > summary::marker {

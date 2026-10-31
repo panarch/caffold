@@ -94,15 +94,26 @@
     content: "";
   }
 
-  .settings-workspace-detail-header button:hover,
   .settings-workspace-detail-header button:focus-visible {
     outline: none;
   }
 
-  .settings-workspace-detail-header button:hover::before,
+  @media (hover: hover) {
+    .settings-workspace-detail-header button:hover {
+      outline: none;
+    }
+  }
+
   .settings-workspace-detail-header button:focus-visible::before {
     border-color: var(--border-strong);
     background: var(--control-hover-bg);
+  }
+
+  @media (hover: hover) {
+    .settings-workspace-detail-header button:hover::before {
+      border-color: var(--border-strong);
+      background: var(--control-hover-bg);
+    }
   }
 
   .settings-workspace-back-icon {

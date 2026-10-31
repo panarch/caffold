@@ -75,11 +75,18 @@
   cursor: pointer;
 }
 
-.notes-navigator-status > button:hover,
 .notes-navigator-status > button:focus-visible {
   border-color: var(--border-strong);
   background: var(--control-hover-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  .notes-navigator-status > button:hover {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+    outline: none;
+  }
 }
 
 caffold-file-tree {

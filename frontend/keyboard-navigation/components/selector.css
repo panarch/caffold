@@ -77,10 +77,18 @@
   content: "";
 }
 
-.scroll-surface-selector-badge:hover,
 .scroll-surface-selector-badge:focus-visible {
   border-color: var(--primary-control-bg);
   background: var(--surface);
   color: var(--text);
   outline: none;
+}
+
+@media (hover: hover) {
+  .scroll-surface-selector-badge:hover {
+    border-color: var(--primary-control-bg);
+    background: var(--surface);
+    color: var(--text);
+    outline: none;
+  }
 }

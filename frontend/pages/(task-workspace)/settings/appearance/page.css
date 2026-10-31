@@ -11,15 +11,19 @@
   line-height: var(--interface-line-height);
 }
 
-.settings-reset-all:hover:not(:disabled),
-.settings-inline-reset:hover:not(:disabled) {
-  outline: none;
+@media (hover: hover) {
+  .settings-reset-all:hover:not(:disabled),
+  .settings-inline-reset:hover:not(:disabled) {
+    outline: none;
+  }
 }
 
-.settings-reset-all:hover:not(:disabled)::before,
-.settings-inline-reset:hover:not(:disabled)::before {
-  border-color: var(--border-strong);
-  background: var(--control-hover-bg);
+@media (hover: hover) {
+  .settings-reset-all:hover:not(:disabled)::before,
+  .settings-inline-reset:hover:not(:disabled)::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
 }
 
 .settings-reset-all:focus-visible,
@@ -254,8 +258,10 @@
   outline-offset: 2px;
 }
 
-.settings-theme-control label:hover > span {
-  color: var(--text);
+@media (hover: hover) {
+  .settings-theme-control label:hover > span {
+    color: var(--text);
+  }
 }
 
 .settings-typeface-control select {

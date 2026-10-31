@@ -74,10 +74,16 @@ dialog::backdrop {
   cursor: pointer;
 }
 
-.broken-delete-button:hover,
 .broken-delete-button:focus-visible {
   border-color: var(--border-strong);
   outline: none;
+}
+
+@media (hover: hover) {
+  .broken-delete-button:hover {
+    border-color: var(--border-strong);
+    outline: none;
+  }
 }
 
 .broken-delete-confirm {

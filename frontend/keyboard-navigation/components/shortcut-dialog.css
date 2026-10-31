@@ -76,15 +76,26 @@ dialog::backdrop {
   content: "";
 }
 
-.keyboard-shortcut-close:hover,
 .keyboard-shortcut-close:focus-visible {
   outline: none;
 }
 
-.keyboard-shortcut-close:hover::before,
+@media (hover: hover) {
+  .keyboard-shortcut-close:hover {
+    outline: none;
+  }
+}
+
 .keyboard-shortcut-close:focus-visible::before {
   border-color: var(--border-strong);
   background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  .keyboard-shortcut-close:hover::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
 }
 
 .keyboard-shortcut-close-icon {

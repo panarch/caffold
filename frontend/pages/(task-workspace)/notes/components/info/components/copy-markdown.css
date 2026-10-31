@@ -33,14 +33,24 @@
   content: "";
 }
 
-.notes-info-copy-markdown-button:hover,
 .notes-info-copy-markdown-button:focus-visible {
   outline: none;
 }
 
-.notes-info-copy-markdown-button:not(:disabled):hover::before,
+@media (hover: hover) {
+  .notes-info-copy-markdown-button:hover {
+    outline: none;
+  }
+}
+
 .notes-info-copy-markdown-button:focus-visible::before {
   border-color: var(--border-strong);
+}
+
+@media (hover: hover) {
+  .notes-info-copy-markdown-button:not(:disabled):hover::before {
+    border-color: var(--border-strong);
+  }
 }
 
 .notes-info-copy-markdown-button[data-copy-state="copied"] {

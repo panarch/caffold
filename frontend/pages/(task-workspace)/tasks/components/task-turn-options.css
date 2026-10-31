@@ -129,12 +129,18 @@
   animation-play-state: paused;
 }
 
-.task-model-button:hover,
 .task-model-button:focus-visible,
-.task-permission-button:hover,
 .task-permission-button:focus-visible {
   background: var(--control-active-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  .task-model-button:hover,
+  .task-permission-button:hover {
+    background: var(--control-active-bg);
+    outline: none;
+  }
 }
 
 .task-permission-button.is-dangerous,
@@ -273,11 +279,17 @@
   overflow-wrap: anywhere;
 }
 
-.task-model-option:hover,
 .task-model-option:focus-visible,
 .task-model-option[aria-pressed="true"] {
   background: var(--control-active-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  .task-model-option:hover {
+    background: var(--control-active-bg);
+    outline: none;
+  }
 }
 
 .task-model-option:disabled {
@@ -285,8 +297,10 @@
   opacity: 0.52;
 }
 
-.task-model-option:disabled:hover {
-  background: transparent;
+@media (hover: hover) {
+  .task-model-option:disabled:hover {
+    background: transparent;
+  }
 }
 
 .task-model-option span {

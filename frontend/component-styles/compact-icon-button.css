@@ -22,15 +22,26 @@
   content: "";
 }
 
-:scope:hover,
 :scope:focus-visible {
   outline: none;
 }
 
-:scope:hover::before,
+@media (hover: hover) {
+  :scope:hover {
+    outline: none;
+  }
+}
+
 :scope:focus-visible::before {
   border-color: var(--border-strong);
   background: var(--surface-muted);
+}
+
+@media (hover: hover) {
+  :scope:hover::before {
+    border-color: var(--border-strong);
+    background: var(--surface-muted);
+  }
 }
 
 :scope:disabled {

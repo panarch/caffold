@@ -71,8 +71,14 @@
   cursor: pointer;
 }
 
-.task-git-popover > button[data-git-button-action]:hover,
 .task-git-popover > button[data-git-button-action]:focus-visible {
   background: var(--control-hover-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  .task-git-popover > button[data-git-button-action]:hover {
+    background: var(--control-hover-bg);
+    outline: none;
+  }
 }

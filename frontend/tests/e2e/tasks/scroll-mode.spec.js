@@ -4,7 +4,7 @@ import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { elementHandles } from "../support/element-handles.js";
-import { focusLook } from "../support/focus-look.js";
+import { focusLook, pointerHovers } from "../support/focus-look.js";
 import {
   installTaskApiFixture,
   taskDetailFixture,
@@ -59,14 +59,18 @@ test("selects and scrolls only the registered surface", { tag: "@all-viewports" 
     const badges = selector.locator("button[data-scroll-surface-code]");
     await expect(badges).toHaveCount(2);
     const badge = badges.first();
+    await page.mouse.move(0, 0);
     await badge.evaluate((element) => element.blur());
+    const resting = await focusLook(badge);
     await badge.hover();
     const hovered = await focusLook(badge);
     await page.mouse.move(0, 0);
     await page.keyboard.press("Shift");
     await badge.evaluate((element) => element.focus());
     expect(await badge.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
-    expect(await focusLook(badge)).toEqual(hovered);
+    const focused = await focusLook(badge);
+    expect(focused).not.toEqual(resting);
+    expect(hovered).toEqual(await pointerHovers(page) ? focused : resting);
     await selector.evaluate((element) => element.focus());
     expect(await badges.evaluateAll((elements) =>
       elements.map((element) => element.dataset.scrollSurfaceCode)

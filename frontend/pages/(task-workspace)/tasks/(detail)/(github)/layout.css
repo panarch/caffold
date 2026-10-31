@@ -38,10 +38,16 @@ caffold-github-task-start-dialog {
   color: var(--control-fg);
 }
 
-.task-domain-back:hover::before,
 .task-domain-back:focus-visible::before {
   border-color: var(--control-emphasis-border);
   background: var(--control-subtle-hover-bg);
+}
+
+@media (hover: hover) {
+  .task-domain-back:hover::before {
+    border-color: var(--control-emphasis-border);
+    background: var(--control-subtle-hover-bg);
+  }
 }
 
 .task-domain-back[hidden] {

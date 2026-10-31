@@ -75,15 +75,26 @@ dialog::backdrop {
   content: "";
 }
 
-.task-markdown-preview-close:hover,
 .task-markdown-preview-close:focus-visible {
   outline: none;
 }
 
-.task-markdown-preview-close:hover::before,
+@media (hover: hover) {
+  .task-markdown-preview-close:hover {
+    outline: none;
+  }
+}
+
 .task-markdown-preview-close:focus-visible::before {
   border-color: var(--border-strong);
   background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  .task-markdown-preview-close:hover::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
 }
 
 .task-markdown-preview-close-icon {

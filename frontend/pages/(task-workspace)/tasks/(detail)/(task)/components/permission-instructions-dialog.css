@@ -79,15 +79,26 @@ dialog::backdrop {
   content: "";
 }
 
-.task-permission-instructions-close:hover,
 .task-permission-instructions-close:focus-visible {
   outline: none;
 }
 
-.task-permission-instructions-close:hover::before,
+@media (hover: hover) {
+  .task-permission-instructions-close:hover {
+    outline: none;
+  }
+}
+
 .task-permission-instructions-close:focus-visible::before {
   border-color: var(--border-strong);
   background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  .task-permission-instructions-close:hover::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
 }
 
 .task-permission-instructions-close-icon {

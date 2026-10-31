@@ -64,11 +64,18 @@
   content: "";
 }
 
-.github-issue-start-button:hover,
 .github-issue-start-button:focus-visible {
   border-color: var(--control-emphasis-border);
   background: var(--control-subtle-hover-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  .github-issue-start-button:hover {
+    border-color: var(--control-emphasis-border);
+    background: var(--control-subtle-hover-bg);
+    outline: none;
+  }
 }
 
 .github-issue-start-icon {
@@ -96,9 +103,14 @@ h2 {
   text-decoration: none;
 }
 
-.github-issue-link:hover,
 .github-issue-link:focus-visible {
   text-decoration: underline;
+}
+
+@media (hover: hover) {
+  .github-issue-link:hover {
+    text-decoration: underline;
+  }
 }
 
 .github-issue-viewer-meta {
@@ -194,15 +206,26 @@ h2 {
     background: var(--surface);
   }
 
-  .github-issue-start-button:hover,
   .github-issue-start-button:focus-visible {
     background: transparent;
   }
 
-  .github-issue-start-button:hover::before,
+  @media (hover: hover) {
+    .github-issue-start-button:hover {
+      background: transparent;
+    }
+  }
+
   .github-issue-start-button:focus-visible::before {
     border-color: var(--control-emphasis-border);
     background: var(--control-subtle-hover-bg);
+  }
+
+  @media (hover: hover) {
+    .github-issue-start-button:hover::before {
+      border-color: var(--control-emphasis-border);
+      background: var(--control-subtle-hover-bg);
+    }
   }
 
   .github-issue-start-icon {

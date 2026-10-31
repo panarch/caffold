@@ -130,10 +130,16 @@
   height: 1px;
 }
 
-.file-tree-entry:hover,
 .file-tree-entry:focus-visible {
   background: var(--row-hover-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  .file-tree-entry:hover {
+    background: var(--row-hover-bg);
+    outline: none;
+  }
 }
 
 .file-tree-entry:disabled {

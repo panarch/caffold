@@ -56,10 +56,16 @@
   text-underline-offset: 0.15em;
 }
 
-.settings-service-status:hover,
 .settings-service-status:focus-visible {
   outline: none;
   text-decoration-thickness: 2px;
+}
+
+@media (hover: hover) {
+  .settings-service-status:hover {
+    outline: none;
+    text-decoration-thickness: 2px;
+  }
 }
 
 .settings-content-section > section {
@@ -100,19 +106,30 @@
   content: "";
 }
 
-.settings-runtime-control button:hover:not(:disabled),
 .settings-runtime-control button:focus-visible,
-.settings-codex-updates button:hover:not(:disabled),
 .settings-codex-updates button:focus-visible {
   outline: none;
 }
 
-.settings-runtime-control button:hover:not(:disabled)::before,
+@media (hover: hover) {
+  .settings-runtime-control button:hover:not(:disabled),
+  .settings-codex-updates button:hover:not(:disabled) {
+    outline: none;
+  }
+}
+
 .settings-runtime-control button:focus-visible::before,
-.settings-codex-updates button:hover:not(:disabled)::before,
 .settings-codex-updates button:focus-visible::before {
   border-color: var(--border-strong);
   background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  .settings-runtime-control button:hover:not(:disabled)::before,
+  .settings-codex-updates button:hover:not(:disabled)::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
 }
 
 .settings-runtime-control button:disabled,
@@ -133,11 +150,17 @@
 }
 
 .settings-runtime-control[data-restart-emphasis="attention"]
-  button:hover:not(:disabled)::before,
-.settings-runtime-control[data-restart-emphasis="attention"]
   button:focus-visible::before {
   border-color: var(--border-strong);
   background: var(--primary-action-bg);
+}
+
+@media (hover: hover) {
+  .settings-runtime-control[data-restart-emphasis="attention"]
+    button:hover:not(:disabled)::before {
+    border-color: var(--border-strong);
+    background: var(--primary-action-bg);
+  }
 }
 
 .settings-codex-repair,
@@ -216,11 +239,18 @@
   cursor: pointer;
 }
 
-.settings-codex-command button:hover,
 .settings-codex-command button:focus-visible {
   border-color: var(--border-strong);
   outline: none;
   background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  .settings-codex-command button:hover {
+    border-color: var(--border-strong);
+    outline: none;
+    background: var(--control-hover-bg);
+  }
 }
 
 .settings-codex-sign-in code {
@@ -388,10 +418,16 @@
   cursor: pointer;
 }
 
-.settings-codex-reset-credits button:hover:not(:disabled),
 .settings-codex-reset-credits button:focus-visible {
   border-color: var(--border-strong);
   outline: none;
+}
+
+@media (hover: hover) {
+  .settings-codex-reset-credits button:hover:not(:disabled) {
+    border-color: var(--border-strong);
+    outline: none;
+  }
 }
 
 .settings-codex-reset-credits button:disabled {

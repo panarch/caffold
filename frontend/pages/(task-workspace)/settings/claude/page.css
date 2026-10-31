@@ -56,10 +56,16 @@
   text-underline-offset: 0.15em;
 }
 
-.settings-service-status:hover,
 .settings-service-status:focus-visible {
   outline: none;
   text-decoration-thickness: 2px;
+}
+
+@media (hover: hover) {
+  .settings-service-status:hover {
+    outline: none;
+    text-decoration-thickness: 2px;
+  }
 }
 
 .settings-content-section > section {
@@ -126,9 +132,14 @@
   content: "";
 }
 
-.settings-runtime-control button:hover:not(:disabled),
 .settings-runtime-control button:focus-visible {
   outline: none;
+}
+
+@media (hover: hover) {
+  .settings-runtime-control button:hover:not(:disabled) {
+    outline: none;
+  }
 }
 
 .settings-runtime-control button:disabled {
@@ -145,10 +156,16 @@
   background: var(--primary-action-bg);
 }
 
-.settings-runtime-control button:hover:not(:disabled)::before,
 .settings-runtime-control button:focus-visible::before {
   border-color: var(--border-strong);
   background: var(--primary-action-bg);
+}
+
+@media (hover: hover) {
+  .settings-runtime-control button:hover:not(:disabled)::before {
+    border-color: var(--border-strong);
+    background: var(--primary-action-bg);
+  }
 }
 
 .settings-runtime-message {

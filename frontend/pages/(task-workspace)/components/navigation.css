@@ -38,11 +38,18 @@ button {
   cursor: pointer;
 }
 
-button:hover,
 button:focus-visible {
   background: var(--row-hover-bg);
   color: var(--text);
   outline: none;
+}
+
+@media (hover: hover) {
+  button:hover {
+    background: var(--row-hover-bg);
+    color: var(--text);
+    outline: none;
+  }
 }
 
 button[aria-current] {

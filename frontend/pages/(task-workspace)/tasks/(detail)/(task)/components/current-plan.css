@@ -51,10 +51,16 @@
   cursor: pointer;
 }
 
-.task-current-plan-segment:hover,
 .task-current-plan-segment:focus-visible {
   background: var(--control-hover-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  .task-current-plan-segment:hover {
+    background: var(--control-hover-bg);
+    outline: none;
+  }
 }
 
 .task-current-plan-plan-action,
@@ -192,9 +198,14 @@
   content: "";
 }
 
-.task-current-plan-refresh .task-secondary-button:hover::before,
 .task-current-plan-refresh .task-secondary-button:focus-visible::before {
   border-color: var(--border-strong);
+}
+
+@media (hover: hover) {
+  .task-current-plan-refresh .task-secondary-button:hover::before {
+    border-color: var(--border-strong);
+  }
 }
 
 @media (max-width: 860px), (pointer: coarse) {

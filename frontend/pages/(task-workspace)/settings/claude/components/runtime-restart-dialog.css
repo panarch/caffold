@@ -63,10 +63,16 @@ dialog::backdrop {
   cursor: pointer;
 }
 
-.claude-runtime-dialog-card button:hover,
 .claude-runtime-dialog-card button:focus-visible {
   border-color: var(--border-strong);
   outline: none;
+}
+
+@media (hover: hover) {
+  .claude-runtime-dialog-card button:hover {
+    border-color: var(--border-strong);
+    outline: none;
+  }
 }
 
 .claude-runtime-dialog-card button[value="restart"] {

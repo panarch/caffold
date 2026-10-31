@@ -24,11 +24,17 @@ button.task-row {
   cursor: pointer;
 }
 
-.task-row:hover,
 .task-row:focus-visible,
 .task-row:has(.task-reorder-handle:focus-visible) {
   background: var(--row-hover-bg);
   outline: none;
+}
+
+@media (hover: hover) {
+  .task-row:hover {
+    background: var(--row-hover-bg);
+    outline: none;
+  }
 }
 
 .task-row[aria-current="true"] {
@@ -100,15 +106,26 @@ button.task-row {
   content: "";
 }
 
-.task-reorder-handle:hover,
 .task-reorder-handle:focus-visible {
   outline: none;
 }
 
-.task-reorder-handle:hover::before,
+@media (hover: hover) {
+  .task-reorder-handle:hover {
+    outline: none;
+  }
+}
+
 .task-reorder-handle:focus-visible::before {
   border-color: var(--border-strong);
   background: var(--surface-muted);
+}
+
+@media (hover: hover) {
+  .task-reorder-handle:hover::before {
+    border-color: var(--border-strong);
+    background: var(--surface-muted);
+  }
 }
 
 :host([data-dragging]) .task-reorder-handle {

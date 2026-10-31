@@ -85,13 +85,26 @@
       content: "";
     }
 
-    &:is(:hover, :focus-visible) {
+    &:focus-visible {
       outline: none;
     }
 
-    &:is(:hover, :focus-visible)::before {
+    @media (hover: hover) {
+      &:hover {
+        outline: none;
+      }
+    }
+
+    &:focus-visible::before {
       border-color: var(--control-emphasis-border);
       background: var(--control-subtle-hover-bg);
+    }
+
+    @media (hover: hover) {
+      &:hover::before {
+        border-color: var(--control-emphasis-border);
+        background: var(--control-subtle-hover-bg);
+      }
     }
 
     &:focus-visible::before {
