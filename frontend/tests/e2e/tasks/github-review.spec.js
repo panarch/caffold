@@ -12,6 +12,7 @@ import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { TASK_PERMISSION_FIXTURE } from "../support/task-api-fixture.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
 import { elementHandles } from "../support/element-handles.js";
+import { focusLook } from "../support/focus-look.js";
 import {
   AGENT_MODELS_FIXTURE,
   activeTaskProjection,
@@ -923,6 +924,20 @@ test("opens direct and rendered Pull links through the Pull owner", { tag: "@all
     /Open commit 3333333 on GitHub in a new tab$/,
     commitUrl,
   );
+
+  const links = [pullDetail.locator('a[data-github-pull-commit-index="0"]')];
+  if (testInfo.project.name !== "phone") links.push(pullHeaderLink);
+  for (const link of links) {
+    await link.scrollIntoViewIfNeeded();
+    await link.evaluate((element) => element.blur());
+    await link.hover();
+    const hovered = await focusLook(link);
+    await page.mouse.move(0, 0);
+    await page.keyboard.press("Shift");
+    await link.evaluate((element) => element.focus());
+    expect(await link.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+    expect(await focusLook(link)).toEqual(hovered);
+  }
 });
 
 test("contains Issue list and detail content within the foldable Task pane", { tag: "@foldable" }, async ({

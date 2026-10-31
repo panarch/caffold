@@ -15,6 +15,7 @@ import {
   activateActionHintIntoPopover,
   popoverActionHintDialog,
 } from "../support/action-hints.js";
+import { focusLook } from "../support/focus-look.js";
 import {
   installTaskApiFixture,
   taskDetailFixture,
@@ -736,6 +737,36 @@ test("clears a failed plan read after Refresh succeeds", { tag: "@viewport-indep
   await expect(
     currentPlan.getByRole("button", { name: /^Open plan:/ }),
   ).toBeFocused();
+});
+
+test("shows keyboard focus on a strip segment the way it shows hover", { tag: "@viewport-independent" }, async ({
+  page,
+}, testInfo) => {
+  const workspace = prepareWorkspace(testInfo);
+  writeCurrentDocuments(workspace.absolutePath, {
+    plan: "# Focus fixture\n",
+    checklist: checklistMarkdown(4, 1),
+  });
+  await installTaskApiFixture(page);
+  const detail = detailFor("thread-1", workspace.logicalPath);
+  await installTaskDetails(page, [detail]);
+  await page.goto(`/tasks/thread-1?cwd=${encodeURIComponent(workspace.logicalPath)}`);
+  const projection = currentPlanResponse(page, workspace.logicalPath);
+  await openTaskWithBootstrap(page.locator("caffold-tasks-page"), detail);
+  expect((await (await projection).json()).status).toBe("ready");
+
+  const currentPlan = page.locator("caffold-task-current-plan");
+  for (const name of [/^Open plan:/, /^Open checklist:/]) {
+    const segment = currentPlan.getByRole("button", { name });
+    await segment.evaluate((element) => element.blur());
+    await segment.hover();
+    const hovered = await focusLook(segment);
+    await page.mouse.move(0, 0);
+    await page.keyboard.press("Shift");
+    await segment.evaluate((element) => element.focus());
+    expect(await segment.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+    expect(await focusLook(segment)).toEqual(hovered);
+  }
 });
 
 test("keeps a Task without a plan free of the strip while its updates pause", { tag: "@viewport-independent" }, async ({

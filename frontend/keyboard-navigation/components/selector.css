@@ -20,6 +20,11 @@
   touch-action: pinch-zoom;
 }
 
+/* The selector takes the typed code; it is not a control. */
+.scroll-surface-selector:focus-visible {
+  outline: none;
+}
+
 .scroll-surface-selector::backdrop {
   background: rgb(var(--shadow-rgb) / 4%);
 }
@@ -72,11 +77,10 @@
   content: "";
 }
 
-.scroll-surface-selector-badge:hover {
-  background: var(--primary-control-hover-bg);
-}
-
+.scroll-surface-selector-badge:hover,
 .scroll-surface-selector-badge:focus-visible {
-  outline: 3px solid var(--focus-ring);
-  outline-offset: 2px;
+  border-color: var(--primary-control-bg);
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
 }

@@ -167,9 +167,14 @@
   flex: 0 0 auto;
 }
 
+.note-document-title-picker:hover,
 .note-document-title-picker:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+  outline: none;
+}
+
+.note-document-title-picker:is(:hover, :focus-visible) > span:first-child {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 
 @media (max-width: 899px) {

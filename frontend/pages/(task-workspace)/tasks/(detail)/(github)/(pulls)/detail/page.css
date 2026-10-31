@@ -76,8 +76,11 @@ h3 {
 .github-pull-link:hover,
 .github-pull-link:focus-visible,
 .github-pull-comment-meta a:hover,
-.github-pull-comment-meta a:focus-visible {
+.github-pull-comment-meta a:focus-visible,
+.github-pull-commit a:hover,
+.github-pull-commit a:focus-visible {
   text-decoration: underline;
+  outline: none;
 }
 
 .github-pull-start-button,

@@ -20,6 +20,11 @@
   touch-action: pinch-zoom;
 }
 
+/* The dialog takes the typed code; it is not a control. */
+.action-hint-dialog:focus-visible {
+  outline: none;
+}
+
 .action-hint-dialog::backdrop {
   background: rgb(var(--shadow-rgb) / 4%);
 }
@@ -62,13 +67,12 @@
   content: "";
 }
 
-.action-hint-badge:hover {
-  background: var(--primary-control-hover-bg);
-}
-
+.action-hint-badge:hover,
 .action-hint-badge:focus-visible {
-  outline: 3px solid var(--focus-ring);
-  outline-offset: 2px;
+  border-color: var(--primary-control-bg);
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
 }
 
 .action-hint-badge[hidden] {

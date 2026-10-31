@@ -68,6 +68,12 @@
   text-underline-offset: 0.15em;
 }
 
+.notes-info-popover a:hover,
+.notes-info-popover a:focus-visible {
+  outline: none;
+  text-decoration-thickness: 2px;
+}
+
 .notes-info-actions {
   display: grid;
   justify-items: start;

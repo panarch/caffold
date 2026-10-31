@@ -56,6 +56,12 @@
   text-underline-offset: 0.15em;
 }
 
+.settings-service-status:hover,
+.settings-service-status:focus-visible {
+  outline: none;
+  text-decoration-thickness: 2px;
+}
+
 .settings-content-section > section {
   margin-top: var(--interface-space-10);
 }

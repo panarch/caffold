@@ -83,6 +83,12 @@
   font-size: 0.78rem;
 }
 
+.review-compare-ref-controls select:hover,
+.review-compare-ref-controls select:focus-visible {
+  border-color: var(--border-strong);
+  outline: none;
+}
+
 @media (max-width: 860px) {
   .review-compare-ref-controls {
     display: grid;

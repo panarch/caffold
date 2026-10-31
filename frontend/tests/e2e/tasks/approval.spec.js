@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { activateActionHint } from "../support/action-hints.js";
 import { elementHandles } from "../support/element-handles.js";
+import { focusLook } from "../support/focus-look.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import { canonicalTaskState, captureReviewScreenshot, stabilizeDynamicText } from "../support/task-fixtures.js";
@@ -395,6 +396,16 @@ test("renders permission and network approvals without clipping at appearance ex
   );
   const commandCard = tasksPage.locator(".task-approval-card:has(pre)");
   await expect(permissionCard).toBeVisible();
+  // Tab stops on the command so the keyboard can scroll it sideways.
+  const command = commandCard.locator("pre");
+  await command.evaluate((element) => element.blur());
+  await command.hover();
+  const hovered = await focusLook(command);
+  await page.mouse.move(0, 0);
+  await page.keyboard.press("Shift");
+  await command.evaluate((element) => element.focus());
+  expect(await command.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+  expect(await focusLook(command)).toEqual(hovered);
   await expect(networkCard).toContainText("https://api.github.com");
   await expect(networkCard).not.toContainText("command unavailable");
   await expect(permissionCard.getByRole("button")).toHaveText([

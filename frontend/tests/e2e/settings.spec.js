@@ -6,6 +6,7 @@ import {
   workspaceOcclusionTargets,
   workspaceTargets,
 } from "./support/action-hints.js";
+import { focusLook } from "./support/focus-look.js";
 import {
   installBrowserDefaults,
   mockClaudeStatus,
@@ -2182,6 +2183,14 @@ test("keeps Service status with the page description", { tag: "@all-viewports" }
     await expect(link).toHaveAttribute("href", url);
     await expect(link).toHaveAttribute("target", "_blank");
     await expect(link).toHaveAttribute("rel", "noreferrer");
+    await link.evaluate((element) => element.blur());
+    await link.hover();
+    const hovered = await focusLook(link);
+    await page.mouse.move(0, 0);
+    await page.keyboard.press("Shift");
+    await link.evaluate((element) => element.focus());
+    expect(await link.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+    expect(await focusLook(link)).toEqual(hovered);
     const layout = await settings.locator(".settings-content-section > header").evaluate((header) => {
       const box = (element) => {
         const rect = element.getBoundingClientRect();

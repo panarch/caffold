@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { elementHandles } from "../support/element-handles.js";
+import { focusLook } from "../support/focus-look.js";
 import {
   activateActionHint,
   enterActionHints,
@@ -953,6 +954,27 @@ test("the special key row starts on touch screens and keeps the choice", { tag: 
     "false",
   );
   await expect(terminalRows(page)).toContainText("$");
+
+  // Touch keeps :hover after a tap, so a tapped key keeps its resting look
+  // and only keyboard focus darkens one.
+  const tab = keys.getByRole("button", { name: "Tab" });
+  const resting = await focusLook(keys.getByRole("button", { name: "Down arrow" }));
+  expect((await focusLook(tab)).control.backgroundColor).toBe(
+    resting.control.backgroundColor,
+  );
+  await page.keyboard.press("Shift");
+  await tab.evaluate((element) => element.focus());
+  expect(await tab.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+  const focused = await focusLook(tab);
+  expect(focused.control.outlineStyle).toBe("none");
+  expect(focused.control.backgroundColor).toBe(await tab.evaluate((element) => {
+    const swatch = document.createElement("span");
+    swatch.style.background = "var(--control-hover-bg)";
+    element.after(swatch);
+    const color = getComputedStyle(swatch).backgroundColor;
+    swatch.remove();
+    return color;
+  }));
 
   await page.getByRole("button", { name: "Special keys" }).tap();
   await expect(keys).toBeHidden();
