@@ -241,6 +241,7 @@ impl TaskSessions {
         state.terminal_candidate_turn_id = next_active_turn_id;
         state.conversation = Some(thread);
         state.pending_thread_status = None;
+        state.pending_background_work = None;
         state.permission_mode = settings.permission_mode;
         state.model = settings.model;
         state.reasoning_effort = settings.reasoning_effort;

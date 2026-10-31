@@ -55,6 +55,10 @@ pub(crate) enum SessionEventKind {
     ActivityChanged {
         status: ThreadStatus,
     },
+    /// The agent started work in the background, or the last of it ended.
+    BackgroundWorkChanged {
+        background_work: bool,
+    },
     /// The agent renamed the conversation, or cleared its name.
     TitleChanged {
         title: Option<String>,
@@ -147,6 +151,11 @@ pub(crate) struct Conversation {
     pub(crate) title: Option<String>,
     pub(crate) preview: String,
     pub(crate) status: ThreadStatus,
+    /// Whether the agent says work it sent to the background is still running.
+    ///
+    /// Separate from `status`: an agent can be done with what it was asked,
+    /// and waiting on the person, while that work goes on.
+    pub(crate) background_work: bool,
     pub(crate) cwd: String,
     /// Where the agent persists this conversation, when it exposes that.
     pub(crate) transcript_path: Option<String>,

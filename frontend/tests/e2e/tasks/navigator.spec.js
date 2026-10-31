@@ -601,6 +601,52 @@ test("refreshes persisted identity and order without replacing runtime status", 
   ).toHaveAttribute("data-task-status", "idle");
 });
 
+test("keeps a resting Task's background work when the list reads its stored rows again", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page, {
+    sourceKey: "__taskListRefreshSource",
+    autoOpen: true,
+  });
+  await mockAgentModels(page);
+  const resting = {
+    ...initialNavigatorTask("thread_background_refresh", "Resting Task"),
+    backgroundWork: true,
+  };
+  // The stored row knows nothing the agent reported.
+  const stored = {
+    ...resting,
+    ...canonicalTaskState("notLoaded"),
+    backgroundWork: false,
+    title: "Renamed resting Task",
+    conversationAvailable: false,
+  };
+  let reads = 0;
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    reads += 1;
+    return route.fulfill({
+      json: activeTaskProjection([reads === 1 ? resting : stored]),
+    });
+  });
+
+  await page.goto("/tasks");
+  const row = page.locator(
+    'caffold-task-navigator .task-row[data-thread-id="thread_background_refresh"]',
+  );
+  await expect(row).toHaveAttribute("data-task-status", "background");
+
+  await page.evaluate(() => {
+    window.__taskListRefreshSource.emit("task-list-refresh", {});
+  });
+
+  await expect(row.locator(".task-row-title")).toHaveText("Renamed resting Task");
+  await expect(row).toHaveAttribute("data-task-status", "background");
+  await expect(
+    row.locator('.task-status-chip[data-status="background"] .task-status-icon'),
+  ).toBeVisible();
+  await expect(row.locator(".task-row-time")).toHaveCount(0);
+});
+
 test("hydrates a cached Task with the task-list stream bootstrap snapshot", { tag: "@all-viewports" }, async ({
   page,
 }) => {
@@ -1407,6 +1453,93 @@ test("starts active Task navigator spinners at independent phases", { tag: "@all
   await expect(detailSpinner).toHaveCount(1);
   await expect(detailSpinner).toHaveCSS("animation-name", "caffold-busy-spin");
   await expect(detailSpinner).toHaveCSS("animation-delay", "0s");
+});
+
+test("shows a resting Task with background work as a still circle, and a working one as a spinner", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await mockAgentModels(page);
+  const now = Date.now();
+  const task = (suffix, state) => ({
+    id: `thread_background_${suffix}`,
+    threadId: `thread_background_${suffix}`,
+    ...state,
+    backgroundWork: true,
+    title: `Background work ${suffix}`,
+    preview: `Background work ${suffix}`,
+    cwd: "frontend/tests/e2e/fixtures/home",
+    cwdPath: "frontend/tests/e2e/fixtures/home",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastCompletedMs: now,
+    lastEventSummary: `Background work ${suffix}`,
+    unseen: false,
+  });
+  const resting = task("resting", canonicalTaskState("idle", { latestTurnStatus: "completed" }));
+  const working = task(
+    "working",
+    canonicalTaskState("active", { turnId: "turn_background_working", latestTurnStatus: "inProgress" }),
+  );
+  const detail = {
+    revision: 1,
+    eventRevision: 1,
+    threadId: resting.threadId,
+    syncState: "ready",
+    task: resting,
+    events: [],
+    eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
+    pendingApprovals: [],
+  };
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([resting, working]) }),
+  );
+  await page.route(/\/api\/tasks\/thread_background_resting(?:\?|$)/, (route) =>
+    route.fulfill({ json: detail }),
+  );
+
+  await page.goto("/tasks");
+
+  const restingRow = page.locator(
+    'caffold-task-navigator .task-row[data-thread-id="thread_background_resting"]',
+  );
+  await expect(restingRow).toHaveAttribute("data-task-status", "background");
+  await expect(restingRow).not.toHaveAttribute("aria-busy", "true");
+  const restingChip = restingRow.locator('.task-status-chip[data-status="background"]');
+  await expect(restingChip).toHaveAttribute("aria-label", "background");
+  await expect(restingChip.locator(".task-status-icon")).toBeVisible();
+  await expect(restingChip.locator(".task-status-spinner")).toHaveCount(0);
+  await expect(restingRow.locator(".task-row-time")).toHaveCount(0);
+
+  const workingRow = page.locator(
+    'caffold-task-navigator .task-row[data-thread-id="thread_background_working"]',
+  );
+  await expect(workingRow).toHaveAttribute("data-task-status", "running");
+  await expect(workingRow.locator(".task-status-spinner")).toBeVisible();
+
+  const runningChip = workingRow.locator(".task-status-chip");
+  const neutral = await taskPresentation(runningChip);
+  expect(await taskPresentation(restingChip)).toEqual(
+    expect.objectContaining({
+      backgroundColor: neutral.backgroundColor,
+      color: neutral.color,
+      height: neutral.height,
+      width: neutral.width,
+    }),
+  );
+
+  await page.goto("/tasks/thread_background_resting");
+  await emitTaskDetailBootstrap(page, detail);
+  const infoButton = page.locator("caffold-task-detail-info .task-detail-info-button");
+  await expect(infoButton).toHaveAttribute("aria-label", "Task details, background work");
+  await expect(infoButton).toHaveAttribute("title", "Status: background work");
+  await expect(
+    infoButton.locator('.task-status-chip[data-status="background"] .task-status-icon'),
+  ).toBeVisible();
 });
 
 test("paints the Task details status icon over the button's surface", { tag: "@all-viewports" }, async ({

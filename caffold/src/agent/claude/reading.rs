@@ -142,6 +142,7 @@ impl ClaudeClient {
                     session.state.lock().await.reported_tasks.push(task_id);
                 }
             }
+            Some("background_tasks_changed") => self.handle_background_tasks(session, system).await,
             // Claude reports the rest of its background work, hooks, and other
             // optional process details on system frames too. None of them is
             // session activity or conversation history.
@@ -283,6 +284,35 @@ impl ClaudeClient {
             }
         }
         self.report_activity(session).await;
+    }
+
+    /// Note whether Claude has work running in the background, from the
+    /// whole set it sends whenever that set changes.
+    ///
+    /// The set is not paired with the task frames that start and end each
+    /// task: a missed end would otherwise leave the work showing as running.
+    async fn handle_background_tasks(&self, session: &Arc<Session>, system: SystemFrame) {
+        let Some(tasks) = system.tasks.as_ref().and_then(Value::as_array) else {
+            self.publish(ClaudeRuntimeEvent::Diagnostic {
+                message: format!(
+                    "claude {} reported its background tasks without listing them",
+                    session.id
+                ),
+            });
+            return;
+        };
+        let background_work = !tasks.is_empty();
+        {
+            let mut state = session.state.lock().await;
+            if state.background_work == background_work {
+                return;
+            }
+            state.background_work = background_work;
+        }
+        self.report(
+            &session.id,
+            SessionEventKind::BackgroundWorkChanged { background_work },
+        );
     }
 
     /// Draw the compaction the agent says it is running, and finish it when
@@ -628,7 +658,7 @@ impl ClaudeClient {
 
     async fn handle_exit(&self, session: &Arc<Session>, code: Option<i32>) {
         let exited_at_ms = now_ms();
-        let ended = {
+        let (ended, had_background_work) = {
             let mut state = session.state.lock().await;
             state.ended = true;
             move_unowned_turn(&mut state, UnownedTurnEvent::Ended);
@@ -640,7 +670,10 @@ impl ClaudeClient {
             } else {
                 TurnStatus::Failed
             };
-            end_active_turn(&mut state, status, exited_at_ms)
+            (
+                end_active_turn(&mut state, status, exited_at_ms),
+                state.background_work,
+            )
         };
         session.unowned_turn_settled.notify_waiters();
         self.publish(ClaudeRuntimeEvent::Diagnostic {
@@ -658,6 +691,14 @@ impl ClaudeClient {
                 status: ThreadStatus::Idle,
             },
         );
+        if had_background_work {
+            self.report(
+                &session.id,
+                SessionEventKind::BackgroundWorkChanged {
+                    background_work: false,
+                },
+            );
+        }
     }
 
     pub(super) async fn record_item(
@@ -1748,6 +1789,182 @@ mod tests {
             session.state.lock().await.unowned_turn,
             Some(UnownedTurn::Unnamed)
         );
+    }
+
+    #[tokio::test]
+    async fn the_background_tasks_claude_lists_are_the_conversations_background_work() {
+        // As Claude Code 2.1.292 says it: the whole set, each time it changes.
+        let (client, runner, mut events) = watching().await;
+
+        runner
+            .say(
+                SESSION,
+                background_tasks_frame(json!([background_command()])),
+            )
+            .await;
+
+        assert_eq!(
+            next_session_event(&mut events, "background work change").await,
+            SessionEventKind::BackgroundWorkChanged {
+                background_work: true
+            }
+        );
+        let conversation = client.watched_conversation(SESSION).await.expect("watched");
+        assert!(conversation.background_work);
+
+        runner.say(SESSION, background_tasks_frame(json!([]))).await;
+
+        assert_eq!(
+            next_session_event(&mut events, "background work change").await,
+            SessionEventKind::BackgroundWorkChanged {
+                background_work: false
+            }
+        );
+        let conversation = client.watched_conversation(SESSION).await.expect("watched");
+        assert!(!conversation.background_work);
+    }
+
+    #[tokio::test]
+    async fn background_work_is_reported_only_when_it_starts_and_when_the_last_of_it_ends() {
+        let (_client, runner, mut events) = watching().await;
+        runner
+            .say(
+                SESSION,
+                background_tasks_frame(json!([background_subagent(), background_command()])),
+            )
+            .await;
+        assert_eq!(
+            next_session_event(&mut events, "background work change").await,
+            SessionEventKind::BackgroundWorkChanged {
+                background_work: true
+            }
+        );
+
+        // As when a stop ends the subagent and leaves the command running,
+        // then a command runs in the foreground, which Claude starts as a
+        // task but does not list.
+        runner
+            .say(
+                SESSION,
+                background_tasks_frame(json!([background_command()])),
+            )
+            .await;
+        runner
+            .say(
+                SESSION,
+                json!({ "type": "system", "subtype": "task_started", "task_id": "btvuawb21", "tool_use_id": "toolu_01DxhgMwJJnYJVTWHpKmUtyb", "task_type": "local_bash", "is_backgrounded": false, "session_id": SESSION }),
+            )
+            .await;
+        runner.say(SESSION, background_tasks_frame(json!([]))).await;
+
+        assert_eq!(
+            next_session_event(&mut events, "background work change").await,
+            SessionEventKind::BackgroundWorkChanged {
+                background_work: false
+            },
+            "nothing in between was a change"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_agent_going_idle_leaves_its_background_work_running() {
+        // The command Claude backgrounded outlives the turn that started it.
+        let (client, runner, mut events) = watching().await;
+        runner
+            .say(
+                SESSION,
+                background_tasks_frame(json!([background_command()])),
+            )
+            .await;
+        next_session_event(&mut events, "background work change").await;
+
+        runner.say(SESSION, session_state_frame("idle")).await;
+        next_session_event(&mut events, "activity change").await;
+
+        let conversation = client.watched_conversation(SESSION).await.expect("watched");
+        assert_eq!(conversation.status, ThreadStatus::Idle);
+        assert!(conversation.background_work);
+    }
+
+    #[tokio::test]
+    async fn an_agent_that_exits_leaves_no_background_work() {
+        // The set is the process's own.
+        let (_client, runner, mut events) = watching().await;
+        runner
+            .say(
+                SESSION,
+                background_tasks_frame(json!([background_command()])),
+            )
+            .await;
+        next_session_event(&mut events, "background work change").await;
+
+        runner.exit(SESSION, Some(0)).await;
+
+        assert_eq!(
+            next_session_event(&mut events, "background work change").await,
+            SessionEventKind::BackgroundWorkChanged {
+                background_work: false
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn a_session_taken_up_learns_its_background_work_right_after_hello() {
+        // Claude answers an `initialize` sent to a process already running by
+        // sending its set right behind the answer, which is how a backend that
+        // replaced another learns of work started before it.
+        let (client, runner) = ClaudeClient::mock();
+        let mut events = client.subscribe();
+        runner
+            .greet_next_session_with(vec![
+                init_frame(SESSION),
+                background_tasks_frame(json!([background_command()])),
+            ])
+            .await;
+
+        client
+            .open_conversation(SESSION, CWD, &options("opus"))
+            .await
+            .expect("the conversation opens");
+
+        assert_eq!(
+            next_session_event(&mut events, "background work change").await,
+            SessionEventKind::BackgroundWorkChanged {
+                background_work: true
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn a_set_sent_without_its_tasks_changes_nothing() {
+        let (client, runner, mut events) = watching().await;
+
+        runner
+            .say(
+                SESSION,
+                json!({ "type": "system", "subtype": "background_tasks_changed", "session_id": SESSION }),
+            )
+            .await;
+
+        let message = next_diagnostic(&mut events).await;
+        assert!(message.contains("without listing them"), "{message}");
+        let conversation = client.watched_conversation(SESSION).await.expect("watched");
+        assert!(!conversation.background_work);
+    }
+
+    /// Claude's whole set of background tasks, as it sends it.
+    fn background_tasks_frame(tasks: Value) -> Value {
+        json!({ "type": "system", "subtype": "background_tasks_changed", "tasks": tasks, "uuid": "tasks-1", "session_id": SESSION })
+    }
+
+    /// A command Claude runs in the background, as its set lists it.
+    fn background_command() -> Value {
+        json!({ "task_id": "b4muz4nik", "run_id": "0mvvsf0vu-a6e2e1c3", "task_type": "local_bash", "description": "sleep 8; echo bg-done" })
+    }
+
+    /// A subagent Claude runs in the background, as its set lists it.
+    fn background_subagent() -> Value {
+        json!({ "task_id": "a003d84dd2ce0c700", "run_id": "0mvvsf1en-628b362b", "task_type": "local_agent", "description": "Run sleep and echo command" })
     }
 
     /// What the agent has filed once the subagent handed its result back: the

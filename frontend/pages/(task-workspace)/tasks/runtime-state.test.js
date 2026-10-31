@@ -48,6 +48,32 @@ test("projects only canonical thread status into task lifecycle UI", () => {
   assert.equal(formatTaskStatus(task("idle")), "idle");
 });
 
+test("background work shows only while the agent is otherwise idle", () => {
+  const withBackgroundWork = (base) => ({ ...base, backgroundWork: true });
+  const background = {
+    status: "background",
+    label: "background",
+    icon: "CircleDashed",
+  };
+
+  assert.deepEqual(taskStatusView(withBackgroundWork(task("idle"))), background);
+  assert.equal(formatTaskStatus(withBackgroundWork(task("idle"))), "background work");
+  assert.equal(isTaskActivelyWorking(withBackgroundWork(task("idle"))), false);
+
+  assert.equal(taskStatusView(withBackgroundWork(task("active"))).status, "running");
+  assert.equal(
+    taskStatusView(withBackgroundWork(task("active", ["waitingOnApproval"]))).status,
+    "waiting_for_approval",
+  );
+  assert.equal(
+    taskStatusView(withBackgroundWork(task("active", ["waitingOnUserInput"]))).status,
+    "waiting_on_user_input",
+  );
+  assert.equal(taskStatusView(withBackgroundWork(task("systemError"))).status, "failed");
+  assert.equal(taskStatusView(withBackgroundWork(task("notLoaded"))), null);
+  assert.equal(taskStatusView({ ...task("idle"), backgroundWork: false }), null);
+});
+
 test("transport state never masks canonical Task status", () => {
   const active = task("active");
 

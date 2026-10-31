@@ -145,6 +145,13 @@ pub(crate) struct SystemFrame {
     /// Whether a `task_started` task runs on past the turn that started it.
     #[serde(default)]
     pub(crate) is_backgrounded: bool,
+    /// Present on `background_tasks_changed`: every background task Claude
+    /// has running, in place of the set it sent before.
+    ///
+    /// Read as any value, so a field of the same name on another system frame
+    /// cannot make that frame unreadable.
+    #[serde(default)]
+    pub(crate) tasks: Option<Value>,
     #[serde(default)]
     pub(crate) uuid: Option<String>,
     /// Present on `status`: what the agent is busy with, and nothing once it

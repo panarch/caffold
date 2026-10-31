@@ -205,6 +205,7 @@ impl TaskEvents {
                 now_ms(),
             )),
             SessionEventKind::ConversationStarted { .. }
+            | SessionEventKind::BackgroundWorkChanged { .. }
             | SessionEventKind::TitleChanged { .. }
             | SessionEventKind::SettingsChanged { .. }
             | SessionEventKind::UsageReported { .. }
@@ -2423,6 +2424,7 @@ mod tests {
             title: None,
             preview: String::new(),
             status: ThreadStatus::Idle,
+            background_work: false,
             cwd: "/tmp".to_string(),
             transcript_path: None,
             created_at_ms: 1,

@@ -548,9 +548,10 @@ same structured shape:
   transport fails, Detail may use one REST fallback to provide readable content
   while reporting that live updates are unavailable.
 
-List and header badges use only `threadStatus`. Within active flags,
-`waitingOnApproval` takes display precedence over `waitingOnUserInput`, while
-the original flag array remains unchanged. Turn completion, failure, and
+A Codex Task's list and header badges use only `threadStatus`: Codex reports
+no background work, so its `backgroundWork` is always false. Within active
+flags, `waitingOnApproval` takes display precedence over `waitingOnUserInput`,
+while the original flag array remains unchanged. Turn completion, failure, and
 interruption are rendered inside that conversation turn rather than replacing
 the thread badge. Item changes and diff reports advance the in-memory session
 revision and may enter the common projection as `task-event` deltas without
@@ -633,12 +634,12 @@ not stored with the Section. Rows without a complete placement are returned in
 an explicit recovery group instead of being silently dropped.
 
 Every Active list row, whether in this response or on the Task List channel,
-carries only the Task's ID, display name, `threadStatus`, unseen state, last
-completion time, recency, update time, and worktree mark; a recovery-group row
-adds its recovery reason and actions. The mark is true when the Task's
-`managed_worktrees` record is Ready, so it names only worktrees Caffold made;
-the list asks neither Git nor the agent for it. Branch, HEAD, and cwd belong to
-Task Detail.
+carries only the Task's ID, display name, `threadStatus`, background work,
+unseen state, last completion time, recency, update time, and worktree mark; a
+recovery-group row adds its recovery reason and actions. The mark is true when
+the Task's `managed_worktrees` record is Ready, so it names only worktrees
+Caffold made; the list asks neither Git nor the agent for it. Branch, HEAD, and
+cwd belong to Task Detail.
 
 The Task List live channel complements that persisted identity with process-local
 runtime state. Every agent answers from what it already has: the managed Claude

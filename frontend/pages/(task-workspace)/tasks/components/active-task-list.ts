@@ -1729,8 +1729,8 @@ function composerSettings(
     : null;
 }
 
-// A Task the agent has not been asked about yet keeps the status the stream
-// last reported for it.
+// A Task the agent has not been asked about yet keeps the status and the
+// background work the stream last reported for it.
 function withRuntime<T extends ListedTask>(
   cached: T,
   runtime: ListedTask | undefined,
@@ -1745,6 +1745,7 @@ function withRuntime<T extends ListedTask>(
   return {
     ...cached,
     threadStatus: runtime.threadStatus,
+    backgroundWork: runtime.backgroundWork,
     recencyMs: runtime.recencyMs,
     updatedMs: runtime.updatedMs,
   };

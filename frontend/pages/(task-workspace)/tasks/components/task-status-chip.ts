@@ -15,7 +15,8 @@ const SPINNER_TURN_MS = 800;
 
 /**
  * Where a Task stands, in a round slot: a spinner while it runs, an icon while
- * it waits on the person or has failed.
+ * it waits on the person, has failed, or rests with work still running in the
+ * background.
  *
  * The host is the chip, so its owner places it by a class of its own and
  * shows it only for a Task that has a status to show (`taskStatusView`). An
@@ -25,7 +26,10 @@ const SPINNER_TURN_MS = 800;
 @customElement("caffold-task-status-chip")
 export class CaffoldTaskStatusChip extends CaffoldElement {
   @property({ attribute: false })
-  accessor task: { threadStatus: TaskThreadStatus } | null = null;
+  accessor task: {
+    threadStatus: TaskThreadStatus;
+    backgroundWork: boolean;
+  } | null = null;
   @property({ type: Boolean })
   accessor staggered = false;
 

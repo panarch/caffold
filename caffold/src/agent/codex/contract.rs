@@ -68,6 +68,8 @@ impl From<&CodexThread> for Conversation {
             title: thread.name.clone(),
             preview: thread.preview.clone(),
             status: thread.status.clone().into(),
+            // Codex reports no work of its own running outside a turn.
+            background_work: false,
             cwd: thread.cwd.clone(),
             transcript_path: thread.path.clone(),
             // Codex counts in seconds and Caffold in milliseconds. Converting
@@ -1877,6 +1879,20 @@ mod tests {
 
             assert_eq!(converted, expected, "{status:?} changed on the wire");
         }
+    }
+
+    #[test]
+    fn a_codex_thread_reports_no_background_work() {
+        let thread: CodexThread = serde_json::from_value(json!({
+            "id": "thread_1",
+            "preview": "",
+            "cwd": "/tmp",
+            "status": { "type": "idle" },
+            "turns": []
+        }))
+        .expect("the fixture decodes as a Codex thread");
+
+        assert!(!Conversation::from(&thread).background_work);
     }
 
     #[test]

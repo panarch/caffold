@@ -403,7 +403,8 @@ mod tests {
     };
 
     /// Everything an Active list row says, and nothing Task Detail reads.
-    const ACTIVE_LIST_ROW_KEYS: [&str; 8] = [
+    const ACTIVE_LIST_ROW_KEYS: [&str; 9] = [
+        "backgroundWork",
         "lastCompletedMs",
         "recencyMs",
         "threadId",

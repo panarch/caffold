@@ -55,6 +55,23 @@ test("turns a spinner for a running Task, in step unless the chip is staggered",
   );
 });
 
+test("draws an idle Task with background work as an icon, not a spinner", () => {
+  const chip = chipHost({
+    task: { threadStatus: { type: "idle" }, backgroundWork: true },
+    staggered: true,
+  });
+
+  const html = draw(chip);
+
+  assert.deepEqual(chip.attributes, {
+    "data-status": "background",
+    title: "background",
+    "aria-label": "background",
+  });
+  assert.equal(html, '<span class="sr-only">background</span>');
+  assert.equal(chip.spinnerDelayMs, null);
+});
+
 test("a Task with no status to show draws nothing and leaves the host unnamed", () => {
   const chip = chipHost({ task: activeTask(["waitingOnUserInput"]) });
   draw(chip);
