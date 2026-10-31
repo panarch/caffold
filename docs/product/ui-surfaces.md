@@ -450,8 +450,12 @@ the bar becomes a column on the terminal's right with **Show header** on top
 and **Leave terminal**, which leaves as the terminal button does. Each browser
 remembers the choice for every terminal it shows; other surfaces always show
 the header.
-The special key row — Esc, Tab, a one-shot Ctrl, and the four arrows — starts
-shown on touch screens and remembers the choice per browser.
+The special key row — Esc, Tab, a one-shot Ctrl, the four arrows, Copy, and
+Paste — starts shown on touch screens and remembers the choice per browser.
+On a touch screen a finger held on a word selects it and, without lifting,
+drags to select more; a tap clears the selection. Copy, available while text
+is selected, copies it and clears the selection, and Paste pastes the
+clipboard into the shell.
 A terminal shown on another screen offers **Open here**; a Task or Section
 without a running terminal offers **Open terminal**. A screen that reappears on
 its own, by reload, link, Back or Forward, or a returning browser tab, attaches

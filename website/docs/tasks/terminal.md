@@ -45,11 +45,16 @@ use the mouse wheel, touch, or <kbd>Shift</kbd>+<kbd>PageUp</kbd> and
 <kbd>Shift</kbd>+<kbd>PageDown</kbd>; a terminal keeps its last 5,000 lines.
 
 On a phone or tablet, a row of special keys sits under the terminal:
-<kbd>Esc</kbd>, <kbd>Tab</kbd>, <kbd>Ctrl</kbd>, and the arrows. <kbd>Ctrl</kbd>
-applies to the next key you press, so <kbd>Ctrl</kbd> and then <kbd>C</kbd>
-stops a command. The keyboard button shows or hides the row, and each browser
-remembers your choice. While the on-screen keyboard is open, the terminal ends
-above it, so the prompt and the special key row stay in sight.
+<kbd>Esc</kbd>, <kbd>Tab</kbd>, <kbd>Ctrl</kbd>, the arrows, **Copy**, and
+**Paste**. <kbd>Ctrl</kbd> applies to the next key you press, so <kbd>Ctrl</kbd>
+and then <kbd>C</kbd> stops a command. The keyboard button shows or hides the
+row, and each browser remembers your choice. While the on-screen keyboard is
+open, the terminal ends above it, so the prompt and the special key row stay in
+sight.
+
+On a touch screen, press and hold a word to select it, and drag to select more.
+**Copy** copies the selection and **Paste** pastes into the shell. Tap the
+terminal to clear the selection.
 
 ![The terminal on a phone, with the special key row](../assets/screenshots/terminal-phone.png)
 

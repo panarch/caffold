@@ -44,8 +44,9 @@ boundaries.
   off;
 - one shell terminal per Task and per Section in the Detail body, kept running
   by the backend so a browser can leave it and return to the same shell and
-  screen from any device, with `⌘J` or `` Ctrl+` `` to enter and leave it and a
-  special key row for touch screens;
+  screen from any device, with `⌘J` or `` Ctrl+` `` to enter and leave it and,
+  for touch screens, a special key row with Copy and Paste and text selection
+  by a held finger;
 - separate Codex, Claude, and Grok Settings diagnostics, including Claude
   account, plan usage, and runner state, and the Grok executable, leader,
   connection, account, and plan usage, as each CLI reports them;

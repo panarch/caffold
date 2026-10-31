@@ -30,9 +30,13 @@ import {
   containsAcrossShadowRoots,
   focusedElement,
 } from "#app/shadow-roots.js";
-import type { TerminalViewInputDetail } from "#components/terminal-view.js";
+import type {
+  TerminalViewInputDetail,
+  TerminalViewSelectionDetail,
+} from "#components/terminal-view.js";
 import type {
   CaffoldTerminalSpecialKeys,
+  TerminalClipboardDetail,
   TerminalSpecialKeyDetail,
 } from "./components/special-keys.js";
 import { TerminalConnection } from "./page/connection.js";
@@ -289,6 +293,7 @@ export class CaffoldTerminalPage extends CaffoldElement {
           ?hidden=${!showsTerminal}
           @caffold:terminal-view-input=${this.sendInput}
           @caffold:terminal-view-resize=${this.resizeTerminal}
+          @caffold:terminal-view-selection=${this.selectionChanged}
         ></caffold-terminal-view>
         <div class="terminal-page-notice" ?hidden=${!notice}>
           <p data-terminal-notice-message>${notice?.message}</p>
@@ -315,6 +320,7 @@ export class CaffoldTerminalPage extends CaffoldElement {
         ${drawn(this.specialKeys)}
         ?hidden=${!this.specialKeysShown}
         @caffold:terminal-special-key=${this.sendSpecialKey}
+        @caffold:terminal-clipboard=${this.useClipboard}
       ></caffold-terminal-special-keys>
     `;
   }
@@ -505,6 +511,65 @@ export class CaffoldTerminalPage extends CaffoldElement {
     });
     if (sequence && this.state.node === TERMINAL_NODE.LIVE) {
       this.terminalView.value?.sendInput(sequence);
+    }
+  }
+
+  private selectionChanged(event: CustomEvent<TerminalViewSelectionDetail>) {
+    const keys = this.specialKeys.value;
+    if (keys) {
+      keys.copyAvailable = event.detail.hasSelection;
+    }
+  }
+
+  private useClipboard(event: CustomEvent<TerminalClipboardDetail>) {
+    event.stopPropagation();
+    if (event.detail.action === "copy") {
+      void this.copySelection();
+    } else {
+      void this.pasteClipboard();
+    }
+  }
+
+  // Puts the selection on the clipboard, then clears it unless another
+  // selection took its place meanwhile.
+  private async copySelection() {
+    const view = this.terminalView.value;
+    const text = view?.selectionText() ?? "";
+    if (!view || !text) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      this.specialKeys.value?.showCopyResult(false);
+      return;
+    }
+    if (view.selectionText() === text) {
+      view.clearSelection();
+    }
+    this.specialKeys.value?.showCopyResult(true);
+  }
+
+  // Sends the clipboard to the shell, if the connection it was read for is
+  // still the live one.
+  private async pasteClipboard() {
+    if (this.state.node !== TERMINAL_NODE.LIVE) {
+      return;
+    }
+    const { generation } = this.state;
+    let text: string;
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      this.specialKeys.value?.showPasteFailure();
+      return;
+    }
+    if (
+      text &&
+      generation === this.state.generation &&
+      this.state.node === TERMINAL_NODE.LIVE
+    ) {
+      this.terminalView.value?.paste(text);
     }
   }
 

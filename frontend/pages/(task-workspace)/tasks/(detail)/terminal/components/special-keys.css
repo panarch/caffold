@@ -1,6 +1,7 @@
+/* Nine keys share the row's width equally and narrow together. */
 :host {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(9, minmax(0, 1fr));
   gap: var(--interface-space-2);
   padding: var(--interface-space-2) var(--interface-space-3);
   border-top: 1px solid var(--border);
@@ -30,6 +31,19 @@
   background: var(--surface-muted);
 }
 
+.terminal-special-key[data-clipboard-result="copied"] {
+  color: var(--success);
+}
+
+.terminal-special-key[data-clipboard-result="failed"] {
+  color: var(--danger);
+}
+
+.terminal-special-key:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .terminal-special-key:focus-visible {
   background: var(--control-hover-bg);
   outline: none;
@@ -38,7 +52,14 @@
 /* Touch keeps :hover after a tap, so only a hover-capable pointer takes the
    hover colour and a tapped key does not look held. */
 @media (hover: hover) {
-  .terminal-special-key:hover {
+  .terminal-special-key:hover:not(:disabled) {
     background: var(--control-hover-bg);
   }
+}
+
+.terminal-special-key-icon {
+  display: block;
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
+  margin-inline: auto;
 }
