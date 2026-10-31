@@ -92,6 +92,79 @@ test("keeps the order it opened with while Tasks keep moving", { tag: "@viewport
   ]);
 });
 
+test("keeps running spinner phases through updates and reopening", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const tasks = switcherTasks().map((task) => ({
+    ...task,
+    ...canonicalTaskState("active"),
+    unseen: false,
+  }));
+  await installSwitcherFixture(page, tasks);
+  await page.goto("/tasks");
+
+  await listSwitcherOpener(page).click();
+  const dialog = page.locator("caffold-task-switcher-dialog > dialog");
+  await expect(dialog).toBeVisible();
+  const spinners = dialog.locator(".task-status-spinner");
+  const phases = () => spinners.evaluateAll((elements) => elements.map((spinner) => {
+    const style = getComputedStyle(spinner);
+    return {
+      delay: style.animationDelay,
+      duration: style.animationDuration,
+      name: style.animationName,
+    };
+  }));
+  await expect(spinners).toHaveCount(3);
+  const initial = await phases();
+  for (const phase of initial) {
+    expect(phase.name).toBe("caffold-busy-spin");
+    expect(phase.duration).toBe("0.8s");
+    expect(Number.parseFloat(phase.delay)).toBeLessThan(0);
+    expect(Number.parseFloat(phase.delay)).toBeGreaterThanOrEqual(-0.8);
+  }
+
+  const row = dialog.locator('[data-thread-id="switcher_middle"]');
+  const retainedSpinner = await row.locator(".task-status-spinner").elementHandle();
+  const updated = { ...tasks[1], title: "Renamed running task" };
+  await page.evaluate((task) => {
+    window.__taskListEventSource.emit("task-updated", task);
+  }, activeListTask(updated));
+  await expect(row.locator(".task-switcher-row-title")).toHaveText(updated.title);
+  expect(await phases()).toEqual(initial);
+  expect(await row.locator(".task-status-spinner").evaluate(
+    (spinner, retained) => spinner === retained,
+    retainedSpinner,
+  )).toBe(true);
+
+  await dialog.getByRole("button", { name: "Close task switcher", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await listSwitcherOpener(page).click();
+  await expect(dialog).toBeVisible();
+  expect(await phases()).toEqual(initial);
+  expect(await row.locator(".task-status-spinner").evaluate(
+    (spinner, retained) => spinner === retained,
+    retainedSpinner,
+  )).toBe(true);
+
+  await page.evaluate((task) => {
+    window.__taskListEventSource.emit("task-updated", task);
+  }, activeListTask({ ...updated, ...canonicalTaskState("idle") }));
+  await expect(row.locator(".task-status-spinner")).toHaveCount(0);
+
+  await page.evaluate((task) => {
+    window.__taskListEventSource.emit("task-updated", task);
+  }, activeListTask(updated));
+  const restarted = row.locator(".task-status-spinner");
+  await expect(restarted).toHaveCount(1);
+  await expect(restarted).toHaveCSS("animation-name", "caffold-busy-spin");
+  const delay = Number.parseFloat(await restarted.evaluate(
+    (spinner) => getComputedStyle(spinner).animationDelay,
+  ));
+  expect(delay).toBeLessThan(0);
+  expect(delay).toBeGreaterThanOrEqual(-0.8);
+});
+
 test("stays out of Settings, which never loads the Task list", { tag: "@viewport-independent" }, async ({
   page,
 }) => {

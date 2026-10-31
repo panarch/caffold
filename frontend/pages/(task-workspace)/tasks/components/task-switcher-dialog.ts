@@ -299,6 +299,7 @@ function rowMeta(task: ListedTask) {
     return html`<caffold-task-status-chip
       class="task-switcher-row-meta task-switcher-row-status"
       .task=${task}
+      staggered
     ></caffold-task-status-chip>`;
   }
   const ms = taskCompletedMs(task);
