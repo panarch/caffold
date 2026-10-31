@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { elementHandles } from "../support/element-handles.js";
+import { focusLook } from "../support/focus-look.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import { installTaskReviewFixture } from "../support/task-review-fixture.js";
 import {
@@ -829,6 +830,14 @@ test("names the work an agent did that Caffold draws no surface for", { tag: "@a
     "caffold-task-work-details > details > summary",
   );
   await workSummary.scrollIntoViewIfNeeded();
+  await workSummary.evaluate((element) => element.blur());
+  await workSummary.hover();
+  const hovered = await focusLook(workSummary);
+  await page.mouse.move(0, 0);
+  await page.keyboard.press("Shift");
+  await workSummary.evaluate((element) => element.focus());
+  expect(await workSummary.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+  expect(await focusLook(workSummary)).toEqual(hovered);
   await workSummary.click();
 
   const toolCalls = tasksPage.locator(

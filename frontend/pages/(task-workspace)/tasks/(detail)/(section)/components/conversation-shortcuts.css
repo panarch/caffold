@@ -54,11 +54,7 @@
 .section-conversations-action:hover,
 .section-conversations-action:focus-visible {
   background: var(--control-hover-bg);
-}
-
-.section-conversations-action:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -2px;
+  outline: none;
 }
 
 .section-conversations-action:disabled {

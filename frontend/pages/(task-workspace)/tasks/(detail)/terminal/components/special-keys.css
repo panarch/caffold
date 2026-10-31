@@ -29,3 +29,16 @@
   border-color: var(--border-strong);
   background: var(--surface-muted);
 }
+
+.terminal-special-key:focus-visible {
+  background: var(--control-hover-bg);
+  outline: none;
+}
+
+/* Touch keeps :hover after a tap, so only a hover-capable pointer takes the
+   hover colour and a tapped key does not look held. */
+@media (hover: hover) {
+  .terminal-special-key:hover {
+    background: var(--control-hover-bg);
+  }
+}

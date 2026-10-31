@@ -95,6 +95,12 @@
   line-height: var(--code-line-height);
 }
 
+.task-approval-command:hover,
+.task-approval-command:focus-visible {
+  border-color: var(--border-strong);
+  outline: none;
+}
+
 .task-approval-details {
   display: grid;
   gap: var(--interface-space-3);

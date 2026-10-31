@@ -143,6 +143,12 @@
   text-underline-offset: 0.15em;
 }
 
+.settings-about-updates dd > a:hover,
+.settings-about-updates dd > a:focus-visible {
+  outline: none;
+  text-decoration-thickness: 2px;
+}
+
 .settings-about-updates button {
   position: relative;
   isolation: isolate;

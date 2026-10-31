@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
+import { focusLook } from "./support/focus-look.js";
 
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
@@ -339,6 +340,36 @@ test("segmented control offers the choices other than the current one as Action 
     onChanges: [["review:navigator-axis:choice:file%20path", "Show Files"]],
     onFiles: [["review:navigator-axis:choice:changes", "Select Changes"]],
   });
+});
+
+test("segmented control shows keyboard focus on a choice the way it shows hover", { tag: "@viewport-independent" }, async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("caffold-task-workspace")).toBeVisible();
+  await page.evaluate(() => customElements.whenDefined("caffold-segmented-control"));
+  await page.evaluate(async () => {
+    const control = document.createElement("caffold-segmented-control");
+    control.style.cssText = "position: fixed; top: 8rem; left: 50%; z-index: 10;";
+    document.body.append(control);
+    control.setSnapshot({
+      label: "Review navigator",
+      selected: "changes",
+      choices: [{ value: "changes", label: "Changes" }, { value: "files", label: "Files" }],
+    });
+    await control.updateComplete;
+  });
+  const control = page.locator("body > caffold-segmented-control");
+  // The current choice and the other one each have a face of their own.
+  for (const name of ["Changes", "Files"]) {
+    const choice = control.getByRole("button", { name });
+    await choice.evaluate((element) => element.blur());
+    await choice.hover();
+    const hovered = await focusLook(choice, "span");
+    await page.mouse.move(0, 0);
+    await page.keyboard.press("Shift");
+    await choice.evaluate((element) => element.focus());
+    expect(await choice.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+    expect(await focusLook(choice, "span")).toEqual(hovered);
+  }
 });
 
 test("segmented control keeps its button rule inside its shadow root and the document's button rules out", { tag: "@viewport-independent" }, async ({ page }) => {

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { actionHintBadgePresentation, workspaceOcclusionTargets } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { focusLook } from "../support/focus-look.js";
 import { TASK_PERMISSION_FIXTURE } from "../support/task-api-fixture.js";
 import {
   activeTaskProjection,
@@ -50,6 +51,21 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
 
   const dialog = actionHintDialog(page);
   await expect(dialog).toBeVisible();
+  // The dialog only takes the keys; it is not a control to ring.
+  await expect(dialog).toBeFocused();
+  expect(await dialog.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+  await expect(dialog).toHaveCSS("outline-style", "none");
+  // A badge shows focus on its own face, as it shows hover, so no edge cuts it.
+  const badge = dialog.locator('[data-action-hint-code="N"]');
+  await badge.evaluate((element) => element.blur());
+  await badge.hover();
+  const hovered = await focusLook(badge);
+  await page.mouse.move(0, 0);
+  await page.keyboard.press("Shift");
+  await badge.evaluate((element) => element.focus());
+  expect(await badge.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+  expect(await focusLook(badge)).toEqual(hovered);
+  await dialog.evaluate((element) => element.focus());
   await expect(dialog.locator(":scope > .action-hint-instructions"))
     .toHaveCount(0);
   await expect(dialog.locator(":scope > .sr-only")).toHaveCount(3);
@@ -1711,8 +1727,9 @@ test("keeps badges aligned and legible at appearance and zoom extremes", { tag: 
       ) - 1,
     );
     expect(visual.contrastRatio).toBeGreaterThanOrEqual(4.5);
-    expect(visual.outlineStyle).not.toBe("none");
-    expect(visual.outlineWidth).toBeGreaterThanOrEqual(2);
+    // Focus turns the badge's own face over rather than ringing it.
+    expect(visual.focusTurnsFace).toBe(true);
+    expect(visual.outlineStyle).toBe("none");
     if (scenario.interfaceScalePercent === 120) {
       await captureReviewScreenshot(
         page,
@@ -2089,6 +2106,7 @@ async function captureActionHintVisualState(page) {
     const hitStyle = getComputedStyle(single, "::before");
     const inset = (value) => Number.parseFloat(value) || 0;
     const rootStyle = getComputedStyle(document.documentElement);
+    const restingBackground = getComputedStyle(sample).backgroundColor;
     sample.focus();
     const style = getComputedStyle(sample);
     return {
@@ -2108,8 +2126,8 @@ async function captureActionHintVisualState(page) {
         visualSize: Number.parseFloat(singleStyle.minWidth),
       },
       contrastRatio: colorContrast(style.color, style.backgroundColor),
+      focusTurnsFace: style.backgroundColor !== restingBackground,
       outlineStyle: style.outlineStyle,
-      outlineWidth: Number.parseFloat(style.outlineWidth),
       scale: window.visualViewport?.scale ?? 1,
       viewportEscapes,
     };

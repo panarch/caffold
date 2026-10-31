@@ -9,6 +9,8 @@ details {
 }
 
 details > summary {
+  position: relative;
+  isolation: isolate;
   display: inline-flex;
   align-items: center;
   gap: 0.5625rem;
@@ -17,6 +19,21 @@ details > summary {
   font-size: var(--interface-meta-font-size);
   line-height: var(--interface-line-height);
   cursor: pointer;
+}
+
+details > summary:hover,
+details > summary:focus-visible {
+  outline: none;
+}
+
+details > summary:is(:hover, :focus-visible)::before {
+  position: absolute;
+  inset: calc(0rem - var(--interface-space-1))
+    calc(0rem - var(--interface-space-3));
+  z-index: -1;
+  border-radius: 4px;
+  background: var(--control-hover-bg);
+  content: "";
 }
 
 details > summary::marker {

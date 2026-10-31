@@ -13,6 +13,7 @@ import {
   waitForActionHintTarget,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { focusLook } from "../support/focus-look.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
 import { elementHandles } from "../support/element-handles.js";
 import {
@@ -467,6 +468,14 @@ test("hands Compare ref and separator Hints to their native controls", { tag: "@
   });
   await expect(base).toHaveValue("origin/main");
   await expect(head).toHaveValue("feature/review");
+  await base.evaluate((element) => element.blur());
+  await base.hover();
+  const hovered = await focusLook(base);
+  await page.mouse.move(0, 0);
+  await page.keyboard.press("Shift");
+  await base.evaluate((element) => element.focus());
+  expect(await base.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+  expect(await focusLook(base)).toEqual(hovered);
 
   const hint = await enterActionHints(page);
   await expect(
