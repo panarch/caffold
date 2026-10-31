@@ -108,7 +108,10 @@ test("Action Hints focus the rules and key fields, and Escape leaves them", { ta
   await page.keyboard.type("Allow reads.");
   await expect(rules).toHaveValue("Allow reads.");
   await page.keyboard.press("Escape");
-  await expect(page.locator(".settings-workspace-detail-pane")).toBeFocused();
+  const pane = page.locator(".settings-workspace-detail-pane");
+  await expect(pane).toBeFocused();
+  expect(await pane.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+  await expect(pane).toHaveCSS("outline-style", "none");
   await expect(rules).toHaveValue("Allow reads.");
 
   await activateActionHint(page, /Focus Replace API key$/);

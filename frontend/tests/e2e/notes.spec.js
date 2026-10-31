@@ -957,6 +957,24 @@ test("side-by-side selection replaces either pane, cancels, and closes to the co
   await captureReviewScreenshot(page, testInfo, "notes-side-by-side-closed");
 });
 
+test("leaving the Note while choosing its companion leaves focus on the empty pane without a ring", { tag: ["@desktop", "@foldable"] }, async ({ page }) => {
+  await stubNotes(page);
+  await page.goto("/notes");
+  await treeEntry(page, "Inbox").click();
+  await expect(page).toHaveURL(/\/notes\/inbox$/);
+  const primary = documentPane(page, "primary");
+  await primary.getByRole("button", { name: "View side by side" }).press("Enter");
+  await expect(treeEntry(page, "Inbox")).toBeDisabled();
+  await expect(treeEntry(page, "Projects")).toBeFocused();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/notes$/);
+  const pane = primary.locator(".notes-workspace-detail-pane");
+  await expect(pane).toBeFocused();
+  expect(await pane.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+  await expect(pane).toHaveCSS("outline-style", "none");
+});
+
 test("a pair uses two equal columns across foldable widths and retains the route on a narrow screen", { tag: ["@desktop", "@foldable"] }, async ({ page }, testInfo) => {
   await stubNotes(page);
   await page.goto("/notes/history?beside=inbox");

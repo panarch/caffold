@@ -21,6 +21,11 @@
   overflow: hidden;
 }
 
+/* Keyboard focus rests here between actions; the pane is not a control. */
+.tasks-detail-pane:focus-visible {
+  outline: none;
+}
+
 /* The Task store takeover has no header row for the corner controls to sit
    in, so it leaves a header-high band above itself. */
 :host([data-tasks-view="new"]) .tasks-detail-pane > caffold-task-store-recovery,
