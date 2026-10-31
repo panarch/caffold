@@ -601,6 +601,52 @@ test("refreshes persisted identity and order without replacing runtime status", 
   ).toHaveAttribute("data-task-status", "idle");
 });
 
+test("keeps a resting Task's background work when the list reads its stored rows again", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page, {
+    sourceKey: "__taskListRefreshSource",
+    autoOpen: true,
+  });
+  await mockAgentModels(page);
+  const resting = {
+    ...initialNavigatorTask("thread_background_refresh", "Resting Task"),
+    backgroundWork: true,
+  };
+  // The stored row knows nothing the agent reported.
+  const stored = {
+    ...resting,
+    ...canonicalTaskState("notLoaded"),
+    backgroundWork: false,
+    title: "Renamed resting Task",
+    conversationAvailable: false,
+  };
+  let reads = 0;
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    reads += 1;
+    return route.fulfill({
+      json: activeTaskProjection([reads === 1 ? resting : stored]),
+    });
+  });
+
+  await page.goto("/tasks");
+  const row = page.locator(
+    'caffold-task-navigator .task-row[data-thread-id="thread_background_refresh"]',
+  );
+  await expect(row).toHaveAttribute("data-task-status", "background");
+
+  await page.evaluate(() => {
+    window.__taskListRefreshSource.emit("task-list-refresh", {});
+  });
+
+  await expect(row.locator(".task-row-title")).toHaveText("Renamed resting Task");
+  await expect(row).toHaveAttribute("data-task-status", "background");
+  await expect(
+    row.locator('.task-status-chip[data-status="background"] .task-status-icon'),
+  ).toBeVisible();
+  await expect(row.locator(".task-row-time")).toHaveCount(0);
+});
+
 test("hydrates a cached Task with the task-list stream bootstrap snapshot", { tag: "@all-viewports" }, async ({
   page,
 }) => {
