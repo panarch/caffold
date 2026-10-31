@@ -127,7 +127,7 @@ test("draws each row's title, Section, and the one thing it says about the Task"
   assert.match(drawn, /<span class="task-switcher-row-context" title="caffold">caffold<\/span>/);
   assert.match(drawn, /<span class="task-switcher-row-meta task-switcher-row-unseen" title="Completed - not viewed"/);
   assert.match(drawn, /data-task-recovery="false"><button type="button" class="task-switcher-row" data-task-status="running" title="Running task" aria-label="Open task: Running task"/);
-  assert.match(drawn, /<caffold-task-status-chip class="task-switcher-row-meta task-switcher-row-status" \.task=""><\/caffold-task-status-chip>/);
+  assert.match(drawn, /<caffold-task-status-chip class="task-switcher-row-meta task-switcher-row-status" \.task="" staggered><\/caffold-task-status-chip>/);
 });
 
 test("takes no snapshot while it is closed", () => {
