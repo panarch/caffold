@@ -180,7 +180,7 @@ test("choosing the Settings tab again brings its list back to the top", { tag: "
   await expect(page).toHaveURL("/settings");
 });
 
-test("keeps the Settings list's scroll and focus when its icons arrive", { tag: "@desktop" }, async ({
+test("keeps the Settings list's scroll and focus when its icons arrive", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const iconsRequested = Promise.withResolvers();
@@ -1081,7 +1081,7 @@ test("refreshing the Grok report reads the leader that appeared and names a buil
   expect(reports).toBe(2);
 });
 
-test("holds the Codex rows while its first readiness check is still running", { tag: "@desktop" }, async ({
+test("holds the Codex rows while its first readiness check is still running", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   let releaseStatus;

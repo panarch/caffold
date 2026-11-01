@@ -600,7 +600,7 @@ test("shows a partial active-turn plan on one strip line with its detail in the 
   await expect(status).toBeHidden();
 });
 
-test("keeps paused plan updates visible after Refresh until the Watch recovers", { tag: "@desktop" }, async ({
+test("keeps paused plan updates visible after Refresh until the Watch recovers", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);

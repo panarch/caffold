@@ -202,7 +202,7 @@ test("closes the preview when a Note link in it opens the Note", { tag: "@viewpo
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("drives the preview with Action Hints and Scroll mode", { tag: "@desktop" }, async ({
+test("drives the preview with Action Hints and Scroll mode", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const scenario = await seedPreviewTask(

@@ -128,7 +128,7 @@ test("offers Copy beside every agent message time without growing the meta line"
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("offers each message's Copy, the Thinking disclosure, and the conversation's scrolling to the keyboard", { tag: "@desktop" }, async ({
+test("offers each message's Copy, the Thinking disclosure, and the conversation's scrolling to the keyboard", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const scenario = await seedMessageCopyTask(page, "thread_message_copy_hints", {
@@ -248,7 +248,7 @@ test("copies each message's Markdown source exactly with bounded success and ret
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("drops a copy of text the message no longer holds", { tag: "@desktop" }, async ({
+test("drops a copy of text the message no longer holds", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const scenario = await seedMessageCopyTask(page, "thread_message_copy_stale");

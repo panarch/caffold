@@ -318,7 +318,7 @@ test("Stop during an upload stops the turn and returns messages in the order the
   gate.resolve();
 });
 
-test("keeps the files of a message whose delivery is unconfirmed", { tag: "@desktop" }, async ({ page }) => {
+test("keeps the files of a message whose delivery is unconfirmed", { tag: "@viewport-independent" }, async ({ page }) => {
   const { form, prompt, message } = await openFollowUp(page);
   const sent = await routeTaskUploads(page);
   const prompts = await routePrompts(page, {

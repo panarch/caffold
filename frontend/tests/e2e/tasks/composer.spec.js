@@ -738,7 +738,7 @@ test("keeps exact prompt order when Detail or live content arrives before the pr
   );
 
 });
-test("unlocks canonical follow-ups after switching tasks with a pending response", { tag: "@desktop" }, async ({
+test("unlocks canonical follow-ups after switching tasks with a pending response", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, { autoOpen: true });
@@ -1060,7 +1060,7 @@ test("keeps the attachment remove X legible on its circle in Light and Dark", { 
   }
 });
 
-test("offers the New Task Composer's prompt, Attach, and Start once there is a draft", { tag: "@desktop" }, async ({
+test("offers the New Task Composer's prompt, Attach, and Start once there is a draft", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const scenario = await installTaskLoopFixture(page);
@@ -1078,7 +1078,7 @@ test("offers the New Task Composer's prompt, Attach, and Start once there is a d
   await expect.poll(targets).toContainEqual(["primary:send", "Start task"]);
 });
 
-test("attaches files from the picker, the clipboard, and a drop onto the Composer", { tag: "@desktop" }, async ({
+test("attaches files from the picker, the clipboard, and a drop onto the Composer", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const scenario = await installTaskLoopFixture(page);

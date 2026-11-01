@@ -47,7 +47,7 @@ test("a model list that arrives before the delay is never seen loading", { tag: 
     );
 });
 
-test("a model list still pending after the delay earns a spinner without moving anything", { tag: "@desktop" }, async ({
+test("a model list still pending after the delay earns a spinner without moving anything", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const { models } = await installGatedTurnOptions(page);
@@ -128,7 +128,7 @@ test("a follow-up composer asks for no mode list until its model is known", { ta
   await expect(permissionButton).toContainText("Auto review");
 });
 
-test("a first permission pill appears where it will stay and turns once its own list is late", { tag: "@desktop" }, async ({
+test("a first permission pill appears where it will stay and turns once its own list is late", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const { models, permissions } = await installGatedTurnOptions(page, {

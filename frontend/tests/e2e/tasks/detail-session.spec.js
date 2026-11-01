@@ -2444,7 +2444,7 @@ test("accepts canonical task sync after stream revisions restart", { tag: "@all-
   });
   await expect(row).toHaveAttribute("data-task-status", "idle");
 });
-test("opens a running conversation at the latest message from the stream bootstrap", { tag: "@desktop" }, async ({
+test("opens a running conversation at the latest message from the stream bootstrap", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, {

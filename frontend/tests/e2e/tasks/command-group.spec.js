@@ -321,7 +321,7 @@ test("work details offer a folded group's rows to the keyboard only while it is 
   await expect(dialog).toContainText("intentionally-missing");
 });
 
-test("a reader anchored on a command keeps their place when it folds into a group", { tag: "@desktop" }, async ({
+test("a reader anchored on a command keeps their place when it folds into a group", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const task = activeTask();

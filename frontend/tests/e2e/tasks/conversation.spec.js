@@ -234,7 +234,7 @@ for (const delivery of [
   ["SSE", "POST", "Detail"], ["SSE", "Detail", "POST"],
   ["Detail", "POST", "SSE"], ["Detail", "SSE", "POST"],
 ]) {
-  test(`keeps a confirmed question before its answer with ${delivery.join(" / ")}`, { tag: "@desktop" }, async ({ page }, testInfo) => {
+  test(`keeps a confirmed question before its answer with ${delivery.join(" / ")}`, { tag: "@viewport-independent" }, async ({ page }, testInfo) => {
     const threadId = "thread-confirmed-order";
     const now = Date.now() - 10_000;
     const question = {
@@ -1420,7 +1420,7 @@ test("keeps cross-turn work chronological and the active status at the timeline 
   await expect(tasksPage.locator(".task-turn-work")).toHaveCount(1);
   await expect(tasksPage.locator(".task-turn-active")).toHaveCount(0);
 });
-test("keeps task event chronology stable through approval, completion, and reload", { tag: "@desktop" }, async ({
+test("keeps task event chronology stable through approval, completion, and reload", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 560 });

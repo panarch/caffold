@@ -178,9 +178,9 @@ test("keeps the code-block toolbar dense and usable across Task viewports", { ta
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("copies each block exactly with bounded success and retryable failure", { tag: "@desktop" }, async ({
+test("copies each block exactly with bounded success and retryable failure", { tag: "@viewport-independent" }, async ({
   page,
-}, testInfo) => {
+}) => {
   const scenario = await seedCodeBlockTask(page, "thread_code_copy");
   const finalMarkdown = page.locator(
     'caffold-task-assistant-message[data-message-phase="final"] caffold-task-markdown',
@@ -283,7 +283,6 @@ test("copies each block exactly with bounded success and retryable failure", { t
   await page.clock.fastForward(1_800);
   await expect(secondCopy).toHaveAttribute("aria-label", "Copy code");
   expect(scenario.pageErrors).toEqual([]);
-  expect(testInfo.project.name).toBe("desktop");
 });
 
 test("keeps excluded conversation surfaces plain", { tag: "@viewport-independent" }, async ({
@@ -352,7 +351,7 @@ test("keeps Markdown fallback text plain", { tag: "@viewport-independent" }, asy
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("keeps opt-in code blocks current across rerenders", { tag: "@desktop" }, async ({
+test("keeps opt-in code blocks current across rerenders", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const scenario = await seedCodeBlockTask(page, "thread_code_rerender");

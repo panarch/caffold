@@ -2557,7 +2557,7 @@ test("keeps task list and detail revisions independent", { tag: "@viewport-indep
   await form.getByRole("button", { name: "Send prompt" }).click();
   await expect.poll(() => submittedPrompts).toEqual(["Follow-up after list update"]);
 });
-test("isolates task detail responses and conversation scroll by thread", { tag: "@desktop" }, async ({
+test("isolates task detail responses and conversation scroll by thread", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, {
