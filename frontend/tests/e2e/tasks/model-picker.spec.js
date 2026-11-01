@@ -132,6 +132,15 @@ test("retains two readable columns and model-specific controls at each viewport"
   await menu.getByRole("button", { name: "sample", exact: true }).click();
   await menu.locator('[data-model="plain-model"]').click();
   await expect(menu.locator(".task-model-settings")).toBeEmpty();
+  const shortDividerLayout = await menu.evaluate((element) => {
+    const left = element.querySelector(".task-provider-options").getBoundingClientRect();
+    const right = element.querySelector(".task-provider-models").getBoundingClientRect();
+    return {
+      alignedTop: Math.abs(left.top - right.top) < 1,
+      dividerReachesBottom: right.bottom >= left.bottom - 1,
+    };
+  });
+  expect(shortDividerLayout).toEqual({ alignedTop: true, dividerReachesBottom: true });
   await captureReviewScreenshot(page, testInfo, "model-picker-short");
 });
 
