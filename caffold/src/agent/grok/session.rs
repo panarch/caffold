@@ -273,7 +273,7 @@ pub(super) fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::MessageContent;
+    use crate::agent::{MessageContent, ToolCall};
 
     fn prompt(id: &str) -> ConversationItem {
         ConversationItem {
@@ -309,9 +309,13 @@ mod tests {
             id: "call-1".to_string(),
             observed_at_ms: None,
             status: ActivityStatus::InProgress,
-            kind: ItemKind::ToolCall {
+            kind: ItemKind::ToolCall(ToolCall {
                 name: "x".to_string(),
-            },
+                server: None,
+                input: None,
+                result: Vec::new(),
+                duration_ms: None,
+            }),
         });
         let (_, later) = state.append_text(Run::Message, "more", None).unwrap();
         assert_ne!(later.id, answer.id, "a tool call closes the run");
@@ -326,9 +330,13 @@ mod tests {
             id: "call-1".to_string(),
             observed_at_ms: None,
             status: ActivityStatus::InProgress,
-            kind: ItemKind::ToolCall {
+            kind: ItemKind::ToolCall(ToolCall {
                 name: "x".to_string(),
-            },
+                server: None,
+                input: None,
+                result: Vec::new(),
+                duration_ms: None,
+            }),
         });
         state.pending_approvals.insert(
             "call-1".to_string(),
@@ -358,9 +366,13 @@ mod tests {
             id: "call-2".to_string(),
             observed_at_ms: None,
             status: ActivityStatus::InProgress,
-            kind: ItemKind::ToolCall {
+            kind: ItemKind::ToolCall(ToolCall {
                 name: "x".to_string(),
-            },
+                server: None,
+                input: None,
+                result: Vec::new(),
+                duration_ms: None,
+            }),
         });
         let (turn, _) = state.end_turn("p2", TurnStatus::Completed, None).unwrap();
         assert_eq!(turn.items[1].status, ActivityStatus::Completed);

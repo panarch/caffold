@@ -32,9 +32,9 @@ import {
   formatDate,
   formatDuration,
   formatStatus,
+  otherWorkPresentation,
   type TaskFilePath,
   taskEventObservedMs,
-  toolCallPresentation,
 } from "#tasks/task-format.js";
 import { activeTurnPresentation } from "./active-turn.js";
 import {
@@ -54,6 +54,7 @@ export type ConversationEntry =
   | AssistantMessageEntry
   | ThinkingEntry
   | ToolEntry
+  | ToolCallEntry
   | CommandEntry
   | CommandGroupEntry
   | FileChangeEntry
@@ -108,6 +109,11 @@ export interface ToolEntry extends EventEntry {
   label: string;
   text: string;
   tone: "danger" | "neutral";
+}
+
+export interface ToolCallEntry extends EventEntry {
+  kind: "tool-call";
+  event: TaskEvent;
 }
 
 export interface CommandEntry extends EventEntry {
@@ -273,8 +279,11 @@ export function conversationEventEntry(
     return fileChangeEntry(event, options.filePathPresentationBase ?? "");
   }
   if (event.type === "tool_call") {
-    const tool = toolCallPresentation(payload);
-    return toolEntry(event, tool.label, tool.text, tool.tone);
+    return { ...eventEntry(event), kind: "tool-call", event };
+  }
+  if (event.type === "other_work") {
+    const work = otherWorkPresentation(payload);
+    return toolEntry(event, work.label, work.text, work.tone);
   }
   if (event.type === "agent_failure") {
     return toolEntry(event, "Error", payload.text, "danger");
@@ -507,6 +516,7 @@ function shouldShowStandaloneEvent(event: TaskEvent, userPrompts: Set<string>) {
     "approval_resolved",
     "diff_updated",
     "tool_call",
+    "other_work",
   ].includes(event.type);
 }
 

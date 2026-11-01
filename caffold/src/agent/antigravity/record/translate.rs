@@ -1,16 +1,18 @@
 //! Native trajectory facts projected once for both live observation and history.
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use serde_json::Value;
 use url::Url;
 
 use super::format::{
-    ExecutorMetadata, ImageData, Media, ModelUsage, Payload, Step, StepMetadata, Timestamp,
+    ErrorMessage, ExecutorMetadata, ImageData, Media, ModelUsage, Payload, Step, StepMetadata,
+    Timestamp,
 };
 use super::invalid;
 use crate::agent::antigravity::AntigravityError;
 use crate::agent::{
     ActivityStatus, CommandExecution, ConversationItem, GeneratedImage, ItemKind, MessageContent,
-    MessagePhase, TokenCount, Turn, TurnOrigin, TurnStatus,
+    MessagePhase, TokenCount, ToolCall, ToolResultPart, Turn, TurnOrigin, TurnStatus,
 };
 
 pub(super) fn turn(
@@ -248,41 +250,40 @@ pub(super) fn turn(
                 ));
             }
             Some(Payload::ErrorMessage(error)) if error.show_user => {
-                let text = error
-                    .error
-                    .as_ref()
-                    .map(|error| {
-                        if error.user_message.is_empty() {
-                            error.short_error.clone()
-                        } else {
-                            error.user_message.clone()
-                        }
-                    })
-                    .filter(|text| !text.is_empty())
+                let text = error_text(error)
                     .unwrap_or_else(|| "Antigravity reported an error.".to_string());
                 items.push(item("", ItemKind::Failure { text }, ActivityStatus::Failed));
             }
             Some(Payload::McpTool(tool)) => {
-                let name = tool
-                    .call
-                    .as_ref()
-                    .and_then(|call| nonempty(&call.name))
-                    .or_else(|| tool_name(metadata))
-                    .unwrap_or_else(|| "mcp_tool".to_string());
-                let name = if tool.server.is_empty() {
-                    name
-                } else {
-                    format!("{}: {name}", tool.server)
-                };
-                items.push(item("", ItemKind::ToolCall { name }, activity));
+                let call = tool.call.as_ref();
+                let result = nonempty(&tool.result_string)
+                    .or_else(|| nonempty(&tool.result_uri))
+                    .map(ToolResultPart::Text);
+                let kind = ItemKind::ToolCall(ToolCall {
+                    name: call
+                        .and_then(|call| nonempty(&call.name))
+                        .or_else(|| tool_name(metadata))
+                        .unwrap_or_else(|| "mcp_tool".to_string()),
+                    server: nonempty(&tool.server),
+                    input: call.and_then(|call| arguments(&call.arguments_json)),
+                    result: result.into_iter().collect(),
+                    duration_ms: duration_ms(metadata),
+                });
+                items.push(item("", kind, activity));
             }
-            Some(Payload::ViewFile(_) | Payload::ErrorMessage(_)) | None => {
-                if (step.kind == 14 || step.kind == 15) && step.payload.is_none() {
+            Some(Payload::ViewFile(file)) => {
+                let result = nonempty(&file.content).map(ToolResultPart::Text);
+                items.push(item("", step_work(step, metadata, result), activity));
+            }
+            Some(Payload::ErrorMessage(error)) => {
+                let result = error_text(error).map(ToolResultPart::Text);
+                items.push(item("", step_work(step, metadata, result), activity));
+            }
+            None => {
+                if step.kind == 14 || step.kind == 15 {
                     return Err(invalid("native message payload is missing"));
                 }
-                let name = tool_name(metadata)
-                    .unwrap_or_else(|| format!("Antigravity step {}", step.kind));
-                items.push(item("", ItemKind::ToolCall { name }, activity));
+                items.push(item("", step_work(step, metadata, None), activity));
             }
         }
     }
@@ -402,6 +403,48 @@ fn duration_ms(metadata: &StepMetadata) -> Option<u64> {
         .checked_sub(timestamp_ms(metadata.started_at.as_ref())?)
 }
 
+/// A step the agent records as a call to one of its tools is a tool call, with
+/// the arguments the record keeps for it. Any other step is other work.
+fn step_work(step: &Step, metadata: &StepMetadata, result: Option<ToolResultPart>) -> ItemKind {
+    match metadata
+        .tool_call
+        .as_ref()
+        .filter(|call| !call.name.is_empty())
+    {
+        Some(call) => ItemKind::ToolCall(ToolCall {
+            name: call.name.clone(),
+            server: None,
+            input: arguments(&call.arguments_json),
+            result: result.into_iter().collect(),
+            duration_ms: duration_ms(metadata),
+        }),
+        None => ItemKind::OtherWork {
+            name: format!("Antigravity step {}", step.kind),
+        },
+    }
+}
+
+/// The arguments a tool call recorded, as JSON. A record that holds something
+/// else keeps it as the text it is.
+fn arguments(json: &str) -> Option<Value> {
+    (!json.is_empty())
+        .then(|| serde_json::from_str(json).unwrap_or_else(|_| Value::String(json.to_string())))
+}
+
+fn error_text(error: &ErrorMessage) -> Option<String> {
+    error
+        .error
+        .as_ref()
+        .map(|error| {
+            if error.user_message.is_empty() {
+                error.short_error.clone()
+            } else {
+                error.user_message.clone()
+            }
+        })
+        .filter(|text| !text.is_empty())
+}
+
 fn tool_name(metadata: &StepMetadata) -> Option<String> {
     metadata
         .tool_call
@@ -414,8 +457,186 @@ fn nonempty(value: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::format::{ActionEdit, ActionResult, CodeAction, FileChange, GenerateImage};
+    use serde_json::json;
+
+    use super::super::format::{
+        ActionEdit, ActionResult, CodeAction, ErrorDetails, FileChange, GenerateImage, McpTool,
+        ToolCall as NativeToolCall, ViewFile,
+    };
     use super::*;
+
+    fn tool_metadata(name: &str, arguments_json: &str) -> Option<StepMetadata> {
+        Some(StepMetadata {
+            tool_call: Some(NativeToolCall {
+                id: "call_1".into(),
+                name: name.into(),
+                arguments_json: arguments_json.into(),
+            }),
+            ..StepMetadata::default()
+        })
+    }
+
+    fn translated_kind(step: Step) -> ItemKind {
+        turn("native-trajectory", "native-execution", &[(0, step)], None)
+            .unwrap()
+            .items
+            .remove(0)
+            .kind
+    }
+
+    #[test]
+    fn an_mcp_step_keeps_its_server_tool_arguments_and_result_apart() {
+        let kind = translated_kind(Step {
+            kind: 38,
+            status: 3,
+            metadata: tool_metadata(
+                "call_mcp_tool",
+                r#"{"Arguments":{"name":"Greeting"},"ServerName":"caffold","ToolName":"rename_current_task","toolSummary":"Rename current task"}"#,
+            ),
+            payload: Some(Payload::McpTool(McpTool {
+                server: "caffold".into(),
+                call: Some(NativeToolCall {
+                    id: "call_1".into(),
+                    name: "rename_current_task".into(),
+                    arguments_json: r#"{"name":"Greeting"}"#.into(),
+                }),
+                result_string: "Renamed the current Caffold task to `Greeting`.".into(),
+                result_uri: String::new(),
+            })),
+        });
+
+        assert_eq!(
+            kind,
+            ItemKind::ToolCall(ToolCall {
+                name: "rename_current_task".into(),
+                server: Some("caffold".into()),
+                input: Some(json!({ "name": "Greeting" })),
+                result: vec![ToolResultPart::Text(
+                    "Renamed the current Caffold task to `Greeting`.".into()
+                )],
+                duration_ms: None,
+            })
+        );
+    }
+
+    #[test]
+    fn an_mcp_result_too_large_for_the_step_is_where_the_harness_saved_it() {
+        let kind = translated_kind(Step {
+            kind: 38,
+            status: 3,
+            metadata: tool_metadata("call_mcp_tool", "{}"),
+            payload: Some(Payload::McpTool(McpTool {
+                server: "caffold".into(),
+                call: None,
+                result_string: String::new(),
+                result_uri: "file:///native/results/1.txt".into(),
+            })),
+        });
+
+        assert!(matches!(
+            kind,
+            ItemKind::ToolCall(call)
+                if call.name == "call_mcp_tool"
+                    && call.result == [ToolResultPart::Text("file:///native/results/1.txt".into())]
+        ));
+    }
+
+    #[test]
+    fn a_viewed_file_is_the_result_of_its_tool_call() {
+        let kind = translated_kind(Step {
+            kind: 8,
+            status: 3,
+            metadata: tool_metadata(
+                "view_file",
+                r#"{"AbsolutePath":"/fixture/input.txt","toolSummary":"Read input.txt"}"#,
+            ),
+            payload: Some(Payload::ViewFile(ViewFile {
+                absolute_path_uri: "file:///fixture/input.txt".into(),
+                content: "first line\n".into(),
+            })),
+        });
+
+        assert_eq!(
+            kind,
+            ItemKind::ToolCall(ToolCall {
+                name: "view_file".into(),
+                server: None,
+                input: Some(json!({
+                    "AbsolutePath": "/fixture/input.txt",
+                    "toolSummary": "Read input.txt"
+                })),
+                result: vec![ToolResultPart::Text("first line\n".into())],
+                duration_ms: None,
+            })
+        );
+    }
+
+    #[test]
+    fn an_error_kept_from_the_person_is_the_result_of_the_call_it_ended() {
+        let kind = translated_kind(Step {
+            kind: 17,
+            status: 7,
+            metadata: tool_metadata("run_command", r#"{"CommandLine":"ls"}"#),
+            payload: Some(Payload::ErrorMessage(ErrorMessage {
+                error: Some(ErrorDetails {
+                    user_message: String::new(),
+                    short_error: "denied by pre-tool hook".into(),
+                }),
+                show_user: false,
+            })),
+        });
+
+        assert!(matches!(
+            kind,
+            ItemKind::ToolCall(call)
+                if call.name == "run_command"
+                    && call.input == Some(json!({ "CommandLine": "ls" }))
+                    && call.result == [ToolResultPart::Text("denied by pre-tool hook".into())]
+        ));
+    }
+
+    #[test]
+    fn a_step_is_a_tool_call_exactly_when_it_records_one() {
+        let searched = translated_kind(Step {
+            kind: 33,
+            status: 3,
+            metadata: tool_metadata("search_web", r#"{"query":"Antigravity ACP"}"#),
+            payload: None,
+        });
+        let notified = translated_kind(Step {
+            kind: 101,
+            status: 3,
+            metadata: Some(StepMetadata::default()),
+            payload: None,
+        });
+        let unreadable = translated_kind(Step {
+            kind: 33,
+            status: 3,
+            metadata: tool_metadata("search_web", "not json"),
+            payload: None,
+        });
+
+        assert_eq!(
+            searched,
+            ItemKind::ToolCall(ToolCall {
+                name: "search_web".into(),
+                server: None,
+                input: Some(json!({ "query": "Antigravity ACP" })),
+                result: Vec::new(),
+                duration_ms: None,
+            })
+        );
+        assert_eq!(
+            notified,
+            ItemKind::OtherWork {
+                name: "Antigravity step 101".into()
+            }
+        );
+        assert!(matches!(
+            unreadable,
+            ItemKind::ToolCall(call) if call.input == Some(json!("not json"))
+        ));
+    }
 
     #[test]
     fn native_file_changes_preserve_step_identity_and_decode_file_uris() {

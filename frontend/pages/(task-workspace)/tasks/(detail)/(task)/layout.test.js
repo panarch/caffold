@@ -143,10 +143,11 @@ test("offers the conversation, follow-up Composer, and Current Plan while the co
   assert.deepEqual(ids(), ["task:thread-a:absence"]);
 });
 
-test("merges composer popovers, Current Plan, Command, Markdown preview, and permission instruction modals independently", () => {
+test("merges composer popovers, Current Plan, Command, Tool call, Markdown preview, and permission instruction modals independently", () => {
   const composerContext = { id: "composer-popover" };
   const planContext = { id: "current-plan" };
   const commandContext = { id: "command-output" };
+  const toolCallContext = { id: "tool-call-details" };
   const markdownPreviewContext = { id: "markdown-preview" };
   const permissionInstructionsContext = { id: "permission-instructions" };
   const slot = {};
@@ -172,6 +173,9 @@ test("merges composer popovers, Current Plan, Command, Markdown preview, and per
     commandDialog: {
       value: { keyboardNavigationContexts: () => [commandContext] },
     },
+    toolCallDialog: {
+      value: { keyboardNavigationContexts: () => [toolCallContext] },
+    },
     markdownPreviewDialog: {
       value: { keyboardNavigationContexts: () => [markdownPreviewContext] },
     },
@@ -189,6 +193,7 @@ test("merges composer popovers, Current Plan, Command, Markdown preview, and per
       composerContext,
       planContext,
       commandContext,
+      toolCallContext,
       markdownPreviewContext,
       permissionInstructionsContext,
     ],
@@ -200,6 +205,7 @@ test("merges composer popovers, Current Plan, Command, Markdown preview, and per
       { id: "force-archive" },
       composerContext,
       commandContext,
+      toolCallContext,
       markdownPreviewContext,
       permissionInstructionsContext,
     ],
@@ -207,12 +213,18 @@ test("merges composer popovers, Current Plan, Command, Markdown preview, and per
   owner.markdownPreviewDialog = { value: undefined };
   assert.deepEqual(
     taskDetail.keyboardNavigationContexts.call(owner),
-    [{ id: "force-archive" }, composerContext, commandContext, permissionInstructionsContext],
+    [
+      { id: "force-archive" },
+      composerContext,
+      commandContext,
+      toolCallContext,
+      permissionInstructionsContext,
+    ],
   );
   owner.permissionInstructionsDialog = { value: undefined };
   assert.deepEqual(
     taskDetail.keyboardNavigationContexts.call(owner),
-    [{ id: "force-archive" }, composerContext, commandContext],
+    [{ id: "force-archive" }, composerContext, commandContext, toolCallContext],
   );
 });
 

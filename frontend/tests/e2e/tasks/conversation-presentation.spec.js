@@ -839,7 +839,7 @@ test("names the work an agent did that Caffold draws no surface for", { tag: "@a
   scenario.events = scenario.events.concat([
     scenario.eventRecord(
       "event_web_search",
-      "tool_call",
+      "other_work",
       "web_search: completed",
       {
         threadId: scenario.threadId,
@@ -852,7 +852,7 @@ test("names the work an agent did that Caffold draws no surface for", { tag: "@a
     ),
     scenario.eventRecord(
       "event_mcp_probe",
-      "tool_call",
+      "other_work",
       "inspector.probe: failed",
       {
         threadId: scenario.threadId,
@@ -893,7 +893,7 @@ test("names the work an agent did that Caffold draws no surface for", { tag: "@a
   }
 
   const toolCalls = tasksPage.locator(
-    '.task-work-details-item[data-event-type="tool_call"]',
+    '.task-work-details-item[data-event-type="other_work"]',
   );
   await expect(toolCalls).toHaveCount(2);
 

@@ -2304,7 +2304,7 @@ mod tests {
         let file_reads = read_a_file
             .items
             .iter()
-            .filter(|item| matches!(&item.kind, ItemKind::ToolCall { name, .. } if name == "Read"))
+            .filter(|item| matches!(&item.kind, ItemKind::ToolCall(call) if call.name == "Read"))
             .count();
         assert_eq!(file_reads, 1, "{:?}", items_of(read_a_file));
         // What the agent wrote in its thinking block on the way to the tool
@@ -2317,7 +2317,7 @@ mod tests {
         let read = read_a_file
             .items
             .iter()
-            .position(|item| matches!(&item.kind, ItemKind::ToolCall { .. }))
+            .position(|item| matches!(&item.kind, ItemKind::ToolCall(_)))
             .expect("the file was read");
         assert!(spoke < read, "{:?}", items_of(read_a_file));
         assert!(
@@ -2347,7 +2347,7 @@ mod tests {
             answered
                 .items
                 .iter()
-                .all(|item| !matches!(item.kind, ItemKind::ToolCall { .. })),
+                .all(|item| !matches!(item.kind, ItemKind::ToolCall(_))),
             "nothing was asked of a tool"
         );
 
@@ -2369,7 +2369,7 @@ mod tests {
         let read = turns[0]
             .items
             .iter()
-            .position(|item| matches!(&item.kind, ItemKind::ToolCall { .. }))
+            .position(|item| matches!(&item.kind, ItemKind::ToolCall(_)))
             .expect("a file was read");
         assert!(thought < read, "{:?}", items_of(&turns[0]));
         assert!(matches!(
@@ -2471,7 +2471,7 @@ mod tests {
         assert!(
             turns[0].items[..steer].iter().any(|item| matches!(
                 item.kind,
-                ItemKind::FileChange { .. } | ItemKind::ToolCall { .. }
+                ItemKind::FileChange { .. } | ItemKind::ToolCall(_)
             )),
             "{:?}",
             items_of(&turns[0])

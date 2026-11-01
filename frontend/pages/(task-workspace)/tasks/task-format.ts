@@ -187,16 +187,16 @@ export function sectionLabel(path: unknown) {
   return `${path ?? ""}`.split("/").filter(Boolean).at(-1) ?? "Directory";
 }
 
-// How one tool call reads.
+// How one piece of other work reads.
 //
 // Everything an agent does that Caffold draws no surface of its own for arrives
 // under the agent's own name for it. The name and how far along it is are all
 // there is to say, and saying only that is what lets an agent grow new kinds of
 // work without Caffold guessing at them.
 //
-// A running turn and a finished one show a tool call in different places. Both
+// A running turn and a finished one show other work in different places. Both
 // read this, so the same work does not change shape when the turn ends.
-export function toolCallPresentation(payload: TaskEventPayload = {}): {
+export function otherWorkPresentation(payload: TaskEventPayload = {}): {
   label: string;
   text: string;
   tone: "danger" | "neutral";
@@ -204,7 +204,7 @@ export function toolCallPresentation(payload: TaskEventPayload = {}): {
   const name = `${payload.name ?? ""}`.trim();
   const status = `${payload.status ?? ""}`.trim();
   return {
-    label: name || "Tool call",
+    label: name || "Other work",
     text: status ? `Status: ${formatStatus(status)}` : "",
     tone: status === "failed" ? "danger" : "neutral",
   };

@@ -55,6 +55,7 @@ function activeTurnStateLabel(events: TaskEvent[], task: Task | null) {
 
 const WORKING_EVENT_TYPES = [
   "tool_call",
+  "other_work",
   "reasoning",
   "plan",
   "command_execution",
@@ -74,7 +75,10 @@ function workingLabel(event: TaskEvent) {
   }
   // Work Caffold has no surface for says what it is itself, in the agent's
   // own words, because Caffold has no better name for it.
-  if (event.type === "tool_call" && event.payload?.status === "inProgress") {
+  if (
+    (event.type === "tool_call" || event.type === "other_work") &&
+    event.payload?.status === "inProgress"
+  ) {
     return `${event.payload?.name ?? "Working"}…`;
   }
   return "Thinking";

@@ -1580,6 +1580,24 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command/model.js"
             ))))
         }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/tool-call.css.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/tool-call.css.js"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/tool-call.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/tool-call.js"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/tool-call/model.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/tool-call/model.js"
+            ))))
+        }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.css.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
@@ -1638,6 +1656,18 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
                 "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/tool-call-dialog.css.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/tool-call-dialog.css.js"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/tool-call-dialog.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/tool-call-dialog.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.css.js" => {
@@ -3324,6 +3354,10 @@ mod tests {
                 b"caffold-task-command-dialog".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/tool-call-dialog.js",
+                b"caffold-task-tool-call-dialog".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.js",
                 b"caffold-task-markdown-preview-dialog".as_slice(),
             ),
@@ -3342,6 +3376,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.js",
                 b"caffold-task-command-group".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/tool-call.js",
+                b"caffold-task-tool-call".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.js",

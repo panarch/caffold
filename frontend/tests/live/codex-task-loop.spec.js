@@ -1066,8 +1066,8 @@ test("names a new Caffold task at first-turn completion and preserves it", async
     expect(response.ok()).toBeTruthy();
     return response.json();
   };
-  // Caffold renames a Task through a tool it offers Codex, which arrives as
-  // work Caffold has no surface of its own for.
+  // Caffold renames a Task through a tool it offers Codex, which arrives as a
+  // tool call under the tool's name.
   const isCompletedRename = (event) =>
     event.type === "tool_call" &&
     event.payload?.name === RENAME_TOOL_NAME &&

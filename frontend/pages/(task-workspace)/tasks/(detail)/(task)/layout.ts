@@ -76,6 +76,8 @@ import "./components/broken-delete-dialog.js";
 import type { CaffoldBrokenTaskDeleteDialog } from "./components/broken-delete-dialog.js";
 import "./components/command-dialog.js";
 import type { CaffoldTaskCommandDialog } from "./components/command-dialog.js";
+import "./components/tool-call-dialog.js";
+import type { CaffoldTaskToolCallDialog } from "./components/tool-call-dialog.js";
 import "./components/conversation.js";
 import type {
   CaffoldTaskConversation,
@@ -319,6 +321,9 @@ export class CaffoldTaskDetail extends CaffoldElement {
   private readonly conversationComponent =
     new DrawnRef<CaffoldTaskConversation>(this);
   private readonly commandDialog = new DrawnRef<CaffoldTaskCommandDialog>(this);
+  private readonly toolCallDialog = new DrawnRef<CaffoldTaskToolCallDialog>(
+    this,
+  );
   private readonly markdownPreviewDialog =
     new DrawnRef<CaffoldTaskMarkdownPreviewDialog>(this);
   private readonly permissionInstructionsDialog =
@@ -528,6 +533,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
     this.forkStateValue = { loading: false, error: null };
     this.initialConversationLoad = null;
     this.commandDialog.value?.dismiss();
+    this.toolCallDialog.value?.dismiss();
     this.markdownPreviewDialog.value?.dismiss();
     this.permissionInstructionsDialog.value?.dismiss();
   }
@@ -626,6 +632,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
         : [],
       this.currentPlanComponent.value?.keyboardNavigationContexts() ?? [],
       this.commandDialog.value?.keyboardNavigationContexts() ?? [],
+      this.toolCallDialog.value?.keyboardNavigationContexts() ?? [],
       this.markdownPreviewDialog.value?.keyboardNavigationContexts() ?? [],
       this.permissionInstructionsDialog.value?.keyboardNavigationContexts() ??
         [],
@@ -1859,6 +1866,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       error: this.detailLoadError,
     });
     this.commandDialog.value?.setThreadId(this.selectedThreadId);
+    this.toolCallDialog.value?.setThreadId(this.selectedThreadId);
     this.markdownPreviewDialog.value?.setThreadId(this.selectedThreadId);
     this.permissionInstructionsDialog.value?.setThreadId(this.selectedThreadId);
     const absence = this.detailSession.absence;
@@ -2178,6 +2186,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       transportState: this.detailSession.state,
       updateKind: this.conversationUpdateKind,
     });
+    this.toolCallDialog.value?.follow(this.events);
     this.conversationUpdateKind = null;
   }
 
@@ -2246,6 +2255,9 @@ export class CaffoldTaskDetail extends CaffoldElement {
           <caffold-task-command-dialog
             ${drawn(this.commandDialog)}
           ></caffold-task-command-dialog>
+          <caffold-task-tool-call-dialog
+            ${drawn(this.toolCallDialog)}
+          ></caffold-task-tool-call-dialog>
           <caffold-task-markdown-preview-dialog
             ${drawn(this.markdownPreviewDialog)}
           ></caffold-task-markdown-preview-dialog>
@@ -2449,6 +2461,9 @@ export class CaffoldTaskDetail extends CaffoldElement {
         break;
       case "command-output":
         this.commandDialog.value?.openCommand(intent.command);
+        break;
+      case "tool-call-details":
+        this.toolCallDialog.value?.openToolCall(intent.toolCall);
         break;
       case "suggested-prompt":
         this.followUpComposer()?.appendSuggestedPrompt(intent.prompt);

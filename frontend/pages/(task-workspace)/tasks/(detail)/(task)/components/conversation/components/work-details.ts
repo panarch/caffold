@@ -27,9 +27,9 @@ import {
 import {
   formatDate,
   formatStatus,
+  otherWorkPresentation,
   type TaskFilePath,
   taskEventObservedMs,
-  toolCallPresentation,
 } from "#tasks/task-format.js";
 import {
   commandGroupIdentity,
@@ -43,6 +43,8 @@ import type { CaffoldTaskCommand } from "./command.js";
 import "./command-group.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import type { CaffoldTaskCommandGroup } from "./command-group.js";
+import "./tool-call.js";
+import type { CaffoldTaskToolCall } from "./tool-call.js";
 
 import styles from "./work-details.css.js";
 
@@ -63,6 +65,7 @@ export interface WorkDetailsDisclosureIntentDetail {
 type WorkItem =
   | { kind: "message"; key: string; identity: string; event: TaskEvent }
   | { kind: "command"; key: string; identity: string; event: TaskEvent }
+  | { kind: "tool-call"; key: string; identity: string; event: TaskEvent }
   | {
       kind: "command-group";
       key: string;
@@ -114,7 +117,8 @@ export class CaffoldTaskWorkDetails extends CaffoldElement {
   private readonly summary = new DrawnRef<HTMLElement>(this);
   private readonly chevron = new DrawnRef<HTMLElement>(this);
   private readonly body = new DrawnRef<HTMLDivElement>(this);
-  // Each item's command, command group, or message, by kind and identity.
+  // Each item's command, command group, tool call, or message, by kind and
+  // identity.
   private readonly parts = new DrawnRefs<WorkItemPart>(this);
 
   override connectedCallback() {
@@ -322,6 +326,7 @@ export class CaffoldTaskWorkDetails extends CaffoldElement {
 type WorkItemPart =
   | CaffoldTaskCommand
   | CaffoldTaskCommandGroup
+  | CaffoldTaskToolCall
   | CaffoldTaskAssistantMessage;
 
 // Where an item's parts are kept and how its printed output scrolls.
@@ -384,6 +389,18 @@ function workItemTemplate(
         ${drawn(parts.of(`command:${item.identity}`))}
         .event=${item.event}
       ></caffold-task-command>
+    </article>`;
+  }
+  if (item.kind === "tool-call") {
+    return html`<article
+      class="task-work-details-item task-work-details-tool-call"
+      data-event-type="tool_call"
+      data-tool-call-work-identity=${item.identity}
+    >
+      <caffold-task-tool-call
+        ${drawn(parts.of(`tool-call:${item.identity}`))}
+        .event=${item.event}
+      ></caffold-task-tool-call>
     </article>`;
   }
   if (item.kind === "command-group") {
@@ -543,8 +560,15 @@ function workItems(events: TaskEvent[], filePathPresentationBase: string) {
     } else if (event.type === "plan") {
       shell(event, "Plan", payload.text);
     } else if (event.type === "tool_call") {
-      const tool = toolCallPresentation(payload);
-      shell(event, tool.label, tool.text, tool.tone);
+      items.push({
+        kind: "tool-call",
+        key: `tool-call:${identity}`,
+        identity,
+        event,
+      });
+    } else if (event.type === "other_work") {
+      const work = otherWorkPresentation(payload);
+      shell(event, work.label, work.text, work.tone);
     } else if (event.type === "task_failed") {
       shell(event, "Error", event.summary, "danger");
     } else {
