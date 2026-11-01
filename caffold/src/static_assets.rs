@@ -1706,16 +1706,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/code-block.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.js"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/code-block.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/code-block.css.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css.js"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/code-block.css.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/entries.js" => {
@@ -3180,8 +3180,8 @@ mod tests {
                 .any(|window| window == b"caffold-task-markdown")
         );
         let code_block =
-            get("pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.js")
-                .expect("tasks Markdown code-block component js");
+            get("pages/(task-workspace)/tasks/(detail)/(task)/components/code-block.js")
+                .expect("tasks code-block component js");
         assert_eq!(code_block.content_type, "text/javascript; charset=utf-8");
         assert!(
             code_block

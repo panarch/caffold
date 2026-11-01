@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { activateActionHint } from "../support/action-hints.js";
+import {
+  actionHintDialog,
+  activateActionHint,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
@@ -259,6 +262,205 @@ test("a finished turn's work details hold the call's row and other work's card",
   await expect(row.getByRole("button", { name: "View details" })).toBeFocused();
 });
 
+test("the input and each piece with text in it are code blocks to copy and wrap", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const input = {
+    name: "Release notes",
+    content: `# Release notes\n\n${"- tool calls show what they were given and what came back. ".repeat(4)}`,
+  };
+  await openTask(page, activeTask(), [
+    started(),
+    prompt(),
+    toolCall("codexMcp", now + 1_000, { input }),
+    progress("first", now + 1_500),
+    toolCall("claudeScreenshot", now + 2_000),
+    progress("second", now + 2_500),
+    toolCall("noInput", now + 3_000),
+  ]);
+  await page.evaluate(() => {
+    window.__copiedCode = [];
+    Object.defineProperty(navigator.clipboard, "writeText", {
+      configurable: true,
+      value: async (text) => {
+        window.__copiedCode.push(text);
+      },
+    });
+  });
+
+  const rows = page.locator(".task-tool-call > caffold-task-tool-call");
+  const dialog = page.locator("caffold-task-tool-call-dialog > dialog");
+  const inputSection = dialog.locator('[data-tool-call-dialog-section="input"]');
+  const resultSection = dialog.locator('[data-tool-call-dialog-section="result"]');
+  const inputBlock = inputSection.locator("caffold-task-code-block");
+  const inputPre = inputBlock.locator("pre");
+
+  await rows.nth(0).getByRole("button", { name: "View details" }).click();
+  await expect(inputBlock.locator(".code-block-label")).toHaveText("JSON");
+  await expect(resultSection.locator("caffold-task-code-block .code-block-label")).toHaveText([
+    "Plain text",
+    "JSON",
+  ]);
+
+  // Copy takes the JSON as it is shown, indented.
+  await inputBlock.getByRole("button", { name: "Copy code" }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.__copiedCode))
+    .toEqual([JSON.stringify(input, null, 2)]);
+  await expect(inputBlock.locator(".code-block-label")).toHaveText("Copied");
+
+  await expect
+    .poll(() => inputPre.evaluate((element) => element.scrollWidth > element.clientWidth + 1))
+    .toBe(true);
+  await inputPre.evaluate((element) => {
+    element.scrollLeft = 80;
+  });
+  await inputBlock.getByRole("button", { name: "Wrap code lines" }).click();
+  await expect(inputBlock).toHaveAttribute("data-code-wrap", "on");
+  expect(await inputPre.evaluate((element) => element.scrollWidth - element.clientWidth))
+    .toBeLessThanOrEqual(1);
+  await inputBlock.getByRole("button", { name: "Stop wrapping code lines" }).click();
+  await expect(inputBlock).toHaveAttribute("data-code-wrap", "off");
+  await expect.poll(() => inputPre.evaluate((element) => element.scrollLeft)).toBe(80);
+  await inputBlock.getByRole("button", { name: "Wrap code lines" }).click();
+  await expect(inputBlock).toHaveAttribute("data-code-wrap", "on");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+
+  // Pictures and a missing input leave notes, not code blocks.
+  await rows.nth(1).getByRole("button", { name: "View details" }).click();
+  await expect(resultSection.locator("caffold-task-code-block")).toHaveCount(0);
+  await expect(resultSection.locator(':scope > pre[data-tool-call-result-part="binary"]')).toHaveText([
+    "(image/png not shown)",
+    "(Binary content not shown)",
+  ]);
+  await page.keyboard.press("Escape");
+  await rows.nth(2).getByRole("button", { name: "View details" }).click();
+  await expect(inputBlock).toHaveCount(0);
+  await expect(inputSection.locator(":scope > pre")).toHaveText("(No input)");
+  await page.keyboard.press("Escape");
+
+  // Each opening starts over.
+  await rows.nth(0).getByRole("button", { name: "View details" }).click();
+  await expect(inputBlock).toHaveAttribute("data-code-wrap", "off");
+});
+
+test("a dialog's code block measures as the conversation's", { tag: ["@desktop", "@phone"] }, async ({
+  page,
+}, testInfo) => {
+  const task = {
+    ...activeTask(),
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+  };
+  await openTask(page, task, [
+    started(),
+    prompt(),
+    toolCall("codexMcp", now + 1_000),
+    turnEvent("event_final", "assistant_message", now + 2_000, {
+      itemId: "final",
+      phase: "final",
+      text: 'The note is filed.\n\n```json\n{\n  "noteId": "n-1"\n}\n```',
+    }),
+    turnCompleted(now + 3_000),
+  ]);
+
+  const conversationBlock = page.locator("caffold-task-assistant-message caffold-task-code-block");
+  await expect(conversationBlock.locator(".code-block-label")).toHaveText("json");
+  const reference = await blockGeometry(conversationBlock);
+
+  await page.locator("caffold-task-work-details > details > summary").click();
+  await page
+    .locator(".task-work-details-tool-call > caffold-task-tool-call")
+    .getByRole("button", { name: "View details" })
+    .click();
+  const dialog = page.locator("caffold-task-tool-call-dialog > dialog");
+  const blocks = dialog.locator("caffold-task-code-block");
+  await expect(blocks).toHaveCount(3);
+  // The section's gap spaces the blocks, not the margin a block keeps in prose.
+  expect(await blocks.evaluateAll((elements) => elements.map((element) => getComputedStyle(element).marginBottom)))
+    .toEqual(["0px", "0px", "0px"]);
+  for (const block of await blocks.all()) {
+    const geometry = await blockGeometry(block);
+    expect(geometry.header).toBeCloseTo(reference.header, 1);
+    expect(geometry.buttons).toEqual(reference.buttons);
+    expect(geometry.border).toBe(reference.border);
+    expect(geometry.overflow).toEqual({ host: 0, label: 0, actionsInside: true });
+  }
+  await captureReviewScreenshot(page, testInfo, "tool-call-details-code-blocks");
+});
+
+test("each code block's Wrap, Copy, and scrolling are in the dialog's keyboard modes", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  // Every piece has a line too long for its block, so each block can scroll.
+  const long = "a line long enough to scroll sideways in any dialog width ".repeat(4);
+  const input = { content: long };
+  await openTask(page, activeTask(), [
+    started(),
+    prompt(),
+    toolCall("codexMcp", now + 1_000, {
+      input,
+      result: [
+        { type: "text", text: long },
+        { type: "json", value: { summary: long } },
+      ],
+    }),
+  ]);
+  await page.evaluate(() => {
+    window.__copiedCode = [];
+    Object.defineProperty(navigator.clipboard, "writeText", {
+      configurable: true,
+      value: async (text) => {
+        window.__copiedCode.push(text);
+      },
+    });
+  });
+
+  const dialog = page.locator("caffold-task-tool-call-dialog > dialog");
+  const blocks = dialog.locator("caffold-task-code-block");
+  const viewDetails = page
+    .locator(".task-tool-call > caffold-task-tool-call")
+    .getByRole("button", { name: "View details" });
+  const close = dialog.getByRole("button", { name: "Close tool call details", exact: true });
+  const typeHint = async (label) => {
+    await page.keyboard.press("f");
+    const hints = actionHintDialog(page);
+    const badges = hints.getByRole("button", { name: new RegExp(` — ${label}$`) });
+    await expect(badges).toHaveCount(3);
+    const code = await badges.first().getAttribute("data-action-hint-code");
+    await page.keyboard.type(code.toLowerCase());
+    await expect(hints).toBeHidden();
+  };
+
+  await viewDetails.click();
+  await expect(close).toBeFocused();
+  await typeHint("Copy code");
+  await expect.poll(() => page.evaluate(() => window.__copiedCode.length)).toBe(1);
+  await expect(blocks.locator(".code-block-label")).toContainText(["Copied"]);
+  await typeHint("Wrap code lines");
+  await expect(dialog.locator('caffold-task-code-block[data-code-wrap="on"]')).toHaveCount(1);
+
+  // Opening the same call again starts every block over, so each scrolls
+  // sideways again.
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await viewDetails.click();
+  await expect(close).toBeFocused();
+  await expect(dialog.locator('caffold-task-code-block[data-code-wrap="on"]')).toHaveCount(0);
+  await page.keyboard.press("s");
+  const selector = dialog.locator(
+    ":scope > caffold-keyboard-navigation-presentation caffold-scroll-surface-selector > dialog:modal",
+  );
+  await expect(selector).toBeVisible();
+  expect(
+    await selector
+      .locator("button[data-scroll-surface-code]")
+      .evaluateAll((elements) =>
+        elements.map((element) => element.getAttribute("aria-label").replace(/^[A-Z]+ — /, "")),
+      ),
+  ).toEqual(expect.arrayContaining(["Tool call input", "Tool call result 1", "Tool call result 2"]));
+});
+
 function activeTask() {
   return {
     id: threadId,
@@ -327,10 +529,11 @@ function commandEvent(itemId, anchorMs, payload) {
   });
 }
 
-function toolCall(name, anchorMs) {
+function toolCall(name, anchorMs, overrides = {}) {
   return turnEvent(`event_tool_${name}`, "tool_call", anchorMs, {
     itemId: `tool_${name}`,
     ...TOOL_CALLS[name],
+    ...overrides,
   });
 }
 
@@ -411,6 +614,31 @@ async function rowGeometry(row, kind) {
       border: parseFloat(getComputedStyle(element).borderTopWidth),
     };
   }, kind);
+}
+
+// A code block's header height, button sizes, frame, and whether anything in
+// its header spills or clips.
+async function blockGeometry(block) {
+  return block.evaluate((element) => {
+    const root = element.shadowRoot;
+    const header = root.querySelector(".code-block-header");
+    const label = root.querySelector(".code-block-label");
+    const actions = root.querySelector(".code-block-actions");
+    return {
+      header: header.getBoundingClientRect().height,
+      buttons: [...actions.querySelectorAll("button")].map((button) => {
+        const box = button.getBoundingClientRect();
+        return [Math.round(box.width * 10) / 10, Math.round(box.height * 10) / 10];
+      }),
+      border: getComputedStyle(element).borderTopWidth,
+      overflow: {
+        host: element.scrollWidth - element.clientWidth,
+        label: label.scrollWidth - label.clientWidth,
+        actionsInside:
+          actions.getBoundingClientRect().right <= header.getBoundingClientRect().right + 0.5,
+      },
+    };
+  });
 }
 
 async function detailRows(dialog) {

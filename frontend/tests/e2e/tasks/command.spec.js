@@ -274,6 +274,108 @@ test("a multi-line script reads as one line in the row and as its lines in the d
   await captureReviewScreenshot(page, testInfo, "command-script-dialog");
 });
 
+test("the output is a code block whose Copy and Wrap act on the output alone", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const threadId = "thread_command_component";
+  const turnId = "turn_command_output_block";
+  const now = 1_767_450_000_000;
+  const output = [
+    `error: ${"the dependency graph names a package this workspace no longer has; ".repeat(4)}`,
+    "  --> Cargo.toml:12:1",
+    "help: remove the entry or restore the package",
+  ].join("\n");
+  const task = activeTask(threadId, turnId, now);
+  const events = [
+    turnEvent("event_turn_started", "turn_started", now, turnId, {
+      status: "inProgress",
+    }),
+    turnEvent("event_build", "command_execution", now + 1_000, turnId, {
+      itemId: "build",
+      command: "cargo build",
+      cwd: "src",
+      status: "failed",
+      exitCode: 101,
+      output,
+    }),
+    turnEvent("event_progress", "assistant_message", now + 1_500, turnId, {
+      itemId: "progress",
+      phase: "progress",
+      text: "Checking that nothing else prints.",
+    }),
+    turnEvent("event_quiet", "command_execution", now + 2_000, turnId, {
+      itemId: "quiet",
+      command: "true",
+      cwd: "src",
+      status: "completed",
+      exitCode: 0,
+      output: "",
+    }),
+  ];
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({ json: taskDetail(task, events, 1) }),
+  );
+  await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(page, taskDetail(task, events, 1));
+  await page.evaluate(() => {
+    window.__copiedCode = [];
+    Object.defineProperty(navigator.clipboard, "writeText", {
+      configurable: true,
+      value: async (text) => {
+        window.__copiedCode.push(text);
+      },
+    });
+  });
+
+  const commands = page.locator(".task-command > caffold-task-command");
+  await expect(commands).toHaveCount(2);
+  const dialog = page.locator("caffold-task-command-dialog > dialog");
+  const outputSection = dialog.locator(".task-command-dialog-output");
+  const block = outputSection.locator(":scope > caffold-task-code-block");
+  const pre = block.locator("pre");
+
+  await commands.nth(0).getByRole("button", { name: "View output" }).click();
+  await expect(dialog).toHaveAttribute("open", "");
+  await expect(block.locator(".code-block-label")).toHaveText("Plain text");
+  expect(await pre.evaluate((element) => element.textContent)).toBe(output);
+
+  await block.getByRole("button", { name: "Copy code" }).click();
+  await expect.poll(() => page.evaluate(() => window.__copiedCode)).toEqual([output]);
+  await expect(block.locator(".code-block-label")).toHaveText("Copied");
+
+  await expect
+    .poll(() => pre.evaluate((element) => element.scrollWidth > element.clientWidth + 1))
+    .toBe(true);
+  await pre.evaluate((element) => {
+    element.scrollLeft = 80;
+  });
+  await block.getByRole("button", { name: "Wrap code lines" }).click();
+  await expect(block).toHaveAttribute("data-code-wrap", "on");
+  expect(await pre.evaluate((element) => element.scrollWidth - element.clientWidth))
+    .toBeLessThanOrEqual(1);
+  await block.getByRole("button", { name: "Stop wrapping code lines" }).click();
+  await expect(block).toHaveAttribute("data-code-wrap", "off");
+  await expect.poll(() => pre.evaluate((element) => element.scrollLeft)).toBe(80);
+
+  // Each opening starts over, even for the same command.
+  await block.getByRole("button", { name: "Wrap code lines" }).click();
+  await expect(block).toHaveAttribute("data-code-wrap", "on");
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toHaveAttribute("open", "");
+  await commands.nth(0).getByRole("button", { name: "View output" }).click();
+  await expect(block).toHaveAttribute("data-code-wrap", "off");
+  await page.keyboard.press("Escape");
+
+  // A command that printed nothing leaves a note, not a code block.
+  await commands.nth(1).getByRole("button", { name: "View output" }).click();
+  await expect(dialog).toHaveAttribute("open", "");
+  await expect(block).toHaveCount(0);
+  await expect(outputSection.locator(":scope > pre")).toHaveText("(No output)");
+});
+
 function activeTask(threadId, turnId, startedAtMs) {
   return {
     id: threadId,

@@ -42,7 +42,7 @@ test("previews a Markdown fence in a modal and returns focus to its Preview butt
     "thread_markdown_preview_" + testInfo.project.name,
     [PREVIEW_SOURCE, LONG_PREVIEW_SOURCE],
   );
-  const blocks = finalMarkdown(page).locator("caffold-task-markdown-code-block");
+  const blocks = finalMarkdown(page).locator("caffold-task-code-block");
   const previewButton = blocks.nth(0).getByRole("button", { name: "Preview Markdown" });
   const dialog = page.locator("caffold-task-markdown-preview-dialog > dialog");
   const preview = dialog.locator("caffold-markdown-preview");

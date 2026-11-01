@@ -9,7 +9,7 @@ import { CaffoldElement } from "#app/caffold-element.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
-import type { MarkdownPreviewRequest } from "#tasks/(detail)/(task)/components/markdown-preview-dialog.js";
+import type { MarkdownPreviewRequest } from "./markdown-preview-dialog.js";
 
 import styles from "./code-block.css.js";
 
@@ -19,11 +19,13 @@ const PREVIEW_LABEL = "Preview Markdown";
 
 type CopyState = "idle" | "copying" | "copied" | "failed";
 
-// A fenced code block of an agent's Markdown, with its name and the actions on
-// it. The Markdown places the block where the `<pre>` it parsed stood and hands
-// that `<pre>` over; the block keeps it in a slot its template does not draw.
-@customElement("caffold-task-markdown-code-block")
-export class CaffoldTaskMarkdownCodeBlock extends CaffoldElement {
+// A block of code on the Task screen, with its name and the actions on it: a
+// fenced block of an agent's Markdown, or what a tool call took and returned
+// and a command printed in their dialogs.
+@customElement("caffold-task-code-block")
+export class CaffoldTaskCodeBlock extends CaffoldElement {
+  @property({ attribute: false })
+  accessor text = "";
   @property({ attribute: false })
   accessor label = "Plain text";
   @state()
@@ -33,7 +35,6 @@ export class CaffoldTaskMarkdownCodeBlock extends CaffoldElement {
 
   static override styles = styles;
 
-  private pre: HTMLPreElement | null = null;
   // Wraps a change to the block's height so the conversation keeps its place.
   private preserveLayout: (mutation: () => void) => void = (mutation) =>
     mutation();
@@ -45,7 +46,7 @@ export class CaffoldTaskMarkdownCodeBlock extends CaffoldElement {
     clipRoots: () => [this],
   });
   private readonly surfaces = new ScrollSurfaces(this);
-  private readonly content = new DrawnRef<HTMLDivElement>(this);
+  private readonly pre = new DrawnRef<HTMLPreElement>(this);
   private readonly previewButton = new DrawnRef<HTMLButtonElement>(this);
 
   override connectedCallback() {
@@ -128,28 +129,27 @@ export class CaffoldTaskMarkdownCodeBlock extends CaffoldElement {
         </div>
       </header>
       <div
-        ${drawn(this.content)}
         ${this.surfaces.surface({
           id: "scroll",
           axes: ["horizontal"],
-          scrollport: () => this.pre,
-          clipRoots: () => [this, this.pre],
+          scrollport: () => this.pre.value,
+          clipRoots: () => [this, this.pre.value],
         })}
         class="code-block-content"
-      ></div>
+      ><pre ${drawn(this.pre)}><code>${this.text}</code></pre></div>
     `;
   }
 
   // The Markdown reports its height as soon as it has placed its blocks, so a
-  // block draws as it is handed its `<pre>`.
+  // block draws as it is handed its code.
   setContent(
-    pre: HTMLPreElement,
+    text: string,
     {
       label,
       preserveLayout,
     }: { label: string; preserveLayout: (mutation: () => void) => void },
   ) {
-    this.pre = pre;
+    this.text = text;
     this.label = label;
     this.preserveLayout = preserveLayout;
     this.performUpdate();
@@ -157,9 +157,6 @@ export class CaffoldTaskMarkdownCodeBlock extends CaffoldElement {
 
   override firstUpdated() {
     this.dataset.codeWrap = "off";
-    if (this.pre) {
-      this.content.value?.append(this.pre);
-    }
   }
 
   actionHintScope(pull: ActionHintPull = {}) {
@@ -174,9 +171,8 @@ export class CaffoldTaskMarkdownCodeBlock extends CaffoldElement {
   }
 
   private requestPreview() {
-    const code = this.code;
     const opener = this.previewButton.value;
-    if (!code || !opener) {
+    if (!opener) {
       return;
     }
     this.dispatchEvent(
@@ -185,7 +181,7 @@ export class CaffoldTaskMarkdownCodeBlock extends CaffoldElement {
         {
           bubbles: true,
           composed: true,
-          detail: { markdown: code.textContent ?? "", opener },
+          detail: { markdown: this.text, opener },
         },
       ),
     );
@@ -194,7 +190,7 @@ export class CaffoldTaskMarkdownCodeBlock extends CaffoldElement {
   // The wrapped lines change the block's height at once, inside the
   // conversation's keeping of its place; the button follows when it draws.
   private toggleWrap() {
-    const pre = this.pre;
+    const pre = this.pre.value;
     if (!pre) {
       return;
     }
@@ -212,8 +208,8 @@ export class CaffoldTaskMarkdownCodeBlock extends CaffoldElement {
   }
 
   private async copyCode() {
-    const code = this.code;
-    if (!code || this.copyState === "copying") {
+    const text = this.text;
+    if (this.copyState === "copying") {
       return;
     }
 
@@ -221,7 +217,7 @@ export class CaffoldTaskMarkdownCodeBlock extends CaffoldElement {
     const generation = this.generation;
     this.copyState = "copying";
     try {
-      await navigator.clipboard.writeText(code.textContent ?? "");
+      await navigator.clipboard.writeText(text);
       if (!this.acceptsCompletion(generation)) {
         return;
       }
@@ -254,10 +250,6 @@ export class CaffoldTaskMarkdownCodeBlock extends CaffoldElement {
   private clearFeedback() {
     window.clearTimeout(this.feedbackTimer);
     this.feedbackTimer = undefined;
-  }
-
-  private get code() {
-    return this.pre?.querySelector(":scope > code") ?? null;
   }
 }
 
@@ -298,7 +290,7 @@ function copyIcon(state: CopyState) {
 
 declare global {
   interface HTMLElementTagNameMap {
-    "caffold-task-markdown-code-block": CaffoldTaskMarkdownCodeBlock;
+    "caffold-task-code-block": CaffoldTaskCodeBlock;
   }
 
   interface HTMLElementEventMap {

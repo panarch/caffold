@@ -1,16 +1,14 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
-import {
-  installCustomElementUnitRegistry,
-} from "../../../../../../../../../../tests/support/custom-element-unit.js";
-import { templateHtml } from "../../../../../../../../../../tests/support/lit-template.js";
+import { installCustomElementUnitRegistry } from "../../../../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
 await import("./code-block.js");
 const { ActionHints } = await import("#app/action-hints.js");
 const { ScrollSurfaces } = await import("#app/scroll-scope.js");
-const codeBlock = registry.element("caffold-task-markdown-code-block").prototype;
+const codeBlock = registry.element("caffold-task-code-block").prototype;
 after(() => registry.restore());
 
 test("offers Preview only for a Markdown fence and never as a toggle", () => {
@@ -23,6 +21,7 @@ test("offers Preview only for a Markdown fence and never as a toggle", () => {
     ["Plain text", false],
   ]) {
     const owner = Object.create(codeBlock, Object.getOwnPropertyDescriptors({
+      text: "",
       label,
       copyState: "idle",
       wrapped: false,
@@ -39,11 +38,48 @@ test("offers Preview only for a Markdown fence and never as a toggle", () => {
   }
 });
 
+test("draws the text it is given as code under its name", () => {
+  const owner = Object.create(codeBlock, Object.getOwnPropertyDescriptors({
+    text: '{\n  "name": "<Release notes>"\n}',
+    label: "JSON",
+    copyState: "idle",
+    wrapped: false,
+  }));
+  owner.hints = new ActionHints(owner);
+  owner.surfaces = new ScrollSurfaces(owner);
+
+  const html = templateHtml(owner.render());
+  assert.match(html, /<span[^>]*class="code-block-label"[^>]*>JSON<\/span>/);
+  assert.match(
+    html,
+    /<pre[^>]*><code>\{\n {2}&quot;name&quot;: &quot;&lt;Release notes&gt;&quot;\n\}<\/code><\/pre>/,
+  );
+});
+
+test("takes Markdown's code, name, and place keeping, and draws at once", () => {
+  const preserveLayout = () => {};
+  let draws = 0;
+  const owner = Object.create(codeBlock, Object.getOwnPropertyDescriptors({
+    text: "",
+    label: "Plain text",
+    preserveLayout: null,
+    performUpdate: () => {
+      draws += 1;
+    },
+  }));
+
+  owner.setContent("fn main() {}\n", { label: "rust", preserveLayout });
+  assert.equal(owner.text, "fn main() {}\n");
+  assert.equal(owner.label, "rust");
+  assert.equal(owner.preserveLayout, preserveLayout);
+  assert.equal(draws, 1);
+});
+
 test("requests a preview of the block text from its Preview button", () => {
   const events = [];
   const opener = {};
   const owner = Object.create(codeBlock, Object.getOwnPropertyDescriptors({
-    pre: { querySelector: () => ({ textContent: "## Notes\n\n- first\n" }) },
+    text: "## Notes\n\n- first\n",
     previewButton: { value: opener },
     dispatchEvent: (event) => events.push(event),
   }));

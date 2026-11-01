@@ -1,11 +1,16 @@
 import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
-import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
+import { keyed } from "lit/directives/keyed.js";
+import {
+  ACTION_HINT_ACTION,
+  ActionHints,
+  mergeActionHintScopes,
+} from "#app/action-hints.js";
 import type { TaskEvent } from "#app/api.js";
 import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
 import { CaffoldElement } from "#app/caffold-element.js";
-import { ScrollSurfaces } from "#app/scroll-scope.js";
+import { mergeScrollSurfaceScopes, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import {
@@ -13,6 +18,8 @@ import {
   formatDuration,
   taskEventObservedMs,
 } from "#tasks/task-format.js";
+import "./code-block.js";
+import type { CaffoldTaskCodeBlock } from "./code-block.js";
 
 import styles from "./command-dialog.css.js";
 
@@ -45,7 +52,10 @@ export class CaffoldTaskCommandDialog extends CaffoldElement {
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
   private readonly body = new DrawnRef<HTMLDivElement>(this);
-  private readonly output = new DrawnRef<HTMLPreElement>(this);
+  private readonly output = new DrawnRef<CaffoldTaskCodeBlock>(this);
+  // Counts the times a command was opened, so each opening draws a fresh
+  // output block.
+  private openings = 0;
 
   override connectedCallback() {
     super.connectedCallback();
@@ -78,18 +88,18 @@ export class CaffoldTaskCommandDialog extends CaffoldElement {
       durationMs: finiteNumber(payload.durationMs),
       createdMs: taskEventObservedMs(event),
     };
+    this.openings += 1;
     this.requestUpdate();
     this.performUpdate();
     const dialog = this.dialog.value;
     if (dialog && !dialog.open) {
       dialog.showModal();
     }
-    // A new command starts at its top and its first column.
-    for (const scrollport of [this.body.value, this.output.value]) {
-      if (scrollport) {
-        scrollport.scrollTop = 0;
-        scrollport.scrollLeft = 0;
-      }
+    // A new command starts at its top; its output block is a new one.
+    const body = this.body.value;
+    if (body) {
+      body.scrollTop = 0;
+      body.scrollLeft = 0;
     }
   }
 
@@ -101,9 +111,30 @@ export class CaffoldTaskCommandDialog extends CaffoldElement {
   }
 
   keyboardNavigationContexts() {
+    const output = () =>
+      this.output.value?.isConnected ? this.output.value : null;
     return this.keyboard.contexts({
-      actionHints: (pull) => this.hints.scope(pull),
-      scroll: (pull) => this.surfaces.scope(pull),
+      actionHints: (pull) =>
+        mergeActionHintScopes(
+          this.hints.scope(pull),
+          output()?.actionHintScope({
+            ...pull,
+            scopeId: `${pull.scopeId}:output`,
+          }),
+        ),
+      scroll: (pull) =>
+        mergeScrollSurfaceScopes(
+          this.surfaces.scope(pull),
+          output()?.scrollSurfaceScope({
+            ...pull,
+            scopeId: `${pull.scopeId}:output`,
+            label: "Command output",
+            clipRoots: [
+              ...(this.body.value ? [this.body.value] : []),
+              ...(pull.clipRoots ?? []),
+            ],
+          }),
+        ),
     });
   }
 
@@ -161,11 +192,14 @@ export class CaffoldTaskCommandDialog extends CaffoldElement {
           data-command-dialog-body
         >${
           command
-            ? commandTemplate(command, statusLabel, {
-                surfaces: this.surfaces,
-                output: this.output,
-                clipRoots: () => [this.body.value, this.output.value],
-              })
+            ? keyed(
+                this.openings,
+                commandTemplate(command, statusLabel, {
+                  surfaces: this.surfaces,
+                  output: this.output,
+                  clipRoots: () => [this.body.value],
+                }),
+              )
             : nothing
         }</div>
       </article>
@@ -182,11 +216,12 @@ export class CaffoldTaskCommandDialog extends CaffoldElement {
   }
 }
 
-// What the command's output is drawn with: its Scroll surface, and the ref
-// the dialog scrolls back to the start.
+// What the command's output is drawn with: the code block the dialog's
+// keyboard contexts reach, and the Scroll surface of the note an empty output
+// leaves.
 interface CommandOutputParts {
   surfaces: ScrollSurfaces;
-  output: DrawnRef<HTMLPreElement>;
+  output: DrawnRef<CaffoldTaskCodeBlock>;
   clipRoots: () => Array<Element | undefined>;
 }
 
@@ -239,15 +274,22 @@ function commandTemplate(
       aria-labelledby="task-command-output-title"
     >
       <h3 id="task-command-output-title">Output</h3>
-      <pre
-        ${drawn(output)}
-        ${surfaces.surface({
-          id: "output",
-          label: () => "Command output",
-          axes: ["horizontal"],
-          clipRoots,
-        })}
-      >${command.output || "(No output)"}</pre>
+      ${
+        command.output
+          ? html`<caffold-task-code-block
+              ${drawn(output)}
+              .label=${"Plain text"}
+              .text=${command.output}
+            ></caffold-task-code-block>`
+          : html`<pre
+              ${surfaces.surface({
+                id: "output",
+                label: () => "Command output",
+                axes: ["horizontal"],
+                clipRoots,
+              })}
+            >(No output)</pre>`
+      }
     </section>`;
 }
 

@@ -10,6 +10,7 @@ const ToolCallDialog = registry.element("caffold-task-tool-call-dialog");
 const { ActionHints } = await import("#app/action-hints.js");
 const { KeyboardContexts } = await import("#app/keyboard-navigation.js");
 const { ScrollSurfaces } = await import("#app/scroll-scope.js");
+const { DrawnRefs } = await import("#components/drawn-refs.js");
 after(() => registry.restore());
 
 const toolCall = (payload) => ({
@@ -42,11 +43,19 @@ test("draws a finished call's details, its input, and each piece of its result",
   assert.match(drawn, /<dt>Tool<\/dt><dd><code>read_note<\/code><\/dd>/);
   assert.match(drawn, /<dt>Server<\/dt><dd><code>caffold<\/code><\/dd>/);
   assert.match(drawn, /<dt>Duration<\/dt><dd>1s<\/dd>/);
-  assert.match(drawn, /<pre>\{\n {2}"noteId": "n-1"\n\}<\/pre>/);
-  assert.match(drawn, /<pre data-tool-call-result-part="text"># Note<\/pre>/);
+  // The input and each piece with text in it are code blocks, named after
+  // what they hold; a tag's whitespace, the JSON's included, reads as spaces.
   assert.match(
     drawn,
-    /<pre data-tool-call-result-part="json">\{\n {2}"name": "Note"\n\}<\/pre>/,
+    /<caffold-task-code-block \.label="JSON" \.text="\{ "noteId": "n-1" \}"><\/caffold-task-code-block>/,
+  );
+  assert.match(
+    drawn,
+    /<caffold-task-code-block data-tool-call-result-part="text" \.label="Plain text" \.text="# Note">/,
+  );
+  assert.match(
+    drawn,
+    /<caffold-task-code-block data-tool-call-result-part="json" \.label="JSON" \.text="\{ "name": "Note" \}">/,
   );
   assert.match(
     drawn,
@@ -69,6 +78,7 @@ test("says what a call does not have yet, or did not have", () => {
   assert.match(running, /<p data-tool-call-dialog-status>In progress<\/p>/);
   assert.doesNotMatch(running, /<dt>Server<\/dt>|<dt>Duration<\/dt>/);
   assert.match(running, /<pre>\(No input\)<\/pre>/);
+  assert.doesNotMatch(running, /caffold-task-code-block/, "a note has no code block");
   assert.match(running, /<pre data-tool-call-result-part="none">\(No result yet\)<\/pre>/);
   assert.match(finished, /<pre data-tool-call-result-part="none">\(No result\)<\/pre>/);
 });
@@ -96,12 +106,42 @@ test("follows the open call to its newest report, and only that call", () => {
   assert.equal(closed.toolCall, running, "a closed dialog follows nothing");
 });
 
+test("offers the code blocks the open call shows, under the names its boxes had", () => {
+  const blocks = new Map([
+    ["input", { isConnected: true }],
+    ["result:0", { isConnected: true }],
+    // A block a call opened earlier drew, now gone.
+    ["result:2", { isConnected: false }],
+  ]);
+  const host = dialogHost({
+    toolCall: toolCall({
+      status: "completed",
+      input: { noteId: "n-1" },
+      result: [
+        { type: "text", text: "# Note" },
+        { type: "binary", mediaType: "image/png" },
+        { type: "json", value: { name: "Note" } },
+      ],
+    }),
+    codeBlocks: { get: (key) => blocks.get(key) },
+  });
+
+  assert.deepEqual(
+    host.shownCodeBlocks().map(({ key, label, block }) => [key, label, block]),
+    [
+      ["input", "Tool call input", blocks.get("input")],
+      ["result:0", "Tool call result 1", blocks.get("result:0")],
+    ],
+  );
+});
+
 function dialogHost(properties) {
   const host = Object.create(ToolCallDialog.prototype, {
     ...Object.getOwnPropertyDescriptors({
       isConnected: true,
       threadId: "thread-1",
       toolCall: null,
+      openings: 1,
       dialog: { value: undefined },
       body: { value: undefined },
     }),
@@ -110,6 +150,7 @@ function dialogHost(properties) {
   host.hints = new ActionHints(host);
   host.surfaces = new ScrollSurfaces(host);
   host.keyboard = new KeyboardContexts(host);
+  host.codeBlocks ??= new DrawnRefs(host);
   return host;
 }
 

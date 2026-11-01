@@ -162,7 +162,7 @@ test("owns Thinking disclosure state, anchor, and exact target boundary", { tag:
   await expect(thinking).not.toHaveAttribute("code-block-controls", "");
   await expect(thinking.locator("pre > code")).toHaveText("thinking-only\n");
   await expect(
-    thinking.locator("caffold-task-markdown-code-block"),
+    thinking.locator("caffold-task-code-block"),
   ).toHaveCount(0);
   await expect(thinking.locator("[data-code-action]")).toHaveCount(0);
   expect(scenario.pageErrors).toEqual([]);

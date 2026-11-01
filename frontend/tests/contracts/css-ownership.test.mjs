@@ -117,7 +117,7 @@ const shadowRootStyles = new Map([
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css", "caffold-task-command"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/tool-call.css", "caffold-task-tool-call"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css", "caffold-task-markdown"],
-  ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css", "caffold-task-markdown-code-block"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/code-block.css", "caffold-task-code-block"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.css", "caffold-task-message-attachments"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.css", "caffold-task-older-history"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.css", "caffold-task-user-message"],
