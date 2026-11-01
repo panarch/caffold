@@ -622,7 +622,11 @@ submissions, and local projections with explicit roles. It reconciles a history
 read when that read is accepted, under the same owner as live publication.
 Session causality protects exact-identity live updates accepted after the read
 began. A turn observed continuously from its start retains its live item set
-and stable positions even if a history read uses different IDs. Unmatched IDs
+and stable positions even if a history read uses different IDs. A turn first
+reported live and only then read, such as one that outlived a backend restart,
+takes the read's positions; a record the read does not list keeps the order it
+was observed in, and an approval question goes right after the tool call it
+names. Unmatched IDs
 from a partial attachment or recovered source remain distinct. Their contents,
 timestamps, or proximity cannot authorize a guessed match.
 
