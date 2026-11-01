@@ -1147,12 +1147,12 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     "Run focused tests",
   );
   const commandGroup = tasksPage.locator(
-    ".task-work-details-command-group > caffold-task-command-group > details",
+    ".task-work-details-run-group > caffold-task-run-group > details",
   );
   await commandGroup.locator(":scope > summary").click();
   await expect(commandGroup).toHaveAttribute("open", "");
   const completedCommand = commandGroup.locator(
-    '.task-command-group-item:has(> caffold-task-command[data-command-status="completed"])',
+    '.task-run-group-item:has(> caffold-task-command[data-command-status="completed"])',
   );
   const completedCommandRow = completedCommand.locator(
     "caffold-task-command",
@@ -1283,7 +1283,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   });
 
   const failedCommand = commandGroup.locator(
-    '.task-command-group-item:has(> caffold-task-command[data-command-status="failed"])',
+    '.task-run-group-item:has(> caffold-task-command[data-command-status="failed"])',
   );
   const failedCommandRow = failedCommand.locator(
     "caffold-task-command",

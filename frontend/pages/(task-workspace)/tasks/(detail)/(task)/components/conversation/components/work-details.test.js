@@ -64,7 +64,7 @@ test("offers its printed outputs and its items' Scroll surfaces only while open"
   });
   const parts = {
     "command:command-a": part("command-output"),
-    "command-group:group-a": part("group"),
+    "run-group:group-a": part("group"),
     "message:message-a": part("table"),
   };
   const details = { open: false };
@@ -72,7 +72,7 @@ test("offers its printed outputs and its items' Scroll surfaces only while open"
   const owner = Object.assign(Object.create(workDetails), {
     items: [
       { kind: "command", identity: "command-a" },
-      { kind: "command-group", identity: "group-a" },
+      { kind: "run-group", identity: "group-a" },
       { kind: "message", identity: "message-a" },
     ],
     surfaces: { scope: () => ({ surfaces: [{ id: "raw:1" }] }) },

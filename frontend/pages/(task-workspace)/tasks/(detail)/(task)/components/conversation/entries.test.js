@@ -401,16 +401,17 @@ test("a running turn folds finished commands in a row into one entry", () => {
   const identity = "command-group:item:thread-1:turn-1:a";
 
   assert.deepEqual(entries.map(({ kind }) => kind), [
-    "command-group",
+    "run-group",
     "command",
     "assistant-message",
     "command",
     "active-turn",
   ]);
   assert.deepEqual(entries[0], {
-    kind: "command-group",
+    kind: "run-group",
     identity,
     eventId: "a",
+    runKind: "command",
     events: [first, second],
   });
   assert.deepEqual(
@@ -419,6 +420,34 @@ test("a running turn folds finished commands in a row into one entry", () => {
       .map(({ identity }) => identity),
     ["item:thread-1:turn-1:c", "item:thread-1:turn-1:d"],
   );
+});
+
+test("a running turn folds finished tool calls in a row into their own entry", () => {
+  const firstCommand = commandEvent("a", 2, "completed");
+  const secondCommand = commandEvent("b", 3, "completed");
+  const firstCall = toolCallEvent("c", 4, "completed");
+  const secondCall = toolCallEvent("d", 5, "failed");
+  const running = toolCallEvent("e", 6, "inProgress");
+
+  const entries = conversationEntries(
+    [firstCommand, secondCommand, firstCall, secondCall, running],
+    activeTask(),
+  );
+
+  assert.deepEqual(entries.map(({ kind }) => kind), [
+    "run-group",
+    "run-group",
+    "tool-call",
+    "active-turn",
+  ]);
+  assert.equal(entries[0].runKind, "command");
+  assert.deepEqual(entries[1], {
+    kind: "run-group",
+    identity: "tool-call-group:item:thread-1:turn-1:c",
+    eventId: "c",
+    runKind: "tool-call",
+    events: [firstCall, secondCall],
+  });
 });
 
 test("a pending approval keeps the commands on either side apart", () => {
@@ -439,7 +468,7 @@ test("a pending approval keeps the commands on either side apart", () => {
     [approval],
   ).map(({ kind }) => kind);
 
-  assert.ok(!kinds.includes("command-group"));
+  assert.ok(!kinds.includes("run-group"));
   assert.equal(kinds.filter((kind) => kind === "command").length, 2);
 });
 
@@ -477,6 +506,35 @@ test("a finished turn counts a folded group of commands as one update", () => {
   ]);
 });
 
+test("a finished turn counts a folded group of tool calls as one update", () => {
+  const idleTask = {
+    id: "thread-1",
+    threadId: "thread-1",
+    threadStatus: { type: "idle" },
+  };
+  const events = [
+    turnEvent("thread-1:turn-1:prompt", "user_message", 1, {
+      itemId: "prompt",
+      text: "Read the notes.",
+    }),
+    toolCallEvent("a", 2, "completed"),
+    toolCallEvent("b", 3, "completed"),
+    toolCallEvent("c", 4, "completed"),
+    turnEvent("thread-1:turn-1:final", "assistant_message", 5, {
+      itemId: "final",
+      phase: "final",
+      text: "Read all three.",
+    }),
+    turnEvent("thread-1:turn-1:end", "turn_completed", 6, {
+      status: "completed",
+    }),
+  ];
+
+  assert.deepEqual(updateCounts(conversationEntries(events, idleTask)), [
+    "1 update",
+  ]);
+});
+
 test("a running turn folds the empty thinking between its commands into the group", () => {
   // How a Claude turn arrives: an empty thinking block before each command.
   const opening = emptyThinking("t1", 2);
@@ -492,7 +550,7 @@ test("a running turn folds the empty thinking between its commands into the grou
   );
 
   assert.deepEqual(entries.map(({ kind }) => kind), [
-    "command-group",
+    "run-group",
     "command",
     "active-turn",
   ]);
@@ -558,6 +616,17 @@ function commandEvent(itemId, anchorMs, status) {
     ...turnEvent(itemId, "command_execution", anchorMs, {
       itemId,
       command: `check ${itemId}`,
+      status,
+    }),
+    threadId: "thread-1",
+  };
+}
+
+function toolCallEvent(itemId, anchorMs, status) {
+  return {
+    ...turnEvent(itemId, "tool_call", anchorMs, {
+      itemId,
+      name: `read_note_${itemId}`,
       status,
     }),
     threadId: "thread-1",

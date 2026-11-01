@@ -113,7 +113,7 @@ const shadowRootStyles = new Map([
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.css", "caffold-task-assistant-message-copy-button"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.css", "caffold-task-assistant-message-suggested-prompts"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css", "caffold-task-changed-files"],
-  ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.css", "caffold-task-command-group"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/run-group.css", "caffold-task-run-group"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css", "caffold-task-command"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/tool-call.css", "caffold-task-tool-call"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css", "caffold-task-markdown"],

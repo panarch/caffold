@@ -112,7 +112,7 @@ details[open] .task-work-details-chevron-expanded {
 }
 
 .task-work-details-command,
-.task-work-details-command-group,
+.task-work-details-run-group,
 .task-work-details-tool-call,
 .task-work-details-message {
   border: 0;
@@ -120,7 +120,7 @@ details[open] .task-work-details-chevron-expanded {
 }
 
 .task-work-details-command > caffold-task-command,
-.task-work-details-command-group > caffold-task-command-group,
+.task-work-details-run-group > caffold-task-run-group,
 .task-work-details-tool-call > caffold-task-tool-call,
 .task-work-details-message > caffold-task-assistant-message {
   min-width: 0;

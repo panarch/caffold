@@ -1,9 +1,9 @@
-/* A command card that holds several rows. Its frame, header height, and
-   padding match a single command card, so a card folding into a group
-   changes only the frame around it. Every row is as tall as a command row,
-   whose command line is set in code type. */
+/* A card that holds several command or tool call rows. Its frame, header
+   height, and padding match a single command card, so a card folding into a
+   group changes only the frame around it. Every row is as tall as a command
+   row, whose command line is set in code type. */
 :host {
-  --task-command-group-row-size: max(
+  --task-run-group-row-size: max(
     var(--interface-control-size),
     calc(var(--code-font-size) * var(--code-line-height) + 2 * 0.4375rem)
   );
@@ -22,12 +22,12 @@ details {
   max-width: 100%;
 }
 
-.task-command-group-summary {
+.task-run-group-summary {
   display: flex;
   align-items: center;
   gap: var(--interface-space-4);
   min-width: 0;
-  min-height: var(--task-command-group-row-size);
+  min-height: var(--task-run-group-row-size);
   padding: 0.4375rem 0.6875rem;
   color: var(--muted);
   font-size: var(--interface-meta-font-size);
@@ -35,11 +35,11 @@ details {
   cursor: pointer;
 }
 
-details[open] > .task-command-group-summary {
+details[open] > .task-run-group-summary {
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.task-command-group-label {
+.task-run-group-label {
   display: inline-flex;
   align-items: center;
   gap: 0.4375rem;
@@ -47,7 +47,7 @@ details[open] > .task-command-group-summary {
   white-space: nowrap;
 }
 
-.task-command-group-chevron {
+.task-run-group-chevron {
   display: inline-grid;
   width: var(--interface-icon-small-size);
   height: var(--interface-icon-small-size);
@@ -55,7 +55,7 @@ details[open] > .task-command-group-summary {
   place-items: center;
 }
 
-.task-command-group-chevron-icon {
+.task-run-group-chevron-icon {
   grid-area: 1 / 1;
   display: block;
   width: var(--interface-icon-small-size);
@@ -63,59 +63,59 @@ details[open] > .task-command-group-summary {
   stroke-width: 2.2;
 }
 
-.task-command-group-chevron-expanded,
-details[open] .task-command-group-chevron-collapsed {
+.task-run-group-chevron-expanded,
+details[open] .task-run-group-chevron-collapsed {
   display: none;
 }
 
-details[open] .task-command-group-chevron-expanded {
+details[open] .task-run-group-chevron-expanded {
   display: block;
 }
 
-.task-command-group-results {
+.task-run-group-results {
   display: inline-flex;
   gap: var(--interface-space-4);
   margin-left: auto;
   white-space: nowrap;
 }
 
-.task-command-group-failed {
+.task-run-group-failed {
   color: var(--danger);
 }
 
-.task-command-group-list {
+.task-run-group-list {
   display: grid;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.task-command-group-item {
+.task-run-group-item {
   min-width: 0;
 }
 
-.task-command-group-item + .task-command-group-item {
+.task-run-group-item + .task-run-group-item {
   border-top: 1px solid var(--border-subtle);
 }
 
-.task-command-group-thinking-row {
+.task-run-group-thinking-row {
   display: flex;
   align-items: center;
   gap: var(--interface-space-4);
-  min-height: var(--task-command-group-row-size);
+  min-height: var(--task-run-group-row-size);
   padding: 0.4375rem 0.6875rem;
   color: var(--muted);
   font-size: var(--interface-meta-font-size);
   line-height: var(--interface-line-height);
 }
 
-.task-command-group-thinking-row > time {
+.task-run-group-thinking-row > time {
   margin-left: auto;
   white-space: nowrap;
 }
 
 /* A failed row's tint reaches the card's rounded bottom corners. */
-.task-command-group-item:last-child {
+.task-run-group-item:last-child {
   overflow: hidden;
   border-radius: 0 0 9px 9px;
 }

@@ -6,7 +6,7 @@ import {
   formatStatus,
   taskEventObservedMs,
 } from "#tasks/task-format.js";
-import { commandResult, isFinishedCommand } from "../../command-runs.js";
+import { commandResult, isFinishedCommand } from "../../finished-runs.js";
 
 export type CommandPresentation = ReturnType<typeof commandPresentation>;
 

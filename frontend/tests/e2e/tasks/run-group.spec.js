@@ -13,6 +13,7 @@ import {
   isScrolledToBottom,
   mockAgentModels,
 } from "../support/task-fixtures.js";
+import { OTHER_WORK, TOOL_CALLS } from "../support/tool-call-fixture.js";
 
 const threadId = "thread_command_group";
 const turnId = "turn_command_group";
@@ -55,13 +56,13 @@ test("a finished command folds into the group beside it and only its frame chang
     payload: { ...clippy.payload, status: "completed", exitCode: 0, durationMs: 3_400 },
   }, 2);
   const group = conversation.locator(
-    ".task-command-group > caffold-task-command-group",
+    ".task-run-group > caffold-task-run-group",
   );
-  const summary = group.locator(".task-command-group-summary");
+  const summary = group.locator(".task-run-group-summary");
   await expect(group).toHaveCount(1);
   await expect(conversation.locator(".task-command")).toHaveCount(0);
   await expect(summary).toContainText("Ran 2 commands");
-  await expect(group.locator(".task-command-group-failed")).toBeHidden();
+  await expect(group.locator(".task-run-group-failed")).toBeHidden();
   // The group sits where the card was and is as tall as the card was.
   const folded = await hostGeometry(group);
   expect(folded.top).toBeCloseTo(card.top, 1);
@@ -84,14 +85,14 @@ test("a finished command folds into the group beside it and only its frame chang
   }, 4);
   await expect(conversation.locator(".task-command")).toHaveCount(0);
   await expect(summary).toContainText("Ran 3 commands");
-  await expect(group.locator(".task-command-group-failed")).toHaveText("1 failed");
+  await expect(group.locator(".task-run-group-failed")).toHaveText("1 failed");
   expect((await hostGeometry(group)).top).toBeCloseTo(card.top, 1);
   await expectNothingClipped(group);
   await captureReviewScreenshot(page, testInfo, "command-group-folded");
 
   await summary.click();
   await expect(group.locator(":scope > details")).toHaveAttribute("open", "");
-  const rows = group.locator(".task-command-group-item > caffold-task-command");
+  const rows = group.locator(".task-run-group-item > caffold-task-command");
   await expect(rows).toHaveCount(3);
   await expect(rows.nth(0)).toContainText("cargo fmt --check");
   await expect(rows.nth(2)).toContainText("Failed");
@@ -128,7 +129,7 @@ test("the empty thinking around commands folds in as rows as tall as a command",
   const conversation = page.locator("caffold-task-conversation");
   // One finished command is not a group yet: the thinking reads as it did.
   await expect(conversation.locator(".task-event-status")).toHaveCount(2);
-  await expect(conversation.locator(".task-command-group")).toHaveCount(0);
+  await expect(conversation.locator(".task-run-group")).toHaveCount(0);
   // A command with no duration still ends its View output at the row's edge.
   const card = conversation.locator(
     ".task-command > caffold-task-command[data-command-terminal]",
@@ -149,21 +150,21 @@ test("the empty thinking around commands folds in as rows as tall as a command",
   }, 2);
   await emitTaskEvent(page, emptyThinking("t3", now + 2_500), 3);
   const group = conversation.locator(
-    ".task-command-group > caffold-task-command-group",
+    ".task-run-group > caffold-task-run-group",
   );
   await expect(group).toHaveCount(1);
   await expect(conversation.locator(".task-event-status")).toHaveCount(0);
-  await expect(group.locator(".task-command-group-summary")).toContainText(
+  await expect(group.locator(".task-run-group-summary")).toContainText(
     "Ran 2 commands",
   );
 
-  await group.locator(".task-command-group-summary").click();
-  const rows = group.locator(".task-command-group-item");
+  await group.locator(".task-run-group-summary").click();
+  const rows = group.locator(".task-run-group-item");
   await expect(rows).toHaveCount(5);
   expect(
     await rows.evaluateAll((items) =>
       items.map((item) =>
-        item.classList.contains("task-command-group-thinking")
+        item.classList.contains("task-run-group-thinking")
           ? `Thinking ${item.querySelector("time").textContent ? "with time" : "no time"}`
           : "command"
       )
@@ -186,7 +187,7 @@ test("the empty thinking around commands folds in as rows as tall as a command",
   expect(heights).toHaveLength(1);
   // Every row ends at the same right edge, View output and time alike.
   const rightEdges = await group
-    .locator(".task-command-summary-action, .task-command-group-thinking-row > time")
+    .locator(".task-command-summary-action, .task-run-group-thinking-row > time")
     .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().right));
   expect(Math.max(...rightEdges) - Math.min(...rightEdges)).toBeLessThan(0.5);
   await expectNothingClipped(group);
@@ -210,9 +211,9 @@ test("an open group stays open when its finished turn folds into work details", 
   await openTask(page, task, [started(), prompt(), fmt, clippy]);
   const conversation = page.locator("caffold-task-conversation");
   const activeGroup = conversation.locator(
-    ".task-command-group > caffold-task-command-group",
+    ".task-run-group > caffold-task-run-group",
   );
-  await activeGroup.locator(".task-command-group-summary").click();
+  await activeGroup.locator(".task-run-group-summary").click();
   await expect(activeGroup.locator(":scope > details")).toHaveAttribute("open", "");
 
   const completedTask = {
@@ -233,15 +234,15 @@ test("an open group stays open when its finished turn folds into work details", 
     ], 5),
     5,
   );
-  await expect(conversation.locator(".task-command-group")).toHaveCount(0);
+  await expect(conversation.locator(".task-run-group")).toHaveCount(0);
   const workDetails = conversation.locator("caffold-task-work-details > details");
   await workDetails.locator(":scope > summary").click();
   const group = workDetails.locator(
-    ".task-work-details-command-group > caffold-task-command-group",
+    ".task-work-details-run-group > caffold-task-run-group",
   );
   await expect(group.locator(":scope > details")).toHaveAttribute("open", "");
   await expect(
-    group.locator(".task-command-group-item > caffold-task-command"),
+    group.locator(".task-run-group-item > caffold-task-command"),
   ).toHaveCount(2);
 });
 
@@ -291,7 +292,7 @@ test("work details offer a folded group's rows to the keyboard only while it is 
   await activateActionHint(page, /Expand (?:Worked for|Work details)/);
   await expect(workDetails).toHaveAttribute("open", "");
   const group = workDetails.locator(
-    ".task-work-details-command-group > caffold-task-command-group",
+    ".task-work-details-run-group > caffold-task-run-group",
   );
   await expect(group).toContainText("Ran 3 commands");
   await expect(group).toContainText("1 failed");
@@ -312,7 +313,7 @@ test("work details offer a folded group's rows to the keyboard only while it is 
   await page.keyboard.press("Escape");
 
   await group
-    .locator(".task-command-group-item")
+    .locator(".task-run-group-item")
     .nth(2)
     .getByRole("button", { name: "View output" })
     .click();
@@ -386,20 +387,216 @@ test("a reader anchored on a command keeps their place when it folds into a grou
     ...build,
     payload: { ...build.payload, status: "completed", exitCode: 0 },
   }, 2);
-  const groupEntry = conversation.locator(".task-command-group");
-  await expect(groupEntry.locator("caffold-task-command-group")).toContainText(
+  const groupEntry = conversation.locator(".task-run-group");
+  await expect(groupEntry.locator("caffold-task-run-group")).toContainText(
     "Ran 3 commands",
   );
   await expect(docsEntry).toHaveCount(0);
   await expect.poll(() => entryOffset(groupEntry)).toBeCloseTo(readingOffset, 0);
 
   // Opening the group keeps its line where the reader is looking.
-  const summary = groupEntry.locator(".task-command-group-summary");
+  const summary = groupEntry.locator(".task-run-group-summary");
   await summary.click();
   await expect(
-    groupEntry.locator("caffold-task-command-group > details"),
+    groupEntry.locator("caffold-task-run-group > details"),
   ).toHaveAttribute("open", "");
   await expect.poll(() => entryOffset(groupEntry)).toBeCloseTo(readingOffset, 0);
+});
+
+test("finished tool calls fold into a group that reads as a group of commands does", { tag: ["@desktop", "@phone"] }, async ({
+  page,
+}, testInfo) => {
+  const task = activeTask();
+  const running = toolCall("grokRunning", now + 4_000);
+  await openTask(page, task, [
+    started(),
+    prompt(),
+    commandEvent("fmt", now + 1_000, {
+      command: "cargo fmt --check",
+      status: "completed",
+      exitCode: 0,
+    }),
+    commandEvent("clippy", now + 2_000, {
+      command: "cargo clippy --all-targets",
+      status: "completed",
+      exitCode: 0,
+    }),
+    progress("between", now + 2_500),
+    toolCall("codexMcp", now + 3_000),
+    running,
+  ]);
+
+  const conversation = page.locator("caffold-task-conversation");
+  const commandGroup = conversation
+    .locator(".task-run-group > caffold-task-run-group")
+    .filter({ hasText: "Ran 2 commands" });
+  const standalone = conversation.locator(".task-tool-call > caffold-task-tool-call");
+  await expect(commandGroup).toHaveCount(1);
+  // One finished call is not a group yet, and a running one stays on its own.
+  await expect(standalone).toHaveCount(2);
+  const card = await hostGeometry(standalone.first());
+
+  await emitTaskEvent(page, {
+    ...running,
+    payload: { ...running.payload, ...TOOL_CALLS.grokFinished },
+  }, 2);
+  const group = conversation
+    .locator(".task-run-group > caffold-task-run-group")
+    .filter({ hasText: "Called" });
+  const summary = group.locator(".task-run-group-summary");
+  await expect(summary).toContainText("Called 2 tools");
+  await expect(standalone).toHaveCount(0);
+  await expect(group.locator(".task-run-group-failed")).toBeHidden();
+  // The group sits where the first call's row was and is as tall as it was,
+  // and as tall as a folded group of commands.
+  const folded = await hostGeometry(group);
+  expect(folded.top).toBeCloseTo(card.top, 1);
+  expect(folded.height).toBeCloseTo(card.height, 1);
+  expect(folded.height).toBeCloseTo((await hostGeometry(commandGroup)).height, 1);
+
+  await emitTaskEvent(page, toolCall("failed", now + 5_000), 3);
+  await emitTaskEvent(page, toolCall("longName", now + 6_000), 4);
+  await expect(summary).toContainText("Called 4 tools");
+  await expect(group.locator(".task-run-group-failed")).toHaveText("1 failed");
+  await expectNothingClipped(group);
+  await captureReviewScreenshot(page, testInfo, "tool-call-group-folded");
+
+  await commandGroup.locator(".task-run-group-summary").click();
+  await summary.click();
+  await expect(group.locator(":scope > details")).toHaveAttribute("open", "");
+  const rows = group.locator(".task-run-group-item > caffold-task-tool-call");
+  await expect(rows).toHaveCount(4);
+  await expect(rows.nth(0)).toContainText("create_note");
+  await expect(rows.nth(2)).toHaveAttribute("data-tool-call-tone", "danger");
+  // A call's row in the group reads as a command's row in its group: no frame
+  // of its own, the same height, and the same edges.
+  const commandRow = await rowGeometry(
+    commandGroup.locator(".task-run-group-item > caffold-task-command").first(),
+  );
+  for (let index = 0; index < 4; index += 1) {
+    const row = await rowGeometry(rows.nth(index), "tool-call");
+    expect(row.height).toBeCloseTo(commandRow.height, 1);
+    expect(row.status).toBeCloseTo(commandRow.status, 1);
+    expect(row.action).toBeCloseTo(commandRow.action, 1);
+    expect(row.border).toBe(0);
+  }
+  expect(
+    await rows.nth(3).evaluate((element) => {
+      const label = element.shadowRoot.querySelector(".task-tool-call-summary-label");
+      return {
+        ellipsized: label.scrollWidth > label.clientWidth,
+        overflow: element.scrollWidth - element.clientWidth,
+      };
+    }),
+  ).toEqual({ ellipsized: true, overflow: 0 });
+  await expectNothingClipped(group);
+  await captureReviewScreenshot(page, testInfo, "tool-call-group-expanded");
+});
+
+test("a command or other work between tool calls keeps them apart", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await openTask(page, activeTask(), [
+    started(),
+    prompt(),
+    toolCall("claudeRead", now + 1_000),
+    otherWork("compaction", now + 2_000),
+    toolCall("claudeMcp", now + 3_000),
+    commandEvent("status", now + 4_000, {
+      command: "git status --short",
+      status: "completed",
+      exitCode: 0,
+    }),
+    toolCall("codexMcp", now + 5_000),
+    toolCall("antigravityMcp", now + 6_000),
+  ]);
+
+  const conversation = page.locator("caffold-task-conversation");
+  const entries = conversation.locator(".task-conversation > li");
+  await expect(conversation.locator(".task-run-group")).toHaveCount(1);
+  expect(
+    await entries.evaluateAll((items) =>
+      items
+        .map((item) =>
+          ["task-tool-call", "task-tool-card", "task-command", "task-run-group"].find(
+            (name) => item.classList.contains(name),
+          )
+        )
+        .filter(Boolean)
+    ),
+  ).toEqual([
+    "task-tool-call",
+    "task-tool-card",
+    "task-tool-call",
+    "task-command",
+    "task-run-group",
+  ]);
+  await expect(conversation.locator(".task-run-group-summary")).toContainText(
+    "Called 2 tools",
+  );
+});
+
+test("an open group of tool calls stays open in work details and offers each call's View details", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const task = activeTask();
+  const read = toolCall("claudeRead", now + 1_000);
+  const mcp = toolCall("claudeMcp", now + 2_000);
+  await openTask(page, task, [started(), prompt(), read, mcp]);
+  const conversation = page.locator("caffold-task-conversation");
+  const activeGroup = conversation.locator(
+    ".task-run-group > caffold-task-run-group",
+  );
+  await activeGroup.locator(".task-run-group-summary").click();
+  await expect(activeGroup.locator(":scope > details")).toHaveAttribute("open", "");
+
+  const completedTask = {
+    ...task,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    updatedMs: now + 4_000,
+    recencyMs: now + 4_000,
+  };
+  await emitTaskSync(
+    page,
+    taskDetail(completedTask, [
+      started(),
+      prompt(),
+      read,
+      mcp,
+      finalMessage(now + 3_000),
+      turnCompleted(now + 4_000),
+    ], 5),
+    5,
+  );
+  await expect(conversation.locator(".task-run-group")).toHaveCount(0);
+  const workDetails = conversation.locator("caffold-task-work-details > details");
+  await expect(workDetails.locator(":scope > summary")).toContainText("1 update");
+  await activateActionHint(page, /Expand (?:Worked for|Work details)/);
+  const group = workDetails.locator(
+    ".task-work-details-run-group > caffold-task-run-group",
+  );
+  await expect(group.locator(":scope > details")).toHaveAttribute("open", "");
+
+  const hints = await enterActionHints(page);
+  await expect(hints.getByLabel("Collapse Called 2 tools")).toBeVisible();
+  const viewDetails = hints.getByLabel("View details");
+  await expect(viewDetails).toHaveCount(2);
+  const code = await viewDetails.first().getAttribute("data-action-hint-code");
+  await page.keyboard.type(code.toLowerCase());
+
+  const dialog = page.locator("caffold-task-tool-call-dialog > dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[data-tool-call-dialog-section="input"] pre')).toHaveText(
+    JSON.stringify(TOOL_CALLS.claudeRead.input, null, 2),
+  );
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(
+    group
+      .locator(".task-run-group-item > caffold-task-tool-call")
+      .first()
+      .getByRole("button", { name: "View details" }),
+  ).toBeFocused();
 });
 
 function activeTask() {
@@ -452,6 +649,14 @@ function turnCompleted(anchorMs) {
   });
 }
 
+function progress(itemId, anchorMs) {
+  return turnEvent(`event_${itemId}`, "assistant_message", anchorMs, {
+    itemId,
+    phase: "progress",
+    text: "Now the notes.",
+  });
+}
+
 function emptyThinking(itemId, anchorMs) {
   return {
     ...turnEvent(`event_thinking_${itemId}`, "reasoning", anchorMs, {
@@ -468,6 +673,20 @@ function commandEvent(itemId, anchorMs, payload) {
     itemId,
     cwd: "src",
     ...payload,
+  });
+}
+
+function toolCall(name, anchorMs) {
+  return turnEvent(`event_tool_${name}`, "tool_call", anchorMs, {
+    itemId: `tool_${name}`,
+    ...TOOL_CALLS[name],
+  });
+}
+
+function otherWork(name, anchorMs) {
+  return turnEvent(`event_work_${name}`, "other_work", anchorMs, {
+    itemId: `work_${name}`,
+    ...OTHER_WORK[name],
   });
 }
 
@@ -531,23 +750,28 @@ async function emitTaskSync(page, detail, revision) {
   }, { threadId, detail, revision });
 }
 
-// A command row's frame and the left edges of what it shows, measured from the
-// top of the conversation list so scrolling cannot move them.
-async function rowGeometry(command) {
-  return command.evaluate((element, listElement) => {
+// A command or tool call row's frame and the edges of what it shows, measured
+// from the top of the conversation list so scrolling cannot move them.
+async function rowGeometry(row, kind = "command") {
+  return row.evaluate((element, { listElement, kind }) => {
     const box = element.getBoundingClientRect();
     const list = listElement.getBoundingClientRect();
-    const edge = (selector, side) =>
-      element.shadowRoot.querySelector(selector).getBoundingClientRect()[side];
+    const edge = (part, side) =>
+      element.shadowRoot
+        .querySelector(`.task-${kind}-summary-${part}`)
+        .getBoundingClientRect()[side];
     return {
       top: box.top - list.top,
       height: box.height,
-      status: edge(".task-command-summary-status", "left"),
-      label: edge(".task-command-summary-label", "left"),
-      action: edge(".task-command-summary-action", "right"),
+      status: edge("status", "left"),
+      label: edge("label", "left"),
+      action: edge("action", "right"),
       border: parseFloat(getComputedStyle(element).borderTopWidth),
     };
-  }, await command.page().locator(".task-conversation").elementHandle());
+  }, {
+    listElement: await row.page().locator(".task-conversation").elementHandle(),
+    kind,
+  });
 }
 
 async function hostGeometry(locator) {
@@ -570,8 +794,8 @@ async function expectNothingClipped(group) {
     await group.evaluate((element) =>
       [
         element,
-        element.shadowRoot.querySelector(".task-command-group-label"),
-        element.shadowRoot.querySelector(".task-command-group-results"),
+        element.shadowRoot.querySelector(".task-run-group-label"),
+        element.shadowRoot.querySelector(".task-run-group-results"),
       ].map((node) => node.scrollWidth - node.clientWidth),
     ),
   ).toEqual([0, 0, 0]);

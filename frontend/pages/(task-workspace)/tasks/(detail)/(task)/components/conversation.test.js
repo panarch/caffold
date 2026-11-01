@@ -111,7 +111,7 @@ test("merges its own actions with older history's and each part's while it shows
       { kind: "thinking", identity: "thinking-a" },
       { kind: "command", identity: "command-a" },
       { kind: "tool-call", identity: "tool-a" },
-      { kind: "command-group", identity: "group-a" },
+      { kind: "run-group", identity: "group-a" },
       { kind: "turn-work", identity: "work-a" },
       {
         kind: "approvals",
@@ -125,7 +125,7 @@ test("merges its own actions with older history's and each part's while it shows
       "thinking:thinking-a": part("thinking-copy"),
       "command:command-a": part("command-output"),
       "tool-call:tool-a": part("tool-details"),
-      "command-group:group-a": part("group-toggle"),
+      "run-group:group-a": part("group-toggle"),
       "work-details:work-a": part("work-toggle"),
     },
     approvals: {
@@ -159,7 +159,7 @@ test("merges its own actions with older history's and each part's while it shows
     "conversation:thinking:thinking-a",
     "conversation:command:command-a",
     "conversation:tool-call:tool-a",
-    "conversation:command-group:group-a",
+    "conversation:run-group:group-a",
     "conversation:work-details:work-a",
     "conversation:approval:approval-a:flow-a",
   ]);

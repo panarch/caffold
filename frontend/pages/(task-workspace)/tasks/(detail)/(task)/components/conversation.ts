@@ -41,9 +41,9 @@ import {
   type CommandIntentDetail,
 } from "./conversation/components/command.js";
 import {
-  CaffoldTaskCommandGroup,
-  type CommandGroupDisclosureIntentDetail,
-} from "./conversation/components/command-group.js";
+  CaffoldTaskRunGroup,
+  type RunGroupDisclosureIntentDetail,
+} from "./conversation/components/run-group.js";
 import "./conversation/components/markdown.js";
 import type { MarkdownRenderedDetail } from "./conversation/components/markdown.js";
 import "./conversation/components/message-attachments.js";
@@ -118,7 +118,7 @@ type DisclosureTarget = { open: boolean } & (
   | { owner: "conversation"; key: string }
   | { owner: "work-details"; identity: string; key: string }
   | { owner: "command"; commandKey: string }
-  | { owner: "command-group"; identity: string }
+  | { owner: "run-group"; identity: string }
 );
 
 type DisclosureAnchor = DisclosureTarget & { offset: number };
@@ -132,7 +132,7 @@ const CONVERSATION_COMPONENTS = [
   "caffold-task-assistant-message-suggested-prompts",
   "caffold-task-changed-files",
   "caffold-task-command",
-  "caffold-task-command-group",
+  "caffold-task-run-group",
   "caffold-task-markdown",
   "caffold-task-markdown-code-block",
   "caffold-task-message-attachments",
@@ -358,7 +358,7 @@ export class CaffoldTaskConversation extends CaffoldElement {
         @caffold:task-command-intent=${this.openCommandOutput}
         @caffold:task-tool-call-intent=${this.openToolCallDetails}
         @caffold:task-command-disclosure-intent=${this.holdCommandAnchor}
-        @caffold:task-command-group-disclosure-intent=${this.holdGroupAnchor}
+        @caffold:task-run-group-disclosure-intent=${this.holdGroupAnchor}
         @caffold:task-work-details-disclosure-intent=${this.holdWorkAnchor}
         @caffold:task-markdown-rendered=${this.handleMarkdownRendered}
       >
@@ -522,8 +522,8 @@ export class CaffoldTaskConversation extends CaffoldElement {
         return part("command");
       case "tool-call":
         return part("tool-call");
-      case "command-group":
-        return part("command-group");
+      case "run-group":
+        return part("run-group");
       case "turn-work":
         return part("work-details");
       case "approvals":
@@ -701,19 +701,22 @@ export class CaffoldTaskConversation extends CaffoldElement {
             .event=${entry.event}
           ></caffold-task-command>
         </li>`;
-      case "command-group":
+      case "run-group":
         return html`<li
           ${drawn(this.parts.of(`entry:${entry.identity}`))}
-          class="task-event task-command-group"
+          class="task-event task-run-group"
           data-event-id=${entry.eventId || nothing}
           data-conversation-entry-key=${entry.identity}
-          data-event-type="command_execution"
+          data-event-type=${
+            entry.runKind === "command" ? "command_execution" : "tool_call"
+          }
         >
-          <caffold-task-command-group
-            ${drawn(this.parts.of(`command-group:${entry.identity}`))}
+          <caffold-task-run-group
+            ${drawn(this.parts.of(`run-group:${entry.identity}`))}
             .identity=${entry.identity}
+            .runKind=${entry.runKind}
             .events=${entry.events}
-          ></caffold-task-command-group>
+          ></caffold-task-run-group>
         </li>`;
       case "file-change":
         return html`<li
@@ -1003,12 +1006,10 @@ export class CaffoldTaskConversation extends CaffoldElement {
     }
   }
 
-  private holdGroupAnchor(
-    event: CustomEvent<CommandGroupDisclosureIntentDetail>,
-  ) {
+  private holdGroupAnchor(event: CustomEvent<RunGroupDisclosureIntentDetail>) {
     const owner = event.composedPath()[0];
     if (
-      !(owner instanceof CaffoldTaskCommandGroup) ||
+      !(owner instanceof CaffoldTaskRunGroup) ||
       !containsAcrossShadowRoots(this, owner)
     ) {
       return;
@@ -1017,7 +1018,7 @@ export class CaffoldTaskConversation extends CaffoldElement {
     const { identity, open } = event.detail;
     if (identity) {
       this.holdDisclosureAnchor(
-        { owner: "command-group", identity, open },
+        { owner: "run-group", identity, open },
         owner.disclosureAnchorTop(),
         owner,
       );
@@ -1192,7 +1193,7 @@ export class CaffoldTaskConversation extends CaffoldElement {
     const anchor =
       this.eventEntries().find(
         (event) => event.dataset.eventId === previousScroll.anchorEventId,
-      ) ?? this.commandGroupEntryHolding(previousScroll.anchorEventId);
+      ) ?? this.runGroupEntryHolding(previousScroll.anchorEventId);
     if (!anchor) {
       return false;
     }
@@ -1210,13 +1211,13 @@ export class CaffoldTaskConversation extends CaffoldElement {
 
   // The entry a reader was anchored on may have folded into a group since;
   // the group's entry then stands where the reader was looking.
-  private commandGroupEntryHolding(eventId: string) {
+  private runGroupEntryHolding(eventId: string) {
     const holding = this.shownEntries.find(
       (entry) =>
-        entry.kind === "command-group" &&
+        entry.kind === "run-group" &&
         (
-          this.parts.get(`command-group:${entry.identity}`) as
-            | CaffoldTaskCommandGroup
+          this.parts.get(`run-group:${entry.identity}`) as
+            | CaffoldTaskRunGroup
             | undefined
         )?.holdsEvent(eventId),
     );
@@ -1369,8 +1370,8 @@ function disclosureState(scroller: HTMLElement, pending: DisclosureAnchor) {
       ? { open: owner.disclosureOpen(), top: owner.disclosureAnchorTop() }
       : null;
   }
-  if (pending.owner === "command-group") {
-    const owner = componentsNamed(scroller, "caffold-task-command-group").find(
+  if (pending.owner === "run-group") {
+    const owner = componentsNamed(scroller, "caffold-task-run-group").find(
       (entry) => entry.identity === pending.identity,
     );
     return owner

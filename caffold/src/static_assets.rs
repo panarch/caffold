@@ -1598,28 +1598,28 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/tool-call/model.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.css.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/run-group.css.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.css.js"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/run-group.css.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/run-group.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.js"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/run-group.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group/model.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/run-group/model.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group/model.js"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/run-group/model.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/command-runs.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/finished-runs.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/command-runs.js"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/finished-runs.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/broken-delete-dialog.css.js" => {
@@ -3374,8 +3374,8 @@ mod tests {
                 b"caffold-task-command".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.js",
-                b"caffold-task-command-group".as_slice(),
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/run-group.js",
+                b"caffold-task-run-group".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/tool-call.js",

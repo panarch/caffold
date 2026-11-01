@@ -32,17 +32,18 @@ import {
   taskEventObservedMs,
 } from "#tasks/task-format.js";
 import {
-  commandGroupIdentity,
-  groupFinishedCommands,
-} from "../command-runs.js";
+  type FinishedRunKind,
+  groupFinishedRuns,
+  runGroupIdentity,
+} from "../finished-runs.js";
 import "./assistant-message.js";
 import type { CaffoldTaskAssistantMessage } from "./assistant-message.js";
 import "./changed-files.js";
 import "./command.js";
-import type { CaffoldTaskCommand } from "./command.js";
-import "./command-group.js";
 import { CaffoldElement } from "#app/caffold-element.js";
-import type { CaffoldTaskCommandGroup } from "./command-group.js";
+import type { CaffoldTaskCommand } from "./command.js";
+import "./run-group.js";
+import type { CaffoldTaskRunGroup } from "./run-group.js";
 import "./tool-call.js";
 import type { CaffoldTaskToolCall } from "./tool-call.js";
 
@@ -67,9 +68,10 @@ type WorkItem =
   | { kind: "command"; key: string; identity: string; event: TaskEvent }
   | { kind: "tool-call"; key: string; identity: string; event: TaskEvent }
   | {
-      kind: "command-group";
+      kind: "run-group";
       key: string;
       identity: string;
+      runKind: FinishedRunKind;
       events: TaskEvent[];
     }
   | {
@@ -325,7 +327,7 @@ export class CaffoldTaskWorkDetails extends CaffoldElement {
 
 type WorkItemPart =
   | CaffoldTaskCommand
-  | CaffoldTaskCommandGroup
+  | CaffoldTaskRunGroup
   | CaffoldTaskToolCall
   | CaffoldTaskAssistantMessage;
 
@@ -403,17 +405,20 @@ function workItemTemplate(
       ></caffold-task-tool-call>
     </article>`;
   }
-  if (item.kind === "command-group") {
+  if (item.kind === "run-group") {
     return html`<article
-      class="task-work-details-item task-work-details-command-group"
-      data-event-type="command_execution"
-      data-command-group-work-identity=${item.identity}
+      class="task-work-details-item task-work-details-run-group"
+      data-event-type=${
+        item.runKind === "command" ? "command_execution" : "tool_call"
+      }
+      data-run-group-work-identity=${item.identity}
     >
-      <caffold-task-command-group
-        ${drawn(parts.of(`command-group:${item.identity}`))}
+      <caffold-task-run-group
+        ${drawn(parts.of(`run-group:${item.identity}`))}
         .identity=${item.identity}
+        .runKind=${item.runKind}
         .events=${item.events}
-      ></caffold-task-command-group>
+      ></caffold-task-run-group>
     </article>`;
   }
   if (item.kind === "file-change") {
@@ -519,14 +524,15 @@ function workItems(events: TaskEvent[], filePathPresentationBase: string) {
     combinedType = "";
   };
 
-  for (const segment of groupFinishedCommands(events)) {
+  for (const segment of groupFinishedRuns(events)) {
     if (segment.group) {
       flushCombinedEvents();
-      const identity = commandGroupIdentity(segment.group);
+      const identity = runGroupIdentity(segment.kind, segment.group);
       items.push({
-        kind: "command-group",
+        kind: "run-group",
         key: identity,
         identity,
+        runKind: segment.kind,
         events: segment.group,
       });
       continue;

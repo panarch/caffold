@@ -120,7 +120,7 @@ test("owns disclosure presentation and preserves its identity across canonical u
 
   // The turn's two commands ran one after another, so the retained child that
   // offers an action is their folded group.
-  const childGroup = owner.locator("caffold-task-command-group");
+  const childGroup = owner.locator("caffold-task-run-group");
   await childGroup.scrollIntoViewIfNeeded();
   await page.evaluate(() => new Promise((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(resolve))
