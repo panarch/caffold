@@ -485,13 +485,34 @@ async fn native_prompt_permission_survives_display_reconstruction() {
     );
     let account = backend.get("/api/antigravity/status").await;
     assert_eq!(account["auth"]["verified"]["authenticated"], true);
+    let waiting = recovered["pendingApprovals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|value| value["payload"]["approvalId"] == id)
+        .expect("the waiting permission survives the replacement");
+    let continued = waiting["payload"]["turnId"].as_str().unwrap().to_string();
     assert!(
-        recovered["pendingApprovals"]
+        continued.starts_with("acp:") && continued != display_turn,
+        "the running prompt continues in a new display turn: {waiting}"
+    );
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let detail = backend.get(&format!("/api/tasks/{task}")).await;
+        if detail["events"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|value| value["payload"]["approvalId"] == id)
-    );
+            .any(|event| event["type"] == "turn_started" && event["payload"]["turnId"] == continued)
+        {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the continued turn did not appear: {detail}"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
     backend
         .post(
             &format!("/api/tasks/{task}/approvals/{id}"),
@@ -521,16 +542,25 @@ async fn native_prompt_permission_survives_display_reconstruction() {
         );
         tokio::time::sleep(Duration::from_millis(200)).await;
     };
-    assert!(
-        final_detail["events"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|event| event["type"] == "user_message"
+    let final_events = final_detail["events"].as_array().unwrap();
+    let frozen = final_events
+        .iter()
+        .find(|event| {
+            event["type"] == "user_message"
                 && event["payload"]["itemId"]
                     .as_str()
-                    .is_some_and(|id| id.contains(':')))
-    );
+                    .is_some_and(|id| id.contains(':'))
+        })
+        .expect("the prompt stays in its native turn")["payload"]["turnId"]
+        .clone();
+    for turn in [json!(continued), frozen] {
+        assert!(
+            final_events.iter().any(
+                |event| event["type"] == "turn_completed" && event["payload"]["turnId"] == turn
+            ),
+            "turn {turn} ends: {final_detail}"
+        );
+    }
     let completed_context = final_detail["context"].clone();
     assert!(
         completed_context["usedTokens"].as_u64().unwrap()

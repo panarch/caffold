@@ -1,5 +1,6 @@
 //! One Task's ACP connection. Its same-child checkpoint retains control and native
-//! observations; fresh prompts own a disposable view, recovered prompts read history.
+//! observations; fresh prompts own a disposable view, and a prompt the child is
+//! still running when this connection attaches continues in a fresh one.
 
 mod live;
 mod permission;
@@ -17,7 +18,7 @@ use super::{
     authentication::{Authentication, Verified},
     binding::{Binding, Bindings},
     protocol::{self, RpcId},
-    record::Snapshot,
+    record::{Records, Snapshot},
 };
 use crate::agent::{
     ApprovalDecision, ApprovalOutcome, ApprovalRequest, MessageContent, SessionEvent,
@@ -54,6 +55,7 @@ pub(super) struct Environment {
     pub(super) runner: RunnerClient,
     pub(super) authentication: Authentication,
     pub(super) bindings: Bindings,
+    pub(super) records: Records,
     pub(super) events: broadcast::Sender<AntigravityRuntimeEvent>,
     pub(super) mcp_endpoint: String,
 }
@@ -255,8 +257,37 @@ impl Session {
             )
             .await;
         self.publish_input(&mut state);
-        self.publish_approvals(&state)?;
         Ok(())
+    }
+
+    /// When the child is still running a prompt as this connection attaches,
+    /// show the rest of it in a continued turn; then republish the questions
+    /// still waiting on the child. Frames wait on the state lock meanwhile, so
+    /// nothing the child reports falls between the record read and the view
+    /// that shows what follows it.
+    pub(super) async fn continue_prompt(&self) -> Result<(), AntigravityError> {
+        let mut state = self.state.lock().await;
+        if state.live.is_none() && state.checkpoint.input.was_accepted() {
+            let baseline = self.read_record(&state).await?;
+            let mut live = Live::continuing(baseline.page, baseline.total_usage);
+            self.publish(live.start_events());
+            state.live = Some(live);
+        }
+        self.publish_approvals(&mut state)
+    }
+
+    async fn read_record(&self, state: &State) -> Result<Snapshot, AntigravityError> {
+        let native = state
+            .checkpoint
+            .binding
+            .as_ref()
+            .ok_or_else(|| AntigravityError::Protocol("missing native session".into()))?
+            .native_id
+            .clone();
+        let records = self.environment.records.clone();
+        tokio::task::spawn_blocking(move || records.read(&native, None, 8))
+            .await
+            .map_err(|e| AntigravityError::Record(e.to_string()))?
     }
 
     async fn rpc(&self, purpose: Purpose, method: &str, params: Value) -> RpcResult {
@@ -291,9 +322,17 @@ impl Session {
 
     /// Publish the current observation after opening or replacing the display.
     /// The lock orders replacement before its context and any newer native report.
+    /// When a running prompt continues in a view, that view replaces the
+    /// conversation instead of the native page: its newest native turns are
+    /// the frozen prefix, below the one continued turn.
     pub(super) async fn publish_opened(&self, replacement: Option<TurnPage>) {
         let state = self.state.lock().await;
-        if let Some(turns_page) = replacement {
+        if let Some(native) = replacement {
+            let turns_page = state
+                .live
+                .as_ref()
+                .and_then(|live| live.read_page(None, native.turns.len() + 1).ok().flatten())
+                .unwrap_or(native);
             self.publish(vec![SessionEventKind::ConversationReplaced { turns_page }]);
         }
         self.publish_context(&state);
@@ -807,13 +846,18 @@ fn transport_error(error: RunnerError) -> AntigravityError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::{ContextUsage, TokenCount, http_mcp::new_binding_value};
+    use crate::agent::antigravity::record::fixture::{self, FixtureData, hex};
+    use crate::agent::{ContextUsage, TokenCount, TurnStatus, http_mcp::new_binding_value};
     use caffold_runner::{client::Client, daemon, protocol::Request};
+    use rusqlite::Connection;
     use std::{fs, path::PathBuf};
     use tempfile::TempDir;
     use tokio::task::{JoinHandle, LocalSet};
 
     use uuid::Uuid;
+
+    /// The native session ID `fixtures/fake_acp.py` answers with.
+    const FIXTURE_NATIVE: &str = "63910fa2-b1ed-4e64-87b8-b9928c1d7015";
 
     impl Session {
         async fn test_prompt(&self, id: u64, content: Value) -> Result<(), AntigravityError> {
@@ -860,6 +904,7 @@ mod tests {
             let daemon =
                 tokio::task::spawn_local(daemon::Runner::new(socket.clone(), None).serve(listener));
             let (events, _) = broadcast::channel(256);
+            fs::create_dir(directory.path().join("records")).unwrap();
             let environment = Arc::new(Environment {
                 authentication: Authentication::new(
                     directory.path().into(),
@@ -868,6 +913,7 @@ mod tests {
                 ),
                 runner: RunnerClient::at_socket(socket),
                 bindings: Bindings::new(directory.path().join("bindings")),
+                records: Records::new(directory.path().join("records")),
                 events,
                 mcp_endpoint: "http://127.0.0.1:1/api/antigravity/mcp".into(),
             });
@@ -912,8 +958,25 @@ mod tests {
             .await
             .unwrap();
             session.prepare(&self.spawn.cwd, true).await.unwrap();
+            session.continue_prompt().await.unwrap();
             session.publish_opened(None).await;
             session
+        }
+        /// The fixture child's native record with its one execution still
+        /// running, and the writer that can end it.
+        fn running_record(&self) -> (Connection, FixtureData) {
+            let mut data = fixture::parse(include_str!("record/fixtures/single-turn.json"));
+            data.identity.cascade = FIXTURE_NATIVE.into();
+            let path = self
+                .directory
+                .path()
+                .join("records")
+                .join(format!("{FIXTURE_NATIVE}.db"));
+            let connection = fixture::write(&path, &data);
+            connection
+                .execute("DELETE FROM executor_metadata", [])
+                .unwrap();
+            (connection, data)
         }
         fn calls(&self) -> Vec<Value> {
             fs::read_to_string(self.directory.path().join("calls.jsonl"))
@@ -1052,10 +1115,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn recovered_active_context_accepts_later_reports_without_a_live_display() {
+    async fn recovered_active_context_accepts_later_reports_beside_a_continued_turn() {
         LocalSet::new()
             .run_until(async {
                 let harness = Harness::start("context-gated").await;
+                let _record = harness.running_record();
                 let first = harness.open().await;
                 let mut events = harness.environment.events.subscribe();
                 let id = first.reserve().await.unwrap();
@@ -1067,7 +1131,7 @@ mod tests {
                 let mut events = harness.environment.events.subscribe();
                 let second = restored(&harness, &first).await;
                 assert_eq!(next_context(&mut events).await.used_tokens, 1200);
-                assert!(!second.has_live_view().await);
+                assert!(second.has_live_view().await);
                 assert_eq!(
                     second.observation().await.operation,
                     InputOperation::Pending
@@ -1075,7 +1139,6 @@ mod tests {
                 fs::write(harness.directory.path().join("finish"), b"finish").unwrap();
                 assert_eq!(next_context(&mut events).await.used_tokens, 2400);
                 finished(&second).await;
-                assert!(!second.has_live_view().await);
                 second.close().await.unwrap();
                 harness.stop().await;
             })
@@ -1278,6 +1341,7 @@ mod tests {
         LocalSet::new()
             .run_until(async {
                 let harness = Harness::start("pending").await;
+                let _record = harness.running_record();
                 let first = harness.open().await;
                 let reserved = first.reserve().await.unwrap();
                 first
@@ -1425,6 +1489,7 @@ mod tests {
         LocalSet::new()
             .run_until(async {
                 let harness = Harness::start("permission").await;
+                let _record = harness.running_record();
                 let mut events = harness.environment.events.subscribe();
                 let first = harness.open().await;
                 let reserved = first.reserve().await.unwrap();
@@ -1443,16 +1508,46 @@ mod tests {
                 })
                 .await
                 .unwrap();
-                let second = restored(&harness, &first).await;
                 assert!(approval.turn_id.as_deref().unwrap().starts_with("acp:"));
+                let mut replayed = harness.environment.events.subscribe();
+                let second = restored(&harness, &first).await;
+                let mut continued = None;
+                let mut shown = None;
+                let mut asked = Vec::new();
+                while let Ok(event) = replayed.try_recv() {
+                    match event {
+                        AntigravityRuntimeEvent::Session(event) => match event.kind {
+                            SessionEventKind::TurnStarted { turn } => continued = Some(turn.id),
+                            SessionEventKind::ItemChanged { turn_id, item, .. } => {
+                                shown = Some((turn_id, item.id))
+                            }
+                            _ => {}
+                        },
+                        AntigravityRuntimeEvent::Approval { request, .. } => asked.push(request),
+                        _ => {}
+                    }
+                }
+                let continued = continued.expect("the waiting prompt continues in a new turn");
                 assert!(
-                    approval
+                    continued.starts_with("acp:") && Some(&continued) != approval.turn_id.as_ref()
+                );
+                let [again] = asked.as_slice() else {
+                    panic!("the waiting question is published once: {asked:?}")
+                };
+                assert_eq!(again.id, approval.id);
+                assert_eq!(again.turn_id.as_ref(), Some(&continued));
+                assert_eq!(
+                    shown,
+                    Some((continued.clone(), again.item_id.clone().unwrap())),
+                    "the asked tool call shows in the continued turn"
+                );
+                assert!(
+                    again
                         .item_id
                         .as_deref()
                         .unwrap()
                         .ends_with(":tool:wire-control-only")
                 );
-                assert!(second.live_page(None, 8).await.unwrap().is_none());
                 second
                     .resolve(&approval.id, ApprovalDecision::Allow)
                     .await
@@ -1474,6 +1569,149 @@ mod tests {
                         .count(),
                     1
                 );
+                second.close().await.unwrap();
+                harness.stop().await;
+            })
+            .await;
+    }
+
+    #[tokio::test]
+    async fn a_prompt_running_at_attachment_continues_in_its_own_turn_and_ends_the_frozen_one() {
+        LocalSet::new()
+            .run_until(async {
+                let harness = Harness::start("gated").await;
+                let (writer, record) = harness.running_record();
+                let first = harness.open().await;
+                let reserved = first.reserve().await.unwrap();
+                first
+                    .test_prompt(reserved, json!([{"type":"text","text":"fixture"}]))
+                    .await
+                    .unwrap();
+                let opened = harness
+                    .environment
+                    .records
+                    .read(FIXTURE_NATIVE, None, 8)
+                    .unwrap()
+                    .page;
+                let frozen = opened.turns[0].clone();
+                assert_eq!(frozen.status, TurnStatus::InProgress);
+                let mut events = harness.environment.events.subscribe();
+                let second = restored(&harness, &first).await;
+                assert!(second.has_live_view().await);
+                second.publish_opened(Some(opened)).await;
+                let executor = &record.executors[0];
+                writer
+                    .execute(
+                        "INSERT INTO executor_metadata VALUES(?1,?2)",
+                        rusqlite::params![executor.idx, hex(&executor.data)],
+                    )
+                    .unwrap();
+                let native = harness
+                    .environment
+                    .records
+                    .read(FIXTURE_NATIVE, None, 8)
+                    .unwrap();
+                fs::write(harness.directory.path().join("finish"), b"finish").unwrap();
+                finished(&second).await;
+
+                let mut started = Vec::new();
+                let mut replaced = Vec::new();
+                let mut ended = Vec::new();
+                let mut totals = Vec::new();
+                while let Ok(event) = events.try_recv() {
+                    let AntigravityRuntimeEvent::Session(event) = event else {
+                        continue;
+                    };
+                    match event.kind {
+                        SessionEventKind::TurnStarted { turn } => started.push(turn.id),
+                        SessionEventKind::ConversationReplaced { turns_page } => replaced.push(
+                            turns_page
+                                .turns
+                                .into_iter()
+                                .map(|turn| turn.id)
+                                .collect::<Vec<_>>(),
+                        ),
+                        SessionEventKind::TurnEnded { turn } => {
+                            ended.push((turn.id, turn.status, turn.completed_at_ms))
+                        }
+                        SessionEventKind::UsageReported { turn_id, usage } => {
+                            totals.push((turn_id, usage.total.total_tokens))
+                        }
+                        _ => {}
+                    }
+                }
+                let [continued] = started.as_slice() else {
+                    panic!("one continued turn starts: {started:?}")
+                };
+                assert!(continued.starts_with("acp:") && continued != &frozen.id);
+                assert_eq!(
+                    replaced,
+                    [[continued.clone(), frozen.id.clone()]],
+                    "the opened conversation is the view the prompt continues in"
+                );
+                let natively_ended = &native.page.turns[0];
+                assert_ne!(natively_ended.status, TurnStatus::InProgress);
+                assert_eq!(ended.len(), 2);
+                assert_eq!(&ended[0].0, continued);
+                assert_eq!(
+                    ended[1],
+                    (
+                        frozen.id.clone(),
+                        natively_ended.status,
+                        natively_ended.completed_at_ms
+                    )
+                );
+                assert_eq!(
+                    totals,
+                    [(continued.clone(), native.total_usage.total_tokens)]
+                );
+                let page = second.live_page(None, 8).await.unwrap().unwrap();
+                assert_eq!(&page.turns[0].id, continued);
+                assert_eq!(page.turns[1].id, frozen.id);
+                assert_eq!(page.turns[1].status, natively_ended.status);
+                assert_eq!(page.turns[1].items, frozen.items);
+                second.close().await.unwrap();
+                harness.stop().await;
+            })
+            .await;
+    }
+
+    #[tokio::test]
+    async fn a_continued_turn_whose_record_is_gone_at_its_end_still_ends_and_guesses_nothing() {
+        LocalSet::new()
+            .run_until(async {
+                let harness = Harness::start("gated").await;
+                let (writer, _) = harness.running_record();
+                let first = harness.open().await;
+                let reserved = first.reserve().await.unwrap();
+                first
+                    .test_prompt(reserved, json!([{"type":"text","text":"fixture"}]))
+                    .await
+                    .unwrap();
+                let mut events = harness.environment.events.subscribe();
+                let second = restored(&harness, &first).await;
+                drop(writer);
+                for entry in fs::read_dir(harness.directory.path().join("records")).unwrap() {
+                    fs::remove_file(entry.unwrap().path()).unwrap();
+                }
+                fs::write(harness.directory.path().join("finish"), b"finish").unwrap();
+                finished(&second).await;
+
+                let mut ended = Vec::new();
+                let mut reported = false;
+                while let Ok(event) = events.try_recv() {
+                    if let AntigravityRuntimeEvent::Session(event) = event {
+                        match event.kind {
+                            SessionEventKind::TurnEnded { turn } => ended.push(turn.status),
+                            SessionEventKind::UsageReported { .. } => reported = true,
+                            _ => {}
+                        }
+                    }
+                }
+                assert_eq!(ended, [TurnStatus::Completed]);
+                assert!(!reported, "an unread record leaves the total unknown");
+                let page = second.live_page(None, 8).await.unwrap().unwrap();
+                assert_eq!(page.turns[1].status, TurnStatus::InProgress);
                 second.close().await.unwrap();
                 harness.stop().await;
             })

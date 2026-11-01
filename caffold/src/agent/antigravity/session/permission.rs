@@ -63,14 +63,7 @@ impl Session {
         }
         let mut request = normalize(&state.incarnation, &key, &frame)?;
         if let Some(live) = state.live.as_mut() {
-            self.publish(live.start_events());
-            let mut update = params["toolCall"].clone();
-            update["sessionUpdate"] = json!("tool_call");
-            self.publish(live.update(&update)?);
-            if let Some((turn, item)) = live.active_ids(tool) {
-                request.turn_id = Some(turn);
-                request.item_id = Some(item);
-            }
+            self.show_in_live(live, &frame, &mut request)?;
         }
         state.checkpoint.approvals.insert(key, frame);
         if state.phase == Phase::Ready {
@@ -128,9 +121,16 @@ impl Session {
         }
     }
 
-    pub(super) fn publish_approvals(&self, state: &State) -> Result<(), AntigravityError> {
-        for (key, frame) in &state.checkpoint.approvals {
-            let request = normalize(&state.incarnation, key, frame)?;
+    /// Questions still waiting on the child, published again for a connection
+    /// that attached to it. A live view shows and names each asked tool call,
+    /// as it does for a question asked while the view is open.
+    pub(super) fn publish_approvals(&self, state: &mut State) -> Result<(), AntigravityError> {
+        let waiting = state.checkpoint.approvals.clone();
+        for (key, frame) in &waiting {
+            let mut request = normalize(&state.incarnation, key, frame)?;
+            if let Some(live) = state.live.as_mut() {
+                self.show_in_live(live, frame, &mut request)?;
+            }
             let _ = self
                 .environment
                 .events
@@ -138,6 +138,27 @@ impl Session {
                     conversation_id: self.task_id.clone(),
                     request: Box::new(request),
                 });
+        }
+        Ok(())
+    }
+
+    /// The asked tool call becomes an item of the live view's active turn, and
+    /// the question names that turn and item.
+    fn show_in_live(
+        &self,
+        live: &mut Live,
+        frame: &Value,
+        request: &mut ApprovalRequest,
+    ) -> Result<(), AntigravityError> {
+        let tool = &frame["params"]["toolCall"];
+        self.publish(live.start_events());
+        let mut update = tool.clone();
+        update["sessionUpdate"] = json!("tool_call");
+        self.publish(live.update(&update)?);
+        if let Some((turn, item)) = live.active_ids(protocol::required_string(tool, "toolCallId")?)
+        {
+            request.turn_id = Some(turn);
+            request.item_id = Some(item);
         }
         Ok(())
     }

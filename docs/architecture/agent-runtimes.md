@@ -445,11 +445,19 @@ interval. Reads through the same driver retain those display identities.
 
 Backend replacement or explicit reconstruction discards the display view and
 reads native history. Replayed ACP controls still address the same child and
-RPC; a recovered active turn is displayed through the native reader, which
-publishes both items and lifecycle boundaries. No text, time, position or alias
-map matches display IDs to native IDs. A display view retains eight live turns
-or 300 items before rebuilding at the next prompt boundary; an active turn is
-never truncated. Older pages remain in the native record.
+RPC. When the replay leaves the prompt Caffold sent still running, the
+reattached driver reads native history while frame delivery waits and opens a
+display view on it, which replaces the Task's conversation: the prompt's
+earlier work stays in its frozen native turn, and what follows arrives in a
+continued turn with no prompt item of its own. Permission requests still
+waiting are published again with the continued turn's identities. When the
+prompt returns, the driver reads the native record once more; the frozen turn
+takes the end the record gives it, without new items, and the record's total
+usage replaces the running total. Until a display view opens, the native reader
+publishes native changes, both items and lifecycle boundaries. No text, time,
+position or alias map matches display IDs to native IDs. A display view retains
+eight live turns or 300 items before rebuilding at the next prompt boundary; an
+active turn is never truncated. Older pages remain in the native record.
 
 Context reports belong to the native session, independently of that display.
 The driver accepts valid `usage_update` counts during load, replay and live

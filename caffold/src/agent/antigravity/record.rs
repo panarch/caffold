@@ -493,41 +493,108 @@ fn sql_error(error: rusqlite::Error) -> AntigravityError {
     invalid(&error.to_string())
 }
 
+/// Native records written from captured fixtures, for the tests of this driver
+/// that read one.
+#[cfg(test)]
+pub(super) mod fixture {
+    use rusqlite::Connection;
+    use serde::Deserialize;
+    use std::{path::Path, str::from_utf8};
+
+    #[derive(Deserialize)]
+    pub(in crate::agent::antigravity) struct FixtureData {
+        pub(in crate::agent::antigravity) identity: Identity,
+        pub(in crate::agent::antigravity) rows: Vec<FixtureRow>,
+        pub(in crate::agent::antigravity) executors: Vec<FixtureExecutor>,
+        trajectory_metadata: String,
+    }
+    #[derive(Deserialize)]
+    pub(in crate::agent::antigravity) struct Identity {
+        pub(in crate::agent::antigravity) trajectory: String,
+        pub(in crate::agent::antigravity) cascade: String,
+    }
+    #[derive(Deserialize)]
+    pub(in crate::agent::antigravity) struct FixtureRow {
+        idx: i64,
+        kind: i32,
+        pub(in crate::agent::antigravity) status: i32,
+        format: i32,
+        pub(in crate::agent::antigravity) metadata: String,
+        pub(in crate::agent::antigravity) payload: String,
+    }
+    #[derive(Deserialize)]
+    pub(in crate::agent::antigravity) struct FixtureExecutor {
+        pub(in crate::agent::antigravity) idx: i64,
+        pub(in crate::agent::antigravity) data: String,
+    }
+
+    pub(in crate::agent::antigravity) fn parse(bytes: &str) -> FixtureData {
+        serde_json::from_str(bytes).unwrap()
+    }
+
+    /// Writes a fixture's record to `path` and returns the open writer.
+    pub(in crate::agent::antigravity) fn write(path: &Path, data: &FixtureData) -> Connection {
+        let connection = Connection::open(path).unwrap();
+        connection.execute_batch("PRAGMA journal_mode=WAL;
+            CREATE TABLE trajectory_meta(trajectory_id TEXT PRIMARY KEY,cascade_id TEXT);
+            CREATE TABLE steps(idx INTEGER PRIMARY KEY,step_type INTEGER NOT NULL,status INTEGER NOT NULL,step_format INTEGER NOT NULL,metadata BLOB,step_payload BLOB);
+            CREATE TABLE executor_metadata(idx INTEGER PRIMARY KEY,data BLOB);
+            CREATE TABLE trajectory_metadata_blob(id TEXT PRIMARY KEY,data BLOB);").unwrap();
+        connection
+            .execute(
+                "INSERT INTO trajectory_meta VALUES(?1,?2)",
+                [&data.identity.trajectory, &data.identity.cascade],
+            )
+            .unwrap();
+        for row in &data.rows {
+            connection
+                .execute(
+                    "INSERT INTO steps VALUES(?1,?2,?3,?4,?5,?6)",
+                    rusqlite::params![
+                        row.idx,
+                        row.kind,
+                        row.status,
+                        row.format,
+                        hex(&row.metadata),
+                        hex(&row.payload)
+                    ],
+                )
+                .unwrap();
+        }
+        for row in &data.executors {
+            connection
+                .execute(
+                    "INSERT INTO executor_metadata VALUES(?1,?2)",
+                    rusqlite::params![row.idx, hex(&row.data)],
+                )
+                .unwrap();
+        }
+        connection
+            .execute(
+                "INSERT INTO trajectory_metadata_blob VALUES('main',?1)",
+                [hex(&data.trajectory_metadata)],
+            )
+            .unwrap();
+        connection
+    }
+
+    pub(in crate::agent::antigravity) fn hex(value: &str) -> Vec<u8> {
+        value
+            .as_bytes()
+            .chunks_exact(2)
+            .map(|pair| u8::from_str_radix(from_utf8(pair).unwrap(), 16).unwrap())
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::agent::{ActivityStatus, TurnStatus};
+    use fixture::{FixtureData, hex};
     use format::Payload;
-    use serde::Deserialize;
-    use std::{env, os::unix::fs::symlink, str::from_utf8};
+    use std::{env, os::unix::fs::symlink};
     use tempfile::TempDir;
-
-    #[derive(Deserialize)]
-    struct FixtureData {
-        identity: Identity,
-        rows: Vec<FixtureRow>,
-        executors: Vec<FixtureExecutor>,
-        trajectory_metadata: String,
-    }
-    #[derive(Deserialize)]
-    struct Identity {
-        trajectory: String,
-        cascade: String,
-    }
-    #[derive(Deserialize)]
-    struct FixtureRow {
-        idx: i64,
-        kind: i32,
-        status: i32,
-        format: i32,
-        metadata: String,
-        payload: String,
-    }
-    #[derive(Deserialize)]
-    struct FixtureExecutor {
-        idx: i64,
-        data: String,
-    }
 
     struct NativeFixture {
         directory: TempDir,
@@ -536,52 +603,12 @@ mod tests {
     }
     impl NativeFixture {
         fn new(bytes: &str) -> Self {
-            let data: FixtureData = serde_json::from_str(bytes).unwrap();
             let directory = TempDir::new().unwrap();
+            let data = fixture::parse(bytes);
             let path = directory
                 .path()
                 .join(format!("{}.db", data.identity.cascade));
-            let connection = Connection::open(path).unwrap();
-            connection.execute_batch("PRAGMA journal_mode=WAL;
-                CREATE TABLE trajectory_meta(trajectory_id TEXT PRIMARY KEY,cascade_id TEXT);
-                CREATE TABLE steps(idx INTEGER PRIMARY KEY,step_type INTEGER NOT NULL,status INTEGER NOT NULL,step_format INTEGER NOT NULL,metadata BLOB,step_payload BLOB);
-                CREATE TABLE executor_metadata(idx INTEGER PRIMARY KEY,data BLOB);
-                CREATE TABLE trajectory_metadata_blob(id TEXT PRIMARY KEY,data BLOB);").unwrap();
-            connection
-                .execute(
-                    "INSERT INTO trajectory_meta VALUES(?1,?2)",
-                    [&data.identity.trajectory, &data.identity.cascade],
-                )
-                .unwrap();
-            for row in &data.rows {
-                connection
-                    .execute(
-                        "INSERT INTO steps VALUES(?1,?2,?3,?4,?5,?6)",
-                        rusqlite::params![
-                            row.idx,
-                            row.kind,
-                            row.status,
-                            row.format,
-                            hex(&row.metadata),
-                            hex(&row.payload)
-                        ],
-                    )
-                    .unwrap();
-            }
-            for row in &data.executors {
-                connection
-                    .execute(
-                        "INSERT INTO executor_metadata VALUES(?1,?2)",
-                        rusqlite::params![row.idx, hex(&row.data)],
-                    )
-                    .unwrap();
-            }
-            connection
-                .execute(
-                    "INSERT INTO trajectory_metadata_blob VALUES('main',?1)",
-                    [hex(&data.trajectory_metadata)],
-                )
-                .unwrap();
+            let connection = fixture::write(&path, &data);
             Self {
                 directory,
                 connection: Some(connection),
@@ -598,14 +625,6 @@ mod tests {
             self.connection.as_ref().unwrap()
         }
     }
-    fn hex(value: &str) -> Vec<u8> {
-        value
-            .as_bytes()
-            .chunks_exact(2)
-            .map(|pair| u8::from_str_radix(from_utf8(pair).unwrap(), 16).unwrap())
-            .collect()
-    }
-
     #[test]
     fn native_tools_cancel_and_usage_keep_their_execution_and_item_keys() {
         let fixture = NativeFixture::new(include_str!("record/fixtures/lifecycle.json"));

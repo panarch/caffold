@@ -196,6 +196,7 @@ impl AntigravityClient {
             runner: self.inner.runner.clone(),
             authentication: self.inner.authentication.clone(),
             bindings: self.inner.bindings.clone(),
+            records: self.inner.records.clone(),
             events: self.inner.events.clone(),
             mcp_endpoint: endpoint,
         }));
@@ -326,6 +327,7 @@ impl AntigravityClient {
                 runner: self.inner.runner.clone(),
                 authentication: self.inner.authentication.clone(),
                 bindings: self.inner.bindings.clone(),
+                records: self.inner.records.clone(),
                 events: broadcast::channel(16).0,
                 mcp_endpoint: String::new(),
             })
@@ -373,6 +375,7 @@ impl AntigravityClient {
         }
         slot.session = Some(session.clone());
         session.prepare(&cwd, first).await?;
+        session.continue_prompt().await?;
         if !observe {
             return Ok(session);
         }
