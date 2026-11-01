@@ -618,7 +618,7 @@ declares it as a row action for an owner that asks: the Files navigator for its
 folder rows outside Git and its `..` row, and the New Task directory field for
 its folder rows.
 Work Details declares its root summary,
-Command Group declares its summary,
+Run Group declares its summary,
 active Command declares its summary while terminal Command keeps View output,
 Conversation declares only the exact Thinking summaries it rendered, Git Log
 declares its commit-body toggle, and GitHub Markdown declares the `summary` of
@@ -678,16 +678,16 @@ its sheet tabs through the segmented control's scope, labelled `Show sheet
 Integrated Review's `link.open` and `button.activate` actions.
 
 Custom children retain their own action knowledge. Work Details merges its own
-summary with its direct retained children. Command Group merges its summary
-with its commands' scopes only while it is open, since a folded group's rows
-are not on screen. Command declares active disclosure
+summary with its direct retained children. Run Group merges its summary
+with its command or tool call rows' scopes only while it is open, since a
+folded group's rows are not on screen. Command declares active disclosure
 or terminal View output from the same provider, Tool Call declares its View
 details, Assistant Message Copy declares
 its one button, Suggested Prompts declares one action per request that can be
 chosen, Message Attachments declares one Preview per picture it can
 open, Markdown Code Block declares Wrap, Copy, and Preview, and Conversation
 merges those public scopes through its retained Assistant Message, User
-Message, Message Attachments, Markdown, Command Group, Tool Call, and Work
+Message, Message Attachments, Markdown, Run Group, Tool Call, and Work
 Details children. Reusable
 controls such as the segmented
 control, file tree, pagination, file navigator, and file viewer expose public
@@ -1291,7 +1291,7 @@ controls. Detail retry uses Conversation's coarse owner; each Thinking
 disclosure uses the exact retained timeline entry that contains it. A custom
 child owns its own controls: Approval owns its offered decisions, Command owns
 its active disclosure or terminal View output, Tool Call owns its View details,
-Command Group owns its
+Run Group owns its
 disclosure, Work Details owns its root
 disclosure, Message Attachments owns each picture's preview, and Markdown Code
 Block owns Wrap, Copy, and Preview. Preview appears only on a `markdown` or `md`
@@ -1318,7 +1318,7 @@ state, time, and uploading file lines, and mounts Message Attachments for the
 pictures; a generated picture's entry mounts the same list directly.
 Conversation retains a prompt's entry by identity, so a delivery change or an
 upload's progress patches the message already on screen.
-Assistant Message, User Message, Markdown, Command Group, and Work Details
+Assistant Message, User Message, Markdown, Run Group, and Work Details
 merge only the direct retained children they mount. A stream patch can
 therefore retire only the replaced
 entry, approval card, or child owner while unaffected sibling, App Shell, and

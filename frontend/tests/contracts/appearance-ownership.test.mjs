@@ -34,7 +34,7 @@ const codeOwners = new Set([
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css",
-  "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.css",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/run-group.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/tool-call-dialog.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/tool-call.css",

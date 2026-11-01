@@ -15,6 +15,11 @@
   background: var(--danger-faint);
 }
 
+:host([data-tool-call-grouped]) {
+  border: 0;
+  border-radius: 0;
+}
+
 .task-tool-call-summary {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;

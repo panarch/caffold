@@ -37,12 +37,13 @@ import {
   taskEventObservedMs,
 } from "#tasks/task-format.js";
 import { activeTurnPresentation } from "./active-turn.js";
-import {
-  type CommandRunSegment,
-  commandGroupIdentity,
-  groupFinishedCommands,
-} from "./command-runs.js";
 import type { MessageAttachment } from "./components/message-attachments.js";
+import {
+  type FinishedRunKind,
+  type FinishedRunSegment,
+  groupFinishedRuns,
+  runGroupIdentity,
+} from "./finished-runs.js";
 
 // The entries a conversation shows, in order, each with what it draws. An
 // entry's `identity`, which comes from the backend's event identity, keeps its
@@ -56,7 +57,7 @@ export type ConversationEntry =
   | ToolEntry
   | ToolCallEntry
   | CommandEntry
-  | CommandGroupEntry
+  | RunGroupEntry
   | FileChangeEntry
   | TurnWorkEntry
   | ApprovalsEntry
@@ -121,10 +122,11 @@ export interface CommandEntry extends EventEntry {
   event: TaskEvent;
 }
 
-export interface CommandGroupEntry {
-  kind: "command-group";
+export interface RunGroupEntry {
+  kind: "run-group";
   identity: string;
   eventId: string;
+  runKind: FinishedRunKind;
   events: TaskEvent[];
 }
 
@@ -369,11 +371,11 @@ function turnGroupEntries(
     );
   }
 
-  return groupFinishedCommands(group.events, (event) =>
+  return groupFinishedRuns(group.events, (event) =>
     isShownWhileTurnRuns(event, options.pendingApprovalIds),
-  ).map((segment: CommandRunSegment) =>
+  ).map((segment: FinishedRunSegment) =>
     segment.group
-      ? [segment.group, commandGroupEntry(segment.group)]
+      ? [segment.group, runGroupEntry(segment.kind, segment.group)]
       : [
           [segment.event],
           runningTurnEntry(
@@ -656,13 +658,16 @@ function toolEntry(
 
 // The entry stands where the group's first entry stood, under that entry's
 // event id, so a reader anchored on it keeps their place when the next command
-// finishes beside it.
-function commandGroupEntry(events: TaskEvent[]): CommandGroupEntry {
-  const identity = commandGroupIdentity(events);
+// or tool call finishes beside it.
+function runGroupEntry(
+  runKind: FinishedRunKind,
+  events: TaskEvent[],
+): RunGroupEntry {
   return {
-    kind: "command-group",
-    identity,
+    kind: "run-group",
+    identity: runGroupIdentity(runKind, events),
     eventId: (events[0]?.id ?? "").trim(),
+    runKind,
     events,
   };
 }
@@ -730,7 +735,7 @@ function turnGroupDisclosureIdentity(group: TurnGroup) {
 function turnWorkItemCount(events: TaskEvent[]) {
   let count = 0;
   let combinedType = "";
-  for (const segment of groupFinishedCommands(events)) {
+  for (const segment of groupFinishedRuns(events)) {
     const type = segment.event?.type ?? "";
     if (type === "reasoning" || type === "file_change") {
       if (combinedType !== type) {

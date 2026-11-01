@@ -147,7 +147,7 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
   await workDetails.locator(":scope > summary").click();
   await expect(workDetails).toHaveAttribute("open", "");
   const workCommandGroup = workDetails.locator(
-    ".task-work-details-command-group > caffold-task-command-group > details",
+    ".task-work-details-run-group > caffold-task-run-group > details",
   );
   await workCommandGroup.locator(":scope > summary").click();
   await expect(workCommandGroup).toHaveAttribute("open", "");
@@ -169,7 +169,7 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
     ),
     commandSurface(
       "work details",
-      workCommandGroup.locator(".task-command-group-item"),
+      workCommandGroup.locator(".task-run-group-item"),
       {
         action: ".task-command-summary-action",
         label: ".task-command-summary-label",

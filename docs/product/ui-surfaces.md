@@ -295,7 +295,9 @@ details**, which shows the tool, server, status, and duration above an
 with each piece of what came back, in order: text as text, other content as
 JSON, and binary content such as a picture as a note of its kind. A call still
 running offers View details too; its Result says no result has arrived yet and
-fills in when one does. Work that is not a call to a tool keeps a card with the
+fills in when one does. Finished tool calls that ran one after another fold
+the same way finished commands do, into one **Called N tools** card that never
+holds a command. Work that is not a call to a tool keeps a card with the
 agent's name for it and its status.
 
 A prompt reads as the characters typed into the Composer, so Markdown syntax in

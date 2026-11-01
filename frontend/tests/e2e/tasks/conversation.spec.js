@@ -558,7 +558,7 @@ test("loads older collapsed work without a scrollbar and waits for each requeste
     expect(await historyLayout()).toEqual(readyLayout);
     // The turn's commands ran one after another, so they are rows of one group.
     await expect(
-      conversation.locator(".task-work-details-command-group .task-command-group-item"),
+      conversation.locator(".task-work-details-run-group .task-run-group-item"),
     ).toHaveCount(99);
     await expectNoOverflow();
     expect(cursors).toEqual(["older-1"]);

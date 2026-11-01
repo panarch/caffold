@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { commandGroupPresentation } from "./model.js";
+import { runGroupPresentation } from "./model.js";
 
 test("says how many commands ran and how many did not succeed", () => {
   assert.deepEqual(
-    commandGroupPresentation([
+    runGroupPresentation("command", [
       command("completed"),
       command("failed"),
       command("completed", 2),
@@ -17,14 +17,14 @@ test("says how many commands ran and how many did not succeed", () => {
 
 test("leaves out results nothing had", () => {
   assert.deepEqual(
-    commandGroupPresentation([command("completed"), command("completed", 0)]),
+    runGroupPresentation("command", [command("completed"), command("completed", 0)]),
     { label: "Ran 2 commands", failed: "", declined: "" },
   );
 });
 
 test("counts only the commands, not the thinking folded in with them", () => {
   assert.deepEqual(
-    commandGroupPresentation([
+    runGroupPresentation("command", [
       thinking(),
       command("completed"),
       thinking(),
@@ -35,8 +35,25 @@ test("counts only the commands, not the thinking folded in with them", () => {
   );
 });
 
+test("says how many tools were called and how many did not succeed", () => {
+  assert.deepEqual(
+    runGroupPresentation("tool-call", [
+      toolCall("completed"),
+      thinking(),
+      toolCall("failed"),
+      toolCall("declined"),
+      toolCall("completed"),
+    ]),
+    { label: "Called 4 tools", failed: "1 failed", declined: "1 declined" },
+  );
+});
+
 function command(status, exitCode) {
   return { type: "command_execution", payload: { status, exitCode } };
+}
+
+function toolCall(status) {
+  return { type: "tool_call", payload: { status, name: "read_note" } };
 }
 
 function thinking() {

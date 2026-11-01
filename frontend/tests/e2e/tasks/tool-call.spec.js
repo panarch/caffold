@@ -37,6 +37,7 @@ test("a tool call is one line that measures as a finished command's", { tag: "@a
       durationMs: 1_250,
     }),
     toolCall("codexMcp", now + 2_000),
+    progress("between", now + 2_500),
     toolCall("failed", now + 3_000),
     toolCall("grokRunning", now + 4_000),
     toolCall("longName", now + 5_000),
@@ -98,7 +99,9 @@ test("View details shows what a call was given and what came back, piece by piec
     started(),
     prompt(),
     toolCall("codexMcp", now + 1_000),
+    progress("first", now + 1_500),
     toolCall("claudeScreenshot", now + 2_000),
+    progress("second", now + 2_500),
     toolCall("claudeToolSearch", now + 3_000),
   ]);
 
@@ -197,6 +200,7 @@ test("a call says when it had no input or no result", { tag: "@viewport-independ
     started(),
     prompt(),
     toolCall("noInput", now + 1_000),
+    progress("between", now + 1_500),
     toolCall("antigravitySearchReloaded", now + 2_000),
   ]);
 
@@ -288,6 +292,16 @@ function prompt() {
   return turnEvent("event_prompt", "user_message", now + 100, {
     itemId: "prompt",
     text: "Take notes on the release.",
+  });
+}
+
+// Finished calls in a row fold into one group; a message between two keeps
+// each on a line of its own.
+function progress(itemId, anchorMs) {
+  return turnEvent(`event_${itemId}`, "assistant_message", anchorMs, {
+    itemId,
+    phase: "progress",
+    text: "Checking the next one.",
   });
 }
 
