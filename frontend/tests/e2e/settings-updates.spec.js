@@ -116,7 +116,7 @@ test("About tells whether a newer Caffold exists and how the last update ended",
   await captureReviewScreenshot(page, testInfo, "about-updates-dark");
 });
 
-test("About says each update state and offers the action that fits it", { tag: "@viewport-independent" }, async ({ page }) => {
+test("About says each update state and offers the action that fits it", { tag: "@server-changes" }, async ({ page }) => {
   const answer = await answerUpdates(page, mockCaffoldUpdate());
   await page.goto("/settings/about");
   const updates = updatesSection(page);
@@ -173,7 +173,7 @@ test("About says each update state and offers the action that fits it", { tag: "
   await expect(updates.locator("[data-updates-last-row]")).toBeHidden();
 });
 
-test("an Action Hint opens the latest release, and only while About links to one", { tag: "@viewport-independent" }, async ({
+test("an Action Hint opens the latest release, and only while About links to one", { tag: "@server-changes" }, async ({
   context,
   page,
 }) => {
@@ -214,7 +214,7 @@ test("an Action Hint opens the latest release, and only while About links to one
   await expect(withoutRelease.getByLabel(/release in a new tab$/)).toHaveCount(0);
 });
 
-test("About offers its update action and the Settings list names the entry with its notice", { tag: "@viewport-independent" }, async ({
+test("About offers its update action and the Settings list names the entry with its notice", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await answerUpdates(page, AVAILABLE);
@@ -245,7 +245,7 @@ test("About offers its update action and the Settings list names the entry with 
   ).toEqual(["about", "About Caffold — update available"]);
 });
 
-test("Check for Updates asks GitHub now and offers the update it finds", { tag: "@viewport-independent" }, async ({ page }) => {
+test("Check for Updates asks GitHub now and offers the update it finds", { tag: "@server-changes" }, async ({ page }) => {
   const updated = mockCaffoldUpdate({
     lastAttempt: {
       id: "20261004T121000.000Z",

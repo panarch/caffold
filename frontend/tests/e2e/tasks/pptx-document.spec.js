@@ -16,7 +16,7 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("PowerPoint document replacement rejects an older render completion and clears null input", { tag: "@viewport-independent" }, async ({ page }) => {
+test("PowerPoint document replacement rejects an older render completion and clears null input", { tag: "@server-steady" }, async ({ page }) => {
   const viewer = page.locator("#document-lifecycle-viewer");
   const child = viewer.locator("caffold-pptx-document");
   await expect(child).toHaveAttribute("data-render-state", "empty");
@@ -56,7 +56,7 @@ test("PowerPoint document replacement rejects an older render completion and cle
   expect(await page.evaluate(() => window.documentRenderer.instances.every((instance) => instance.destroyed))).toBe(true);
 });
 
-test("PowerPoint document disconnect cancels pending work and reconnect renders the current file", { tag: "@viewport-independent" }, async ({ page }) => {
+test("PowerPoint document disconnect cancels pending work and reconnect renders the current file", { tag: "@server-steady" }, async ({ page }) => {
   const viewer = page.locator("#document-lifecycle-viewer");
   const child = viewer.locator("caffold-pptx-document");
   await viewer.evaluate((element) => {
@@ -92,7 +92,7 @@ test("PowerPoint document disconnect cancels pending work and reconnect renders 
   expect(await page.evaluate(() => window.documentRenderer.instances.every((instance) => instance.destroyed))).toBe(true);
 });
 
-test("PowerPoint render failures release owned resources and allow a replacement", { tag: "@viewport-independent" }, async ({ page }) => {
+test("PowerPoint render failures release owned resources and allow a replacement", { tag: "@server-steady" }, async ({ page }) => {
   const viewer = page.locator("#document-lifecycle-viewer");
   const child = viewer.locator("caffold-pptx-document");
   await viewer.evaluate((element) => {

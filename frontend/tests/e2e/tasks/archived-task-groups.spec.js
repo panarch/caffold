@@ -6,7 +6,7 @@ import {
   mockAgentModels,
 } from "../support/task-fixtures.js";
 
-test("groups removed worktrees under their recorded repository in Archived", { tag: "@viewport-independent" }, async ({ page }) => {
+test("groups removed worktrees under their recorded repository in Archived", { tag: "@server-steady" }, async ({ page }) => {
   await installBrowserDefaults(page);
   await installEventSourceMock(page);
   await mockAgentModels(page);

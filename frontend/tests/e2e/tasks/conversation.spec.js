@@ -27,7 +27,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("keeps a large task usable while conversation history is loading", { tag: "@all-viewports" }, async ({
+test("keeps a large task usable while conversation history is loading", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -234,7 +234,7 @@ for (const delivery of [
   ["SSE", "POST", "Detail"], ["SSE", "Detail", "POST"],
   ["Detail", "POST", "SSE"], ["Detail", "SSE", "POST"],
 ]) {
-  test(`keeps a confirmed question before its answer with ${delivery.join(" / ")}`, { tag: "@viewport-independent" }, async ({ page }, testInfo) => {
+  test(`keeps a confirmed question before its answer with ${delivery.join(" / ")}`, { tag: "@server-changes" }, async ({ page }, testInfo) => {
     const threadId = "thread-confirmed-order";
     const now = Date.now() - 10_000;
     const question = {
@@ -297,7 +297,7 @@ for (const delivery of [
   });
 }
 
-test("keeps events seen before a bounded snapshot's extent when that snapshot arrives", { tag: "@viewport-independent" }, async ({
+test("keeps events seen before a bounded snapshot's extent when that snapshot arrives", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const threadId = "thread_bounded_extent";
@@ -361,7 +361,7 @@ test("keeps events seen before a bounded snapshot's extent when that snapshot ar
   }
 });
 
-test("drops a retained event that a snapshot omits inside its extent", { tag: "@viewport-independent" }, async ({
+test("drops a retained event that a snapshot omits inside its extent", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const threadId = "thread_extent_deletion";
@@ -1000,7 +1000,7 @@ test("keeps the latest conversation when older history times out", { tag: "@all-
   await expect(tasksPage.locator(".task-history-error")).toHaveCount(0);
   await expect(textarea).toHaveValue("Draft survives history timeout");
 });
-test("renders normalized Codex user messages instead of raw ambient context", { tag: "@viewport-independent" }, async ({
+test("renders normalized Codex user messages instead of raw ambient context", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, { autoOpen: true });
@@ -1076,7 +1076,7 @@ test("renders normalized Codex user messages instead of raw ambient context", { 
   await expect(tasksPage).not.toContainText("in-app-browser-context");
   await expect(tasksPage).not.toContainText("Files mentioned by the user");
 });
-test("orders separate turns by message chronology when a newer start marker is stale", { tag: "@viewport-independent" }, async ({
+test("orders separate turns by message chronology when a newer start marker is stale", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, { autoOpen: true });
@@ -1178,7 +1178,7 @@ test("orders separate turns by message chronology when a newer start marker is s
     )
     .toEqual(["old-user", "old-answer", "new-user", "new-answer"]);
 });
-test("keeps cross-turn work chronological and the active status at the timeline tail", { tag: "@viewport-independent" }, async ({
+test("keeps cross-turn work chronological and the active status at the timeline tail", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, {
@@ -1420,7 +1420,7 @@ test("keeps cross-turn work chronological and the active status at the timeline 
   await expect(tasksPage.locator(".task-turn-work")).toHaveCount(1);
   await expect(tasksPage.locator(".task-turn-active")).toHaveCount(0);
 });
-test("keeps task event chronology stable through approval, completion, and reload", { tag: "@viewport-independent" }, async ({
+test("keeps task event chronology stable through approval, completion, and reload", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 560 });

@@ -52,7 +52,7 @@ function detailValue(page, key) {
   );
 }
 
-test("saves rules and a key, and never shows the key again", { tag: "@all-viewports" }, async ({
+test("saves rules and a key, and never shows the key again", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const { requests } = await installJevSettings(page);
@@ -92,7 +92,7 @@ test("saves rules and a key, and never shows the key again", { tag: "@all-viewpo
   ]);
 });
 
-test("Action Hints focus the rules and key fields, and Escape leaves them", { tag: "@viewport-independent" }, async ({
+test("Action Hints focus the rules and key fields, and Escape leaves them", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installJevSettings(page, { keyConfigured: true });
@@ -118,7 +118,7 @@ test("Action Hints focus the rules and key fields, and Escape leaves them", { ta
   await expect(jevPage.getByLabel("Replace API key")).toBeFocused();
 });
 
-test("a key that did not work says so instead of looking configured", { tag: "@viewport-independent" }, async ({
+test("a key that did not work says so instead of looking configured", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installJevSettings(page, {
@@ -140,7 +140,7 @@ test("a key that did not work says so instead of looking configured", { tag: "@v
   );
 });
 
-test("rules the server refuses are reported without losing what was typed", { tag: "@viewport-independent" }, async ({
+test("rules the server refuses are reported without losing what was typed", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installJevSettings(page);
@@ -169,7 +169,7 @@ test("rules the server refuses are reported without losing what was typed", { ta
   await expect(jevPage.getByRole("button", { name: "Retry" })).toBeHidden();
 });
 
-test("unreadable settings offer a retry instead of an empty page", { tag: "@viewport-independent" }, async ({
+test("unreadable settings offer a retry instead of an empty page", { tag: "@server-changes" }, async ({
   page,
 }) => {
   let attempts = 0;
@@ -229,7 +229,7 @@ test("the page holds its own width on a phone", { tag: "@phone" }, async ({
   expect(overflow).toBeLessThanOrEqual(0);
 });
 
-test("offers the rules and key controls it shows as Action Hints", { tag: "@viewport-independent" }, async ({
+test("offers the rules and key controls it shows as Action Hints", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installJevSettings(page, { keyConfigured: true });

@@ -109,7 +109,7 @@ test("tells each browser once that an update of Caffold was rolled back", { tag:
   }
 });
 
-test("asks again once Caffold answers after a reconnection", { tag: "@viewport-independent" }, async ({
+test("asks again once Caffold answers after a reconnection", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -157,7 +157,7 @@ test("asks again once Caffold answers after a reconnection", { tag: "@viewport-i
   expect(reads).toBe(2);
 });
 
-test("tells a failed restore and leaves a successful update to the reload dialog", { tag: "@viewport-independent" }, async ({
+test("tells a failed restore and leaves a successful update to the reload dialog", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const answer = {
@@ -201,7 +201,7 @@ test("tells a failed restore and leaves a successful update to the reload dialog
   await expect(page.locator("caffold-update-result-dialog > dialog")).toBeHidden();
 });
 
-test("suppresses the first install but presents a later replacement", { tag: "@all-viewports" }, async ({
+test("suppresses the first install but presents a later replacement", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: false });
@@ -219,7 +219,7 @@ test("suppresses the first install but presents a later replacement", { tag: "@a
   await expect(page.getByRole("dialog", { name: "Caffold update ready" })).toBeVisible();
 });
 
-test("discovers a replacement while the current UI remains open", { tag: "@all-viewports" }, async ({ page }) => {
+test("discovers a replacement while the current UI remains open", { tag: "@server-changes" }, async ({ page }) => {
   await installServiceWorkerFixture(page, { controlled: true });
   await page.goto("/");
   await waitForServiceWorkerRegistration(page);
@@ -237,7 +237,7 @@ test("discovers a replacement while the current UI remains open", { tag: "@all-v
   await expect(page.getByRole("dialog", { name: "Caffold update ready" })).toBeVisible();
 });
 
-test("rechecks the worker and server diagnostics when About opens", { tag: "@all-viewports" }, async ({
+test("rechecks the worker and server diagnostics when About opens", { tag: "@server-changes" }, async ({
   page,
 }) => {
   let healthBuildId = "server-build-a";
@@ -400,7 +400,7 @@ test("keeps a dismissed update available and only reports a settled mismatch", {
   await captureReviewScreenshot(page, testInfo, "pwa-exceptional-mismatch");
 });
 
-test("keeps consecutive server builds inside the update lifecycle", { tag: "@all-viewports" }, async ({
+test("keeps consecutive server builds inside the update lifecycle", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: true });
@@ -453,7 +453,7 @@ test("keeps consecutive server builds inside the update lifecycle", { tag: "@all
   );
 });
 
-test("defers exceptional mismatch while an update check or install is pending", { tag: "@all-viewports" }, async ({
+test("defers exceptional mismatch while an update check or install is pending", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: true });
@@ -485,7 +485,7 @@ test("defers exceptional mismatch while an update check or install is pending", 
   await expect(buildMismatchAlert).toBeVisible();
 });
 
-test("releases update observers while disconnected and restores them once", { tag: "@all-viewports" }, async ({
+test("releases update observers while disconnected and restores them once", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: true });
@@ -547,7 +547,7 @@ test("releases update observers while disconnected and restores them once", { ta
     .toBe(true);
 });
 
-test("keeps a prepared cache safe from the current worker's pruning", { tag: "@all-viewports" }, async ({
+test("keeps a prepared cache safe from the current worker's pruning", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, {
@@ -565,7 +565,7 @@ test("keeps a prepared cache safe from the current worker's pruning", { tag: "@a
   expect(pruneRequests).toEqual([]);
 });
 
-test("removes a prepared update when its worker becomes unavailable", { tag: "@all-viewports" }, async ({
+test("removes a prepared update when its worker becomes unavailable", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: true });
@@ -593,7 +593,7 @@ test("removes a prepared update when its worker becomes unavailable", { tag: "@a
   );
 });
 
-test("retains activation through an unowned transition and reloads on controllerchange", { tag: "@all-viewports" }, async ({
+test("retains activation through an unowned transition and reloads on controllerchange", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: true });
@@ -660,7 +660,7 @@ test("retains activation through an unowned transition and reloads on controller
   expect(await preparedReloadCount(page)).toBe(1);
 });
 
-test("uses a differing controlled-message wrapper as a safe fallback hint", { tag: "@all-viewports" }, async ({
+test("uses a differing controlled-message wrapper as a safe fallback hint", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: true });
@@ -683,7 +683,7 @@ test("uses a differing controlled-message wrapper as a safe fallback hint", { ta
   await expect.poll(() => preparedReloadCount(page)).toBe(1);
 });
 
-test("reconnect and repeated update requests safely resume one handoff", { tag: "@all-viewports" }, async ({
+test("reconnect and repeated update requests safely resume one handoff", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: true });
@@ -718,7 +718,7 @@ test("reconnect and repeated update requests safely resume one handoff", { tag: 
   await expect.poll(() => preparedReloadCount(page)).toBe(1);
 });
 
-test("retargets an in-flight handoff to the latest prepared build", { tag: "@all-viewports" }, async ({
+test("retargets an in-flight handoff to the latest prepared build", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: true });
@@ -768,7 +768,7 @@ test("retargets an in-flight handoff to the latest prepared build", { tag: "@all
   await expect.poll(() => preparedReloadCount(page)).toBe(1);
 });
 
-test("routes dialog and About reload intents through the app shell", { tag: "@all-viewports" }, async ({ page }) => {
+test("routes dialog and About reload intents through the app shell", { tag: "@server-changes" }, async ({ page }) => {
   await installServiceWorkerFixture(page, { controlled: true });
   await page.goto("/");
   await waitForServiceWorkerRegistration(page);
@@ -984,7 +984,7 @@ test("prepares and reloads the latest consecutive replacement through the real b
   }
 });
 
-test("fills a replacement from the current build's cache after the browser dropped its copies", { tag: "@viewport-independent" }, async ({
+test("fills a replacement from the current build's cache after the browser dropped its copies", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   test.setTimeout(60_000);
@@ -1030,7 +1030,7 @@ test("fills a replacement from the current build's cache after the browser dropp
   }
 });
 
-test("reloads through controllerchange without a custom acknowledgement or loop", { tag: "@all-viewports" }, async ({
+test("reloads through controllerchange without a custom acknowledgement or loop", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   test.setTimeout(60_000);
@@ -1113,7 +1113,7 @@ test("reloads through controllerchange without a custom acknowledgement or loop"
   }
 });
 
-test("recovers when the first controlled-update navigation leaves the old document alive", { tag: "@all-viewports" }, async ({
+test("recovers when the first controlled-update navigation leaves the old document alive", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   test.setTimeout(60_000);

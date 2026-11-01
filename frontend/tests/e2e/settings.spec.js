@@ -180,7 +180,7 @@ test("choosing the Settings tab again brings its list back to the top", { tag: "
   await expect(page).toHaveURL("/settings");
 });
 
-test("keeps the Settings list's scroll and focus when its icons arrive", { tag: "@viewport-independent" }, async ({
+test("keeps the Settings list's scroll and focus when its icons arrive", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const iconsRequested = Promise.withResolvers();
@@ -216,7 +216,7 @@ test("keeps the Settings list's scroll and focus when its icons arrive", { tag: 
   await expect(about).toBeFocused();
 });
 
-test("collects MCP status only when About diagnostics are copied", { tag: "@viewport-independent" }, async ({
+test("collects MCP status only when About diagnostics are copied", { tag: "@server-steady" }, async ({
   context,
   page,
 }) => {
@@ -279,7 +279,7 @@ test("collects MCP status only when About diagnostics are copied", { tag: "@view
   expect(diagnostics).not.toContain("private.example");
 });
 
-test("copies the base About diagnostics when MCP collection is unavailable", { tag: "@viewport-independent" }, async ({
+test("copies the base About diagnostics when MCP collection is unavailable", { tag: "@server-steady" }, async ({
   context,
   page,
 }) => {
@@ -561,7 +561,7 @@ test("shows Codex versions and explicitly restarts an outdated runtime", { tag: 
   expect(statusRequests).toBe(2);
 });
 
-test("keeps Codex Settings actionable when runtime restart fails", { tag: "@all-viewports" }, async ({
+test("keeps Codex Settings actionable when runtime restart fails", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
@@ -722,7 +722,7 @@ test("shows the newest Codex and updates it through its own confirmation", { tag
   expect(updateRequests).toBe(1);
 });
 
-test("keeps Update off for a current Codex and on when the newest release is unknown", { tag: "@viewport-independent" }, async ({
+test("keeps Update off for a current Codex and on when the newest release is unknown", { tag: "@server-changes" }, async ({
   page,
 }) => {
   let channelAnswers = true;
@@ -760,7 +760,7 @@ test("keeps Update off for a current Codex and on when the newest release is unk
   await expect(update).toBeEnabled();
 });
 
-test("names the installed Codex when the running version is unknown", { tag: "@viewport-independent" }, async ({
+test("names the installed Codex when the running version is unknown", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await serveCodexStatus(page, () => codexStatusOn("0.155.1"));
@@ -778,7 +778,7 @@ test("names the installed Codex when the running version is unknown", { tag: "@v
   );
 });
 
-test("keeps Codex Settings usable when an update fails", { tag: "@viewport-independent" }, async ({
+test("keeps Codex Settings usable when an update fails", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await serveCodexStatus(page, () => codexStatusOn("0.155.1"));
@@ -816,7 +816,7 @@ test("keeps Codex Settings usable when an update fails", { tag: "@viewport-indep
   await expect(settings.getByRole("button", { name: "Restart runtime…" })).toBeEnabled();
 });
 
-test("a Codex restart in flight holds the update back", { tag: "@viewport-independent" }, async ({
+test("a Codex restart in flight holds the update back", { tag: "@server-changes" }, async ({
   page,
 }) => {
   let releaseRestart;
@@ -915,7 +915,7 @@ test("lays out Codex Updates with the same box and action as Runtime", { tag: "@
   expect(overflow).toBe(0);
 });
 
-test("shows what the Claude installation is on its Settings page", { tag: "@all-viewports" }, async ({
+test("shows what the Claude installation is on its Settings page", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.goto("/settings/claude");
@@ -935,7 +935,7 @@ test("shows what the Claude installation is on its Settings page", { tag: "@all-
   await expect(settings).toContainText("10 min");
 });
 
-test("a source that could not answer costs its block and no more", { tag: "@all-viewports" }, async ({
+test("a source that could not answer costs its block and no more", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.route(/\/api\/claude\/status(?:\?|$)/, (route) =>
@@ -1025,7 +1025,7 @@ test("a Grok source that could not answer costs its block and no more", { tag: "
   await captureReviewScreenshot(page, testInfo, "settings-grok-unavailable");
 });
 
-test("refreshing the Grok report reads the leader that appeared and names a build behind the installed one", { tag: "@viewport-independent" }, async ({
+test("refreshing the Grok report reads the leader that appeared and names a build behind the installed one", { tag: "@server-changes" }, async ({
   page,
 }) => {
   let reports = 0;
@@ -1081,7 +1081,7 @@ test("refreshing the Grok report reads the leader that appeared and names a buil
   expect(reports).toBe(2);
 });
 
-test("holds the Codex rows while its first readiness check is still running", { tag: "@viewport-independent" }, async ({
+test("holds the Codex rows while its first readiness check is still running", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   let releaseStatus;
@@ -1123,7 +1123,7 @@ test("holds the Codex rows while its first readiness check is still running", { 
   );
 });
 
-test("disables Codex Refresh and turns its icon while the readiness check runs", { tag: "@viewport-independent" }, async ({
+test("disables Codex Refresh and turns its icon while the readiness check runs", { tag: "@server-changes" }, async ({
   page,
 }) => {
   let holdStatus = false;
@@ -1220,7 +1220,7 @@ test("shows every usage limit Codex reports, its single-bucket limit first", { t
   await captureReviewScreenshot(page, testInfo, "settings-codex-usage-limits");
 });
 
-test("offers each Codex control it shows as an Action Hint", { tag: "@viewport-independent" }, async ({
+test("offers each Codex control it shows as an Action Hint", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
@@ -1390,7 +1390,7 @@ test("lists every reported available reset without provider descriptions", { tag
   expect(consumeRequests).toBe(0);
 });
 
-test("offers a generic reset when Codex omits individual credit details", { tag: "@viewport-independent" }, async ({
+test("offers a generic reset when Codex omits individual credit details", { tag: "@server-steady" }, async ({
   page,
 }) => {
   let consumeRequests = 0;
@@ -1426,7 +1426,7 @@ test("offers a generic reset when Codex omits individual credit details", { tag:
   expect(consumeRequests).toBe(0);
 });
 
-test("retries an uncertain reset only after confirming the same request", { tag: "@viewport-independent" }, async ({
+test("retries an uncertain reset only after confirming the same request", { tag: "@server-steady" }, async ({
   page,
 }) => {
   let availableCount = 1;
@@ -1474,7 +1474,7 @@ test("retries an uncertain reset only after confirming the same request", { tag:
   await expect(credits.getByText("This reset request was already completed.")).toBeVisible();
 });
 
-test("does not present a stale reset credit as available after a failed refresh", { tag: "@viewport-independent" }, async ({
+test("does not present a stale reset credit as available after a failed refresh", { tag: "@server-changes" }, async ({
   page,
 }) => {
   let failStatus = false;
@@ -1509,7 +1509,7 @@ test("does not present a stale reset credit as available after a failed refresh"
   await expect(credits.getByRole("button", { name: "Use this reset" })).toHaveCount(0);
 });
 
-test("holds the Claude agent rows while its first report is still loading", { tag: "@viewport-independent" }, async ({
+test("holds the Claude agent rows while its first report is still loading", { tag: "@server-changes" }, async ({
   page,
 }) => {
   let releaseStatus;
@@ -1549,7 +1549,7 @@ test("holds the Claude agent rows while its first report is still loading", { ta
   await expect(agent.locator("dl")).not.toHaveAttribute("aria-busy", "true");
 });
 
-test("rewrites only the Claude row whose value changed", { tag: "@viewport-independent" }, async ({
+test("rewrites only the Claude row whose value changed", { tag: "@server-changes" }, async ({
   page,
 }) => {
   let pid = 4242;
@@ -1605,7 +1605,7 @@ test("rewrites only the Claude row whose value changed", { tag: "@viewport-indep
   ).toEqual({ childList: 0, attributes: 0, characterData: 1 });
 });
 
-test("refreshing the Claude report keeps its rows and disables Refresh until the new report lands", { tag: "@viewport-independent" }, async ({
+test("refreshing the Claude report keeps its rows and disables Refresh until the new report lands", { tag: "@server-changes" }, async ({
   page,
 }) => {
   let reports = 0;
@@ -1649,7 +1649,7 @@ test("refreshing the Claude report keeps its rows and disables Refresh until the
   expect(reports).toBe(2);
 });
 
-test("explicitly restarts the Claude runner from its Settings item", { tag: "@all-viewports" }, async ({
+test("explicitly restarts the Claude runner from its Settings item", { tag: "@server-steady" }, async ({
   page,
 }) => {
   let restartRequests = 0;
@@ -1726,7 +1726,7 @@ test("explicitly restarts the Claude runner from its Settings item", { tag: "@al
   await expect(settings.getByRole("button", { name: "Restart runtime" })).toBeEnabled();
 });
 
-test("keeps the Claude Settings item actionable when the restart fails", { tag: "@all-viewports" }, async ({
+test("keeps the Claude Settings item actionable when the restart fails", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.route(/\/api\/claude\/restart(?:\?|$)/, (route) =>
@@ -1753,7 +1753,7 @@ test("keeps the Claude Settings item actionable when the restart fails", { tag: 
   await expect(settings.getByRole("button", { name: "Restart runtime" })).toBeEnabled();
 });
 
-test("shows the Grok brand mark and tints it with the theme", { tag: "@viewport-independent" }, async ({
+test("shows the Grok brand mark and tints it with the theme", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.goto("/settings/appearance");
@@ -1776,7 +1776,7 @@ test("shows the Grok brand mark and tints it with the theme", { tag: "@viewport-
   await expect(grokMark).toHaveCSS("filter", "invert(1)");
 });
 
-test("shows the Claude brand mark and tints it with the theme", { tag: "@viewport-independent" }, async ({
+test("shows the Claude brand mark and tints it with the theme", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.goto("/settings/appearance");
@@ -1932,7 +1932,7 @@ test("enables, lists, removes, and explicitly revokes notification installations
   expect(upserts).toBe(1);
 });
 
-test("honors a remote revocation tombstone without silently re-registering", { tag: "@all-viewports" }, async ({
+test("honors a remote revocation tombstone without silently re-registering", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installPushBrowserMock(page, {
@@ -1961,7 +1961,7 @@ test("honors a remote revocation tombstone without silently re-registering", { t
   expect(await page.evaluate(() => window.__pushMock.subscribeCalls)).toBe(0);
 });
 
-test("explains missing app-server capabilities in Codex Settings", { tag: "@all-viewports" }, async ({
+test("explains missing app-server capabilities in Codex Settings", { tag: "@server-steady" }, async ({
   context,
   page,
 }) => {
@@ -2012,7 +2012,7 @@ test("explains missing app-server capabilities in Codex Settings", { tag: "@all-
   await popup.close();
 });
 
-test("copies the official install command from Codex Settings", { tag: "@viewport-independent" }, async ({
+test("copies the official install command from Codex Settings", { tag: "@server-steady" }, async ({
   context,
   page,
 }) => {
@@ -2074,7 +2074,7 @@ test("returns from Settings to the canonical Tasks home", { tag: "@all-viewports
   await expect(tasksPage.locator(".task-new-form")).toBeVisible();
 });
 
-test("gives every Settings route one page title and landmark hierarchy", { tag: "@all-viewports" }, async ({
+test("gives every Settings route one page title and landmark hierarchy", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const routes = [
@@ -2443,7 +2443,7 @@ test("reflows Settings from the detail pane width at maximum Interface scale", {
   );
 });
 
-test("Appearance offers its other choices, its controls, and the resets of changed values", { tag: "@viewport-independent" }, async ({
+test("Appearance offers its other choices, its controls, and the resets of changed values", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.addInitScript(
@@ -3133,7 +3133,7 @@ test("switches and persists the local typeface presets", { tag: "@all-viewports"
     .toMatchObject({ codeTypefacePreset: "geist-mono-nerd-font" });
 });
 
-test("loads the bundled face a typeface preset names", { tag: "@viewport-independent" }, async ({ page }) => {
+test("loads the bundled face a typeface preset names", { tag: "@server-steady" }, async ({ page }) => {
   await page.goto("/settings/appearance");
 
   await page
@@ -3168,7 +3168,7 @@ test("loads the bundled face a typeface preset names", { tag: "@viewport-indepen
     .toBe(true);
 });
 
-test("draws Nerd Fonts Powerline symbols and icons inside the code cell", { tag: "@viewport-independent" }, async ({
+test("draws Nerd Fonts Powerline symbols and icons inside the code cell", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.goto("/settings/appearance");

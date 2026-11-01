@@ -16,7 +16,7 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("Word document replacement rejects an older render completion and clears null input", { tag: "@viewport-independent" }, async ({ page }) => {
+test("Word document replacement rejects an older render completion and clears null input", { tag: "@server-steady" }, async ({ page }) => {
   const viewer = page.locator("#document-lifecycle-viewer");
   const child = viewer.locator("caffold-docx-document");
   await expect(child).toHaveAttribute("data-render-state", "empty");
@@ -48,7 +48,7 @@ test("Word document replacement rejects an older render completion and clears nu
     .every((record) => !record.active))).toBe(true);
 });
 
-test("Word document disconnect cancels pending work and reconnect renders the current file", { tag: "@viewport-independent" }, async ({ page }) => {
+test("Word document disconnect cancels pending work and reconnect renders the current file", { tag: "@server-steady" }, async ({ page }) => {
   const viewer = page.locator("#document-lifecycle-viewer");
   const child = viewer.locator("caffold-docx-document");
   await viewer.evaluate((element) => {
@@ -82,7 +82,7 @@ test("Word document disconnect cancels pending work and reconnect renders the cu
     .every((record) => !record.active))).toBe(true);
 });
 
-test("Word render failures release owned resources and allow a replacement", { tag: "@viewport-independent" }, async ({ page }) => {
+test("Word render failures release owned resources and allow a replacement", { tag: "@server-steady" }, async ({ page }) => {
   const viewer = page.locator("#document-lifecycle-viewer");
   const child = viewer.locator("caffold-docx-document");
   await viewer.evaluate((element) => {

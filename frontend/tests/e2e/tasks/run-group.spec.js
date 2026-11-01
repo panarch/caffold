@@ -194,7 +194,7 @@ test("the empty thinking around commands folds in as rows as tall as a command",
   await captureReviewScreenshot(page, testInfo, "command-group-thinking");
 });
 
-test("an open group stays open when its finished turn folds into work details", { tag: "@viewport-independent" }, async ({
+test("an open group stays open when its finished turn folds into work details", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const task = activeTask();
@@ -246,7 +246,7 @@ test("an open group stays open when its finished turn folds into work details", 
   ).toHaveCount(2);
 });
 
-test("work details offer a folded group's rows to the keyboard only while it is open", { tag: "@viewport-independent" }, async ({
+test("work details offer a folded group's rows to the keyboard only while it is open", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const task = {
@@ -322,7 +322,7 @@ test("work details offer a folded group's rows to the keyboard only while it is 
   await expect(dialog).toContainText("intentionally-missing");
 });
 
-test("a reader anchored on a command keeps their place when it folds into a group", { tag: "@viewport-independent" }, async ({
+test("a reader anchored on a command keeps their place when it folds into a group", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const task = activeTask();
@@ -493,7 +493,7 @@ test("finished tool calls fold into a group that reads as a group of commands do
   await captureReviewScreenshot(page, testInfo, "tool-call-group-expanded");
 });
 
-test("a command or other work between tool calls keeps them apart", { tag: "@viewport-independent" }, async ({
+test("a command or other work between tool calls keeps them apart", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await openTask(page, activeTask(), [
@@ -536,7 +536,7 @@ test("a command or other work between tool calls keeps them apart", { tag: "@vie
   );
 });
 
-test("an open group of tool calls stays open in work details and offers each call's View details", { tag: "@viewport-independent" }, async ({
+test("an open group of tool calls stays open in work details and offers each call's View details", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const task = activeTask();

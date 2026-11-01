@@ -235,7 +235,7 @@ test("renders a Word document as the only representation its file supports", { t
   })).toEqual({ child: true, page: true, scroll: true, selection: true });
 });
 
-test("shows a document's text without its links or embedded HTML", { tag: "@viewport-independent" }, async ({
+test("shows a document's text without its links or embedded HTML", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo);
@@ -254,7 +254,7 @@ test("shows a document's text without its links or embedded HTML", { tag: "@view
   expect(await page.evaluate(() => window.__docxEmbeddedHtmlRan)).toBeUndefined();
 });
 
-test("splits pages where Word last broke them, without an empty page after a page break", { tag: "@viewport-independent" }, async ({
+test("splits pages where Word last broke them, without an empty page after a page break", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo);
@@ -274,7 +274,7 @@ test("splits pages where Word last broke them, without an empty page after a pag
   await expect(pages.nth(3)).toContainText("Wide schedule");
 });
 
-test("reads the document again after the file changes", { tag: "@viewport-independent" }, async ({
+test("reads the document again after the file changes", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const { pattern, requests } = documentRequests(page, testInfo);
@@ -309,7 +309,7 @@ test("reads the document again after the file changes", { tag: "@viewport-indepe
   expect(requests).toHaveLength(2);
 });
 
-test("reads the newly selected Word document into the retained panel", { tag: "@viewport-independent" }, async ({
+test("reads the newly selected Word document into the retained panel", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const first = documentRequests(page, testInfo);
@@ -352,7 +352,7 @@ test("reads the newly selected Word document into the retained panel", { tag: "@
   }
 });
 
-test("switches the document panel between a Word document and a PDF", { tag: "@viewport-independent" }, async ({
+test("switches the document panel between a Word document and a PDF", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   await copyFile(PDF_FIXTURE, documentPath(testInfo, "-pdf", "pdf"));
@@ -376,7 +376,7 @@ test("switches the document panel between a Word document and a PDF", { tag: "@v
   }
 });
 
-test("reports an unavailable document without replacing the review surface", { tag: "@viewport-independent" }, async ({
+test("reports an unavailable document without replacing the review surface", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const { pattern } = documentRequests(page, testInfo);

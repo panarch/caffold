@@ -664,7 +664,7 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
   expect(forkRequests).toBe(1);
 });
 
-test("keeps non-idle and unknown previews read-only and cancels an in-flight preview", { tag: "@viewport-independent" }, async ({
+test("keeps non-idle and unknown previews read-only and cancels an in-flight preview", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page);
@@ -796,7 +796,7 @@ test("keeps non-idle and unknown previews read-only and cancels an in-flight pre
   await slowPreviewFinished;
 });
 
-test("reveals the Codex row only once an installed Codex is known and explains disabled state", { tag: "@viewport-independent" }, async ({
+test("reveals the Codex row only once an installed Codex is known and explains disabled state", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page);
@@ -878,7 +878,7 @@ test("reveals the Codex row only once an installed Codex is known and explains d
   await expect(shortcuts).toBeHidden();
 });
 
-test("returns a missing Section route to Tasks home", { tag: "@all-viewports" }, async ({ page }) => {
+test("returns a missing Section route to Tasks home", { tag: "@server-steady" }, async ({ page }) => {
   await installEventSourceMock(page);
   await mockAgentModels(page);
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
@@ -1229,7 +1229,7 @@ test("starts the Section composer where global New Task starts its composer", { 
   expect(Math.abs(sectionOffset - globalOffset)).toBeLessThanOrEqual(0.5);
 });
 
-test("replaces the New Task context when a selected Section path changes", { tag: "@all-viewports" }, async ({
+test("replaces the New Task context when a selected Section path changes", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page);
@@ -1348,7 +1348,7 @@ test("replaces the New Task context when a selected Section path changes", { tag
   );
 });
 
-test("uses the Section's last composer settings for its next Task request", { tag: "@viewport-independent" }, async ({ page }) => {
+test("uses the Section's last composer settings for its next Task request", { tag: "@server-steady" }, async ({ page }) => {
   await installEventSourceMock(page);
   await mockAgentModels(page);
   const sectionId = "section-composer-seed";
@@ -1438,7 +1438,7 @@ test("uses the Section's last composer settings for its next Task request", { ta
   });
 });
 
-test("keeps the first prompt when the created Task opens before creation answers", { tag: "@viewport-independent" }, async ({
+test("keeps the first prompt when the created Task opens before creation answers", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, {
@@ -1586,7 +1586,7 @@ test("keeps the first prompt when the created Task opens before creation answers
   });
 });
 
-test("falls back stale Section settings and applies targeted updates without reloading", { tag: "@viewport-independent" }, async ({
+test("falls back stale Section settings and applies targeted updates without reloading", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { registryKey: "__sectionComposerSources" });
@@ -1661,7 +1661,7 @@ test("falls back stale Section settings and applies targeted updates without rel
   expect(taskListReads).toBe(1);
 });
 
-test("moves Section New to the agent whose model a Section update names", { tag: "@viewport-independent" }, async ({
+test("moves Section New to the agent whose model a Section update names", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { registryKey: "__sectionAgentSwitchSources" });
@@ -1764,7 +1764,7 @@ test("moves Section New to the agent whose model a Section update names", { tag:
   });
 });
 
-test("clears shared repository context when the selected Section loses capability", { tag: "@all-viewports" }, async ({
+test("clears shared repository context when the selected Section loses capability", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { registryKey: "__sectionDetailWatchSources" });

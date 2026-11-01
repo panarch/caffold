@@ -154,7 +154,7 @@ async function emitTaskListEvent(page, type, payload) {
   }, { eventType: type, eventPayload: payload });
 }
 
-test("opens archived-in-Codex recovery without opening ordinary Task detail and restores it", { tag: "@all-viewports" }, async ({
+test("opens archived-in-Codex recovery without opening ordinary Task detail and restores it", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const threadId = "thread_recovery_restore";
@@ -229,7 +229,7 @@ test("opens archived-in-Codex recovery without opening ordinary Task detail and 
   expect(detailReads).toBe(0);
 });
 
-test("offers a recovery Task's row as the Action Hint that opens its recovery", { tag: "@all-viewports" }, async ({
+test("offers a recovery Task's row as the Action Hint that opens its recovery", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const threadId = "thread_recovery_hint";
@@ -252,7 +252,7 @@ test("offers a recovery Task's row as the Action Hint that opens its recovery", 
   ).toBeVisible();
 });
 
-test("moves an already-Codex-archived recovery Task into Caffold Archived", { tag: "@all-viewports" }, async ({
+test("moves an already-Codex-archived recovery Task into Caffold Archived", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const threadId = "thread_recovery_archive";
@@ -292,7 +292,7 @@ test("moves an already-Codex-archived recovery Task into Caffold Archived", { ta
   ).toBeVisible();
 });
 
-test("confirms before removing a missing Codex Thread from Caffold", { tag: "@all-viewports" }, async ({
+test("confirms before removing a missing Codex Thread from Caffold", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const threadId = "thread_recovery_missing";
@@ -342,7 +342,7 @@ for (const scenario of [
     label: /Remove from Caffold/,
   },
 ]) {
-  test(`keeps the ${scenario.action} Action Hint usable when Recovery icons finish loading`, { tag: "@all-viewports" }, async ({ page }) => {
+  test(`keeps the ${scenario.action} Action Hint usable when Recovery icons finish loading`, { tag: "@server-changes" }, async ({ page }) => {
     const threadId = `thread_recovery_late_icons_${scenario.action}`;
     const recovery = recoveryTask(
       threadId,
@@ -400,7 +400,7 @@ for (const scenario of [
   });
 }
 
-test("keeps the removal confirmation Action Hint usable when Recovery icons finish loading", { tag: "@all-viewports" }, async ({ page }) => {
+test("keeps the removal confirmation Action Hint usable when Recovery icons finish loading", { tag: "@server-changes" }, async ({ page }) => {
   const threadId = "thread_recovery_confirmation_late_icons";
   const recovery = recoveryTask(
     threadId,
@@ -545,7 +545,7 @@ test("recheck uses the explicit recovery endpoint without rewriting the cached l
   ).toHaveAttribute("data-task-recovery-reason", "codexArchived");
 });
 
-test("opens a readable Section-placement recovery on Recovery detail", { tag: "@all-viewports" }, async ({
+test("opens a readable Section-placement recovery on Recovery detail", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const threadId = "thread_recovery_readable";
@@ -579,7 +579,7 @@ test("opens a readable Section-placement recovery on Recovery detail", { tag: "@
   expect(detailReads).toBe(0);
 });
 
-test("redirects an ordinary Task deep link when the DB projection requires Recovery", { tag: "@all-viewports" }, async ({
+test("redirects an ordinary Task deep link when the DB projection requires Recovery", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const threadId = "thread_recovery_deep_link";
@@ -601,7 +601,7 @@ test("redirects an ordinary Task deep link when the DB projection requires Recov
   ).toBeVisible();
 });
 
-test("keeps the DB Recovery projection authoritative over a runtime snapshot", { tag: "@all-viewports" }, async ({
+test("keeps the DB Recovery projection authoritative over a runtime snapshot", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const threadId = "thread_recovery_runtime_snapshot";
@@ -631,7 +631,7 @@ test("keeps the DB Recovery projection authoritative over a runtime snapshot", {
   ).toBeVisible();
 });
 
-test("reconciles an open ordinary Task detail to a later DB Recovery projection", { tag: "@all-viewports" }, async ({
+test("reconciles an open ordinary Task detail to a later DB Recovery projection", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const threadId = "thread_recovery_selected_transition";
@@ -670,7 +670,7 @@ test("reconciles an open ordinary Task detail to a later DB Recovery projection"
   ).toBeVisible();
 });
 
-test("a recovery Task archived elsewhere shows the archived notice and restores from it", { tag: "@viewport-independent" }, async ({
+test("a recovery Task archived elsewhere shows the archived notice and restores from it", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const threadId = "thread_recovery_archived_elsewhere";

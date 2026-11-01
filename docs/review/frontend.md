@@ -473,17 +473,24 @@ Playwright tag. The tag answers one question: does the behavior under test
 change with the viewport size or the input method, mouse or touch? It changes
 when it takes a different production path or shows a different result.
 
-- No: tag `@viewport-independent`. This holds even when the test has to
-  render, measure, or scroll to check the result, and for keyboard behavior
-  that works the same on every screen. The project runs in the desktop
-  browser, so rendering alone needs no viewport tag.
+- No: the test runs once, in the desktop browser. This holds even when the
+  test has to render, measure, or scroll to check the result, and for keyboard
+  behavior that works the same on every screen; rendering alone needs no
+  viewport tag. Its tag answers whether the server's side changes while the
+  test runs:
+  - `@server-changes`: a stream event arrives, a connection drops, a held
+    response is released, a response starts returning something else (such as
+    a failure that later succeeds), or the page reloads or returns to the
+    foreground.
+  - `@server-steady`: every response stays as prepared before the test acts,
+    including a prepared failure.
 - Yes: tag the fewest of `@desktop`, `@foldable`, and `@phone` that reach every
   distinct path or result. When that takes all three, tag `@all-viewports`
   instead.
 
-`@all-viewports` and `@viewport-independent` are never combined with another
-tag. Review should reject untagged tests and tags that do not match the
-answer.
+`@all-viewports`, `@server-changes`, and `@server-steady` are never combined
+with another tag. Review should reject untagged tests and tags that do not
+match these answers.
 
 When an expected result depends on the order of independently delivered events
 or asynchronous completions, the test must gate the exact boundary the

@@ -15,7 +15,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("owns Thinking disclosure state, anchor, and exact target boundary", { tag: "@viewport-independent" }, async ({
+test("owns Thinking disclosure state, anchor, and exact target boundary", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const scenario = await seedActiveThinkingTask(page);

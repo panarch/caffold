@@ -600,7 +600,7 @@ test("shows a partial active-turn plan on one strip line with its detail in the 
   await expect(status).toBeHidden();
 });
 
-test("keeps paused plan updates visible after Refresh until the Watch recovers", { tag: "@viewport-independent" }, async ({
+test("keeps paused plan updates visible after Refresh until the Watch recovers", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);
@@ -676,7 +676,7 @@ test("keeps paused plan updates visible after Refresh until the Watch recovers",
   ).toBeFocused();
 });
 
-test("clears a failed plan read after Refresh succeeds", { tag: "@viewport-independent" }, async ({
+test("clears a failed plan read after Refresh succeeds", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);
@@ -739,7 +739,7 @@ test("clears a failed plan read after Refresh succeeds", { tag: "@viewport-indep
   ).toBeFocused();
 });
 
-test("shows keyboard focus on a strip segment the way it shows hover", { tag: "@viewport-independent" }, async ({
+test("shows keyboard focus on a strip segment the way it shows hover", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);
@@ -773,7 +773,7 @@ test("shows keyboard focus on a strip segment the way it shows hover", { tag: "@
   }
 });
 
-test("keeps a Task without a plan free of the strip while its updates pause", { tag: "@viewport-independent" }, async ({
+test("keeps a Task without a plan free of the strip while its updates pause", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);
@@ -808,7 +808,7 @@ test("keeps a Task without a plan free of the strip while its updates pause", { 
   await expect(currentPlan.locator('[data-current-plan-action="status"]')).toBeHidden();
 });
 
-test("rereads a plan whose first read failed once the Task cwd Watch is ready", { tag: "@viewport-independent" }, async ({
+test("rereads a plan whose first read failed once the Task cwd Watch is ready", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);
@@ -853,7 +853,7 @@ test("rereads a plan whose first read failed once the Task cwd Watch is ready", 
   await expect(currentPlan.locator('[data-current-plan-action="status"]')).toBeHidden();
 });
 
-test("uses the Task cwd instead of its managed worktree root", { tag: "@viewport-independent" }, async ({
+test("uses the Task cwd instead of its managed worktree root", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);
@@ -903,7 +903,7 @@ test("uses the Task cwd instead of its managed worktree root", { tag: "@viewport
   );
 });
 
-test("closes the plan document when a Note link in it opens the Note", { tag: "@viewport-independent" }, async ({
+test("closes the plan document when a Note link in it opens the Note", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);
@@ -939,7 +939,7 @@ test("closes the plan document when a Note link in it opens the Note", { tag: "@
   await expect(page.locator('caffold-note-document[data-note-side="primary"]')).toBeVisible();
 });
 
-test("draws the images the plan names beside it and from the Task root", { tag: "@viewport-independent" }, async ({
+test("draws the images the plan names beside it and from the Task root", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);
@@ -970,7 +970,7 @@ test("draws the images the plan names beside it and from the Task root", { tag: 
   ]));
 });
 
-test("lets go of a plan image it is still fetching when the plan closes", { tag: "@viewport-independent" }, async ({
+test("lets go of a plan image it is still fetching when the plan closes", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);
@@ -1011,7 +1011,7 @@ test("lets go of a plan image it is still fetching when the plan closes", { tag:
   await expect(image).not.toHaveAttribute("src", /.+/);
 });
 
-test("rejects a stale plan refresh when Task context changes", { tag: "@viewport-independent" }, async ({
+test("rejects a stale plan refresh when Task context changes", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);

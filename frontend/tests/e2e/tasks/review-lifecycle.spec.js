@@ -104,7 +104,7 @@ test("reopens the selected Review scope at its last semantic route", { tag: "@al
   ).toHaveAttribute("aria-current", "true");
 });
 
-test("reads Branch again when it is chosen after Review reopens on Working Tree", { tag: "@viewport-independent" }, async ({
+test("reads Branch again when it is chosen after Review reopens on Working Tree", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const { reviewScenario, taskScenario, tasksPage, taskReview } =
@@ -133,7 +133,7 @@ test("reads Branch again when it is chosen after Review reopens on Working Tree"
   expect(reviewScenario.gitCompareRequests).toBe(comparesBefore + 1);
 });
 
-test("keeps the selected Review viewer mounted during canonical task sync", { tag: "@all-viewports" }, async ({
+test("keeps the selected Review viewer mounted during canonical task sync", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const { taskScenario, tasksPage, taskReview } =
@@ -156,7 +156,7 @@ test("keeps the selected Review viewer mounted during canonical task sync", { ta
   await expect(taskReview.locator(".surface-message")).toHaveCount(0);
 });
 
-test("keeps Task view and pane controls mounted and focused through live updates", { tag: "@all-viewports" }, async ({
+test("keeps Task view and pane controls mounted and focused through live updates", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const { reviewScenario, tasksPage, taskReview } =
@@ -373,7 +373,7 @@ test("keeps both Review navigator scroll positions during unrelated live updates
   await expectScrollUnchanged(fileList, fileScrollAfterChange);
 });
 
-test("rejects a late file navigator response while Review is inactive", { tag: "@all-viewports" }, async ({
+test("rejects a late file navigator response while Review is inactive", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const { taskScenario, tasksPage } = await openCompletedTaskForReview(page);
@@ -432,7 +432,7 @@ test("rejects a late file navigator response while Review is inactive", { tag: "
   }
 });
 
-test("keeps the first Working Tree loads running through Task updates", { tag: "@viewport-independent" }, async ({
+test("keeps the first Working Tree loads running through Task updates", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page);
@@ -493,7 +493,7 @@ test("keeps the first Working Tree loads running through Task updates", { tag: "
   }
 });
 
-test("keeps the first Branch loads running through Task updates", { tag: "@viewport-independent" }, async ({
+test("keeps the first Branch loads running through Task updates", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const { reviewScenario, taskScenario, tasksPage, taskReview } =

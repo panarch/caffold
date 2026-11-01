@@ -242,7 +242,7 @@ test("uses one SSE snapshot for initial detail, reconnect, and cursor history", 
   expect(initialDetailReads).toBe(0);
 });
 
-test("preserves readable detail and buffers events through a loading reconnect bootstrap", { tag: "@all-viewports" }, async ({
+test("preserves readable detail and buffers events through a loading reconnect bootstrap", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { autoOpen: true });
@@ -352,7 +352,7 @@ test("preserves readable detail and buffers events through a loading reconnect b
   expect(detailReads).toBe(0);
 });
 
-test("uses one REST fallback per unsupported-EventSource attempt", { tag: "@all-viewports" }, async ({
+test("uses one REST fallback per unsupported-EventSource attempt", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -386,7 +386,7 @@ test("uses one REST fallback per unsupported-EventSource attempt", { tag: "@all-
   await expect.poll(() => detailReads).toBe(2);
 });
 
-test("bounds a detail stream that never opens and falls back once", { tag: "@all-viewports" }, async ({
+test("bounds a detail stream that never opens and falls back once", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
@@ -417,7 +417,7 @@ test("bounds a detail stream that never opens and falls back once", { tag: "@all
   expect(detailReads).toBe(1);
 });
 
-test("uses one REST reconciliation when reconnect bootstrap retries exhaust", { tag: "@all-viewports" }, async ({
+test("uses one REST reconciliation when reconnect bootstrap retries exhaust", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
@@ -468,7 +468,7 @@ test("uses one REST reconciliation when reconnect bootstrap retries exhaust", { 
   ).toContainText("Caffold server unavailable.");
 });
 
-test("rejects a late REST fallback after the session switches Tasks", { tag: "@all-viewports" }, async ({
+test("rejects a late REST fallback after the session switches Tasks", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -518,7 +518,7 @@ test("rejects a late REST fallback after the session switches Tasks", { tag: "@a
   expect(detailReads.get(taskB.threadId)).toBe(1);
 });
 
-test("does not let a pending REST fallback overwrite an explicit stream recovery", { tag: "@all-viewports" }, async ({
+test("does not let a pending REST fallback overwrite an explicit stream recovery", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -646,7 +646,7 @@ test("one retained phrase stands for an opening conversation until its history a
   await expect(phrase).toBeHidden();
 });
 
-test("takes a page that arrives in parts for longer than a channel has to open", { tag: "@viewport-independent" }, async ({
+test("takes a page that arrives in parts for longer than a channel has to open", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
@@ -694,7 +694,7 @@ test("takes a page that arrives in parts for longer than a channel has to open",
   expect(await physicalConnections()).toBe(connections);
 });
 
-test("keeps a conversation on screen through its first message and takes the page that follows", { tag: "@viewport-independent" }, async ({
+test("keeps a conversation on screen through its first message and takes the page that follows", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { autoOpen: true });
@@ -759,7 +759,7 @@ test("keeps a conversation on screen through its first message and takes the pag
   await expect(tasksPage).not.toContainText("The conversation seen before switching.");
 });
 
-test("a Task whose page follows its first message opens at the newest entry", { tag: "@viewport-independent" }, async ({
+test("a Task whose page follows its first message opens at the newest entry", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { autoOpen: true });

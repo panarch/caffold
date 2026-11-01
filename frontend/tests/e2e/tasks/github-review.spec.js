@@ -752,7 +752,7 @@ test("opens direct and rendered Issue links through the Issue owner", { tag: "@a
   );
 });
 
-test("a folded section of GitHub content opens with F, and its links then get codes", { tag: "@viewport-independent" }, async ({
+test("a folded section of GitHub content opens with F, and its links then get codes", { tag: "@server-steady" }, async ({
   context,
   page,
 }) => {
@@ -1435,7 +1435,7 @@ test("keeps Pull Request headers, actions, and Markdown inside the foldable Task
   await captureReviewScreenshot(page, testInfo, "github-pull-detail-foldable-contained");
 });
 
-test("retains the same Task GitHub DOM and refreshes lists when reactivated", { tag: "@all-viewports" }, async ({ page }) => {
+test("retains the same Task GitHub DOM and refreshes lists when reactivated", { tag: "@server-steady" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
 
   await openLinkedWorktreePullRequests(page);
@@ -1544,7 +1544,7 @@ test("keeps loaded GitHub routes stable across unrelated Task stream updates", {
   expect(fixture.counts.pullFile).toBe(1);
 });
 
-test("toggles retained Pull Files directories through the GitHub owner", { tag: "@all-viewports" }, async ({
+test("toggles retained Pull Files directories through the GitHub owner", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installLinkedWorktreeGithubFixture(page);
@@ -1573,7 +1573,7 @@ test("toggles retained Pull Files directories through the GitHub owner", { tag: 
   await expect(srcFile).toBeVisible();
 });
 
-test("applies the global ordering to GitHub PR Files without refetching", { tag: "@all-viewports" }, async ({
+test("applies the global ordering to GitHub PR Files without refetching", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
@@ -1598,7 +1598,7 @@ test("applies the global ordering to GitHub PR Files without refetching", { tag:
   expect(fixture.counts.pullFiles).toBe(1);
 });
 
-test("preserves Issue Start Task setup, focus return, and created Task selection", { tag: "@all-viewports" }, async ({ page }) => {
+test("preserves Issue Start Task setup, focus return, and created Task selection", { tag: "@server-steady" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
   const issueDetail = await openLinkedWorktreeIssue(page);
   const opener = issueDetail.getByRole("button", {
@@ -1690,7 +1690,7 @@ test("preserves Issue Start Task setup, focus return, and created Task selection
   await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
 });
 
-test("holds Start Task while the chosen model's permission modes are still arriving", { tag: "@viewport-independent" }, async ({ page }) => {
+test("holds Start Task while the chosen model's permission modes are still arriving", { tag: "@server-changes" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
   const secondModel = {
     ...AGENT_MODELS_FIXTURE.models[0],
@@ -1760,7 +1760,7 @@ test("holds Start Task while the chosen model's permission modes are still arriv
   });
 });
 
-test("owns Issue Task Start Hint, native select, Editing Escape, and Scroll contexts", { tag: "@viewport-independent" }, async ({
+test("owns Issue Task Start Hint, native select, Editing Escape, and Scroll contexts", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   await installLinkedWorktreeGithubFixture(page);
@@ -1935,7 +1935,7 @@ test("owns Issue Task Start Hint, native select, Editing Escape, and Scroll cont
   await expect(opener).toBeFocused();
 });
 
-test("starts a Task from a Section-scoped GitHub Issue", { tag: "@viewport-independent" }, async ({ page }) => {
+test("starts a Task from a Section-scoped GitHub Issue", { tag: "@server-steady" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page, {
     sectionComposerSettings: {
       model: "gpt-5.6-sol",
@@ -1987,7 +1987,7 @@ test("starts a Task from a Section-scoped GitHub Issue", { tag: "@viewport-indep
   await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
 });
 
-test("names the tools a Claude Task actually has in its issue setup prompt", { tag: "@viewport-independent" }, async ({ page }) => {
+test("names the tools a Claude Task actually has in its issue setup prompt", { tag: "@server-steady" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page, {
     sectionComposerSettings: { model: "claude-opus-5" },
   });
@@ -2053,7 +2053,7 @@ test("names the tools a Claude Task actually has in its issue setup prompt", { t
   await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
 });
 
-test("names the tools a Grok Task actually has in its issue setup prompt", { tag: "@viewport-independent" }, async ({ page }) => {
+test("names the tools a Grok Task actually has in its issue setup prompt", { tag: "@server-steady" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page, {
     sectionComposerSettings: { model: "grok-4.5" },
   });
@@ -2237,7 +2237,7 @@ test("keeps long PR refs in one shared horizontal scroll with sticky labels", { 
   expect(before.headValueLeft - after.headValueLeft).toBeCloseTo(after.scrollLeft, 0);
 });
 
-test("starts a fork PR Task through the base repository pull ref", { tag: "@all-viewports" }, async ({ page }) => {
+test("starts a fork PR Task through the base repository pull ref", { tag: "@server-steady" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page, {
     headRepository: {
       nameWithOwner: "contributor/gluesql",
@@ -2270,7 +2270,7 @@ test("starts a fork PR Task through the base repository pull ref", { tag: "@all-
   );
 });
 
-test("keeps PR Task setup recoverable when the canonical head is unavailable", { tag: "@all-viewports" }, async ({ page }) => {
+test("keeps PR Task setup recoverable when the canonical head is unavailable", { tag: "@server-changes" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
   fixture.controls.pullHeadFailure = {
     status: 502,
@@ -2293,7 +2293,7 @@ test("keeps PR Task setup recoverable when the canonical head is unavailable", {
   await expect.poll(() => fixture.counts.taskCreates).toBe(1);
 });
 
-test("requires an explicit PR refresh after the head moves", { tag: "@all-viewports" }, async ({ page }) => {
+test("requires an explicit PR refresh after the head moves", { tag: "@server-changes" }, async ({ page }) => {
   const movedOid = "3333333333333333333333333333333333333333";
   const fixture = await installLinkedWorktreeGithubFixture(page);
   fixture.controls.pullHeadFailure = {
@@ -2336,7 +2336,7 @@ test("requires an explicit PR refresh after the head moves", { tag: "@all-viewpo
   expect(fixture.requests.pullHeads.at(-1).headOid).toBe(movedOid);
 });
 
-test("invalidates a pending GitHub Task start when the GitHub surface deactivates", { tag: "@all-viewports" }, async ({
+test("invalidates a pending GitHub Task start when the GitHub surface deactivates", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
@@ -2627,7 +2627,7 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls`);
 });
 
-test("rejects an inactive GitHub list response before the cached child is reactivated", { tag: "@all-viewports" }, async ({ page }) => {
+test("rejects an inactive GitHub list response before the cached child is reactivated", { tag: "@server-changes" }, async ({ page }) => {
   await installLinkedWorktreeGithubFixture(page);
   await page.unroute(/\/api\/github\/pulls(?:\?|$)/);
   const pendingRoutes = [];
@@ -2651,7 +2651,7 @@ test("rejects an inactive GitHub list response before the cached child is reacti
   await expect(pullsPage).not.toContainText("Stale pull request");
 });
 
-test("stops an older GitHub activation before it loads content for a replaced route", { tag: "@all-viewports" }, async ({
+test("stops an older GitHub activation before it loads content for a replaced route", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
@@ -2775,7 +2775,7 @@ for (const list of [
   });
 }
 
-test("Action Hints reach the issue list's page buttons in the pagination's shadow roots and leave focus where it was", { tag: "@viewport-independent" }, async ({
+test("Action Hints reach the issue list's page buttons in the pagination's shadow roots and leave focus where it was", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installLinkedWorktreeGithubFixture(page);

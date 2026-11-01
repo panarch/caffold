@@ -161,7 +161,7 @@ test(
   },
 );
 
-test("failed initial inspection retries one refresh and presents structured quota", { tag: "@viewport-independent" }, async ({ page }) => {
+test("failed initial inspection retries one refresh and presents structured quota", { tag: "@server-changes" }, async ({ page }) => {
   await installBrowserDefaults(page);
   let reads = 0;
   const status = base();
@@ -225,7 +225,7 @@ test("one refresh updates native quota and the official icon uses existing theme
   expect(filters[0]).not.toEqual(filters[1]);
 });
 
-test("refresh requiring login offers explicit sign-in and preserves a running refresh across navigation", { tag: "@viewport-independent" }, async ({ page }) => {
+test("refresh requiring login offers explicit sign-in and preserves a running refresh across navigation", { tag: "@server-changes" }, async ({ page }) => {
   await installBrowserDefaults(page);
   let status = base();
   let finishRefresh;
@@ -256,7 +256,7 @@ test("refresh requiring login offers explicit sign-in and preserves a running re
   await expect.poll(() => actions).toEqual(["/api/antigravity/refresh"]);
 });
 
-test("entry refreshes once and only a new activation refreshes again", { tag: "@viewport-independent" }, async ({ page }) => {
+test("entry refreshes once and only a new activation refreshes again", { tag: "@server-steady" }, async ({ page }) => {
   await installBrowserDefaults(page);
   await page.clock.install();
   let refreshes = 0;
@@ -285,7 +285,7 @@ test("entry refreshes once and only a new activation refreshes again", { tag: "@
   expect(refreshes).toBe(2);
 });
 
-test("leaving during the entry inspection cannot start a late refresh", { tag: "@viewport-independent" }, async ({ page }) => {
+test("leaving during the entry inspection cannot start a late refresh", { tag: "@server-changes" }, async ({ page }) => {
   await installBrowserDefaults(page);
   let release;
   const inspection = new Promise(resolve => { release = resolve; });
@@ -312,7 +312,7 @@ for (const installation of [
   { installed: false, phase: "idle", label: "Not installed" },
   { installed: true, phase: "downloading", label: "Downloading…" },
 ]) {
-  test(`entry does not refresh while installation is ${installation.label}`, { tag: "@viewport-independent" }, async ({ page }) => {
+  test(`entry does not refresh while installation is ${installation.label}`, { tag: "@server-steady" }, async ({ page }) => {
     await installBrowserDefaults(page);
     await page.clock.install();
     const status = base();
@@ -426,7 +426,7 @@ test("AGY runtime matches Claude and confirms restart through the modal keyboard
   expect(actions).toEqual(["/api/antigravity/refresh", "/api/antigravity/restart"]);
 });
 
-test("AGY runtime failure stays actionable without claiming a replacement", { tag: "@viewport-independent" }, async ({ page }) => {
+test("AGY runtime failure stays actionable without claiming a replacement", { tag: "@server-steady" }, async ({ page }) => {
   await installBrowserDefaults(page);
   await page.route("**/api/antigravity/**", route => new URL(route.request().url()).pathname.endsWith("/restart")
     ? route.fulfill({ status: 409, json: { error: { code: "antigravity_action_failed", message: "wait for the authentication action to finish" } } })
@@ -443,7 +443,7 @@ test("AGY runtime failure stays actionable without claiming a replacement", { ta
   await expect(restart).toBeEnabled();
 });
 
-test("AGY observes an accepted restart across navigation without another quota refresh or stale completion", { tag: "@viewport-independent" }, async ({ page }) => {
+test("AGY observes an accepted restart across navigation without another quota refresh or stale completion", { tag: "@server-changes" }, async ({ page }) => {
   await installBrowserDefaults(page);
   await page.clock.install();
   let status = base();

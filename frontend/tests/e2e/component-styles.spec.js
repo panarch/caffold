@@ -6,7 +6,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("components take shared styles as modules and request no stylesheet for them", { tag: "@viewport-independent" }, async ({ page }) => {
+test("components take shared styles as modules and request no stylesheet for them", { tag: "@server-steady" }, async ({ page }) => {
   const requests = [];
   page.on("request", (request) => {
     const { pathname } = new URL(request.url());
@@ -20,7 +20,7 @@ test("components take shared styles as modules and request no stylesheet for the
   expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(0);
 });
 
-test("new consumers declare their own scope, retain local overrides and share one sheet per target", { tag: "@viewport-independent" }, async ({ page }) => {
+test("new consumers declare their own scope, retain local overrides and share one sheet per target", { tag: "@server-steady" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   await page.evaluate(async () => {
@@ -76,7 +76,7 @@ test("new consumers declare their own scope, retain local overrides and share on
   expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(0);
 });
 
-test("a busy spin turns only its owner's busy element and stops for reduced motion", { tag: "@viewport-independent" }, async ({ page }) => {
+test("a busy spin turns only its owner's busy element and stops for reduced motion", { tag: "@server-steady" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   await page.evaluate(async () => {
@@ -165,7 +165,7 @@ test("pagination keeps its compact surface, disabled appearance and native activ
   await expect(pagination).toHaveAttribute("data-selected-page", "2");
 });
 
-test("pagination draws into shadow roots its styles stay inside and the document's styles do not enter", { tag: "@viewport-independent" }, async ({ page }) => {
+test("pagination draws into shadow roots its styles stay inside and the document's styles do not enter", { tag: "@server-steady" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace")).toBeVisible();
   await page.evaluate(() => customElements.whenDefined("caffold-pagination"));
@@ -211,7 +211,7 @@ test("pagination draws into shadow roots its styles stay inside and the document
   });
 });
 
-test("a drawn ref keeps its element out of the document and lets go once it is no longer drawn", { tag: "@viewport-independent" }, async ({ page }) => {
+test("a drawn ref keeps its element out of the document and lets go once it is no longer drawn", { tag: "@server-steady" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace")).toBeVisible();
   const result = await page.evaluate(async () => {
@@ -258,7 +258,7 @@ test("a drawn ref keeps its element out of the document and lets go once it is n
   });
 });
 
-test("pagination offers its enabled page buttons as Action Hints from the page it draws", { tag: "@viewport-independent" }, async ({ page }) => {
+test("pagination offers its enabled page buttons as Action Hints from the page it draws", { tag: "@server-steady" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace")).toBeVisible();
   await page.evaluate(() => customElements.whenDefined("caffold-pagination"));
@@ -311,7 +311,7 @@ test("pagination offers its enabled page buttons as Action Hints from the page i
   });
 });
 
-test("segmented control offers the choices other than the current one as Action Hints", { tag: "@viewport-independent" }, async ({ page }) => {
+test("segmented control offers the choices other than the current one as Action Hints", { tag: "@server-steady" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace")).toBeVisible();
   await page.evaluate(() => customElements.whenDefined("caffold-segmented-control"));
@@ -342,7 +342,7 @@ test("segmented control offers the choices other than the current one as Action 
   });
 });
 
-test("segmented control shows keyboard focus on a choice the way it shows hover", { tag: "@viewport-independent" }, async ({ page }) => {
+test("segmented control shows keyboard focus on a choice the way it shows hover", { tag: "@server-steady" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace")).toBeVisible();
   await page.evaluate(() => customElements.whenDefined("caffold-segmented-control"));
@@ -399,7 +399,7 @@ test("segmented control keeps no hover look after a tap", { tag: "@foldable" }, 
   expect(await focusLook(choice, "span")).toEqual(resting);
 });
 
-test("segmented control keeps its button rule inside its shadow root and the document's button rules out", { tag: "@viewport-independent" }, async ({ page }) => {
+test("segmented control keeps its button rule inside its shadow root and the document's button rules out", { tag: "@server-steady" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace")).toBeVisible();
   await page.evaluate(() => customElements.whenDefined("caffold-segmented-control"));
@@ -438,7 +438,7 @@ test("segmented control keeps its button rule inside its shadow root and the doc
   });
 });
 
-test("the Settings refresh button turns its icon inside its shadow root and nothing outside it", { tag: "@viewport-independent" }, async ({ page }) => {
+test("the Settings refresh button turns its icon inside its shadow root and nothing outside it", { tag: "@server-steady" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   await page.evaluate(() => customElements.whenDefined("caffold-settings-refresh-button"));
@@ -464,7 +464,7 @@ test("the Settings refresh button turns its icon inside its shadow root and noth
   await expect(icon).toHaveCSS("animation-name", "none");
 });
 
-test("pagination changes its page in place and leaves the same page untouched", { tag: "@viewport-independent" }, async ({ page }) => {
+test("pagination changes its page in place and leaves the same page untouched", { tag: "@server-steady" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace")).toBeVisible();
   await page.evaluate(() => customElements.whenDefined("caffold-pagination"));

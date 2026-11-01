@@ -81,7 +81,7 @@ async function installInitialTaskListGates(page) {
   };
 }
 
-test("mounts initial loading once and preserves settled Task DOM across refresh", { tag: "@all-viewports" }, async ({
+test("mounts initial loading once and preserves settled Task DOM across refresh", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page);
@@ -208,7 +208,7 @@ test("mounts initial loading once and preserves settled Task DOM across refresh"
   });
 });
 
-test("retains an initial Archived result without revealing it before active Tasks settle", { tag: "@all-viewports" }, async ({
+test("retains an initial Archived result without revealing it before active Tasks settle", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page);
@@ -245,7 +245,7 @@ test("retains an initial Archived result without revealing it before active Task
   await expect(navigator.getByText("Loading...", { exact: true })).toHaveCount(0);
 });
 
-test("shows active Tasks first and appends a settled Archived section without replacing active DOM", { tag: "@all-viewports" }, async ({
+test("shows active Tasks first and appends a settled Archived section without replacing active DOM", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page);
@@ -291,7 +291,7 @@ test("shows active Tasks first and appends a settled Archived section without re
   )).toBe(true);
 });
 
-test("subscribes to Task list updates once active Tasks settle, before Archived", { tag: "@viewport-independent" }, async ({
+test("subscribes to Task list updates once active Tasks settle, before Archived", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page);
@@ -317,7 +317,7 @@ test("subscribes to Task list updates once active Tasks settle, before Archived"
   await expect(archivedSection).toBeVisible();
 });
 
-test("reveals confirmed empty active and Archived states only after both initial requests settle", { tag: "@all-viewports" }, async ({
+test("reveals confirmed empty active and Archived states only after both initial requests settle", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page);
@@ -344,7 +344,7 @@ test("reveals confirmed empty active and Archived states only after both initial
   await expect(archivedSection.locator(".task-list-section-count")).toHaveText("0");
 });
 
-test("holds an initial Archived failure until active Tasks settle", { tag: "@all-viewports" }, async ({ page }) => {
+test("holds an initial Archived failure until active Tasks settle", { tag: "@server-changes" }, async ({ page }) => {
   await installEventSourceMock(page);
   await mockAgentModels(page);
   const activeTask = initialNavigatorTask(
@@ -380,7 +380,7 @@ test("holds an initial Archived failure until active Tasks settle", { tag: "@all
     .toContainEqual(["retry", "Retry"]);
 });
 
-test("shows an initial active failure immediately and reveals Archived after it settles", { tag: "@all-viewports" }, async ({
+test("shows an initial active failure immediately and reveals Archived after it settles", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page);
@@ -416,7 +416,7 @@ test("shows an initial active failure immediately and reveals Archived after it 
   );
 });
 
-test("keeps settled list sections visible during later parallel refreshes", { tag: "@all-viewports" }, async ({ page }) => {
+test("keeps settled list sections visible during later parallel refreshes", { tag: "@server-changes" }, async ({ page }) => {
   await installEventSourceMock(page);
   await mockAgentModels(page);
   const activeTask = initialNavigatorTask(
@@ -487,7 +487,7 @@ test("keeps settled list sections visible during later parallel refreshes", { ta
   await expect.poll(() => archivedReads).toBe(2);
 });
 
-test("renders the backend-exhausted Active projection without cursor paging", { tag: "@all-viewports" }, async ({ page }) => {
+test("renders the backend-exhausted Active projection without cursor paging", { tag: "@server-steady" }, async ({ page }) => {
   await installEventSourceMock(page);
   await mockAgentModels(page);
 
@@ -531,7 +531,7 @@ test("renders the backend-exhausted Active projection without cursor paging", { 
   expect(cursors).toEqual([null]);
 });
 
-test("refreshes persisted identity and order without replacing runtime status", { tag: "@all-viewports" }, async ({
+test("refreshes persisted identity and order without replacing runtime status", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, {
@@ -601,7 +601,7 @@ test("refreshes persisted identity and order without replacing runtime status", 
   ).toHaveAttribute("data-task-status", "idle");
 });
 
-test("keeps a resting Task's background work when the list reads its stored rows again", { tag: "@all-viewports" }, async ({
+test("keeps a resting Task's background work when the list reads its stored rows again", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, {
@@ -647,7 +647,7 @@ test("keeps a resting Task's background work when the list reads its stored rows
   await expect(row.locator(".task-row-time")).toHaveCount(0);
 });
 
-test("hydrates a cached Task with the task-list stream bootstrap snapshot", { tag: "@all-viewports" }, async ({
+test("hydrates a cached Task with the task-list stream bootstrap snapshot", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, {
@@ -746,7 +746,7 @@ test("hydrates a cached Task with the task-list stream bootstrap snapshot", { ta
   expect(reads).toBe(1);
 });
 
-test("applies canonical top placements without list refetches or duplicate reordering", { tag: "@all-viewports" }, async ({
+test("applies canonical top placements without list refetches or duplicate reordering", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, {
@@ -919,7 +919,7 @@ test("applies canonical top placements without list refetches or duplicate reord
   expect(reads).toBe(1);
 });
 
-test("shows relative age from the latest completion instead of thread recency", { tag: "@all-viewports" }, async ({
+test("shows relative age from the latest completion instead of thread recency", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installEventSourceMock(page);
@@ -959,7 +959,7 @@ test("shows relative age from the latest completion instead of thread recency", 
   await expect(time).toHaveAttribute("datetime", new Date(lastCompletedMs).toISOString());
 });
 
-test("shows the worktree mark from the first Task list response", { tag: "@viewport-independent" }, async ({
+test("shows the worktree mark from the first Task list response", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installEventSourceMock(page);
@@ -1948,7 +1948,7 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   expect(mutations).toEqual(["archive", "restore"]);
 });
 
-test("keeps an idle task active when the archive request fails", { tag: "@all-viewports" }, async ({ page }) => {
+test("keeps an idle task active when the archive request fails", { tag: "@server-steady" }, async ({ page }) => {
   await installEventSourceMock(page);
   await mockAgentModels(page);
   const task = {
@@ -2027,7 +2027,7 @@ test("keeps an idle task active when the archive request fails", { tag: "@all-vi
   ).not.toContainText("Archive failure stays active");
 });
 
-test("keeps a task archived when restore fails", { tag: "@all-viewports" }, async ({ page }) => {
+test("keeps a task archived when restore fails", { tag: "@server-steady" }, async ({ page }) => {
   await installEventSourceMock(page);
   await mockAgentModels(page);
   const task = {
@@ -2093,7 +2093,7 @@ test("keeps a task archived when restore fails", { tag: "@all-viewports" }, asyn
   ).not.toContainText("Restore failure stays archived");
 });
 
-test("does not offer archive while the canonical task is active", { tag: "@all-viewports" }, async ({ page }) => {
+test("does not offer archive while the canonical task is active", { tag: "@server-steady" }, async ({ page }) => {
   await installEventSourceMock(page);
   await mockAgentModels(page);
   const task = {
@@ -2148,7 +2148,7 @@ test("does not offer archive while the canonical task is active", { tag: "@all-v
   await expect(page.getByRole("button", { name: "Archive task" })).toBeDisabled();
 });
 
-test("keeps cached task rows visible when a list refresh fails", { tag: "@all-viewports" }, async ({ page }) => {
+test("keeps cached task rows visible when a list refresh fails", { tag: "@server-changes" }, async ({ page }) => {
   await installEventSourceMock(page, {
     sourceKey: "__taskListEventSource",
     autoOpen: true,
@@ -2965,7 +2965,7 @@ test("switches Tasks to master-detail at the Fold8 landscape boundary", { tag: "
   expect(layout.listWidth).toBeGreaterThanOrEqual(280);
   expect(layout.detailWidth).toBeGreaterThanOrEqual(520);
 });
-test("keeps the Tasks list DOM stable while opening a managed task", { tag: "@all-viewports" }, async ({ page }) => {
+test("keeps the Tasks list DOM stable while opening a managed task", { tag: "@server-changes" }, async ({ page }) => {
   await installEventSourceMock(page, {
     sourceKey: "__taskListEventSource",
     autoOpen: true,
@@ -3112,7 +3112,7 @@ test("keeps the Tasks list DOM stable while opening a managed task", { tag: "@al
     seenRequests: 1,
   });
 });
-test("patches Task rows in place without reordering and preserves a running spinner", { tag: "@all-viewports" }, async ({
+test("patches Task rows in place without reordering and preserves a running spinner", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, {

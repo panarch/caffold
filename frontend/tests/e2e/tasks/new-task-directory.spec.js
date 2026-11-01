@@ -274,7 +274,7 @@ test("Section New shows its fixed directory where New Task shows the field", { t
   }
 });
 
-test("browses folders with the parent first and hidden folders last, choosing each one it opens", { tag: "@viewport-independent" }, async ({ page }) => {
+test("browses folders with the parent first and hidden folders last, choosing each one it opens", { tag: "@server-steady" }, async ({ page }) => {
   const { field } = await openNewTask(page);
   const path = field.locator(".task-directory-field-path");
   await expect(path).toHaveText("~");
@@ -325,7 +325,7 @@ test("browses folders with the parent first and hidden folders last, choosing ea
   await expect(field.locator(".task-directory-field-panel")).toBeHidden();
 });
 
-test("types a path with the list following, completes with Tab, and chooses with Enter", { tag: "@viewport-independent" }, async ({ page }) => {
+test("types a path with the list following, completes with Tab, and chooses with Enter", { tag: "@server-steady" }, async ({ page }) => {
   const { field } = await openNewTask(page);
   const input = field.getByRole("combobox", { name: "Working directory path" });
   const prompt = page.locator('caffold-task-new textarea[name="prompt"]');
@@ -388,7 +388,7 @@ test("types a path with the list following, completes with Tab, and chooses with
   await expect.poll(() => rowNames(field)).toEqual([".cache", ".config"]);
 });
 
-test("steps back with Escape and drops typed text when focus leaves", { tag: "@viewport-independent" }, async ({ page }) => {
+test("steps back with Escape and drops typed text when focus leaves", { tag: "@server-steady" }, async ({ page }) => {
   const { field } = await openNewTask(page);
   const input = field.getByRole("combobox", { name: "Working directory path" });
   const toggle = field.locator(".task-directory-field-toggle");
@@ -423,7 +423,7 @@ test("steps back with Escape and drops typed text when focus leaves", { tag: "@v
   await expect(page).toHaveURL("/tasks/new");
 });
 
-test("reaches the field, its rows, and its scroll area from the keyboard", { tag: "@viewport-independent" }, async ({ page }) => {
+test("reaches the field, its rows, and its scroll area from the keyboard", { tag: "@server-steady" }, async ({ page }) => {
   const { field } = await openNewTask(page);
   const input = field.getByRole("combobox", { name: "Working directory path" });
 
@@ -464,7 +464,7 @@ test("reaches the field, its rows, and its scroll area from the keyboard", { tag
   await expect(input).toHaveValue("~/Many/");
 });
 
-test("leaves keys that finish composing text to the input method", { tag: "@viewport-independent" }, async ({ page }) => {
+test("leaves keys that finish composing text to the input method", { tag: "@server-steady" }, async ({ page }) => {
   const { field } = await openNewTask(page);
   const input = field.getByRole("combobox", { name: "Working directory path" });
   await field.getByRole("button", { name: "Type a path" }).click();
@@ -487,7 +487,7 @@ test("leaves keys that finish composing text to the input method", { tag: "@view
   await expect(page).toHaveURL("/tasks/new");
 });
 
-test("an answer for a folder left behind does not land", { tag: "@viewport-independent" }, async ({ page }) => {
+test("an answer for a folder left behind does not land", { tag: "@server-changes" }, async ({ page }) => {
   await installTaskLoopFixture(page);
   // Records each listing once everything its answer started has run, so the
   // test waits for exactly the answer it is about.
@@ -530,7 +530,7 @@ test("an answer for a folder left behind does not land", { tag: "@viewport-indep
   await expect(page).toHaveURL(`/tasks/new?cwd=${encodeURIComponent(`${HOME}/Workspace`)}`);
 });
 
-test("locks the directory while the Task starts", { tag: "@viewport-independent" }, async ({ page }) => {
+test("locks the directory while the Task starts", { tag: "@server-changes" }, async ({ page }) => {
   await installTaskLoopFixture(page);
   await installDirectories(page);
   let markCreateRequested;

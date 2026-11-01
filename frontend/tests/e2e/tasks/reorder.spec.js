@@ -313,7 +313,7 @@ test("moves a Section and finishes reorder through Action Hints", { tag: "@all-v
   expect(normalTargetLabels).not.toContain("Finish reordering Sections");
 });
 
-test("exits Task reorder with Escape after dismissing Action Hints", { tag: "@all-viewports" }, async ({
+test("exits Task reorder with Escape after dismissing Action Hints", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installSectionReorderFixture(page);
@@ -1226,7 +1226,7 @@ test("starts pointer reordering only from a handle and keeps moves inside a Sect
   ]);
 });
 
-test("reconciles an optimistic move to a newer canonical order", { tag: "@all-viewports" }, async ({
+test("reconciles an optimistic move to a newer canonical order", { tag: "@server-steady" }, async ({
   page,
 }) => {
   let order = [
@@ -1261,7 +1261,7 @@ test("reconciles an optimistic move to a newer canonical order", { tag: "@all-vi
   ]);
 });
 
-test("keeps reordering functional without state-preserving DOM moves", { tag: "@all-viewports" }, async ({
+test("keeps reordering functional without state-preserving DOM moves", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -1479,7 +1479,7 @@ test("serializes moves and restores canonical order with a retryable error", { t
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
-test("keeps local reordering available while Codex is unavailable and exits on navigation", { tag: "@all-viewports" }, async ({
+test("keeps local reordering available while Codex is unavailable and exits on navigation", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const order = [task("thread-a", "Alpha"), task("thread-b", "Bravo")];

@@ -75,7 +75,7 @@ function detailValue(section, key) {
   return section.locator(`caffold-settings-detail-list [data-key="${key}"] dd`);
 }
 
-test("leaving Settings pauses download polling and preserves an unsaved key on return", { tag: "@viewport-independent" }, async ({ page }) => {
+test("leaving Settings pauses download polling and preserves an unsaved key on return", { tag: "@server-steady" }, async ({ page }) => {
   await installVoiceSettings(page, { downloading: true });
   let reads = 0;
   await page.route("**/api/voice/settings", async route => {
@@ -101,7 +101,7 @@ test("leaving Settings pauses download polling and preserves an unsaved key on r
   await expect.poll(() => reads).toBeGreaterThan(away + 1);
 });
 
-test("chooses a provider and saves, replaces, and removes an API key without showing it again", { tag: "@all-viewports" }, async ({
+test("chooses a provider and saves, replaces, and removes an API key without showing it again", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const { requests } = await installVoiceSettings(page);
@@ -180,7 +180,7 @@ test("chooses Grok, shows its model inside the page, and keeps its key write-onl
   ]);
 });
 
-test("Action Hints focus each provider's API key field", { tag: "@viewport-independent" }, async ({
+test("Action Hints focus each provider's API key field", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installVoiceSettings(page);
@@ -203,7 +203,7 @@ test("Action Hints focus each provider's API key field", { tag: "@viewport-indep
   }
 });
 
-test("starts, cancels, and deletes the Whisper model from the server's download state", { tag: "@viewport-independent" }, async ({
+test("starts, cancels, and deletes the Whisper model from the server's download state", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const { state, requests } = await installVoiceSettings(page);
@@ -245,7 +245,7 @@ test("starts, cancels, and deletes the Whisper model from the server's download 
   ]);
 });
 
-test("retries settings that could not be loaded and then shows the last download failure", { tag: "@viewport-independent" }, async ({
+test("retries settings that could not be loaded and then shows the last download failure", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installVoiceSettings(page, {
@@ -289,7 +289,7 @@ test("retries settings that could not be loaded and then shows the last download
   );
 });
 
-test("keeps settings current after a rejected key but asks to retry after a failed provider change", { tag: "@viewport-independent" }, async ({
+test("keeps settings current after a rejected key but asks to retry after a failed provider change", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installVoiceSettings(page);
@@ -367,7 +367,7 @@ test("wraps a long download failure inside the page on narrow screens", { tag: [
   expect(layout.failureRight).toBeLessThanOrEqual(layout.scrollportRight);
 });
 
-test("offers each voice control it shows as an Action Hint", { tag: "@viewport-independent" }, async ({
+test("offers each voice control it shows as an Action Hint", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installVoiceSettings(page, { installed: true, openai: true });

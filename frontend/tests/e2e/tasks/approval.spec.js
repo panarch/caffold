@@ -129,7 +129,7 @@ for (const scopes of [[], ["allowForSession"], ["allowForSession", "allowAlways"
   });
 }
 
-test("approval owner retains native state through refresh, errors, and lifecycle changes", { tag: "@viewport-independent" }, async ({ page }) => {
+test("approval owner retains native state through refresh, errors, and lifecycle changes", { tag: "@server-changes" }, async ({ page }) => {
   await installBrowserDefaults(page);
   const scenario = await installTaskLoopFixture(page, { threadId: "thread_approval_owner" });
   await page.goto("/tasks");

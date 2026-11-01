@@ -27,7 +27,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("raw active flags prioritize approval over user input", { tag: "@all-viewports" }, async ({ page }) => {
+test("raw active flags prioritize approval over user input", { tag: "@server-steady" }, async ({ page }) => {
   await installTaskApiFixture(page);
   const detail = taskDetailFixture({ running: true });
   detail.task.threadStatus.activeFlags = [
@@ -51,7 +51,7 @@ test("raw active flags prioritize approval over user input", { tag: "@all-viewpo
   );
 });
 
-test("takes a Task state change without rebuilding the conversation", { tag: "@viewport-independent" }, async ({
+test("takes a Task state change without rebuilding the conversation", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -116,7 +116,7 @@ test("takes a Task state change without rebuilding the conversation", { tag: "@v
   expect(detailReads).toBe(readsBeforeState);
 });
 
-test("work details show only direct item times instead of repeating the turn anchor", { tag: "@viewport-independent" }, async ({
+test("work details show only direct item times instead of repeating the turn anchor", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -214,7 +214,7 @@ test("work details show only direct item times instead of repeating the turn anc
   ).toHaveCount(0);
 });
 
-test("active task without a canonical turn offers the composer Stop action", { tag: "@all-viewports" }, async ({
+test("active task without a canonical turn offers the composer Stop action", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -255,7 +255,7 @@ test("active task without a canonical turn offers the composer Stop action", { t
   await expect.poll(() => interruptRequests).toBe(1);
 });
 
-test("keeps the composer Stop action stable while an interrupt request is pending", { tag: "@viewport-independent" }, async ({
+test("keeps the composer Stop action stable while an interrupt request is pending", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   await installTaskApiFixture(page);
@@ -301,7 +301,7 @@ test("keeps the composer Stop action stable while an interrupt request is pendin
   await expect(primaryAction).toBeEnabled();
 });
 
-test("returns the messages a stop cancelled to the composer ahead of the draft", { tag: "@viewport-independent" }, async ({
+test("returns the messages a stop cancelled to the composer ahead of the draft", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -353,7 +353,7 @@ test("returns the messages a stop cancelled to the composer ahead of the draft",
   await expect(form.locator(".task-composer-attachment")).toHaveCount(0);
 });
 
-test("updates stable detail regions and preserves an active IME composition", { tag: "@all-viewports" }, async ({
+test("updates stable detail regions and preserves an active IME composition", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -615,7 +615,7 @@ test("updates stable detail regions and preserves an active IME composition", { 
     .toBe(true);
 });
 
-test("keeps a growing agent message inside the element already rendering it", { tag: "@viewport-independent" }, async ({
+test("keeps a growing agent message inside the element already rendering it", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -681,7 +681,7 @@ test("keeps a growing agent message inside the element already rendering it", { 
   ).toEqual({ rowPreserved: true, markdownPreserved: true });
 });
 
-test("keeps a folded agent message inside the element already rendering it", { tag: "@viewport-independent" }, async ({
+test("keeps a folded agent message inside the element already rendering it", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -931,7 +931,7 @@ test("keeps the managed header and Archive escape hatch when canonical Detail di
   ).toContainText("New task");
 });
 
-test("recovers task detail and prompt submission across bootstrap races", { tag: "@all-viewports" }, async ({
+test("recovers task detail and prompt submission across bootstrap races", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -1143,7 +1143,7 @@ test("recovers task detail and prompt submission across bootstrap races", { tag:
     },
   ]);
 });
-test("keeps task context and retries after an initial detail timeout", { tag: "@all-viewports" }, async ({
+test("keeps task context and retries after an initial detail timeout", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -1229,7 +1229,7 @@ test("keeps task context and retries after an initial detail timeout", { tag: "@
   await expect(tasksPage).toContainText("Recovered canonical response.");
   await expect(tasksPage.locator(".task-detail-load-error")).toHaveCount(0);
 });
-test("preserves stable detail children through another task load failure", { tag: "@viewport-independent" }, async ({
+test("preserves stable detail children through another task load failure", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   await page.addInitScript(() => {
@@ -1398,7 +1398,7 @@ test("preserves stable detail children through another task load failure", { tag
     tasksPage.locator('[data-stable-child="composer"]'),
   ).toHaveCount(1);
 });
-test("keeps one Composer and its image draft per thread with a bounded clean inactive cache", { tag: "@viewport-independent" }, async ({
+test("keeps one Composer and its image draft per thread with a bounded clean inactive cache", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   await installTaskApiFixture(page);
@@ -1656,7 +1656,7 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
   await expect(attachment).toHaveCount(0);
 });
 
-test("keeps prompt, interrupt, and approval request errors with their owning controls", { tag: "@all-viewports" }, async ({
+test("keeps prompt, interrupt, and approval request errors with their owning controls", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -1777,7 +1777,7 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
   });
 });
 
-test("canonical stream sync clears errors but waits for the prompt response identity", { tag: "@viewport-independent" }, async ({
+test("canonical stream sync clears errors but waits for the prompt response identity", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   await installTaskApiFixture(page);
@@ -1935,7 +1935,7 @@ test("canonical stream sync clears errors but waits for the prompt response iden
     .toEqual({ requests: 0, submissions: 0 });
 });
 
-test("canonical action responses reject foreign tasks and preserve history cursors", { tag: "@viewport-independent" }, async ({
+test("canonical action responses reject foreign tasks and preserve history cursors", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   await installTaskApiFixture(page);
@@ -2019,7 +2019,7 @@ test("canonical action responses reject foreign tasks and preserve history curso
     });
 });
 
-test("accepts canonical task detail after stream revisions restart", { tag: "@all-viewports" }, async ({ page }) => {
+test("accepts canonical task detail after stream revisions restart", { tag: "@server-changes" }, async ({ page }) => {
   await installEventSourceMock(page, {
     registryKey: "__taskEventSources",
     autoOpen: true,
@@ -2161,7 +2161,7 @@ test("accepts canonical task detail after stream revisions restart", { tag: "@al
   await expect(tasksPage.locator(".task-detail-loading")).toHaveCount(0);
 });
 
-test("reconciles a canonical final answer over a retained transient item after reconnect", { tag: "@all-viewports" }, async ({
+test("reconciles a canonical final answer over a retained transient item after reconnect", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const registryKey = "__canonicalItemRecoverySources";
@@ -2361,7 +2361,7 @@ test("reconciles a canonical final answer over a retained transient item after r
   ).toHaveCount(0);
 });
 
-test("accepts canonical task sync after stream revisions restart", { tag: "@all-viewports" }, async ({ page }) => {
+test("accepts canonical task sync after stream revisions restart", { tag: "@server-changes" }, async ({ page }) => {
   await installEventSourceMock(page, {
     sourceKey: "__taskListEventSource",
     autoOpen: true,
@@ -2444,7 +2444,7 @@ test("accepts canonical task sync after stream revisions restart", { tag: "@all-
   });
   await expect(row).toHaveAttribute("data-task-status", "idle");
 });
-test("opens a running conversation at the latest message from the stream bootstrap", { tag: "@viewport-independent" }, async ({
+test("opens a running conversation at the latest message from the stream bootstrap", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, {

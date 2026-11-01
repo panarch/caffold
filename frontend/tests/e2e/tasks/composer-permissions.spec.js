@@ -249,7 +249,7 @@ test("composer exposes Codex approval modes and confirms full access", { tag: "@
   await expect(picker).toContainText("Full access");
 });
 
-test("offers a mode Caffold has no wording for, under the agent's own name", { tag: "@all-viewports" }, async ({
+test("offers a mode Caffold has no wording for, under the agent's own name", { tag: "@server-steady" }, async ({
   page,
 }) => {
   // An agent names its own permission modes and sends a label with each one.
@@ -307,7 +307,7 @@ test("offers a mode Caffold has no wording for, under the agent's own name", { t
   await expect(picker).toContainText("Bypass permissions");
 });
 
-test("model options use native popover dismissal and return focus to their trigger", { tag: "@all-viewports" }, async ({
+test("model options use native popover dismissal and return focus to their trigger", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -339,7 +339,7 @@ test("model options use native popover dismissal and return focus to their trigg
   await expect(popover).toBeHidden();
 });
 
-test("an untouched approval mode is the mode a new task starts under", { tag: "@all-viewports" }, async ({ page }) => {
+test("an untouched approval mode is the mode a new task starts under", { tag: "@server-steady" }, async ({ page }) => {
   // The picker shows the mode the agent said it works under, and a person who
   // accepts it never touches the control. Leaving it out of the request would
   // start the Task under whatever the agent falls back to when nobody says,
@@ -360,7 +360,7 @@ test("an untouched approval mode is the mode a new task starts under", { tag: "@
   expect(created.body.fastMode).toBe(false);
 });
 
-test("explicit approval mode is sent with a new task prompt", { tag: "@all-viewports" }, async ({ page }) => {
+test("explicit approval mode is sent with a new task prompt", { tag: "@server-steady" }, async ({ page }) => {
   await installTaskApiFixture(page);
   await page.unroute("**/api/agent/permissions*");
   await page.route("**/api/agent/permissions*", (route) =>
@@ -517,7 +517,7 @@ test("new tasks start in Normal mode and submit an explicit Fast choice", { tag:
   await expect(nextForm.locator(".task-model-fast")).toHaveCount(0);
 });
 
-test("resets option-only New Task selections after Settings navigation", { tag: "@all-viewports" }, async ({
+test("resets option-only New Task selections after Settings navigation", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -552,7 +552,7 @@ test("resets option-only New Task selections after Settings navigation", { tag: 
   expect(submittedBody.fastMode).toBe(false);
 });
 
-test("preserves and clears New Task options with their meaningful draft", { tag: "@all-viewports" }, async ({
+test("preserves and clears New Task options with their meaningful draft", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -613,7 +613,7 @@ test("preserves and clears New Task options with their meaningful draft", { tag:
   });
 });
 
-test("reconciles an option-only follow-up to canonical Normal after Task switching", { tag: "@viewport-independent" }, async ({
+test("reconciles an option-only follow-up to canonical Normal after Task switching", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   await installTaskApiFixture(page);
@@ -706,7 +706,7 @@ test("reconciles an option-only follow-up to canonical Normal after Task switchi
   await expect(form.locator(".task-model-fast")).toHaveCount(0);
 });
 
-test("approval modes follow the agent the chosen model belongs to", { tag: "@all-viewports" }, async ({
+test("approval modes follow the agent the chosen model belongs to", { tag: "@server-steady" }, async ({
   page,
 }) => {
   // The ways an agent can be allowed to work are its own. A list left over
@@ -846,7 +846,7 @@ test("a model that works at one depth offers no depth to choose", { tag: "@all-v
   ).toHaveCount(0);
 });
 
-test("approval modes follow the model, not only the agent", { tag: "@all-viewports" }, async ({
+test("approval modes follow the model, not only the agent", { tag: "@server-steady" }, async ({
   page,
 }) => {
   // Only some models can decide permissions for themselves, and the agent
@@ -877,7 +877,7 @@ test("approval modes follow the model, not only the agent", { tag: "@all-viewpor
   await expect(auto).toBeDisabled();
 });
 
-test("the mode a new task starts under follows the model, not the agent's own default", { tag: "@viewport-independent" }, async ({
+test("the mode a new task starts under follows the model, not the agent's own default", { tag: "@server-steady" }, async ({
   page,
 }) => {
   // The agent withholds its preferred mode from a model that cannot work under
@@ -958,7 +958,7 @@ test("an unreadable mode list reads as unavailable and holds the prompt", { tag:
   expect(created.body).toBeNull();
 });
 
-test("a new task waits for the chosen model's mode list before it starts", { tag: "@viewport-independent" }, async ({
+test("a new task waits for the chosen model's mode list before it starts", { tag: "@server-changes" }, async ({
   page,
 }) => {
   // A list in flight describes the model chosen before this one. The task
@@ -1007,7 +1007,7 @@ test("a new task waits for the chosen model's mode list before it starts", { tag
   });
 });
 
-test("switching to a model without Fast support normalizes to Normal and hides Speed", { tag: "@all-viewports" }, async ({
+test("switching to a model without Fast support normalizes to Normal and hides Speed", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -1061,7 +1061,7 @@ test("switching to a model without Fast support normalizes to Normal and hides S
   ).toHaveCount(0);
 });
 
-test("new task submission stays single-flight and restores local input after rejection", { tag: "@all-viewports" }, async ({
+test("new task submission stays single-flight and restores local input after rejection", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -1156,7 +1156,7 @@ test("new task submission stays single-flight and restores local input after rej
   expect(adoptedDetailReads).toBe(0);
 });
 
-test("explicit approval mode is sent with a follow-up prompt", { tag: "@all-viewports" }, async ({ page }) => {
+test("explicit approval mode is sent with a follow-up prompt", { tag: "@server-steady" }, async ({ page }) => {
   await installTaskApiFixture(page);
   const detail = {
     ...taskDetailFixture(),
@@ -1201,7 +1201,7 @@ test("explicit approval mode is sent with a follow-up prompt", { tag: "@all-view
   });
 });
 
-test("a new Task can still choose Grok approval mode before creation", { tag: "@all-viewports" }, async ({
+test("a new Task can still choose Grok approval mode before creation", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -1227,7 +1227,7 @@ test("a new Task can still choose Grok approval mode before creation", { tag: "@
   expect(created.body).toMatchObject({ permissionMode: "autoMode" });
 });
 
-test("a Grok follow-up cannot change approval mode once the conversation exists", { tag: "@all-viewports" }, async ({
+test("a Grok follow-up cannot change approval mode once the conversation exists", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -1260,7 +1260,7 @@ test("a Grok follow-up cannot change approval mode once the conversation exists"
   ).toBeVisible();
 });
 
-test("a Grok follow-up still submits the current approval mode", { tag: "@all-viewports" }, async ({
+test("a Grok follow-up still submits the current approval mode", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -1305,7 +1305,7 @@ test("a Grok follow-up still submits the current approval mode", { tag: "@all-vi
   });
 });
 
-test("a Claude follow-up can still change approval mode between turns", { tag: "@all-viewports" }, async ({
+test("a Claude follow-up can still change approval mode between turns", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -1359,7 +1359,7 @@ test("a Claude follow-up can still change approval mode between turns", { tag: "
   });
 });
 
-test("a remembered mode the chosen model cannot use is replaced rather than sent", { tag: "@viewport-independent" }, async ({
+test("a remembered mode the chosen model cannot use is replaced rather than sent", { tag: "@server-steady" }, async ({
   page,
 }) => {
   // A Task remembers the mode it last ran under, and a model change can leave
@@ -1416,7 +1416,7 @@ test("a remembered mode the chosen model cannot use is replaced rather than sent
   });
 });
 
-test("a follow-up waits for the chosen model's mode list before it is sent", { tag: "@viewport-independent" }, async ({
+test("a follow-up waits for the chosen model's mode list before it is sent", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -1490,7 +1490,7 @@ test("a follow-up waits for the chosen model's mode list before it is sent", { t
   });
 });
 
-test("a New Task picker detached while its mode list is on its way asks for it again when it returns", { tag: "@viewport-independent" }, async ({
+test("a New Task picker detached while its mode list is on its way asks for it again when it returns", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -1549,7 +1549,7 @@ test("a New Task picker detached while its mode list is on its way asks for it a
   });
 });
 
-test("send button does not return focus to the prompt after submission", { tag: "@all-viewports" }, async ({
+test("send button does not return focus to the prompt after submission", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -1599,7 +1599,7 @@ test("send button does not return focus to the prompt after submission", { tag: 
   await expect(prompt).not.toBeFocused();
 });
 
-test("Enter submission releases editing ownership while the request is pending", { tag: "@all-viewports" }, async ({
+test("Enter submission releases editing ownership while the request is pending", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -1838,7 +1838,7 @@ test("shows a mode that gives up a protection as a danger-colored shield that op
   await expect(modes.getByText("Full access")).toBeVisible();
 });
 
-test("managed tasks restore their last applied model, reasoning, and speed", { tag: "@all-viewports" }, async ({
+test("managed tasks restore their last applied model, reasoning, and speed", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -1927,7 +1927,7 @@ test("managed tasks restore their last applied model, reasoning, and speed", { t
   await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
 });
 
-test("canonical task sync preserves an open follow-up model picker", { tag: "@all-viewports" }, async ({
+test("canonical task sync preserves an open follow-up model picker", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -2118,7 +2118,7 @@ test("active turns lock the approval mode until the next turn", { tag: "@all-vie
     .toBe(initialSummaryHeight);
 });
 
-test("steering an active turn preserves its existing work clock", { tag: "@all-viewports" }, async ({ page }) => {
+test("steering an active turn preserves its existing work clock", { tag: "@server-changes" }, async ({ page }) => {
   await installTaskApiFixture(page);
   const startedMs = Date.now() - 65_000;
   const detail = taskDetailFixture({ running: true });

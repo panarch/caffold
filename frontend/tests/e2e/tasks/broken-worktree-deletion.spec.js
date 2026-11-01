@@ -156,7 +156,7 @@ test("a broken worktree offers deletion with native focus, cancellation and one 
   await expect(page.locator(`.task-row[data-thread-id="${id}"]`)).toHaveCount(0);
 });
 
-test("partial deletion failure is shown in the dialog, and a revoked diagnosis closes it", { tag: "@viewport-independent" }, async ({ page }) => {
+test("partial deletion failure is shown in the dialog, and a revoked diagnosis closes it", { tag: "@server-changes" }, async ({ page }) => {
   await installTasks(page);
   let requests = 0;
   let eligible = true;
@@ -182,7 +182,7 @@ test("partial deletion failure is shown in the dialog, and a revoked diagnosis c
   expect(requests).toBe(2);
 });
 
-test("missing worktrees name conversation deletion and stale success leaves a new selection alone", { tag: "@viewport-independent" }, async ({ page }) => {
+test("missing worktrees name conversation deletion and stale success leaves a new selection alone", { tag: "@server-changes" }, async ({ page }) => {
   const other = { ...task, id: "other_task", threadId: "other_task", title: "Other task" };
   await installTasks(page, [task, other]);
   let release;

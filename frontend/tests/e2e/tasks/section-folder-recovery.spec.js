@@ -148,7 +148,7 @@ async function fixture(
   return state;
 }
 
-test("a late GitHub answer cannot uncover shortcuts during folder recovery", { tag: "@viewport-independent" }, async ({ page }) => {
+test("a late GitHub answer cannot uncover shortcuts during folder recovery", { tag: "@server-changes" }, async ({ page }) => {
   let releaseCheck;
   const holdCheck = new Promise((resolve) => { releaseCheck = resolve; });
   let releaseGitHub;
@@ -194,7 +194,7 @@ test("a late GitHub answer cannot uncover shortcuts during folder recovery", { t
   await expect(page.locator("caffold-section-conversation-shortcuts")).toBeVisible();
 });
 
-test("a live list refresh before the mutation reply leaves the completed Section ready", { tag: "@viewport-independent" }, async ({ page }) => {
+test("a live list refresh before the mutation reply leaves the completed Section ready", { tag: "@server-changes" }, async ({ page }) => {
   await fixture(page, {
     beforePostReply: async () => {
       await page.evaluate(() => window.__taskListSource.emit("task-list-refresh", {}));
@@ -341,7 +341,7 @@ test("the missing-folder warning stays beside short and truncated Section names"
 });
 
 test("locks submission, retains a rejected candidate, and retries explicitly", {
-  tag: "@viewport-independent"
+  tag: "@server-changes"
 }, async ({ page }) => {
   let release;
   const holdPost = new Promise((resolve) => {
@@ -383,7 +383,7 @@ test("locks submission, retains a rejected candidate, and retries explicitly", {
 });
 
 test("an old folder check cannot replace another Section", {
-  tag: "@viewport-independent"
+  tag: "@server-changes"
 }, async ({ page }) => {
   let release;
   const holdCheck = new Promise((resolve) => {
@@ -407,7 +407,7 @@ test("an old folder check cannot replace another Section", {
 });
 
 test("an inactive normal Section ignores its old check and rechecks on return", {
-  tag: "@viewport-independent"
+  tag: "@server-changes"
 }, async ({ page }) => {
   let release;
   const holdCheck = new Promise((resolve) => {
@@ -451,7 +451,7 @@ test("an inactive normal Section ignores its old check and rechecks on return", 
 });
 
 test("an unreadable folder offers recheck without claiming it is missing", {
-  tag: "@viewport-independent"
+  tag: "@server-steady"
 }, async ({ page }) => {
   await fixture(page, { status: "unavailable" });
   await page.goto("/?section=source");
@@ -468,7 +468,7 @@ test("an unreadable folder offers recheck without claiming it is missing", {
 });
 
 test("a restored original returns to normal Section creation after recheck", {
-  tag: "@viewport-independent"
+  tag: "@server-changes"
 }, async ({ page }) => {
   const state = await fixture(page);
   await page.goto("/?section=source");
@@ -486,7 +486,7 @@ test("a restored original returns to normal Section creation after recheck", {
 });
 
 test("a mutation finishing after navigation leaves the selected Section intact", {
-  tag: "@viewport-independent"
+  tag: "@server-changes"
 }, async ({ page }) => {
   let release;
   const holdPost = new Promise((resolve) => {
@@ -527,7 +527,7 @@ test("a mutation finishing after navigation leaves the selected Section intact",
 });
 
 test("the recovery picker keeps editing Escape and exposes its own Action Hints", {
-  tag: "@viewport-independent"
+  tag: "@server-steady"
 }, async ({ page }) => {
   await fixture(page);
   await page.goto("/?section=source");
@@ -559,7 +559,7 @@ test("the recovery picker keeps editing Escape and exposes its own Action Hints"
 });
 
 test("Task errors lead to the same Section recovery surface", {
-  tag: "@viewport-independent"
+  tag: "@server-changes"
 }, async ({ page }) => {
   await fixture(page);
   await page.route("**/api/tasks/one", (route) =>
@@ -614,7 +614,7 @@ test("Task errors lead to the same Section recovery surface", {
 });
 
 test("a missing individual worktree keeps its deletion flow", {
-  tag: "@viewport-independent"
+  tag: "@server-changes"
 }, async ({ page }) => {
   await fixture(page);
   await page.route("**/api/tasks/one", (route) =>

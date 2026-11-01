@@ -154,7 +154,7 @@ test("View details shows what a call was given and what came back, piece by piec
   );
 });
 
-test("a dialog opened on a running call shows its result once the call ends", { tag: "@viewport-independent" }, async ({
+test("a dialog opened on a running call shows its result once the call ends", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const running = toolCall("grokRunning", now + 1_000);
@@ -193,7 +193,7 @@ test("a dialog opened on a running call shows its result once the call ends", { 
   await captureReviewScreenshot(page, testInfo, "tool-call-details-finished");
 });
 
-test("a call says when it had no input or no result", { tag: "@viewport-independent" }, async ({
+test("a call says when it had no input or no result", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   await openTask(page, activeTask(), [
@@ -222,7 +222,7 @@ test("a call says when it had no input or no result", { tag: "@viewport-independ
   await captureReviewScreenshot(page, testInfo, "tool-call-details-no-result");
 });
 
-test("a finished turn's work details hold the call's row and other work's card", { tag: "@viewport-independent" }, async ({
+test("a finished turn's work details hold the call's row and other work's card", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const task = {

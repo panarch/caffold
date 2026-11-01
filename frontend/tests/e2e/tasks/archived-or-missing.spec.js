@@ -108,7 +108,7 @@ async function routeTask(page, task, detail, { state = "active" } = {}) {
   return server;
 }
 
-test("a Task archived elsewhere while open shows the archived notice, and Restore opens it again", { tag: "@viewport-independent" }, async ({
+test("a Task archived elsewhere while open shows the archived notice, and Restore opens it again", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { autoOpen: true });
@@ -142,7 +142,7 @@ test("a Task archived elsewhere while open shows the archived notice, and Restor
   ).toBeVisible();
 });
 
-test("Restore from the notice is offered to the keyboard and reports a refusal in place", { tag: "@viewport-independent" }, async ({
+test("Restore from the notice is offered to the keyboard and reports a refusal in place", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { autoOpen: true });
@@ -175,7 +175,7 @@ test("Restore from the notice is offered to the keyboard and reports a refusal i
   await expect(notice.getByRole("button", { name: "Restore" })).toBeEnabled();
 });
 
-test("a Task archived while the page was hidden shows the notice on return, not a connection problem", { tag: "@viewport-independent" }, async ({
+test("a Task archived while the page was hidden shows the notice on return, not a connection problem", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -213,7 +213,7 @@ test("a Task archived while the page was hidden shows the notice on return, not 
   await expect(tasksPage.locator(".task-detail-load-error")).toHaveCount(0);
 });
 
-test("a link to an archived Task opens on the archived notice", { tag: "@viewport-independent" }, async ({
+test("a link to an archived Task opens on the archived notice", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { autoOpen: true });
@@ -232,7 +232,7 @@ test("a link to an archived Task opens on the archived notice", { tag: "@viewpor
   await expect(page.locator(".app-foreground-recovery")).toBeHidden();
 });
 
-test("a link to a Task Caffold cannot find says so and offers nothing to do", { tag: "@viewport-independent" }, async ({
+test("a link to a Task Caffold cannot find says so and offers nothing to do", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { autoOpen: true });
@@ -250,7 +250,7 @@ test("a link to a Task Caffold cannot find says so and offers nothing to do", { 
   await expect(page.locator(".app-foreground-recovery")).toBeHidden();
 });
 
-test("a Task deleted elsewhere while its Review was open closes the Review for the not-found notice", { tag: "@viewport-independent" }, async ({
+test("a Task deleted elsewhere while its Review was open closes the Review for the not-found notice", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { autoOpen: true });
@@ -275,7 +275,7 @@ test("a Task deleted elsewhere while its Review was open closes the Review for t
   await expect.poll(() => activeLiveUpdateChannels(page)).not.toContain("watch");
 });
 
-test("a prompt refused because its Task was archived elsewhere turns the conversation into the notice", { tag: "@viewport-independent" }, async ({
+test("a prompt refused because its Task was archived elsewhere turns the conversation into the notice", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { autoOpen: true });
