@@ -134,7 +134,7 @@ const CONVERSATION_COMPONENTS = [
   "caffold-task-command",
   "caffold-task-run-group",
   "caffold-task-markdown",
-  "caffold-task-markdown-code-block",
+  "caffold-task-code-block",
   "caffold-task-message-attachments",
   "caffold-task-older-history",
   "caffold-task-tool-call",

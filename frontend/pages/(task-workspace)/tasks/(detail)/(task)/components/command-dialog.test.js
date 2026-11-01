@@ -35,6 +35,25 @@ test("draws a failed command's details and output, and only the details it has",
   assert.doesNotMatch(drawn, /Working directory|Duration|Timeline time/);
   assert.match(drawn, /<pre>\(No output\)<\/pre>/);
 
+  assert.doesNotMatch(drawn, /caffold-task-code-block/, "a note has no code block");
+
+  const printed = html(dialogHost({
+    command: {
+      command: "npm test",
+      cwd: "",
+      failed: true,
+      output: "FAIL src/app.test.js",
+      exitCode: 1,
+      durationMs: null,
+      createdMs: null,
+    },
+  }));
+  assert.match(
+    printed,
+    /<caffold-task-code-block \.label="Plain text" \.text="FAIL src\/app\.test\.js"><\/caffold-task-code-block>/,
+  );
+  assert.doesNotMatch(printed, /\(No output\)/);
+
   const empty = html(dialogHost({}));
   assert.doesNotMatch(empty, /data-command-status="\w/);
   assert.match(empty, /<div class="task-command-dialog-body" data-command-dialog-body><\/div>/);

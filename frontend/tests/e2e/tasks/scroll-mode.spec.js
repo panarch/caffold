@@ -289,7 +289,7 @@ test("selects nested Conversation code and table scrollports and cancels a lost 
   const entryOwner = page.locator(".task-workspace-surface");
   const conversation = page.locator(".task-conversation-scroll");
   const codeBlock = page.locator(
-    "caffold-task-assistant-message caffold-task-markdown-code-block",
+    "caffold-task-assistant-message caffold-task-code-block",
   ).last();
   const code = codeBlock.locator("pre");
   const table = page.locator(
@@ -415,7 +415,7 @@ test("reselects active Scroll with S using newly visible surfaces and keeps sele
   const owner = page.locator(".task-workspace-surface");
   const conversation = page.locator(".task-conversation-scroll");
   const code = page.locator(
-    "caffold-task-assistant-message caffold-task-markdown-code-block pre",
+    "caffold-task-assistant-message caffold-task-code-block pre",
   ).last();
   const selector = scrollSelector(page);
   const hud = scrollHud(page);

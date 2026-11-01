@@ -23,7 +23,7 @@ import {
 } from "#app/scroll-scope.js";
 import { closestAcrossShadowRoots } from "#app/shadow-roots.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
-import { CaffoldTaskMarkdownCodeBlock } from "./markdown/components/code-block.js";
+import { CaffoldTaskCodeBlock } from "#tasks/(detail)/(task)/components/code-block.js";
 
 import styles from "./markdown.css.js";
 
@@ -102,7 +102,7 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
   private renderToken: symbol | null = null;
   private actionHintLinks: LinkRecord[] = [];
   private scrollSurfaceRecords: ScrollSurfaceRecord[] = [];
-  private scrollCodeBlocks: CaffoldTaskMarkdownCodeBlock[] = [];
+  private scrollCodeBlocks: CaffoldTaskCodeBlock[] = [];
   private readonly bodyElement = new DrawnRef<HTMLElement>(this);
 
   // Parsing reads all four, so a change to any of them reads the Markdown
@@ -145,9 +145,7 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
     if (this.renderState !== "markdown" || !body) {
       return emptyActionHintScope();
     }
-    const blocks = Array.from(
-      body.querySelectorAll("caffold-task-markdown-code-block"),
-    );
+    const blocks = Array.from(body.querySelectorAll("caffold-task-code-block"));
     const tableScrollRoots: Element[] = [];
     const linkTargets = this.actionHintLinks.flatMap(
       ({ binding, control, ordinal }) => {
@@ -281,8 +279,8 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
       this.performUpdate();
       // A block draws into a shadow root, which it can only make once it is in
       // this document rather than the template's.
-      for (const { block, pre, label } of blocks) {
-        block.setContent(pre, {
+      for (const { block, text, label } of blocks) {
+        block.setContent(text, {
           label,
           preserveLayout: (mutation) => this.mutateLayout(mutation),
         });
@@ -588,8 +586,8 @@ function collectCodeBlocks(parent: DocumentFragment): CodeBlockSource[] {
   });
 }
 
-// Each fenced block gets a code block in its `<pre>`'s place, which takes the
-// `<pre>` once both are drawn.
+// Each fenced block gets a code block in its `<pre>`'s place, which draws the
+// fence's code once it is in the document.
 function mountCodeBlocks(
   parent: DocumentFragment,
   candidates: CodeBlockSource[],
@@ -604,11 +602,9 @@ function mountCodeBlocks(
       return [];
     }
 
-    pre.classList.remove("markdown-pre");
-    code.classList.remove("markdown-block-code");
-    const block = new CaffoldTaskMarkdownCodeBlock();
-    pre.parentNode.insertBefore(block, pre);
-    return [{ block, pre, label }];
+    const block = new CaffoldTaskCodeBlock();
+    pre.replaceWith(block);
+    return [{ block, text: code.textContent ?? "", label }];
   });
 }
 

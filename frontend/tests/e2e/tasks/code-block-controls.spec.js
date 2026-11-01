@@ -54,10 +54,10 @@ test("keeps the code-block toolbar dense and usable across Task viewports", { ta
   const finalMarkdown = tasksPage.locator(
     'caffold-task-assistant-message[data-message-phase="final"] caffold-task-markdown',
   );
-  const blocks = finalMarkdown.locator("caffold-task-markdown-code-block");
+  const blocks = finalMarkdown.locator("caffold-task-code-block");
 
   await expect(finalMarkdown).toHaveAttribute("code-block-controls", "");
-  await expect(userMessage.locator("caffold-task-markdown-code-block")).toHaveCount(0);
+  await expect(userMessage.locator("caffold-task-code-block")).toHaveCount(0);
   await expect(userMessage.locator(".task-user-message-text")).toContainText("```sh");
   await expect(blocks).toHaveCount(3);
   await expect(finalMarkdown.locator(".code-block-label")).toHaveText([
@@ -82,7 +82,7 @@ test("keeps the code-block toolbar dense and usable across Task viewports", { ta
   ).toHaveCount(0);
   expect(
     await finalMarkdown.evaluate((markdown) => {
-      const codeBlock = markdown.shadowRoot?.querySelector("caffold-task-markdown-code-block");
+      const codeBlock = markdown.shadowRoot?.querySelector("caffold-task-code-block");
       return {
         codeBlockHasShadowRoot: Boolean(codeBlock?.shadowRoot),
         inlineStyles: [markdown, markdown.shadowRoot, codeBlock?.shadowRoot]
@@ -185,7 +185,7 @@ test("copies each block exactly with bounded success and retryable failure", { t
   const finalMarkdown = page.locator(
     'caffold-task-assistant-message[data-message-phase="final"] caffold-task-markdown',
   );
-  const blocks = finalMarkdown.locator("caffold-task-markdown-code-block");
+  const blocks = finalMarkdown.locator("caffold-task-code-block");
   const firstBlock = blocks.nth(0);
   const secondBlock = blocks.nth(1);
   const firstCopy = firstBlock.locator('button[data-code-action="copy"]');
@@ -295,7 +295,7 @@ test("keeps excluded conversation surfaces plain", { tag: "@server-steady" }, as
   await expect(thinking).toHaveAttribute("data-render-state", "markdown");
   await expect(thinking).not.toHaveAttribute("code-block-controls", "");
   await expect(thinking.locator("pre > code")).toHaveText("thinking-only\n");
-  await expect(thinking.locator("caffold-task-markdown-code-block")).toHaveCount(0);
+  await expect(thinking.locator("caffold-task-code-block")).toHaveCount(0);
   // A message the agent wrote mid-turn is the same excluded surface whether the
   // conversation lists it or a finished turn folds it into its work details.
   const interim = page.locator(
@@ -311,7 +311,7 @@ test("keeps excluded conversation surfaces plain", { tag: "@server-steady" }, as
     "interim-only\n",
     "interim-only\n",
   ]);
-  await expect(interim.locator("caffold-task-markdown-code-block")).toHaveCount(0);
+  await expect(interim.locator("caffold-task-code-block")).toHaveCount(0);
   await expect(page.locator(".task-turn-work [data-code-action]")).toHaveCount(0);
   await expect(page.locator(".task-command [data-code-action]")).toHaveCount(0);
   expect(scenario.pageErrors).toEqual([]);
@@ -346,7 +346,7 @@ test("keeps Markdown fallback text plain", { tag: "@server-steady" }, async ({ p
   await expect(fallback.locator(".markdown-fallback")).toHaveText(
     "[[caffold-test:markdown-error]]",
   );
-  await expect(fallback.locator("caffold-task-markdown-code-block, [data-code-action]"))
+  await expect(fallback.locator("caffold-task-code-block, [data-code-action]"))
     .toHaveCount(0);
   expect(scenario.pageErrors).toEqual([]);
 });
@@ -372,14 +372,14 @@ test("keeps opt-in code blocks current across rerenders", { tag: "@server-steady
 
   const probe = page.locator("#standalone-markdown-probe");
   await expect(probe).toHaveAttribute("data-render-state", "markdown");
-  await expect(probe.locator("caffold-task-markdown-code-block")).toHaveCount(1);
+  await expect(probe.locator("caffold-task-code-block")).toHaveCount(1);
   await expect(probe.locator(".code-block-label")).toHaveText(RAW_LABEL);
   await expect(probe.locator("pre > code")).toHaveText("fresh\n");
   await expect(probe.getByRole("button", { name: "Copy code" })).toHaveCount(1);
   await expect(probe.getByRole("button", { name: "Wrap code lines" })).toHaveCount(1);
   const standaloneGeometry = await probe.evaluate((markdown) => {
     const wrapper = markdown.shadowRoot.querySelector(
-      "caffold-task-markdown-code-block",
+      "caffold-task-code-block",
     );
     const header = wrapper.shadowRoot.querySelector(".code-block-header");
     const actions = header.querySelector(":scope > .code-block-actions");
@@ -423,7 +423,7 @@ test("keeps opt-in code blocks current across rerenders", { tag: "@server-steady
   await page.evaluate(() => window.__releaseCodeCopy());
   await expect(probe.getByRole("button", { name: "Copy code" })).toBeEnabled();
   await expect(probe.locator(".code-block-label")).toHaveText("text");
-  await expect(probe.locator("caffold-task-markdown-code-block")).toHaveCount(1);
+  await expect(probe.locator("caffold-task-code-block")).toHaveCount(1);
   await expect.poll(() => page.evaluate(() => window.__standaloneCopyCalls)).toBe(1);
 
   const previewButton = probe.getByRole("button", { name: "Preview Markdown" });
@@ -527,9 +527,9 @@ async function seedCodeBlockTask(
         ? ["```markdown", ...MARKDOWN_SOURCE.slice(0, -1).split("\n"), "```", ""]
         : []),
       '<button aria-label="Injected control">Untrusted control</button>',
-      '<caffold-task-markdown-code-block data-code-wrap="on">',
+      '<caffold-task-code-block data-code-wrap="on">',
       '<button aria-label="Injected component control">Untrusted component</button>',
-      "</caffold-task-markdown-code-block>",
+      "</caffold-task-code-block>",
     ].join("\n"),
   });
   await scenario.seedCompletedTask();

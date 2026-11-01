@@ -685,7 +685,7 @@ or terminal View output from the same provider, Tool Call declares its View
 details, Assistant Message Copy declares
 its one button, Suggested Prompts declares one action per request that can be
 chosen, Message Attachments declares one Preview per picture it can
-open, Markdown Code Block declares Wrap, Copy, and Preview, and Conversation
+open, Code Block declares Wrap, Copy, and Preview, and Conversation
 merges those public scopes through its retained Assistant Message, User
 Message, Message Attachments, Markdown, Run Group, Tool Call, and Work
 Details children. Reusable
@@ -887,8 +887,10 @@ command scopes. Collapsed disclosures publish no inner surface.
 Six registered product dialogs publish their exact parent surface:
 Conversation fork body, command-output body, tool-call-details body, code-block
 Markdown preview, Current Plan Markdown preview, and Task Start body. Command
-Output additionally publishes its output `pre`, and Tool Call Details its Input
-`pre` and each Result `pre`; the code-block
+Output and Tool Call Details additionally merge the scope of each Code Block
+they show, under the names their output, input, and result pieces go by, and
+publish the `pre` of a note that stands where there is no output or input or
+a result piece is binary; the code-block
 and Current Plan Markdown previews delegate the shared preview's code and table
 scopes; and Pull Task Start merges its base/head relationship `dl`. A modal may
 therefore select among parent and nested surfaces. Each
@@ -1293,9 +1295,13 @@ child owns its own controls: Approval owns its offered decisions, Command owns
 its active disclosure or terminal View output, Tool Call owns its View details,
 Run Group owns its
 disclosure, Work Details owns its root
-disclosure, Message Attachments owns each picture's preview, and Markdown Code
-Block owns Wrap, Copy, and Preview. Preview appears only on a `markdown` or `md`
-fence and asks
+disclosure, Message Attachments owns each picture's preview, and Code Block
+owns Wrap, Copy, and Preview. Code Block sits beside the dialogs under the Task
+Detail components because Markdown and two dialogs draw it: Markdown hands it
+each fence's code and name, and Tool Call Details and Command Output hand it
+the input, each text or JSON result piece, and the output, named JSON or Plain
+text, drawing new blocks each time they open. Preview appears only on a block
+named `markdown` or `md` and asks
 Task Detail to open its code-block Markdown preview dialog with the block's text
 at that moment, rendered through the shared Markdown Preview.
 Assistant Message mounts its Copy control as a component of its own and
@@ -2136,6 +2142,7 @@ frontend/
 |               |       |-- conversation.ts
 |               |       |-- command-dialog.ts
 |               |       |-- tool-call-dialog.ts
+|               |       |-- code-block.ts
 |               |       |-- current-plan.ts
 |               |       |-- current-plan/
 |               |       |   |-- model.ts

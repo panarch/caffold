@@ -293,7 +293,10 @@ agent reports them, and **View details**. View details opens **Tool call
 details**, which shows the tool, server, status, and duration above an
 **Input** section with what the agent passed the tool and a **Result** section
 with each piece of what came back, in order: text as text, other content as
-JSON, and binary content such as a picture as a note of its kind. A call still
+JSON, and binary content such as a picture as a note of its kind. The input
+and each text or JSON piece are code blocks named JSON or Plain text, with the
+Wrap and Copy of the code blocks in an agent's answer; Copy takes the text as
+shown. A call still
 running offers View details too; its Result says no result has arrived yet and
 fills in when one does. Finished tool calls that ran one after another fold
 the same way finished commands do, into one **Called N tools** card that never

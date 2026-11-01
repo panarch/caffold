@@ -166,6 +166,10 @@ dialog::backdrop {
   line-height: var(--interface-line-height);
 }
 
+.task-command-dialog-output caffold-task-code-block {
+  margin: 0;
+}
+
 .task-command-dialog-output pre {
   max-width: 100%;
   margin: 0;

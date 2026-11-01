@@ -257,7 +257,7 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
   await keyboardOpener.click();
   const commandBody = dialog.locator(".task-command-dialog-body");
   const commandOutput = commandBody.locator(
-    ":scope > .task-command-dialog-output > pre",
+    ":scope > .task-command-dialog-output > caffold-task-code-block pre",
   );
   await commandBody.evaluate((element) => {
     element.style.height = "220px";

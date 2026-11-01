@@ -1,12 +1,17 @@
 import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
-import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
+import { keyed } from "lit/directives/keyed.js";
+import {
+  ACTION_HINT_ACTION,
+  ActionHints,
+  mergeActionHintScopes,
+} from "#app/action-hints.js";
 import type { TaskEvent } from "#app/api.js";
 import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
 import { CaffoldElement } from "#app/caffold-element.js";
-import { ScrollSurfaces } from "#app/scroll-scope.js";
-import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { mergeScrollSurfaceScopes, ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import { dedupeCanonicalEvents, eventIdentityKey } from "#tasks/task-events.js";
 import {
@@ -15,6 +20,8 @@ import {
   formatStatus,
   taskEventObservedMs,
 } from "#tasks/task-format.js";
+import "./code-block.js";
+import type { CaffoldTaskCodeBlock } from "./code-block.js";
 
 import styles from "./tool-call-dialog.css.js";
 
@@ -30,6 +37,10 @@ export class CaffoldTaskToolCallDialog extends CaffoldElement {
   private accessor threadId = "";
   @state()
   private accessor toolCall: TaskEvent | null = null;
+  // Counts the times a call was opened, so each opening, of the same call
+  // too, draws fresh code blocks while following the open call keeps them.
+  @state()
+  private accessor openings = 0;
 
   static override styles = styles;
 
@@ -39,6 +50,7 @@ export class CaffoldTaskToolCallDialog extends CaffoldElement {
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
   private readonly body = new DrawnRef<HTMLDivElement>(this);
+  private readonly codeBlocks = new DrawnRefs<CaffoldTaskCodeBlock>(this);
 
   override connectedCallback() {
     super.connectedCallback();
@@ -60,6 +72,7 @@ export class CaffoldTaskToolCallDialog extends CaffoldElement {
 
   openToolCall(event: TaskEvent) {
     this.toolCall = event;
+    this.openings += 1;
     this.performUpdate();
     const dialog = this.dialog.value;
     if (dialog && !dialog.open) {
@@ -100,8 +113,31 @@ export class CaffoldTaskToolCallDialog extends CaffoldElement {
 
   keyboardNavigationContexts() {
     return this.keyboard.contexts({
-      actionHints: (pull) => this.hints.scope(pull),
-      scroll: (pull) => this.surfaces.scope(pull),
+      actionHints: (pull) =>
+        mergeActionHintScopes(
+          this.hints.scope(pull),
+          ...this.shownCodeBlocks().map(({ key, block }) =>
+            block.actionHintScope({
+              ...pull,
+              scopeId: `${pull.scopeId}:${key}`,
+            }),
+          ),
+        ),
+      scroll: (pull) =>
+        mergeScrollSurfaceScopes(
+          this.surfaces.scope(pull),
+          ...this.shownCodeBlocks().map(({ key, label, block }) =>
+            block.scrollSurfaceScope({
+              ...pull,
+              scopeId: `${pull.scopeId}:${key}`,
+              label,
+              clipRoots: [
+                ...(this.body.value ? [this.body.value] : []),
+                ...(pull.clipRoots ?? []),
+              ],
+            }),
+          ),
+        ),
     });
   }
 
@@ -189,24 +225,30 @@ export class CaffoldTaskToolCallDialog extends CaffoldElement {
                       : nothing
                   }
                 </dl>
-                <section
+                ${keyed(
+                  this.openings,
+                  html`<section
                   class="task-tool-call-dialog-section"
                   data-tool-call-dialog-section="input"
                   aria-labelledby="task-tool-call-input-title"
                 >
                   <h3 id="task-tool-call-input-title">Input</h3>
-                  <pre
-                    ${this.surfaces.surface({
-                      id: "input",
-                      label: () => "Tool call input",
-                      axes: ["horizontal"],
-                      clipRoots,
-                    })}
-                  >${
+                  ${
                     payload.input === undefined || payload.input === null
-                      ? "(No input)"
-                      : asJson(payload.input)
-                  }</pre>
+                      ? html`<pre
+                          ${this.surfaces.surface({
+                            id: "input",
+                            label: () => "Tool call input",
+                            axes: ["horizontal"],
+                            clipRoots,
+                          })}
+                        >(No input)</pre>`
+                      : html`<caffold-task-code-block
+                          ${drawn(this.codeBlocks.of("input"))}
+                          .label=${"JSON"}
+                          .text=${asJson(payload.input)}
+                        ></caffold-task-code-block>`
+                  }
                 </section>
                 <section
                   class="task-tool-call-dialog-section"
@@ -216,32 +258,40 @@ export class CaffoldTaskToolCallDialog extends CaffoldElement {
                   <h3 id="task-tool-call-result-title">Result</h3>
                   ${
                     result.length
-                      ? result.map((part, index) => {
-                          const text =
-                            part.type === "text"
-                              ? part.text
-                              : part.type === "json"
-                                ? asJson(part.value)
-                                : part.mediaType
+                      ? result.map((part, index) =>
+                          part.type === "binary"
+                            ? html`<pre
+                                ${this.surfaces.surface({
+                                  id: `result:${index}`,
+                                  label: () => `Tool call result ${index + 1}`,
+                                  axes: ["horizontal"],
+                                  clipRoots,
+                                })}
+                                data-tool-call-result-part="binary"
+                              >${
+                                part.mediaType
                                   ? `(${part.mediaType} not shown)`
-                                  : "(Binary content not shown)";
-                          return html`<pre
-                            ${this.surfaces.surface({
-                              id: `result:${index}`,
-                              label: () => `Tool call result ${index + 1}`,
-                              axes: ["horizontal"],
-                              clipRoots,
-                            })}
-                            data-tool-call-result-part=${part.type}
-                          >${text}</pre>`;
-                        })
+                                  : "(Binary content not shown)"
+                              }</pre>`
+                            : html`<caffold-task-code-block
+                                ${drawn(this.codeBlocks.of(`result:${index}`))}
+                                data-tool-call-result-part=${part.type}
+                                .label=${part.type === "json" ? "JSON" : "Plain text"}
+                                .text=${
+                                  part.type === "json"
+                                    ? asJson(part.value)
+                                    : part.text
+                                }
+                              ></caffold-task-code-block>`,
+                        )
                       : html`<pre data-tool-call-result-part="none">${
                           status === "inProgress"
                             ? "(No result yet)"
                             : "(No result)"
                         }</pre>`
                   }
-                </section>`
+                </section>`,
+                )}`
             : nothing
         }</div>
       </article>
@@ -249,6 +299,22 @@ export class CaffoldTaskToolCallDialog extends CaffoldElement {
         ${this.keyboard.presentation()}
       ></caffold-keyboard-navigation-presentation>
     </dialog>`;
+  }
+
+  // The code blocks the open call shows, each with the name its scroll
+  // surface goes by.
+  private shownCodeBlocks() {
+    const result = this.toolCall?.payload?.result ?? [];
+    return [
+      { key: "input", label: "Tool call input" },
+      ...result.map((_, index) => ({
+        key: `result:${index}`,
+        label: `Tool call result ${index + 1}`,
+      })),
+    ].flatMap(({ key, label }) => {
+      const block = this.codeBlocks.get(key);
+      return block?.isConnected ? [{ key, label, block }] : [];
+    });
   }
 
   private closeFromBackdrop(event: Event) {
