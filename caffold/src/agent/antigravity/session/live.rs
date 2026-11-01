@@ -1,12 +1,15 @@
 //! One in-memory display conversation. ACP controls it; native history is a
-//! frozen prefix, never a second writer for the prompts accepted here.
+//! frozen prefix, never a second writer for the prompts accepted here. A prompt
+//! the child was already running when the view opened goes on in a continued
+//! turn of its own, and the frozen turn it began in takes only its end from the
+//! native record.
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::super::{AntigravityError, protocol};
+use super::super::{AntigravityError, protocol, record::Snapshot};
 use crate::agent::{
     ActivityStatus, CommandExecution, ConversationItem, GeneratedImage, ItemKind, MessageContent,
     MessagePhase, SessionEventKind, TokenCount, TokenUsage, ToolCall, Turn, TurnOrigin, TurnPage,
@@ -20,6 +23,9 @@ pub(super) struct Live {
     turns: Vec<Turn>,
     native_next: Option<String>,
     active: Option<String>,
+    // Whether the active turn continues a prompt the native record began
+    // before this view opened.
+    continuing: bool,
     tools: BTreeMap<String, Value>,
     chunk: Option<(String, usize)>,
     pending_start: bool,
@@ -34,6 +40,7 @@ impl Live {
             turns: baseline.turns,
             native_next: baseline.next_cursor,
             active: None,
+            continuing: false,
             tools: BTreeMap::new(),
             chunk: None,
             pending_start: false,
@@ -42,8 +49,37 @@ impl Live {
         }
     }
 
+    /// A view for a prompt the child is already running. What the prompt did
+    /// before is in the frozen native page; what follows arrives in a turn
+    /// with no prompt of its own.
+    pub(super) fn continuing(baseline: TurnPage, total_usage: TokenCount) -> Self {
+        let mut live = Self::new(baseline);
+        let id = format!("acp:{}:{}", live.epoch, Uuid::new_v4());
+        live.turns.insert(
+            0,
+            Turn {
+                id: id.clone(),
+                origin: TurnOrigin::User,
+                status: TurnStatus::InProgress,
+                started_at_ms: Some(now_ms()),
+                completed_at_ms: None,
+                items: Vec::new(),
+            },
+        );
+        live.active = Some(id);
+        live.continuing = true;
+        live.live_turns = 1;
+        live.pending_start = true;
+        live.total_usage = Some(total_usage);
+        live
+    }
+
     pub(super) fn set_baseline_usage(&mut self, usage: TokenCount) {
         self.total_usage = Some(usage);
+    }
+
+    pub(super) fn continues(&self) -> bool {
+        self.continuing
     }
 
     pub(super) fn needs_rebuild(&self) -> bool {
@@ -77,6 +113,7 @@ impl Live {
             }],
         };
         self.active = Some(id);
+        self.continuing = false;
         self.live_turns += 1;
         self.pending_start = true;
         self.chunk = None;
@@ -101,16 +138,19 @@ impl Live {
             return vec![];
         }
         let turn = &self.turns[0];
-        vec![
-            SessionEventKind::TurnStarted {
-                turn: TurnState::from(turn),
-            },
-            SessionEventKind::ItemChanged {
-                turn_id: turn.id.clone(),
-                item: turn.items[0].clone(),
-                at_ms: turn.started_at_ms.unwrap_or(0),
-            },
-        ]
+        let mut events = vec![SessionEventKind::TurnStarted {
+            turn: TurnState::from(turn),
+        }];
+        events.extend(
+            turn.items
+                .first()
+                .map(|prompt| SessionEventKind::ItemChanged {
+                    turn_id: turn.id.clone(),
+                    item: prompt.clone(),
+                    at_ms: turn.started_at_ms.unwrap_or(0),
+                }),
+        );
+        events
     }
 
     pub(super) fn read_page(
@@ -246,9 +286,98 @@ impl Live {
         &mut self,
         result: &Result<Value, AntigravityError>,
     ) -> Vec<SessionEventKind> {
-        let Some(id) = self.active.take() else {
+        let Some((ended, mut events)) = self.end_active(result) else {
             return vec![];
         };
+        if let Ok(result) = result
+            && let Some(usage) = turn_usage(&result["usage"])
+            && let Some(total) = &mut self.total_usage
+        {
+            total.total_tokens += usage.total_tokens;
+            total.input_tokens += usage.input_tokens;
+            total.cached_input_tokens += usage.cached_input_tokens;
+            total.cache_write_input_tokens += usage.cache_write_input_tokens;
+            total.output_tokens += usage.output_tokens;
+            total.reasoning_output_tokens += usage.reasoning_output_tokens;
+            events.push(SessionEventKind::UsageReported {
+                turn_id: ended.id.clone(),
+                usage: TokenUsage {
+                    total: total.clone(),
+                    last: usage,
+                    model_context_window: None,
+                },
+            });
+        }
+        events.push(SessionEventKind::TurnEnded { turn: ended });
+        events
+    }
+
+    /// Ends a continued turn with the native record read when its prompt
+    /// returned. That record already counts what the prompt used before this
+    /// view opened, so its total replaces the running one rather than growing
+    /// it. Without that record the total is unknown and the frozen turn stays as
+    /// it was read.
+    pub(super) fn finish_continued(
+        &mut self,
+        result: &Result<Value, AntigravityError>,
+        native: Option<&Snapshot>,
+    ) -> Vec<SessionEventKind> {
+        let Some((ended, mut events)) = self.end_active(result) else {
+            return vec![];
+        };
+        self.total_usage = native.map(|native| native.total_usage.clone());
+        if let Ok(result) = result
+            && let Some(usage) = turn_usage(&result["usage"])
+            && let Some(total) = &self.total_usage
+        {
+            events.push(SessionEventKind::UsageReported {
+                turn_id: ended.id.clone(),
+                usage: TokenUsage {
+                    total: total.clone(),
+                    last: usage,
+                    model_context_window: None,
+                },
+            });
+        }
+        events.push(SessionEventKind::TurnEnded { turn: ended });
+        if let Some(native) = native {
+            events.extend(self.settle_frozen(native));
+        }
+        events
+    }
+
+    /// The frozen native turns still running when this view opened, ended as
+    /// the native record now has them. Only their lifecycle changes: what the
+    /// prompt did after the view opened is in the continued turn.
+    fn settle_frozen(&mut self, native: &Snapshot) -> Vec<SessionEventKind> {
+        let mut events = Vec::new();
+        for turn in self
+            .turns
+            .iter_mut()
+            .filter(|turn| turn.status == TurnStatus::InProgress)
+        {
+            let Some(ended) = native.page.turns.iter().find(|candidate| {
+                candidate.id == turn.id && candidate.status != TurnStatus::InProgress
+            }) else {
+                continue;
+            };
+            turn.status = ended.status;
+            turn.completed_at_ms = ended.completed_at_ms;
+            events.push(SessionEventKind::TurnEnded {
+                turn: TurnState::from(&*turn),
+            });
+        }
+        events
+    }
+
+    /// Ends the active turn and reports its final items, leaving its usage and
+    /// end to the caller.
+    fn end_active(
+        &mut self,
+        result: &Result<Value, AntigravityError>,
+    ) -> Option<(TurnState, Vec<SessionEventKind>)> {
+        let id = self.active.take()?;
+        self.continuing = false;
         let turn = self
             .turns
             .iter_mut()
@@ -292,7 +421,7 @@ impl Live {
                 *phase = Some(MessagePhase::Final);
             }
         }
-        let mut events = turn
+        let events = turn
             .items
             .iter()
             .map(|item| SessionEventKind::ItemChanged {
@@ -301,31 +430,10 @@ impl Live {
                 at_ms: at,
             })
             .collect::<Vec<_>>();
-        if let Ok(result) = result
-            && let Some(usage) = turn_usage(&result["usage"])
-            && let Some(total) = &mut self.total_usage
-        {
-            total.total_tokens += usage.total_tokens;
-            total.input_tokens += usage.input_tokens;
-            total.cached_input_tokens += usage.cached_input_tokens;
-            total.cache_write_input_tokens += usage.cache_write_input_tokens;
-            total.output_tokens += usage.output_tokens;
-            total.reasoning_output_tokens += usage.reasoning_output_tokens;
-            events.push(SessionEventKind::UsageReported {
-                turn_id: id.clone(),
-                usage: TokenUsage {
-                    total: total.clone(),
-                    last: usage,
-                    model_context_window: None,
-                },
-            });
-        }
-        events.push(SessionEventKind::TurnEnded {
-            turn: TurnState::from(&*turn),
-        });
+        let ended = TurnState::from(&*turn);
         self.tools.clear();
         self.chunk = None;
-        events
+        Some((ended, events))
     }
 }
 
@@ -655,6 +763,147 @@ mod tests {
             live.turns[0].items.last().unwrap().kind,
             ItemKind::Failure { .. }
         ));
+    }
+
+    fn frozen(id: &str) -> TurnPage {
+        let mut native = Live::new(TurnPage::default());
+        let mut running = prompt(&mut native);
+        running.id = id.into();
+        TurnPage {
+            turns: vec![running],
+            next_cursor: None,
+            backwards_cursor: None,
+        }
+    }
+
+    fn tokens(total: u64) -> TokenCount {
+        turn_usage(&json!({"totalTokens":total,"inputTokens":total,"outputTokens":0})).unwrap()
+    }
+
+    fn native(turns: Vec<Turn>, total: u64) -> Snapshot {
+        Snapshot {
+            page: TurnPage {
+                turns,
+                next_cursor: None,
+                backwards_cursor: None,
+            },
+            usage: BTreeMap::new(),
+            total_usage: tokens(total),
+            created_at_ms: 0,
+            updated_at_ms: 0,
+            preview: String::new(),
+        }
+    }
+
+    fn ended_turns(events: &[SessionEventKind]) -> Vec<(String, TurnStatus)> {
+        events
+            .iter()
+            .filter_map(|event| match event {
+                SessionEventKind::TurnEnded { turn } => Some((turn.id.clone(), turn.status)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    const RESULT: &str =
+        r#"{"stopReason":"end_turn","usage":{"totalTokens":25,"inputTokens":20,"outputTokens":5}}"#;
+
+    #[test]
+    fn a_continued_turn_starts_without_a_prompt_and_ends_with_the_native_total_and_frozen_end() {
+        let baseline = frozen("native-running");
+        let before = baseline.turns[0].clone();
+        let mut live = Live::continuing(baseline, tokens(100));
+        let started = live.start_events();
+        let [SessionEventKind::TurnStarted { turn: continued }] = started.as_slice() else {
+            panic!("a continued turn starts alone: {started:?}")
+        };
+        assert!(continued.id.starts_with("acp:"));
+        assert!(live.continues());
+        live.update(&json!({"sessionUpdate":"tool_call","toolCallId":"after","kind":"execute","title":"Run pwd","rawInput":{"command_line":"pwd"},"status":"pending"})).unwrap();
+        assert_eq!(live.active_ids("after").unwrap().0, continued.id);
+        let mut ended = before.clone();
+        ended.status = TurnStatus::Completed;
+        ended.completed_at_ms = Some(900);
+        ended.items.push(ConversationItem {
+            id: "native-running:after".into(),
+            observed_at_ms: None,
+            status: ActivityStatus::Completed,
+            kind: ItemKind::OtherWork {
+                name: "read from the record later".into(),
+            },
+        });
+
+        let events = live.finish_continued(
+            &Ok(serde_json::from_str(RESULT).unwrap()),
+            Some(&native(vec![ended], 500)),
+        );
+
+        assert_eq!(
+            ended_turns(&events),
+            [
+                (continued.id.clone(), TurnStatus::Completed),
+                ("native-running".into(), TurnStatus::Completed)
+            ]
+        );
+        let usage = events
+            .iter()
+            .find_map(|event| match event {
+                SessionEventKind::UsageReported { turn_id, usage } => Some((turn_id, usage)),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(usage.0, &continued.id);
+        assert_eq!(usage.1.total.total_tokens, 500);
+        assert_eq!(usage.1.last.total_tokens, 25);
+        let page = live.read_page(None, 8).unwrap().unwrap();
+        assert_eq!(page.turns[0].id, continued.id);
+        assert_eq!(page.turns[1].status, TurnStatus::Completed);
+        assert_eq!(page.turns[1].completed_at_ms, Some(900));
+        assert_eq!(page.turns[1].items, before.items);
+        assert!(!live.continues());
+    }
+
+    #[test]
+    fn without_a_native_record_a_continued_turn_leaves_the_total_unknown_and_the_frozen_turn_running()
+     {
+        let mut live = Live::continuing(frozen("native-running"), tokens(100));
+        live.start_events();
+        let events = live.finish_continued(&Ok(serde_json::from_str(RESULT).unwrap()), None);
+        assert_eq!(ended_turns(&events).len(), 1);
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, SessionEventKind::UsageReported { .. }))
+        );
+        assert_eq!(
+            live.read_page(None, 8).unwrap().unwrap().turns[1].status,
+            TurnStatus::InProgress
+        );
+        prompt(&mut live);
+        assert!(
+            !live
+                .finish(&Ok(serde_json::from_str(RESULT).unwrap()))
+                .iter()
+                .any(|event| matches!(event, SessionEventKind::UsageReported { .. })),
+            "a later prompt in the same view has no total to grow"
+        );
+    }
+
+    #[test]
+    fn a_frozen_turn_the_native_record_still_runs_keeps_running() {
+        let baseline = frozen("native-running");
+        let still = baseline.turns[0].clone();
+        let mut live = Live::continuing(baseline, tokens(100));
+        live.start_events();
+        let events = live.finish_continued(
+            &Ok(serde_json::from_str(RESULT).unwrap()),
+            Some(&native(vec![still], 400)),
+        );
+        assert_eq!(ended_turns(&events).len(), 1);
+        assert_eq!(
+            live.read_page(None, 8).unwrap().unwrap().turns[1].status,
+            TurnStatus::InProgress
+        );
     }
 
     #[test]

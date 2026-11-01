@@ -37,7 +37,8 @@ def finish():
     if pending is not None:
         current, pending = pending, None
         context(2400)
-        emit({'jsonrpc': '2.0', 'id': current, 'result': {'stopReason': 'end_turn'}})
+        emit({'jsonrpc': '2.0', 'id': current, 'result': {'stopReason': 'end_turn', 'usage': {
+            'totalTokens': 30, 'inputTokens': 20, 'outputTokens': 10}}})
         log({'finished': current})
 
 def gate():

@@ -326,9 +326,29 @@ impl Session {
             reply.send_replace(Some(result.clone()));
         }
         if purpose == Purpose::Prompt && state.checkpoint.input.finish(id) {
+            // A continued turn ends with the native record read now: the
+            // frozen turn takes any end it records, and its usage total
+            // replaces the running one.
+            let continued = state.live.as_ref().is_some_and(Live::continues);
+            let native = if continued {
+                self.read_record(&state)
+                    .await
+                    .inspect_err(|error| {
+                        eprintln!(
+                            "Antigravity record unreadable at a continued turn's end: {error}"
+                        )
+                    })
+                    .ok()
+            } else {
+                None
+            };
             if let Some(live) = state.live.as_mut() {
                 self.publish(live.start_events());
-                self.publish(live.finish(&result));
+                self.publish(if continued {
+                    live.finish_continued(&result, native.as_ref())
+                } else {
+                    live.finish(&result)
+                });
             }
             self.publish_input(&mut state);
             if state.live.is_none() {
