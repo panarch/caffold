@@ -12,6 +12,7 @@ export function installCustomElementUnitRegistry() {
     documentElement: { dataset: {}, style: { setProperty() {} } },
     querySelector: () => null,
     createTreeWalker: () => ({}),
+    visibilityState: "visible",
     ...previousDocument,
     adoptedStyleSheets: [],
   };

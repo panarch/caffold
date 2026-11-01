@@ -437,6 +437,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       taskDetailThreadId(this.taskDetail) === targetThreadId
     ) {
       this.loading = false;
+      this.markDisplayedTaskSeen(targetThreadId, this.taskDetail?.task);
       void this.detailSession.attach(targetThreadId);
       return this.taskDetail;
     }
@@ -928,7 +929,11 @@ export class CaffoldTaskDetail extends CaffoldElement {
     threadId: string,
     task: Task | null | undefined,
   ) {
-    if (!task?.unseen || taskThreadId(task) !== threadId) {
+    if (
+      !task?.unseen ||
+      taskThreadId(task) !== threadId ||
+      document.visibilityState !== "visible"
+    ) {
       return;
     }
     const completionKey =
@@ -1132,6 +1137,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
     if (!outcome.ok && !outcome.stale && !outcome.absence) {
       throw outcome.error ?? new Error("Task detail recovery failed.");
     }
+    this.markDisplayedTaskSeen(this.selectedThreadId, this.taskDetail?.task);
     return outcome;
   }
 

@@ -305,3 +305,76 @@ test("force archive rejects a confirmation captured for another Task or worktree
   await owner.archiveSelectedTask({ threadId: "thread-a", worktreeId: "previous" });
   assert.equal(owner.archiveStateValue.loading, false);
 });
+
+test("open preserves a loaded task and marks an unseen completion as seen", async () => {
+  let seenThreadId = null;
+  const owner = screen({
+    selectedThreadId: "thread-a",
+    taskDetail: { task: { threadId: "thread-a", unseen: true, lastCompletedMs: 100 } },
+    performUpdate() {},
+    draw() {},
+    activateThreadEvents() {},
+    markDisplayedTaskSeen(threadId, task) {
+      if (task?.unseen) {
+        seenThreadId = threadId;
+      }
+    },
+    detailSession: {
+      attach() {},
+    },
+  });
+  const detail = await owner.open("thread-a", { preserveLoadedTask: true });
+  assert.equal(detail, owner.taskDetail);
+  assert.equal(seenThreadId, "thread-a");
+});
+
+test("recoverForeground checks the open task and marks unseen completion as seen", async () => {
+  let seenThreadId = null;
+  const owner = screen({
+    selectedThreadId: "thread-a",
+    taskDetail: { task: { threadId: "thread-a", unseen: true, lastCompletedMs: 100 } },
+    performUpdate() {},
+    draw() {},
+    markDisplayedTaskSeen(threadId, task) {
+      if (task?.unseen) {
+        seenThreadId = threadId;
+      }
+    },
+    detailSession: {
+      recover() {
+        return Promise.resolve({ ok: true, skipped: true });
+      },
+    },
+  });
+  const outcome = await owner.recoverForeground();
+  assert.equal(outcome.ok, true);
+  assert.equal(seenThreadId, "thread-a");
+});
+
+test("markDisplayedTaskSeen delays marking seen when the document is hidden", () => {
+  const seenRequestKeys = new Set();
+  const owner = screen({
+    selectedThreadId: "thread-a",
+    seenRequestKeys,
+  });
+  const previousState = document.visibilityState;
+  try {
+    document.visibilityState = "hidden";
+    taskDetail.markDisplayedTaskSeen.call(owner, "thread-a", {
+      threadId: "thread-a",
+      unseen: true,
+      lastCompletedMs: 100,
+    });
+    assert.equal(seenRequestKeys.size, 0, "hidden document must not mark seen or capture request keys");
+
+    document.visibilityState = "visible";
+    taskDetail.markDisplayedTaskSeen.call(owner, "thread-a", {
+      threadId: "thread-a",
+      unseen: true,
+      lastCompletedMs: 100,
+    });
+    assert.equal(seenRequestKeys.has("thread-a:100"), true, "visible document marks seen and records request key");
+  } finally {
+    document.visibilityState = previousState;
+  }
+});
