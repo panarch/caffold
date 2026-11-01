@@ -180,7 +180,7 @@ test("release checks the source before versioning and packaging on macOS", () =>
       [name],
       `${filename} must own only its named check`,
     );
-    assert.match(check, /runs-on: ubuntu-latest/);
+    assert.match(check, /runs-on: ubuntu-26\.04/);
     assert.match(check, /ref: \$\{\{ github\.sha \}\}/);
     assert.match(macosCall, new RegExp(`^      - ${name}$`, "m"));
   }
@@ -208,7 +208,7 @@ test("release checks the source before versioning and packaging on macOS", () =>
   assert.deepEqual([...dispatch.matchAll(/^          - (.+)$/gm)].map(([, option]) => option), ["dry-run"]);
   assert.match(dispatch, /^        default: dry-run$/m);
   assert.match(macos, /^        default: dry-run$/m);
-  assert.match(macos, /runs-on: macos-14/);
+  assert.match(macos, /runs-on: macos-26/);
   assert.match(macos, /ref: \$\{\{ github\.sha \}\}/);
   assert.match(macos, /persist-credentials: false/);
   assert.match(macos, /git checkout -B main "\$\{REQUESTED_SHA\}"/);

@@ -40,11 +40,16 @@ The command performs no publication or repository mutation. Cargo may download l
    `cargo build --release --locked`;
 3. builds and ad-hoc signs `Caffold Server.app`;
 4. checks the bundle identifier, version, build number, source commit, build timestamp, and macOS 14 minimum;
-5. checks that the Swift wrapper and Rust server both contain arm64 code;
+5. checks that the Swift wrapper, Rust server, and shared runner contain arm64 code and require no newer than macOS 14;
 6. verifies the bundle signature;
 7. creates a versioned zip, extracts it into a temporary directory, and repeats the bundle checks on that copy;
 8. writes and verifies a SHA-256 checksum beside the archive; and
 9. confirms packaging did not change the source worktree.
+
+The package builder sets the macOS 14 deployment target for Cargo and native
+dependencies through `MACOSX_DEPLOYMENT_TARGET`, and passes an explicit arm64
+macOS 14 target to Swift. Bundle and archive verification inspect the Mach-O
+minimum OS of all three executables, independently of the bundle plist.
 
 The output under `target/caffold-server` is generated build output. A
 successful dry run is evidence that the current source can produce the release
@@ -58,7 +63,9 @@ artifact; it does not publish anything.
 - `release-patch`, `release-minor`, and `release-major` increment the current version locally, verify that exact candidate, then push and publish it.
 - `resume` does not change the version. It reconciles the currently committed version with its tag, GitHub Release, and Homebrew Cask after a partial failure.
 
-The Checks and Release entrypoints directly call the same owner workflows on Ubuntu. Each checks out the caller's commit and takes no release-specific inputs:
+The Checks and Release entrypoints directly call the same owner workflows on
+`ubuntu-26.04`. Each shared check uses Node.js 26 LTS, checks out the caller's
+commit, and takes no release-specific inputs:
 
 - `frontend-tests.yml`: frontend types, TypeScript formatting and lints, units, and contracts.
 - `documentation-contracts.yml`: documentation contracts.
@@ -67,7 +74,10 @@ The Checks and Release entrypoints directly call the same owner workflows on Ubu
 - `browser-tests.yml`: the desktop, server-changes, server-steady, foldable, and phone matrix, with one worker and an isolated fixture workspace per job. Browser configuration and retry behavior match ordinary CI.
 - `rust-checks.yml`: formatting, locked tests, and locked Clippy.
 
-Only after every shared check succeeds does Release call `macos-release.yml`. This workflow keeps source preparation, native verification, packaging, and source push in one macOS arm64 job:
+Only after every shared check succeeds does Release call `macos-release.yml`.
+Native build and publication jobs use `macos-26` arm64 runners; the application
+minimum remains macOS 14. This workflow keeps source preparation, native
+verification, packaging, and source push in one macOS job:
 
 1. requires `main`, checks out the dispatch commit with full history and no persisted credentials, and confirms that `main` still points to that commit;
 2. for a new release, bumps the three version files, rejects an already-used version, and creates the candidate commit once locally;

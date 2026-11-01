@@ -10,7 +10,7 @@ provide different evidence and must be reported separately.
 The npm package lives in `frontend/`. Run every JavaScript and browser command
 from that directory; Rust and release commands stay at the repository root.
 
-Use Node.js 24 or newer and the committed npm lockfile:
+Use Node.js 26 LTS and the committed npm lockfile:
 
 ```sh
 cd frontend
@@ -132,7 +132,8 @@ jobs read shell scripts, workflow definitions, and documentation rather than
 running a macOS application, so `macOS Packaging Contracts` needs no macOS host
 and runs on the ordinary Ubuntu runner.
 
-Each owner keeps its Ubuntu check in its own reusable workflow. `checks.yml`
+Each owner keeps its `ubuntu-26.04` check in its own reusable workflow. CI uses
+Node.js 26 LTS, matching the repository `.nvmrc`. `checks.yml`
 and `release.yml` call each one directly, so the commands, project matrix,
 toolchains, and failure artifacts have one definition per owner. The entrypoint
 workflows choose which checks to run and enforce their dependencies. Every

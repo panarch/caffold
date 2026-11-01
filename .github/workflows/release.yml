@@ -60,7 +60,7 @@ jobs:
     name: Publish GitHub Release
     needs: macos
     if: inputs.action != 'dry-run'
-    runs-on: macos-14
+    runs-on: macos-26
     timeout-minutes: 15
     permissions:
       contents: write
@@ -155,7 +155,7 @@ jobs:
       - publish_release
     if: inputs.action != 'dry-run'
     environment: release
-    runs-on: macos-14
+    runs-on: macos-26
     timeout-minutes: 20
     permissions:
       contents: read
@@ -244,7 +244,7 @@ jobs:
       - macos
       - publish_homebrew
     if: inputs.action != 'dry-run'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: write
