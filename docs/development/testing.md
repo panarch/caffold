@@ -189,19 +189,13 @@ app-server. Set `CAFFOLD_E2E_PORT` to an available port only for
 targeted diagnostics; an occupied override fails instead of attaching to that
 server.
 
-Every browser test declares the smallest viewport coverage that exercises its
-contract. Use `@desktop`, `@foldable`, or `@phone` for one-project coverage,
-combine project tags when two viewports own the behavior, and use
-`@all-viewports` only when the observable behavior must hold in all three.
-Behavior no viewport owns uses `@viewport-independent`; its project runs those
-tests once, in the desktop browser. `@desktop` alone is for what the desktop
-layout or mouse input owns: a test that measures element sizes, positions,
-scroll offsets, or clipping, resizes the viewport, uses hover, drag, or the
-wheel, captures screenshots, or exercises a surface only wide layouts show.
-Touch-only behavior uses foldable unless the phone's single-pane contract is
-relevant. `@all-viewports` and `@viewport-independent` each stand alone. These
-are Playwright test-detail tags, not title suffixes. Runtime project-name skips
-are not a coverage declaration.
+Every browser test declares its viewport coverage with a Playwright tag; the
+frontend review policy's
+[Browser Test Ownership](../review/frontend.md#browser-test-ownership) section
+decides which. `@viewport-independent` tests run once, in the desktop browser.
+When touch-only behavior needs one touch viewport, use foldable unless the
+phone's single-pane contract is relevant. Tags are Playwright test details, not
+title suffixes, and a runtime project-name skip is not a coverage declaration.
 
 Pull-request, `main`, and release checks run the four projects in the same
 independent Ubuntu matrix jobs. Each job starts its own server, selects only

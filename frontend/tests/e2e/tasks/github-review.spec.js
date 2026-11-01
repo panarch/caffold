@@ -1760,7 +1760,7 @@ test("holds Start Task while the chosen model's permission modes are still arriv
   });
 });
 
-test("owns Issue Task Start Hint, native select, Editing Escape, and Scroll contexts", { tag: "@desktop" }, async ({
+test("owns Issue Task Start Hint, native select, Editing Escape, and Scroll contexts", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await installLinkedWorktreeGithubFixture(page);

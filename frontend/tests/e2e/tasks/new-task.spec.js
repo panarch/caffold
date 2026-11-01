@@ -810,7 +810,7 @@ test("creates a task with responsive composer controls and canonical approval st
 
 });
 
-test("does not carry an older-history cursor into a newly created task", { tag: "@desktop" }, async ({
+test("does not carry an older-history cursor into a newly created task", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { autoOpen: true });

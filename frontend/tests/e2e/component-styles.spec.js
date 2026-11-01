@@ -20,7 +20,7 @@ test("components take shared styles as modules and request no stylesheet for the
   expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(0);
 });
 
-test("new consumers declare their own scope, retain local overrides and share one sheet per target", { tag: "@desktop" }, async ({ page }) => {
+test("new consumers declare their own scope, retain local overrides and share one sheet per target", { tag: "@viewport-independent" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   await page.evaluate(async () => {

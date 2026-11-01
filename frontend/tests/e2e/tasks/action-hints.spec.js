@@ -256,7 +256,7 @@ test("⇧⌘F and Ctrl+Shift+F show actions from the prompt, even with keyboard 
   await expect(prompt).toBeFocused();
 });
 
-test("Action Hints inside shortcut help reach its Close button", { tag: "@desktop" }, async ({
+test("Action Hints inside shortcut help reach its Close button", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await installActionHintFixture(page, actionHintTasks(2));
@@ -1536,7 +1536,7 @@ test("retires only a changed Conversation owner while preserving codes and the r
   await page.keyboard.press("Escape");
 });
 
-test("reconciles local owners and cancels on interaction, viewport, and route changes", { tag: "@desktop" }, async ({
+test("reconciles local owners and cancels on interaction, viewport, and route changes", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installActionHintFixture(page, actionHintTasks(8));

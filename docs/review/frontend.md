@@ -468,14 +468,22 @@ normal parallel execution. Review must reject a test whose result depends on
 retries, repeated execution, or favorable scheduler timing; those are test
 defects, not evidence that the behavior is covered.
 
-Each browser test must declare its minimum viewport coverage with the native
-Playwright tags `@desktop`, `@foldable`, `@phone`, `@all-viewports`, or
-`@viewport-independent`. Multiple project tags are valid when exactly those
-projects own the behavior; `@all-viewports` and `@viewport-independent` stand
-alone. Review should reject untagged tests, `@all-viewports` coverage that does
-not exercise a viewport-dependent production path or observable result, and
-`@desktop` alone on behavior that neither the desktop layout nor mouse input
-owns, which belongs under `@viewport-independent`.
+Each browser test declares its minimum viewport coverage with a native
+Playwright tag. The tag answers one question: does the behavior under test
+change with the viewport size or the input method, mouse or touch? It changes
+when it takes a different production path or shows a different result.
+
+- No: tag `@viewport-independent`. This holds even when the test has to
+  render, measure, or scroll to check the result, and for keyboard behavior
+  that works the same on every screen. The project runs in the desktop
+  browser, so rendering alone needs no viewport tag.
+- Yes: tag the fewest of `@desktop`, `@foldable`, and `@phone` that reach every
+  distinct path or result. When that takes all three, tag `@all-viewports`
+  instead.
+
+`@all-viewports` and `@viewport-independent` are never combined with another
+tag. Review should reject untagged tests and tags that do not match the
+answer.
 
 When an expected result depends on the order of independently delivered events
 or asynchronous completions, the test must gate the exact boundary the

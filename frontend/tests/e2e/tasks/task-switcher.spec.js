@@ -213,7 +213,7 @@ test("reports an unloaded Task list instead of calling it empty", { tag: "@viewp
   await expect(dialog.locator(".task-switcher-empty")).toBeHidden();
 });
 
-test("reopens at the newest Task after being scrolled and closed", { tag: "@desktop" }, async ({
+test("reopens at the newest Task after being scrolled and closed", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installSwitcherFixture(page, manySwitcherTasks(40));
@@ -332,7 +332,7 @@ test("jumps to another Task from the single visible pane", { tag: "@phone" }, as
   await expect(page.locator("caffold-task-detail")).toBeVisible();
 });
 
-test("hands a long list to Scroll mode and gives the rows it reveals new codes", { tag: "@desktop" }, async ({
+test("hands a long list to Scroll mode and gives the rows it reveals new codes", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installSwitcherFixture(page, manySwitcherTasks(40));
@@ -666,7 +666,7 @@ test("draws its header the way the other title-and-X dialogs draw theirs", { tag
   await captureReviewScreenshot(page, testInfo, "task-switcher-header");
 });
 
-test("shortcut help opened over the switcher takes Action Hints until it closes", { tag: "@desktop" }, async ({
+test("shortcut help opened over the switcher takes Action Hints until it closes", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installSwitcherFixture(page, switcherTasks());

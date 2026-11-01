@@ -203,7 +203,7 @@ test("renders an Excel workbook as the only representation its file supports", {
   await captureReviewScreenshot(page, testInfo, "tasks-xlsx-preview");
 });
 
-test("draws the workbook's sizes, merges, hidden tracks, and formatting", { tag: "@desktop" }, async ({
+test("draws the workbook's sizes, merges, hidden tracks, and formatting", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo);
@@ -251,7 +251,7 @@ test("draws the workbook's sizes, merges, hidden tracks, and formatting", { tag:
     .not.toHaveCSS("background-color", "rgb(255, 255, 255)");
 });
 
-test("keeps the headers and frozen panes in place while the sheet scrolls", { tag: "@desktop" }, async ({
+test("keeps the headers and frozen panes in place while the sheet scrolls", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo);
@@ -296,7 +296,7 @@ test("keeps the headers and frozen panes in place while the sheet scrolls", { ta
   expect((await placement(viewer, frozenColumn)).left).toBe(columnBefore.left);
 });
 
-test("draws only the cells near the viewport of a large sheet", { tag: "@desktop" }, async ({
+test("draws only the cells near the viewport of a large sheet", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo);

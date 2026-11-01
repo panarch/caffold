@@ -222,7 +222,7 @@ test("renders a PowerPoint deck as the only representation its file supports", {
   await captureReviewScreenshot(page, testInfo, "tasks-pptx-preview");
 });
 
-test("reaches the deck's links and jumps to a linked slide", { tag: "@desktop" }, async ({
+test("reaches the deck's links and jumps to a linked slide", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo);
@@ -259,7 +259,7 @@ test("reaches the deck's links and jumps to a linked slide", { tag: "@desktop" }
   expect(await page.evaluate(() => window.__pptxLinkRan)).toBeUndefined();
 });
 
-test("reaches a link on a whole picture from the keyboard", { tag: "@desktop" }, async ({
+test("reaches a link on a whole picture from the keyboard", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo);

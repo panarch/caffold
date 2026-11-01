@@ -214,7 +214,7 @@ test("an Action Hint opens the latest release, and only while About links to one
   await expect(withoutRelease.getByLabel(/release in a new tab$/)).toHaveCount(0);
 });
 
-test("About offers its update action and the Settings list names the entry with its notice", { tag: "@desktop" }, async ({
+test("About offers its update action and the Settings list names the entry with its notice", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await answerUpdates(page, AVAILABLE);
@@ -245,7 +245,7 @@ test("About offers its update action and the Settings list names the entry with 
   ).toEqual(["about", "About Caffold — update available"]);
 });
 
-test("Check for Updates asks GitHub now and offers the update it finds", { tag: "@desktop" }, async ({ page }) => {
+test("Check for Updates asks GitHub now and offers the update it finds", { tag: "@viewport-independent" }, async ({ page }) => {
   const updated = mockCaffoldUpdate({
     lastAttempt: {
       id: "20261004T121000.000Z",

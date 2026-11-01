@@ -533,7 +533,7 @@ test("switches active Scroll to fresh Action Hints with F", { tag: "@viewport-in
   await expect(hints).toBeHidden();
 });
 
-test("keeps the exact active Task list through content patches and exits when it stops overflowing", { tag: "@desktop" }, async ({
+test("keeps the exact active Task list through content patches and exits when it stops overflowing", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const { detail, tasks } = await installScrollFixture(page);
@@ -673,7 +673,7 @@ test("shares code, click, and native keyboard selection without background leaka
   await expect(entryOwner).toBeFocused();
 });
 
-test("keeps keyboard scrolling on the Conversation native anchor path", { tag: "@desktop" }, async ({
+test("keeps keyboard scrolling on the Conversation native anchor path", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const { detail } = await installScrollFixture(page);
