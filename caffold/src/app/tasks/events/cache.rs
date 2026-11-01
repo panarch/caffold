@@ -20,9 +20,9 @@ use uuid::Uuid;
 
 use super::super::detail::TASK_DETAIL_EVENT_LIMIT;
 use super::{
-    TaskEventObservation, TaskEventObservationSource, TaskEventPublication, TaskEventRecord,
-    TaskHistoryCursor, TaskHistoryPage, advance_cached_observation, project_primary_record,
-    provider_lifecycle_regresses, sort_task_events, task_event_turn_id,
+    TaskEventObservation, TaskEventObservationSource, TaskEventPosition, TaskEventPublication,
+    TaskEventRecord, TaskHistoryCursor, TaskHistoryPage, advance_cached_observation,
+    project_primary_record, provider_lifecycle_regresses, sort_task_events, task_event_turn_id,
 };
 
 pub(super) const RETAINED_ITEM_LIMIT: usize = 300;
@@ -502,10 +502,11 @@ impl ThreadEvents {
         {
             cached.terminal |= turn.status != TurnStatus::InProgress;
             if !cached.complete_live {
-                if cached.history_revision.is_none() {
+                let renumbered = cached.history_revision.is_none();
+                if renumbered {
                     cached.anchor_ms = anchor;
                 }
-                let previous = std::mem::take(&mut cached.events);
+                let mut previous = std::mem::take(&mut cached.events);
                 let mut retained = Vec::<TaskEventObservation>::new();
                 for mut event in incoming {
                     if event.event_type != "turn_completed" {
@@ -553,6 +554,7 @@ impl ThreadEvents {
                         retained.push(observation);
                     }
                 }
+                let listed = retained.len();
                 // A read owns its own history IDs. An unmatched live or
                 // accepted ID may name an item the read lists differently, so
                 // while the read lists the turn as running, that report stays
@@ -561,12 +563,35 @@ impl ThreadEvents {
                 // A Caffold-owned projection is never listed and always stays.
                 let listed_as_ended = turn.status != TurnStatus::InProgress;
                 let mut unresolved = false;
-                for observation in previous {
-                    if observation.source == TaskEventObservationSource::ProviderHistory
-                        || retained
-                            .iter()
-                            .any(|entry| entry.event.id == observation.event.id)
+                // A first read numbers the turn in the provider's order, while
+                // what was reported before it was numbered as it arrived. What
+                // stays moves into the read's numbering in the order observed,
+                // so a record seen before anything the read lists goes right
+                // before the first listed record seen after it.
+                let mut followed = None;
+                if renumbered {
+                    previous.sort_by_key(|entry| {
+                        (entry.event.position.anchor_ms, entry.event.position.index)
+                    });
+                    followed = previous
+                        .iter()
+                        .find_map(|entry| {
+                            retained[..listed]
+                                .iter()
+                                .find(|record| record.event.id == entry.event.id)
+                                .and_then(|record| numbered_index(&record.event))
+                        })
+                        .map(|index| index.saturating_sub(1));
+                }
+                for mut observation in previous {
+                    if let Some(entry) = retained
+                        .iter()
+                        .find(|entry| entry.event.id == observation.event.id)
                     {
+                        followed = followed.max(numbered_index(&entry.event));
+                        continue;
+                    }
+                    if observation.source == TaskEventObservationSource::ProviderHistory {
                         continue;
                     }
                     if observation.source != TaskEventObservationSource::LocalProjection {
@@ -578,6 +603,16 @@ impl ThreadEvents {
                             continue;
                         }
                         unresolved = true;
+                    }
+                    if renumbered
+                        && let Some(index) =
+                            renumbered_index(&retained[..listed], &observation.event, followed)
+                    {
+                        observation.event.position = TaskEventPosition {
+                            anchor_ms: cached.anchor_ms,
+                            index,
+                        };
+                        followed = followed.max(Some(index));
                     }
                     retained.push(observation);
                 }
@@ -691,11 +726,61 @@ impl ThreadEvents {
     }
 }
 
+/// Where a record a turn's first read does not list goes in that read's
+/// numbering: right after the listed item it names, such as the tool call an
+/// approval asks about; otherwise at `followed`, which keeps the order it was
+/// observed in; otherwise after everything listed. It shares that place's
+/// index, and equal indexes keep listed records first and the rest in the
+/// order observed.
+///
+/// A turn's completion keeps its own place and is not renumbered.
+fn renumbered_index(
+    listed: &[TaskEventObservation],
+    event: &TaskEventRecord,
+    followed: Option<u32>,
+) -> Option<u32> {
+    numbered_index(event)?;
+    let after_named = item_id(event).and_then(|named| {
+        listed
+            .iter()
+            .filter(|entry| item_id(&entry.event) == Some(named))
+            .filter_map(|entry| numbered_index(&entry.event))
+            .max()
+    });
+    let after_listed = || {
+        listed
+            .iter()
+            .filter_map(|entry| numbered_index(&entry.event))
+            .max()
+    };
+    Some(
+        after_named
+            .or(followed)
+            .or_else(after_listed)
+            .unwrap_or_default(),
+    )
+}
+
+/// A record's index within its turn's numbering, which a turn's completion,
+/// placed at its own time, is not part of.
+fn numbered_index(event: &TaskEventRecord) -> Option<u32> {
+    (event.event_type != "turn_completed").then_some(event.position.index)
+}
+
+fn item_id(event: &TaskEventRecord) -> Option<&str> {
+    event.payload.as_ref()?.get("itemId")?.as_str()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::{TurnOrigin, TurnState};
-    use crate::app::tasks::events::{TaskEvents, task_event_record, turn_started_event};
+    use crate::agent::{
+        ApprovalDecision, ApprovalDetail, ApprovalOutcome, ApprovalRequest, TurnOrigin, TurnState,
+    };
+    use crate::app::tasks::events::{
+        TaskEvents, approval_requested_event, approval_resolved_event, task_event_record,
+        turn_completed_event, turn_started_event,
+    };
     use serde_json::json;
 
     fn item(turn_id: &str, id: &str, at: u64) -> TaskEventRecord {
@@ -1231,6 +1316,200 @@ mod tests {
         );
         assert!(read.owns_extent);
         assert_eq!(items(&read), ["thread:story:prompt"]);
+    }
+
+    fn running(id: &str, at: u64) -> Turn {
+        Turn {
+            status: TurnStatus::InProgress,
+            completed_at_ms: None,
+            ..history(id, at)
+        }
+    }
+
+    /// What a read lists for a turn, numbered the way a history read numbers it.
+    fn listed(turn: &Turn, items: &[&str]) -> HashMap<String, Vec<TaskEventRecord>> {
+        let at = turn.started_at_ms.unwrap();
+        let mut records = vec![start(&turn.id, at)];
+        records.extend(items.iter().map(|id| item(&turn.id, id, at)));
+        for (index, record) in records.iter_mut().enumerate() {
+            record.position.index = index as u32;
+        }
+        HashMap::from([(turn.id.clone(), records)])
+    }
+
+    fn order(cache: &TurnEventCache) -> Vec<(String, u64)> {
+        cache
+            .for_thread("thread")
+            .into_iter()
+            .map(|event| (event.id, event.position.anchor_ms))
+            .collect()
+    }
+
+    #[test]
+    fn an_approval_seen_before_a_turns_first_read_stays_with_its_tool_call_and_before_its_answer() {
+        let cache = TurnEventCache::default();
+        let request = ApprovalRequest {
+            id: "approval-1".into(),
+            turn_id: Some("restarted".into()),
+            item_id: Some("tool".into()),
+            title: "Run a command".into(),
+            reason: None,
+            detail: ApprovalDetail::default(),
+            decisions: vec![ApprovalDecision::Allow],
+        };
+        // A turn that outlived a backend restart is seen live before any read.
+        cache.record_provider_lifecycle(item("restarted", "tool", 500));
+        cache.record_local(approval_requested_event("thread", &request, 501, None));
+        let turn = running("restarted", 100);
+        cache.accept_page(
+            "thread",
+            &page_of(vec![turn.clone()]),
+            listed(&turn, &["prompt", "tool"]),
+            2,
+            None,
+        );
+        cache.record_local(approval_resolved_event(
+            "thread",
+            &request,
+            ApprovalOutcome::Decided(ApprovalDecision::Allow),
+            None,
+        ));
+
+        assert_eq!(
+            order(&cache),
+            [
+                "thread:restarted:started",
+                "thread:restarted:prompt",
+                "thread:restarted:tool",
+                "thread:approval_requested:approval-1",
+                "thread:approval_resolved:approval-1",
+            ]
+            .map(|id| (id.to_string(), 100))
+        );
+    }
+
+    #[test]
+    fn records_seen_before_a_turns_first_read_keep_the_order_they_were_seen_in() {
+        let cache = TurnEventCache::default();
+        let answer = |id: &str, at| {
+            task_event_record(
+                "thread",
+                id,
+                "approval_resolved",
+                id,
+                Some(json!({"turnId": "restarted", "approvalId": id})),
+                at,
+            )
+        };
+        cache.record_local(answer("before", 500));
+        cache.record_provider_lifecycle(item("restarted", "first", 501));
+        cache.record_local(answer("between", 502));
+        cache.record_provider_lifecycle(item("restarted", "second", 503));
+        cache.record_provider_lifecycle(item("restarted", "unlisted", 504));
+        let turn = running("restarted", 100);
+        cache.accept_page(
+            "thread",
+            &page_of(vec![turn.clone()]),
+            listed(&turn, &["prompt", "first", "second"]),
+            2,
+            None,
+        );
+
+        assert_eq!(
+            order(&cache),
+            [
+                "thread:restarted:started",
+                "thread:restarted:prompt",
+                "thread:before",
+                "thread:restarted:first",
+                "thread:between",
+                "thread:restarted:second",
+                "thread:restarted:unlisted",
+            ]
+            .map(|id| (id.to_string(), 100))
+        );
+    }
+
+    #[test]
+    fn a_record_that_followed_nothing_the_first_read_lists_goes_after_everything_listed() {
+        let cache = TurnEventCache::default();
+        cache.record_local(task_event_record(
+            "thread",
+            "alone",
+            "approval_resolved",
+            "alone",
+            Some(json!({"turnId": "restarted", "approvalId": "alone"})),
+            500,
+        ));
+        let turn = running("restarted", 100);
+        cache.accept_page(
+            "thread",
+            &page_of(vec![turn.clone()]),
+            listed(&turn, &["prompt", "tool"]),
+            2,
+            None,
+        );
+
+        assert_eq!(
+            order(&cache),
+            [
+                "thread:restarted:started",
+                "thread:restarted:prompt",
+                "thread:restarted:tool",
+                "thread:alone",
+            ]
+            .map(|id| (id.to_string(), 100))
+        );
+    }
+
+    #[test]
+    fn an_item_a_later_read_no_longer_lists_leaves_the_turn() {
+        let cache = TurnEventCache::default();
+        let turn = history("read", 100);
+        let page = page_of(vec![turn.clone()]);
+        cache.accept_page(
+            "thread",
+            &page,
+            listed(&turn, &["kept", "dropped"]),
+            1,
+            None,
+        );
+        cache.accept_page("thread", &page, listed(&turn, &["kept"]), 2, None);
+
+        assert_eq!(
+            order(&cache),
+            ["thread:read:started", "thread:read:kept"].map(|id| (id.to_string(), 100))
+        );
+    }
+
+    #[test]
+    fn a_turns_reported_end_keeps_its_own_place_through_a_first_read_that_lists_it_running() {
+        let cache = TurnEventCache::default();
+        cache.record_provider_lifecycle(item("restarted", "tool", 500));
+        cache.record_provider_lifecycle(turn_completed_event(
+            "thread",
+            &TurnState {
+                id: "restarted".into(),
+                origin: TurnOrigin::Unknown,
+                status: TurnStatus::Completed,
+                started_at_ms: Some(100),
+                completed_at_ms: Some(600),
+            },
+            600,
+        ));
+        let turn = running("restarted", 100);
+        cache.accept_page(
+            "thread",
+            &page_of(vec![turn.clone()]),
+            listed(&turn, &["prompt", "tool"]),
+            2,
+            None,
+        );
+
+        assert_eq!(
+            order(&cache).last(),
+            Some(&("thread:restarted:completed".to_string(), 600))
+        );
     }
 
     #[test]
