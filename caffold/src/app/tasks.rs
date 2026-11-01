@@ -4,7 +4,7 @@ mod composer_settings;
 mod detail;
 mod events;
 mod generated_images;
-mod grok_mcp;
+mod http_mcp;
 mod lifecycle;
 mod live;
 mod presence;
@@ -19,6 +19,7 @@ mod startup;
 mod sync;
 mod worktrees;
 
+use super::{live_updates, notes};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -28,7 +29,10 @@ use axum::Router;
 use tokio::sync::broadcast;
 
 use crate::{
-    agent::{claude::ClaudeClient, codex::CodexMcpBindings, grok::GrokClient},
+    agent::{
+        antigravity::AntigravityClient, claude::ClaudeClient, codex::CodexMcpBindings,
+        grok::GrokClient,
+    },
     app::{jev::PermissionReviewer, terminal::TaskTerminals},
     fs::RootedFs,
     task_store::TaskStore,
@@ -40,7 +44,7 @@ pub(in crate::app) use codex_mcp::CodexMcpHost;
 use detail::TaskDetailSync;
 use detail::{DetailContext, TaskDetailPublication};
 use events::TaskEvents;
-pub(in crate::app) use grok_mcp::GrokMcpHost;
+pub(in crate::app) use http_mcp::HttpMcpHost;
 use lifecycle::TaskLifecycle;
 use live::TaskListEvents;
 pub(in crate::app::tasks) use projection::TaskRecord;
@@ -70,6 +74,7 @@ struct TaskState {
 struct AgentRuntimeDependencies {
     claude: ClaudeClient,
     grok: GrokClient,
+    antigravity: AntigravityClient,
     codex_mcp: Option<CodexMcpBindings>,
 }
 
@@ -95,6 +100,7 @@ impl TaskState {
             AgentRuntimeDependencies {
                 claude,
                 grok,
+                antigravity: AntigravityClient::uninstalled(),
                 codex_mcp: None,
             },
             None,
@@ -117,6 +123,7 @@ impl TaskState {
         let AgentRuntimeDependencies {
             claude,
             grok,
+            antigravity,
             codex_mcp,
         } = agents;
         let task_events = TaskEvents::default();
@@ -138,11 +145,13 @@ impl TaskState {
             managed_worktrees.clone(),
             claude.clone(),
             grok.clone(),
+            antigravity.clone(),
             terminals,
         );
         let task_runtime = TaskRuntime::new(
             claude,
             grok,
+            antigravity,
             task_sessions.clone(),
             task_events.clone(),
             task_store.clone(),
@@ -209,15 +218,18 @@ impl TasksApp {
         worktree_root: PathBuf,
         claude: ClaudeClient,
         grok: GrokClient,
+        antigravity: AntigravityClient,
         codex_mcp: CodexMcpHost,
-        grok_mcp: GrokMcpHost,
+        grok_mcp: HttpMcpHost,
+        antigravity_mcp: HttpMcpHost,
         watch_hub: WatchHub,
         permission_reviewer: PermissionReviewer,
         terminals: TaskTerminals,
     ) -> anyhow::Result<Self> {
         let push = PushRuntime::new(task_store.clone())?;
-        let notes_router = super::notes::router(task_store.clone());
+        let notes_router = notes::router(task_store.clone());
         grok.attach_mcp(grok_mcp.bindings(), grok_mcp.endpoint());
+        antigravity.attach_mcp(antigravity_mcp.bindings(), antigravity_mcp.endpoint());
         let state = TaskState::new_with_push(
             fs,
             default_cwd_path,
@@ -228,6 +240,7 @@ impl TasksApp {
             AgentRuntimeDependencies {
                 claude,
                 grok,
+                antigravity,
                 codex_mcp: Some(codex_mcp.bindings()),
             },
             Some(permission_reviewer),
@@ -238,13 +251,10 @@ impl TasksApp {
         let live_source = TaskLiveSource::new(&state);
         codex_mcp.attach_runtime(runtime.clone());
         grok_mcp.attach_runtime(runtime.clone());
+        antigravity_mcp.attach_runtime(runtime.clone());
         Ok(Self {
             router: routes::router(state)
-                .merge(super::live_updates::router(
-                    live_source,
-                    watch_hub,
-                    shutdown,
-                ))
+                .merge(live_updates::router(live_source, watch_hub, shutdown))
                 .merge(notes_router),
             runtime,
             detail,
@@ -260,7 +270,8 @@ impl TasksApp {
         database_path: PathBuf,
         worktree_root: PathBuf,
         codex_mcp: CodexMcpHost,
-        grok_mcp: GrokMcpHost,
+        grok_mcp: HttpMcpHost,
+        antigravity_mcp: HttpMcpHost,
         watch_hub: WatchHub,
         permission_reviewer: PermissionReviewer,
         terminals: TaskTerminals,
@@ -279,8 +290,10 @@ impl TasksApp {
             worktree_root,
             ClaudeClient::in_data_dir(&data_dir),
             GrokClient::in_data_dir(&data_dir),
+            AntigravityClient::in_data_dir(&data_dir),
             codex_mcp,
             grok_mcp,
+            antigravity_mcp,
             watch_hub,
             permission_reviewer,
             terminals,
@@ -297,7 +310,8 @@ impl TasksApp {
         shutdown: broadcast::Sender<()>,
         worktree_root: PathBuf,
         codex_mcp: CodexMcpHost,
-        grok_mcp: GrokMcpHost,
+        grok_mcp: HttpMcpHost,
+        antigravity_mcp: HttpMcpHost,
         watch_hub: WatchHub,
         permission_reviewer: PermissionReviewer,
         terminals: TaskTerminals,
@@ -311,8 +325,10 @@ impl TasksApp {
             worktree_root,
             ClaudeClient::in_data_dir(&data_dir),
             GrokClient::in_data_dir(&data_dir),
+            AntigravityClient::in_data_dir(&data_dir),
             codex_mcp,
             grok_mcp,
+            antigravity_mcp,
             watch_hub,
             permission_reviewer,
             terminals,
@@ -337,8 +353,10 @@ pub(in crate::app::tasks) use runtime::{ApprovalResolveError, TaskAgent};
 #[cfg(test)]
 pub(in crate::app::tasks) mod test_support {
     use crate::agent;
+    use crate::agent::antigravity::AntigravityClient;
     use crate::agent::codex::CodexThread;
     use std::{
+        env,
         path::Path,
         sync::{Arc, Mutex as StdMutex},
         time::Duration,
@@ -346,9 +364,10 @@ pub(in crate::app::tasks) mod test_support {
 
     use serde_json::{Value as JsonValue, json};
     use tokio::sync::broadcast;
+    use uuid::Uuid;
 
     use super::{
-        AgentRuntimeDependencies, GrokMcpHost, PermissionReviewer, PushService, TaskState,
+        AgentRuntimeDependencies, HttpMcpHost, PermissionReviewer, PushService, TaskState,
         TaskTerminals, projection::*, routes::test_claim_task,
     };
     use crate::{
@@ -430,6 +449,9 @@ pub(in crate::app::tasks) mod test_support {
             AgentRuntimeDependencies {
                 claude,
                 grok: GrokClient::unreachable(),
+                antigravity: AntigravityClient::in_data_dir(
+                    &env::temp_dir().join(Uuid::new_v4().to_string()),
+                ),
                 codex_mcp: None,
             },
             permission_reviewer,
@@ -450,7 +472,7 @@ pub(in crate::app::tasks) mod test_support {
         TaskState,
         MockLeader,
         Arc<StdMutex<LeaderMemory>>,
-        GrokMcpHost,
+        HttpMcpHost,
     ) {
         let (shutdown, _) = broadcast::channel(16);
         let worktree_root = fs.root().join(".caffold-test/worktrees");
@@ -458,7 +480,7 @@ pub(in crate::app::tasks) mod test_support {
             ClaudeClient::mock_writing_to(fs.root().join(".caffold-test/projects"));
         let (grok, bridges) = GrokClient::mock(&fs.root().join(".caffold-test"));
         let (leader, memory) = scripted_leader(bridges);
-        let host = GrokMcpHost::new("http://127.0.0.1:1", McpSessionSigner::memory());
+        let host = HttpMcpHost::grok("http://127.0.0.1:1", McpSessionSigner::memory());
         grok.attach_mcp(host.bindings(), host.endpoint());
         let task_store = TaskStore::memory().expect("in-memory task store");
         let (push, _receiver) = PushService::test_channel(task_store.clone());
@@ -472,6 +494,7 @@ pub(in crate::app::tasks) mod test_support {
             AgentRuntimeDependencies {
                 claude,
                 grok,
+                antigravity: AntigravityClient::uninstalled(),
                 codex_mcp: None,
             },
             None,

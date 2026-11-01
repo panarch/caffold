@@ -737,6 +737,7 @@ impl TaskStore {
         &self,
         thread_id: &str,
         canonical_activity_ms: u64,
+        completed_at_ms: Option<u64>,
         opened_at_ms: u64,
     ) -> Result<Option<ManagedThread>> {
         match self {
@@ -744,12 +745,14 @@ impl TaskStore {
                 &mut *lock_glue(glue)?,
                 thread_id,
                 canonical_activity_ms,
+                completed_at_ms,
                 opened_at_ms,
             ),
             Self::Redb(glue) => managed_thread::mark_seen(
                 &mut *lock_glue(glue)?,
                 thread_id,
                 canonical_activity_ms,
+                completed_at_ms,
                 opened_at_ms,
             ),
         }
@@ -1177,7 +1180,10 @@ mod tests {
             assert_eq!(observed.last_observed_recency_ms, Some(30));
             let completed = store.update_completed_at(&thread_id, 40).unwrap().unwrap();
             assert!(completed.unseen());
-            let seen = store.mark_seen(&thread_id, 30, 50).unwrap().unwrap();
+            let seen = store
+                .mark_seen(&thread_id, 30, Some(40), 50)
+                .unwrap()
+                .unwrap();
             assert!(!seen.unseen());
             let configured = store
                 .update_composer_settings(

@@ -156,7 +156,7 @@ async fn archive_task(state: &TaskState, thread_id: &str) -> Result<Json<TaskRec
         .preflight_archive_worktree(thread_id.clone())
         .await?;
     state.lifecycle.close_terminal(&thread_id);
-    let provider_archived = archive_provider(driver.as_ref(), &thread_id).await;
+    let provider_archived = archive_provider(driver.as_ref(), &thread_id).await?;
     let worktree = match state.lifecycle.archive_worktree(thread_id.clone()).await {
         Ok(worktree) => worktree,
         Err(error) => {
@@ -315,20 +315,22 @@ pub(super) async fn task_provider_driver(
             Ok(Ok(state.task_runtime.claude().driver(cwd)))
         }
         RunBy::Grok { .. } => Ok(Ok(state.task_runtime.grok().driver())),
+        RunBy::Antigravity { .. } => Ok(Ok(state.task_runtime.antigravity().driver())),
     }
 }
 
-async fn archive_provider(driver: Option<&Driver>, thread_id: &str) -> bool {
+async fn archive_provider(driver: Option<&Driver>, thread_id: &str) -> Result<bool, ApiError> {
     let Some(driver) = driver else {
-        return false;
+        return Ok(false);
     };
     match driver.archive_conversation(thread_id).await {
-        Ok(()) => true,
+        Ok(()) => Ok(true),
+        Err(error) if matches!(driver, Driver::Antigravity(_)) => Err(error.into()),
         Err(error) => {
             eprintln!(
                 "failed to archive the provider conversation for Task {thread_id}; continuing with Caffold archive: {error}"
             );
-            false
+            Ok(false)
         }
     }
 }
@@ -410,7 +412,9 @@ pub(super) async fn task_described_as(
     let mut task = match described {
         Some(conversation) => state.detail.record_from_conversation(&conversation)?,
         None => {
-            let (RunBy::Claude { cwd } | RunBy::Grok { cwd }) = &managed.run_by else {
+            let (RunBy::Claude { cwd } | RunBy::Grok { cwd } | RunBy::Antigravity { cwd }) =
+                &managed.run_by
+            else {
                 // Only an agent that cannot be asked answers with nothing, and
                 // only a Claude or Grok row carries where it works. A Codex
                 // answer is either a conversation or a failure.
@@ -422,7 +426,7 @@ pub(super) async fn task_described_as(
             let mut task = state
                 .detail
                 .record_from_conversation(&conversation_from_row(managed, cwd))?;
-            task.conversation_available = driver.conversation_exists(&managed.thread_id).await;
+            task.conversation_available = driver.conversation_exists(&managed.thread_id).await?;
             task
         }
     };
@@ -916,12 +920,18 @@ mod tests {
     use crate::app::tasks::projection::task_record_from_conversation;
     use crate::app::tasks::worktrees::{IsolateOutcome, inspect_ready_worktree};
     use crate::app::tasks::{TaskDetailPublication, TaskDetailSync};
+    use crate::git;
     use crate::task_store;
+    use crate::task_store::ManagedWorktree;
     use axum::body::Body;
     use axum::extract::Query;
     use futures_util::StreamExt;
     use serde_json::{Value as JsonValue, json};
     use std::time::Duration;
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+    };
     use tower::ServiceExt;
 
     use super::super::test_support::*;
@@ -956,7 +966,7 @@ mod tests {
         manage_test_thread(&state, id, &source).await;
         let worktree = isolate_broken_fixture(&state, id, &source).await;
         let checkout = inspect_ready_worktree(&worktree).unwrap();
-        std::fs::remove_dir_all(&checkout.git_dir).unwrap();
+        fs::remove_dir_all(&checkout.git_dir).unwrap();
 
         let response = router(state.clone())
             .oneshot(
@@ -1033,7 +1043,7 @@ mod tests {
         manage_test_thread(&state, id, &source).await;
         let worktree = isolate_broken_fixture(&state, id, &source).await;
         let checkout = inspect_ready_worktree(&worktree).unwrap();
-        std::fs::remove_dir_all(&checkout.path).unwrap();
+        fs::remove_dir_all(&checkout.path).unwrap();
         let deleting = tokio::spawn(task_delete(
             State(state.clone()),
             AxumPath(id.to_string()),
@@ -1049,21 +1059,17 @@ mod tests {
         })
         .await
         .unwrap();
-        crate::git::remove_worktree_admin_entries(&checkout.path, &checkout.common_dir).unwrap();
-        crate::git::restore_attached_worktree(
-            &checkout.common_dir,
-            &checkout.path,
-            &checkout.branch_name,
-        )
-        .unwrap();
-        std::fs::write(checkout.path.join("dirty.txt"), "must stay").unwrap();
+        git::remove_worktree_admin_entries(&checkout.path, &checkout.common_dir).unwrap();
+        git::restore_attached_worktree(&checkout.common_dir, &checkout.path, &checkout.branch_name)
+            .unwrap();
+        fs::write(checkout.path.join("dirty.txt"), "must stay").unwrap();
         release.send(()).unwrap();
         assert!(
             matches!(deleting.await.unwrap(), Err(ApiError::Diagnostic(ref body)) if body.code == "managed_worktree_not_broken")
         );
         assert!(state.task_store.get(id).unwrap().is_some());
         assert_eq!(
-            std::fs::read_to_string(checkout.path.join("dirty.txt")).unwrap(),
+            fs::read_to_string(checkout.path.join("dirty.txt")).unwrap(),
             "must stay"
         );
         assert_eq!(client.mock_requests().await.len(), 1);
@@ -1102,7 +1108,7 @@ mod tests {
             manage_test_thread(&state, id, &source).await;
             let worktree = isolate_broken_fixture(&state, id, &source).await;
             let checkout = inspect_ready_worktree(&worktree).unwrap();
-            std::fs::remove_dir_all(&checkout.git_dir).unwrap();
+            fs::remove_dir_all(&checkout.git_dir).unwrap();
             let result = task_delete(
                 State(state.clone()),
                 AxumPath(id.to_string()),
@@ -1161,10 +1167,10 @@ mod tests {
         manage_test_thread(&state, id, &source).await;
         let worktree = isolate_broken_fixture(&state, id, &source).await;
         let checkout = inspect_ready_worktree(&worktree).unwrap();
-        std::fs::remove_dir_all(&checkout.git_dir).unwrap();
+        fs::remove_dir_all(&checkout.git_dir).unwrap();
         let parent = checkout.path.parent().unwrap();
-        let original = std::fs::metadata(parent).unwrap().permissions();
-        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let original = fs::metadata(parent).unwrap().permissions();
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o555)).unwrap();
         let request = || {
             Some(Json(TaskDeleteRequest {
                 confirm_broken_worktree_deletion: true,
@@ -1172,7 +1178,7 @@ mod tests {
             }))
         };
         let first = task_delete(State(state.clone()), AxumPath(id.to_string()), request()).await;
-        std::fs::set_permissions(parent, original).unwrap();
+        fs::set_permissions(parent, original).unwrap();
         assert!(first.is_err());
         assert!(checkout.path.exists());
         assert!(state.task_store.get(id).unwrap().is_some());
@@ -1214,9 +1220,9 @@ mod tests {
         let worktree = isolate_broken_fixture(&state, id, &source).await;
         let checkout = inspect_ready_worktree(&worktree).unwrap();
         let written = written_down(root.path(), id, &checkout.path);
-        std::fs::create_dir_all(written.parent().unwrap()).unwrap();
-        std::fs::rename(written_down(root.path(), id, root.path()), &written).unwrap();
-        std::fs::remove_dir_all(&checkout.git_dir).unwrap();
+        fs::create_dir_all(written.parent().unwrap()).unwrap();
+        fs::rename(written_down(root.path(), id, root.path()), &written).unwrap();
+        fs::remove_dir_all(&checkout.git_dir).unwrap();
         // Simulate a prior successful native delete followed by another failed
         // cleanup: the row is still the authority for retrying this Task.
         state
@@ -1242,7 +1248,7 @@ mod tests {
         assert!(client.mock_requests().await.is_empty());
     }
 
-    fn broken_thread(id: &str, source: &std::path::Path, status: &str) -> JsonValue {
+    fn broken_thread(id: &str, source: &Path, status: &str) -> JsonValue {
         json!({"id": id, "preview": "Broken Task", "status": {"type": status, "activeFlags": []},
             "cwd": source.display().to_string(), "createdAt": 1.0, "updatedAt": 1.0, "turns": []})
     }
@@ -1268,7 +1274,7 @@ mod tests {
         let id = created["detail"]["threadId"].as_str().unwrap();
         let worktree = isolate_broken_fixture(&state, id, &source).await;
         let checkout = inspect_ready_worktree(&worktree).unwrap();
-        std::fs::remove_dir_all(&checkout.git_dir).unwrap();
+        fs::remove_dir_all(&checkout.git_dir).unwrap();
         let managed = task_store_get(&state, id).await.unwrap().unwrap();
         let driver = task_provider_driver(&state, &managed)
             .await
@@ -1325,10 +1331,10 @@ mod tests {
         let id = created["detail"]["threadId"].as_str().unwrap();
         let worktree = isolate_broken_fixture(&state, id, &source).await;
         let checkout = inspect_ready_worktree(&worktree).unwrap();
-        std::fs::remove_dir_all(&checkout.git_dir).unwrap();
+        fs::remove_dir_all(&checkout.git_dir).unwrap();
         let bindings = root.path().join(".caffold-test/grok/bindings");
-        let original = std::fs::metadata(&bindings).unwrap().permissions();
-        std::fs::set_permissions(&bindings, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let original = fs::metadata(&bindings).unwrap().permissions();
+        fs::set_permissions(&bindings, fs::Permissions::from_mode(0o555)).unwrap();
         let (mut removals, _) = state.task_list_events.subscribe();
         let result = task_delete(
             State(state.clone()),
@@ -1339,7 +1345,7 @@ mod tests {
             })),
         )
         .await;
-        std::fs::set_permissions(&bindings, original).unwrap();
+        fs::set_permissions(&bindings, original).unwrap();
         assert_eq!(result.unwrap().0.thread_id, id);
         let removal = removals.try_recv().unwrap();
         assert_eq!(removal.thread_id, id);
@@ -1390,11 +1396,7 @@ mod tests {
         assert!(client.mock_requests().await.is_empty());
     }
 
-    async fn isolate_broken_fixture(
-        state: &TaskState,
-        id: &str,
-        source: &std::path::Path,
-    ) -> crate::task_store::ManagedWorktree {
+    async fn isolate_broken_fixture(state: &TaskState, id: &str, source: &Path) -> ManagedWorktree {
         state
             .lifecycle
             .isolate_current_task(
@@ -1739,20 +1741,20 @@ mod tests {
             .worktree_for_thread(thread_id)
             .unwrap()
             .unwrap();
-        assert!(std::path::Path::new(&worktree.worktree_path).is_dir());
+        assert!(Path::new(&worktree.worktree_path).is_dir());
         assert!(
             !terminals.is_open(thread_id),
             "the terminal started before the move closes with it"
         );
         terminals
-            .open_for_test(thread_id, std::path::Path::new(&worktree.worktree_path))
+            .open_for_test(thread_id, Path::new(&worktree.worktree_path))
             .await;
 
         let _ = task_archive(State(state.clone()), AxumPath(thread_id.to_string()))
             .await
             .unwrap();
         assert!(!terminals.is_open(thread_id));
-        assert!(!std::path::Path::new(&worktree.worktree_path).exists());
+        assert!(!Path::new(&worktree.worktree_path).exists());
         assert_eq!(
             state
                 .task_store
@@ -1771,7 +1773,7 @@ mod tests {
             restored.task.worktree,
             "the Active list shows the restored Task back in its managed worktree"
         );
-        assert!(std::path::Path::new(&worktree.worktree_path).is_dir());
+        assert!(Path::new(&worktree.worktree_path).is_dir());
         assert_eq!(
             state
                 .task_store
@@ -1791,13 +1793,13 @@ mod tests {
         let source = root.path().join("source");
         initialize_git_repository(&source);
         let plain = root.path().join("plain");
-        std::fs::create_dir(&plain).unwrap();
+        fs::create_dir(&plain).unwrap();
         let (state, terminals) = task_state_with_terminals(
             RootedFs::new(root.path()).unwrap(),
             CodexThreadClient::mock(Vec::new()),
         )
         .await;
-        let isolate = |thread_id: &str, source: &std::path::Path| {
+        let isolate = |thread_id: &str, source: &Path| {
             state.lifecycle.isolate_current_task(
                 source.to_path_buf(),
                 thread_id.to_string(),
@@ -1825,7 +1827,7 @@ mod tests {
         let IsolateOutcome::Isolated { worktree, .. } = moved else {
             unreachable!();
         };
-        let worktree_path = std::path::PathBuf::from(&worktree.worktree_path);
+        let worktree_path = PathBuf::from(&worktree.worktree_path);
         terminals
             .open_for_test("thread-repository", &worktree_path)
             .await;
@@ -2016,13 +2018,13 @@ mod tests {
             .worktree_for_thread(thread_id)
             .unwrap()
             .unwrap();
-        std::fs::write(
-            std::path::Path::new(&worktree.worktree_path).join("uncommitted.txt"),
+        fs::write(
+            Path::new(&worktree.worktree_path).join("uncommitted.txt"),
             "keep me\n",
         )
         .unwrap();
         terminals
-            .open_for_test(thread_id, std::path::Path::new(&worktree.worktree_path))
+            .open_for_test(thread_id, Path::new(&worktree.worktree_path))
             .await;
 
         let result = task_archive(State(state.clone()), AxumPath(thread_id.to_string())).await;
@@ -2044,7 +2046,7 @@ mod tests {
             task_store::ManagedWorktreeState::Ready
         );
         assert!(state.task_store.get(thread_id).unwrap().is_some());
-        assert!(std::path::Path::new(&worktree.worktree_path).is_dir());
+        assert!(Path::new(&worktree.worktree_path).is_dir());
         assert!(terminal_kept, "a refused Archive leaves the terminal open");
         assert_eq!(
             client
@@ -2076,13 +2078,13 @@ mod tests {
                     .await;
             manage_test_thread(&state, id, &source).await;
             let worktree = isolate_broken_fixture(&state, id, &source).await;
-            std::fs::write(
-                std::path::Path::new(&worktree.worktree_path).join("untracked.txt"),
+            fs::write(
+                Path::new(&worktree.worktree_path).join("untracked.txt"),
                 "discard",
             )
             .unwrap();
             if missing_repository {
-                std::fs::rename(&source, root.path().join("moved")).unwrap();
+                fs::rename(&source, root.path().join("moved")).unwrap();
             }
             let refused = router(state.clone())
                 .oneshot(
@@ -2120,7 +2122,7 @@ mod tests {
                 .await
                 .unwrap();
             assert!(!stale.status().is_success());
-            assert!(std::path::Path::new(&worktree.worktree_path).exists());
+            assert!(Path::new(&worktree.worktree_path).exists());
             assert!(client.mock_requests().await.is_empty());
             let response = router(state.clone())
                 .oneshot(
@@ -2134,7 +2136,7 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(response.status(), axum::http::StatusCode::OK);
-            assert!(!std::path::Path::new(&worktree.worktree_path).exists());
+            assert!(!Path::new(&worktree.worktree_path).exists());
             assert!(state.task_store.get(id).unwrap().is_none());
             let archived = state.task_store.get_archived(id).unwrap().unwrap();
             assert_eq!(archived.thread_id, id);
@@ -2193,7 +2195,7 @@ mod tests {
                 ..
             })
         ));
-        assert!(std::path::Path::new(&worktree.worktree_path).exists());
+        assert!(Path::new(&worktree.worktree_path).exists());
         assert!(state.task_store.get(id).unwrap().is_some());
         manage_test_thread(&state, "direct", &source).await;
         let result = task_force_archive(
@@ -2268,7 +2270,7 @@ mod tests {
                 .state,
             task_store::ManagedWorktreeState::Archived
         );
-        assert!(!std::path::Path::new(&worktree.worktree_path).exists());
+        assert!(!Path::new(&worktree.worktree_path).exists());
         assert_eq!(
             client
                 .mock_requests()
@@ -2341,15 +2343,11 @@ mod tests {
                 .state,
             task_store::ManagedWorktreeState::Archived
         );
-        assert!(!std::path::Path::new(&worktree.worktree_path).exists());
+        assert!(!Path::new(&worktree.worktree_path).exists());
     }
 
     /// Where the stand-in agent keeps a conversation for a Task in `cwd`.
-    fn written_down(
-        root: &std::path::Path,
-        thread_id: &str,
-        cwd: &std::path::Path,
-    ) -> std::path::PathBuf {
+    fn written_down(root: &Path, thread_id: &str, cwd: &Path) -> PathBuf {
         let slug: String = cwd
             .display()
             .to_string()
@@ -2368,11 +2366,11 @@ mod tests {
 
     /// A Claude Task, claimed the way one really is, with the conversation the
     /// agent would have written for it.
-    async fn manage_claude_task(state: &TaskState, thread_id: &str, cwd: &std::path::Path) {
+    async fn manage_claude_task(state: &TaskState, thread_id: &str, cwd: &Path) {
         let written = written_down(cwd, thread_id, cwd);
-        std::fs::create_dir_all(written.parent().expect("a project directory")).unwrap();
-        std::fs::write(&written, "{}\n").unwrap();
-        std::fs::create_dir_all(written.with_extension("").join("subagents")).unwrap();
+        fs::create_dir_all(written.parent().expect("a project directory")).unwrap();
+        fs::write(&written, "{}\n").unwrap();
+        fs::create_dir_all(written.with_extension("").join("subagents")).unwrap();
         state
             .task_store
             .claim(
@@ -2484,7 +2482,7 @@ mod tests {
         let _archived = task_archive(State(state.clone()), AxumPath(thread_id.to_string()))
             .await
             .expect("archived first");
-        std::fs::remove_file(written_down(root.path(), thread_id, root.path())).unwrap();
+        fs::remove_file(written_down(root.path(), thread_id, root.path())).unwrap();
 
         let refused = task_restore(State(state.clone()), AxumPath(thread_id.to_string())).await;
 
@@ -2995,8 +2993,8 @@ mod tests {
         else {
             panic!("the Task moves into a new worktree");
         };
-        let worktree_path = std::path::PathBuf::from(&worktree.worktree_path);
-        std::fs::write(worktree_path.join("uncommitted.txt"), "keep me\n").unwrap();
+        let worktree_path = PathBuf::from(&worktree.worktree_path);
+        fs::write(worktree_path.join("uncommitted.txt"), "keep me\n").unwrap();
         terminals.open_for_test(thread_id, &worktree_path).await;
 
         let archived =
@@ -3156,7 +3154,9 @@ mod tests {
         )]);
         let failed_driver = failed_client.driver();
 
-        let provider_archived = archive_provider(Some(&failed_driver), thread_id).await;
+        let provider_archived = archive_provider(Some(&failed_driver), thread_id)
+            .await
+            .unwrap();
         rollback_provider_archive(Some(&failed_driver), thread_id, provider_archived).await;
 
         assert!(!provider_archived);
@@ -3179,7 +3179,9 @@ mod tests {
         ]);
         let successful_driver = successful_client.driver();
 
-        let provider_archived = archive_provider(Some(&successful_driver), thread_id).await;
+        let provider_archived = archive_provider(Some(&successful_driver), thread_id)
+            .await
+            .unwrap();
         rollback_provider_archive(Some(&successful_driver), thread_id, provider_archived).await;
 
         assert!(provider_archived);

@@ -226,7 +226,7 @@ function replaceInstalledApp(
       mode: 0o755,
     });
     writeFileSync(
-      join(path, "Contents", "Resources", "caffold-claude-runner"),
+      join(path, "Contents", "Resources", "caffold-runner"),
       "runner\n",
       { mode: 0o755 },
     );

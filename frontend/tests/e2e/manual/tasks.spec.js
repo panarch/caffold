@@ -82,7 +82,7 @@ test("New Task groups the models by agent", { tag: "@desktop" }, async ({ page }
   await form.getByRole("button", { name: /^Choose model/ }).click();
   const menu = form.locator(".task-model-popover");
   await expect(menu.locator(".task-provider-option")).toHaveText([
-    "Codex", "Claude", "Grok",
+    "Codex", "Claude", "Grok", "Antigravity",
   ]);
   await expect(menu.locator('section[aria-label="Reasoning level"]')).toBeVisible();
   await expect(menu.locator('section[aria-label="Speed"]')).toBeVisible();

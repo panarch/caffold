@@ -4,17 +4,21 @@ Caffold runs on one Mac: the one that has your coding agents, Git, and your
 repositories. You use it from a browser, on that Mac or on your other devices.
 
 ```text
-browser or installed app
-(desktop, foldable, tablet, phone)
-              |
-     local address or private
-     Tailscale HTTPS address
-              |
-        Caffold server on the Mac
-       /          |          \
-    Codex    Claude Code     Grok
-       \          |          /
-     Git checkouts and worktrees
+       browser or installed app
+  (desktop, foldable, tablet, phone)
+                   |
+       local address or private
+        Tailscale HTTPS address
+                   |
+       Caffold server on the Mac
+                   |
+  +----------+-----+----+----------+
+  |          |          |          |
+Codex   Claude Code   Grok    Antigravity
+  |          |          |          |
+  +----------+-----+----+----------+
+                   |
+      Git checkouts and worktrees
 ```
 
 ## One Mac does the work
@@ -39,7 +43,7 @@ stay awake and reachable, with Caffold running.
 
 A Task holds one agent conversation together with the directory it works in,
 usually a Git repository. The model you choose when you start a Task also
-chooses the agent — Codex, Claude Code, or Grok — and the Task stays with that
+chooses the agent — Codex, Claude Code, Grok, or Antigravity — and the Task stays with that
 agent.
 
 You write to the agent in the **Composer**, the prompt box at the bottom of the

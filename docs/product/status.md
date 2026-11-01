@@ -19,7 +19,7 @@ boundaries.
   and an **Ask Jev first** approval mode in every agent's composer that has Jev
   hold back only what an automatic mode would stop for, plus whatever those
   rules name, and leaves the rest to a person;
-- Tasks backed by Codex, Claude Code, or Grok, with the agent selected by model
+- Tasks backed by Codex, Claude Code, Grok, or Antigravity, with the agent selected by model
   when the Task is created and fixed for the Task's lifetime;
 - native Codex app-server integration, including its persistent daemon and
   replaceable Caffold proxy;
@@ -28,7 +28,9 @@ boundaries.
 - native Grok CLI integration, through a leader process Caffold starts for
   itself that holds sessions and running turns across backend replacement,
   with worktree moves carried out by forking the session;
-- shared prompts, active-turn steering, interruption, command and permission
+- native Antigravity ACP integration with Settings installation, Google sign-in,
+  account model discovery, and runner recovery across backend replacement;
+- shared prompts, supported active-turn steering, interruption, command and permission
   approvals, file and image attachments, model/effort/permission choices, and
   voice input in the Conversation surface;
 - an optional provider-neutral Markdown current plan in each Task working
@@ -47,7 +49,7 @@ boundaries.
   screen from any device, with `⌘J` or `` Ctrl+` `` to enter and leave it and,
   for touch screens, a special key row with Copy and Paste and text selection
   by a held finger;
-- separate Codex, Claude, and Grok Settings diagnostics, including Claude
+- separate Codex, Claude, Grok, and Antigravity Settings diagnostics, including Claude
   account, plan usage, and runner state, and the Grok executable, leader,
   connection, account, and plan usage, as each CLI reports them;
 - selectable managed Sections with fixed-directory Task creation;
@@ -68,12 +70,15 @@ boundaries.
 
 ## Current boundaries
 
-- Codex, Claude Code, and Grok are the complete built-in agent set. Caffold
-  has no runtime agent plugin registry or ACP driver.
+- Codex, Claude Code, Grok, and Antigravity are the complete built-in agent set. Caffold
+  has no runtime agent plugin registry. Antigravity is a fixed ACP integration.
+- Antigravity supports follow-up input between requests and interruption, with
+  editable drafts during work; it does not offer steering.
 - A Task belongs to one agent. It cannot switch agents in place.
 - The agents do not share one synthetic runtime. Codex owns its app-server
   threads; Claude owns its transcript and CLI behavior; Grok's leader owns its
-  sessions and turns; Caffold owns only the product state and process glue
+  sessions and turns; Antigravity owns its native trajectory and ACP controls;
+  Caffold owns only the product state and process glue
   each integration needs.
 - Support does not imply feature identity. Caffold shares a control or display
   concept only where its semantics have been verified for every agent that
@@ -87,7 +92,7 @@ boundaries.
   can explicitly start a Task that prepares a worktree, and Caffold does not
   automatically continue review or implementation after preparation.
 - Caffold owns cleanup only for worktrees it created and recorded. It does not
-  adopt external worktrees or force-delete dirty managed worktrees.
+  adopt external worktrees; dirty managed worktrees require explicit confirmed discard.
 - A Task or Section has one terminal, shown in place of the Detail body rather
   than beside the Conversation. Several shells in one Task need a multiplexer
   such as tmux inside that terminal. Terminals end when the backend exits and
@@ -113,11 +118,12 @@ boundaries.
 The current product supports these flows:
 
 1. Start a Task from Global New or a managed Section's fixed directory, choose
-   an available Codex, Claude, or Grok model, and see live repository/worktree context.
-2. Continue, steer, interrupt, and approve real work through the selected
+   an available Codex, Claude, Grok, or Antigravity model, and see live repository/worktree context.
+2. Continue, steer where supported, interrupt, and approve real work through the selected
    agent's native runtime without changing the Task's agent.
 3. Reconnect the Caffold backend to an active Codex daemon thread, a
-   runner-held Claude session, or a leader-held Grok session without replacing
+   runner-held Claude session, a leader-held Grok session, or a runner-held
+   Antigravity session without replacing
    the agent-owned conversation.
 4. Select a repository Section or Task and review files, diffs, Git state, and
    GitHub context on desktop, foldable, tablet, and phone layouts.

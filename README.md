@@ -1,8 +1,8 @@
 # Caffold
 
 Caffold is a self-hosted workspace for running and reviewing coding-agent work
-from any screen. Keep Codex, Claude Code, or Grok working on a Mac you control, then
-follow the conversation, answer approvals, inspect commands and tests, and read
+from any screen. Keep Codex, Claude Code, Grok, or Antigravity working on a Mac
+you control, then follow the conversation, answer approvals, inspect commands and tests, and read
 the actual files and diff from a desktop, foldable, tablet, or phone.
 
 The user manual is at [caffold.dev](https://caffold.dev).
@@ -26,7 +26,7 @@ _Follow a Task as it runs, then read the result and decide what comes next._
 _Open Working Tree to review the actual files and diff without leaving the
 Task._
 
-_These images show a Codex Task. Claude and Grok Tasks use the same
+_These images show a Codex Task. The other agents use the same
 Conversation and review workspace._
 
 ## One workspace, native agents
@@ -36,24 +36,26 @@ it. Caffold currently supports:
 
 - **Codex**, through its persistent app-server runtime;
 - **Claude Code**, through its CLI protocol and a Caffold runner that keeps the
-  CLI process attached while the backend is replaced; and
+  CLI process attached while the backend is replaced;
 - **Grok**, through the Grok CLI's leader process and stdio agent protocol,
   with a leader Caffold starts for itself that holds sessions across backend
-  replacement.
+  replacement; and
+- **Antigravity**, through its official ACP agent, with a dedicated Caffold
+  runner and the native conversation store.
 
 A Task remains bound to that agent for its lifetime. Its model, reasoning or
 effort choices, permission modes, tools, session behavior, and transcript come
 from the selected agent rather than from a Caffold reimplementation.
 
 This is deliberate. A coding agent is the model together with the harness its
-authors built around it. Caffold gives Codex, Claude, and Grok separate native
+authors built around it. Caffold gives Codex, Claude, Grok, and Antigravity separate native
 drivers so it can preserve those harnesses instead of forcing them through a
 lowest common denominator. It normalizes only the product concepts the workspace must
 present consistently: conversations, turns, activity, approvals, and the
 operations a Task can actually perform.
 
 See [Agent runtimes](docs/architecture/agent-runtimes.md) for the design and the
-different state, transport, and recovery boundaries of the two integrations.
+different state, transport, and recovery boundaries.
 
 ## How it works
 
@@ -63,18 +65,22 @@ keeps the Caffold backend available, and connects the browser interface to the
 selected agent and the files on that Mac.
 
 ```text
-browser or installed PWA
-(desktop, foldable, tablet, phone)
-              |
-     local URL or private
-     Tailscale HTTPS URL
-              |
-        Caffold Server on Mac
-       /          |          \
- Codex        Claude runner    Grok leader
- app-server   -> claude CLI    -> grok bridge
-       \          |          /
-       Git checkouts and worktrees
+                    browser or installed PWA
+               (desktop, foldable, tablet, phone)
+                                |
+                      local URL or private
+                       Tailscale HTTPS URL
+                                |
+                      Caffold Server on Mac
+                                |
+        +---------------+-------+-------+---------------+
+        |               |               |               |
+   Codex proxy    Claude runner    Grok bridge     ACP runner
+  -> app-server   -> claude CLI     -> leader    -> Antigravity
+        |               |               |               |
+        +---------------+-------+-------+---------------+
+                                |
+                   Git checkouts and worktrees
 ```
 
 On the host Mac, `Open Caffold` opens the local address. On another device,
@@ -89,11 +95,11 @@ running Caffold, and reachable for remote use.
 ## A typical Task
 
 1. Start a Task in the directory where the work belongs and choose a Codex,
-   Claude, or Grok model.
+   Claude, Grok, or Antigravity model.
 2. Follow the conversation and answer the agent's approval requests while it
    works.
 3. Read the result, command and test output, changed files, and actual diff.
-4. Type or dictate the next instruction, steer an active turn, or return later
+4. Type or dictate the next instruction, steer a supported active turn, or return later
    and continue the same Task.
 
 For longer turns, each browser can opt in to system notifications under
@@ -114,7 +120,9 @@ in to at least one supported agent:
 - the official standalone Codex CLI `0.155.1` or newer;
 - Claude Code `2.1.259` or newer, available as `claude` on the app's `PATH`; or
 - the Grok CLI `1.0.30` or newer, available as `grok` on the app's `PATH` or
-  at `~/.grok/bin/grok` or `~/.local/bin/grok`.
+  at `~/.grok/bin/grok` or `~/.local/bin/grok`; or
+- Antigravity ACP, installed and signed in from **Settings → Antigravity**.
+  Its separate CLI is not required.
 
 Any of them may be installed, and Caffold will offer the models it can reach.
 [Set up your agents](website/docs/get-started/agents.md) in the user manual has
@@ -154,8 +162,9 @@ does not provide authentication for a public deployment or multi-user
 authorization.
 
 Agent support is built in rather than loaded as a runtime plugin. Caffold
-currently drives Codex, Claude Code, and Grok; it does not provide an ACP
-driver or let an existing Task switch agents.
+drives the four built-in agents and does not let an existing Task switch agents.
+Antigravity does not support steering: drafts remain editable during work,
+and Stop remains available.
 
 Its Git and GitHub views are deliberately review-oriented. Caffold does not
 provide a full editor, and it does not expose stage, commit, checkout, merge,

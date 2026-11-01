@@ -550,6 +550,9 @@ async fn new_task_agent(
         Some("grok") => Ok(TaskAgent::Grok {
             driver: state.task_runtime.grok().driver(),
         }),
+        Some("antigravity") => Ok(TaskAgent::Antigravity {
+            driver: state.task_runtime.antigravity().driver(),
+        }),
         Some(_) => Err(ApiError::BadRequest {
             code: "unsupported_provider",
             message: "Caffold does not drive that agent.".to_string(),
@@ -594,8 +597,12 @@ pub(super) fn managed_thread_from_task_record(
 
 pub(super) fn apply_managed_thread_metadata(task: &mut TaskRecord, managed: &ManagedThread) {
     task.title = managed.display_name.clone();
-    task.last_completed_ms = managed.last_completed_at_ms;
-    task.unseen = managed.unseen();
+    task.last_completed_ms = task.last_completed_ms.max(managed.last_completed_at_ms);
+    task.unseen = task.last_completed_ms.is_some_and(|completed_ms| {
+        managed
+            .last_seen_activity_ms
+            .is_none_or(|seen_ms| seen_ms < completed_ms)
+    });
 }
 
 pub(super) fn task_cwd(state: &TaskState, relative: Option<&str>) -> Result<String, ApiError> {
@@ -722,6 +729,7 @@ fn raster_media_type(path: &Path, relative: &str) -> Result<&'static str, ApiErr
 
 #[cfg(test)]
 mod tests {
+
     use super::super::TaskListUpdate;
     use super::super::router;
     use super::super::store::{task_store_get, task_store_get_archived};
@@ -1419,7 +1427,7 @@ mod tests {
         .expect("ordinary prompt accepts the first message");
 
         assert_eq!(response.0.thread_id, thread_id);
-        assert_eq!(response.0.turn_id, "turn-explicit-permission");
+        assert_eq!(&response.0.turn_id, "turn-explicit-permission");
         let requests = client.mock_requests().await;
         let requested_user_message_id = requests
             .iter()
@@ -1774,7 +1782,7 @@ mod tests {
         )
         .await
         .expect("the replacement runtime accepts the ordinary first prompt");
-        assert_eq!(prompt.0.turn_id, "turn-after-replacement");
+        assert_eq!(&prompt.0.turn_id, "turn-after-replacement");
         assert_eq!(
             replacement
                 .mock_requests()
@@ -2077,7 +2085,11 @@ mod tests {
     async fn task_prompt_continues_the_same_thread_after_a_ready_branch_switch_without_writes() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-managed-follow-up";
-        let managed_cwd = root.path().join("managed/worktree-1");
+        let managed_cwd = root
+            .path()
+            .canonicalize()
+            .unwrap()
+            .join(".caffold-test/worktrees/13f5b3f8-0020-4fe6-a86e-1d060748334f");
         initialize_git_repository(root.path());
         let checkout =
             git::create_attached_worktree(root.path(), &managed_cwd, "caffold/review", None)
@@ -2102,7 +2114,7 @@ mod tests {
         state
             .task_store
             .create_worktree(ManagedWorktree {
-                worktree_id: "worktree-1".to_string(),
+                worktree_id: "13f5b3f8-0020-4fe6-a86e-1d060748334f".to_string(),
                 thread_id: Some(thread_id.to_string()),
                 repository_git_dir: checkout.common_dir.display().to_string(),
                 worktree_path: managed_cwd.display().to_string(),
@@ -2112,7 +2124,11 @@ mod tests {
                 updated_at_ms: 1,
             })
             .unwrap();
-        let stored_before = state.task_store.worktree("worktree-1").unwrap().unwrap();
+        let stored_before = state
+            .task_store
+            .worktree("13f5b3f8-0020-4fe6-a86e-1d060748334f")
+            .unwrap()
+            .unwrap();
         let switched = std::process::Command::new("git")
             .arg("-C")
             .arg(&managed_cwd)
@@ -2161,7 +2177,11 @@ mod tests {
         );
 
         assert_eq!(
-            state.task_store.worktree("worktree-1").unwrap().unwrap(),
+            state
+                .task_store
+                .worktree("13f5b3f8-0020-4fe6-a86e-1d060748334f")
+                .unwrap()
+                .unwrap(),
             stored_before
         );
     }
@@ -2311,7 +2331,11 @@ mod tests {
     async fn task_prompt_does_not_steer_the_isolation_turn_in_the_old_checkout() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-isolation-finishing";
-        let managed_cwd = root.path().join("managed/worktree-1");
+        let managed_cwd = root
+            .path()
+            .canonicalize()
+            .unwrap()
+            .join(".caffold-test/worktrees/13f5b3f8-0020-4fe6-a86e-1d060748334f");
         initialize_git_repository(root.path());
         let checkout =
             git::create_attached_worktree(root.path(), &managed_cwd, "caffold/review", None)
@@ -2346,7 +2370,7 @@ mod tests {
         state
             .task_store
             .create_worktree(ManagedWorktree {
-                worktree_id: "worktree-1".to_string(),
+                worktree_id: "13f5b3f8-0020-4fe6-a86e-1d060748334f".to_string(),
                 thread_id: Some(thread_id.to_string()),
                 repository_git_dir: checkout.common_dir.display().to_string(),
                 worktree_path: managed_cwd.display().to_string(),
@@ -2397,7 +2421,11 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-restarted-managed-turn";
         let turn_id = "turn-after-isolation";
-        let managed_cwd = root.path().join("managed/worktree-1");
+        let managed_cwd = root
+            .path()
+            .canonicalize()
+            .unwrap()
+            .join(".caffold-test/worktrees/13f5b3f8-0020-4fe6-a86e-1d060748334f");
         initialize_git_repository(root.path());
         let checkout =
             git::create_attached_worktree(root.path(), &managed_cwd, "caffold/review", None)
@@ -2439,7 +2467,7 @@ mod tests {
         state
             .task_store
             .create_worktree(ManagedWorktree {
-                worktree_id: "worktree-1".to_string(),
+                worktree_id: "13f5b3f8-0020-4fe6-a86e-1d060748334f".to_string(),
                 thread_id: Some(thread_id.to_string()),
                 repository_git_dir: checkout.common_dir.display().to_string(),
                 worktree_path: managed_cwd.display().to_string(),
@@ -2698,7 +2726,7 @@ mod tests {
         .expect("system error follow-up starts a recovery turn");
 
         assert!(!response.0.steered);
-        assert_eq!(response.0.turn_id, "turn-recovery");
+        assert_eq!(&response.0.turn_id, "turn-recovery");
         assert_eq!(
             client
                 .mock_requests()
@@ -2779,7 +2807,7 @@ mod tests {
         .expect("not-loaded follow-up resumes and starts a turn");
 
         assert!(!response.0.steered);
-        assert_eq!(response.0.turn_id, "turn-after-restore");
+        assert_eq!(&response.0.turn_id, "turn-after-restore");
         assert_eq!(
             client
                 .mock_requests()
@@ -2956,7 +2984,7 @@ mod tests {
                     .payload
                     .as_ref()
                     .and_then(|payload| payload["itemId"].as_str())
-                    == Some(response.0.user_message_id.as_str())
+                    == Some(&response.0.user_message_id)
             })
             .expect("accepted user message is published");
 
@@ -3187,7 +3215,7 @@ mod tests {
         .expect("canonical refresh converts the stale steer into a new turn");
 
         assert!(!response.0.steered);
-        assert_eq!(response.0.turn_id, "turn-follow-up");
+        assert_eq!(&response.0.turn_id, "turn-follow-up");
         assert_eq!(
             client
                 .mock_requests()
@@ -4325,7 +4353,7 @@ mod claude_tests {
 
         let (status, refused) = call(&app, prompt("Also list the files.")).await;
 
-        assert_eq!(status, StatusCode::BAD_GATEWAY, "{refused}");
+        assert_eq!(status, StatusCode::CONFLICT, "{refused}");
         assert!(
             refused.to_string().contains("began on its own"),
             "{refused}"

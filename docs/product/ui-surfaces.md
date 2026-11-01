@@ -189,15 +189,15 @@ restart, and recovery guidance lives in Codex Settings. The workspace
 navigation, the Settings list, the Tasks home, and New Task show no Codex
 state, and Settings opens on its usual first page whatever that state is. A
 Codex Task stays readable and its composer usable; a Codex-run submit is
-refused by the server with the blocking cause, shown in the composer. Claude
-and Grok Tasks, and their creation, never consult Codex readiness.
+refused by the server with the blocking cause, shown in the composer. Claude,
+Grok, and Antigravity Tasks, and their creation, never consult Codex readiness.
 
 Only the Task store — shared by every agent — takes the Tasks surface over
 while its migration blocks operations, with its own retry lifecycle.
 
 Each offered model identifies its agent. Task creation starts a conversation
 with that agent in the selected cwd and binds the Task to it; later turns can
-choose only models from the same agent. Codex and Claude follow-up composers
+choose only models from the same agent. Codex, Claude, and Antigravity follow-up composers
 can still change permission mode between turns. Every agent's list also offers
 **Ask Jev first**, which runs that agent under whichever of its own modes asks
 about the most and has Jev hold back only what an automatic mode would stop for,
@@ -231,7 +231,7 @@ Forking uses Codex's native conversation fork and creates the managed child at
 the selected Section's project root. The source cwd is display-only. Files,
 uncommitted changes, branches, and worktrees are not copied or created. A
 temporarily unavailable Codex runtime leaves the row visible but disabled with
-the reason; Claude and Grok are not offered by this surface.
+the reason; Claude, Grok, and Antigravity are not offered by this surface.
 
 ## Detail
 
@@ -260,7 +260,7 @@ nothing yet.
 An idle Codex Task exposes **Fork task** in Task actions. It performs the same
 native fork without an ID lookup, places the child at the source Task's Section
 project root, and opens the distinct managed child. Active Codex Tasks, Claude
-Tasks, and Grok Tasks keep the action disabled with an explicit reason. Forking
+Tasks, Grok Tasks, and Antigravity Tasks keep the action disabled with an explicit reason. Forking
 remains separate from worktree isolation.
 
 Task details offers **Discard changes and archive** after an eligible ordinary
@@ -305,14 +305,17 @@ send; nothing is sent until the person sends it. The buttons are unavailable
 while the Task cannot be reached, as the Composer is, and choosing one adds
 nothing while voice input is filling the Composer. Copy leaves them out.
 
-A Task opened straight from creation is a valid zero-turn conversation. It
-shows the retained initial submission optimistically while the ordinary prompt
-request is in flight, and only the adapter's exact accepted-message identity
-hands that entry to canonical conversation history. The Composer prevents a
-second submission during that handoff. A definitive rejection leaves the Task
-open and restores its text, attachments, and selected options for retry; an
-outcome-unknown transport failure keeps the unconfirmed entry visible without
-automatic replay.
+A Task opened straight from creation is a valid zero-turn conversation. Its
+retained initial input uses the ordinary prompt contract: the message appears
+immediately, upload progress stays in that message, and the adapter's accepted
+identity hands it to the canonical conversation. A definitive rejection
+restores text, attachments and selected options for retry. An unknown outcome
+stays visibly unconfirmed and is not resent automatically.
+
+The Task's steering capability controls input during work. Antigravity keeps
+Stop available with an editable next draft and attachments, and permits the
+next prompt when the current request ends. A late response does not erase
+newer choices, text, files or focus.
 
 The Composer owns its draft, attachments, selection, and voice capture. A
 message that does not reach the agent returns to the Composer in the order it
@@ -331,9 +334,10 @@ folders. A picture an agent is shown as an image
 ([Send files with a prompt](workflows.md#send-files-with-a-prompt)) appears as
 a thumbnail that opens a preview. Every other file appears as a one-line chip
 that is only as wide as its name and, when the name is too long for the
-Composer, shortens it before its extension. While a sent message's files
-upload, its header reads `Uploading N%` and each path in its file list carries
-its own progress bar, which goes when that file is up. The bars take no room
+Composer, shortens it before its extension. For identified input, while a sent
+message's files upload, its header reads `Uploading N%` and each path in its
+file list carries its own progress bar, which goes when that file is up.
+Dispatched input keeps its progress in the Composer. The message bars take no room
 of their own, so the lines do not move as they go, and they wrap the same way
 once the message is confirmed. During the
 upload the Composer's primary action is **Cancel upload**, or **Stop current
@@ -571,6 +575,13 @@ Settings includes:
   as the leader confirms it, the leader on Caffold's socket with its own
   build, and the state of Caffold's connection, with a **Refresh** action;
   opening the page starts no leader, session, or turn;
+- Antigravity with official agent installation, explicit Google sign-in and
+  last verified plan, remote completion-URL handoff, cancellation/sign-out and
+  one refresh of account, quota and model choices on page entry or **Refresh**;
+  entry observes an already running job without starting another, and status
+  reads alone start no native job. **Runtime** shows the runner process and
+  offers a confirmed **Restart runtime** that ends its sessions and uses the
+  installed runner binary while retaining Google sign-in and saved conversations;
 - About Caffold in two sections. **Updates** has the shape of Codex Settings'
   Updates panel: the version the server runs, the newest release linked to its
   page, the last update's outcome, and one button as wide as its label. The

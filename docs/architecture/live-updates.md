@@ -111,12 +111,24 @@ the provider conversation cache; its retention and membership rules belong to
 [Agent Runtimes](agent-runtimes.md#backend-reconciliation).
 
 A change beside the conversation, to the Task's status, activity, background
-work, title, composer settings, or context usage, reaches viewers as
+work, title, composer settings or context usage, reaches viewers as
 `task-state`: the session revision, the Task record, its composer settings,
 and its context usage, without events. The conversation's start, a turn's start
 or end, and every reread of canonical history reach them as a full `task-sync`,
 and conversation items as `task-event` deltas. Task List takes its row from
 either publication.
+
+Task state includes `supportsSteering`. Prompt HTTP responses carry
+`threadId`, `turnId`, `userMessageId` and the steer result. The browser uses
+that exact accepted identity to hand its optimistic message to the ordinary
+conversation projection.
+
+When a driver discards its display conversation, the backend clears the
+projection and publishes its replacement with `eventResetRevision` and
+`eventEpoch`. The browser removes previous membership while preserving deltas
+published after that boundary. A backend incarnation has a new epoch; ordinary
+transport reconnects keep the epoch and older loaded pages. These fields belong
+to conversation publication, not input control.
 
 If either Detail broadcast receiver lags, the producer installs fresh receivers
 before capturing a cached snapshot and emits `task-sync` with reason

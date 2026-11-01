@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   installManualDefaults,
+  installManualAntigravity,
   installManualNotifications,
   installManualSettings,
   MANUAL_JEV_RULES,
@@ -64,4 +65,20 @@ test("Notifications lists every subscribed browser", { tag: "@desktop" }, async 
   await expect(notifications.getByRole("button", { name: "Disable" })).toBeVisible();
   await expect(notifications).toContainText("Chrome on Android · phone");
   await captureReviewScreenshot(page, testInfo, "settings-notifications");
+});
+
+test("Antigravity Settings shows its official installation and verified Google sign-in",{tag:"@desktop"},async({page},testInfo)=>{
+  await installManualAntigravity(page);
+  await page.goto("/settings/antigravity");
+  const owner=page.locator("caffold-settings-antigravity-page");
+  await expect(owner).toContainText("Google AI Pro");
+  await expect(owner).toContainText("Signed in");
+  await expect(owner.getByRole("button",{name:"Refresh",exact:true})).toBeEnabled();
+  await expect(owner).toContainText("9% used · resets");
+  await expect(owner.getByRole("link", {name: "Service status"})).toHaveAttribute("href", "https://aistudio.google.com/status");
+  await expect(owner).toContainText("Running · pid 4301");
+  await expect(owner.getByRole("button", {name: "Restart runtime", exact: true})).toBeEnabled();
+  await captureReviewScreenshot(page,testInfo,"settings-antigravity");
+  await owner.locator("caffold-settings-runtime").scrollIntoViewIfNeeded();
+  await captureReviewScreenshot(page,testInfo,"settings-antigravity-runtime");
 });

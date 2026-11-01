@@ -16,7 +16,7 @@ use crate::agent::{Conversation, ThreadStatus};
 use serde_json::Value;
 use tokio::sync::{Mutex as AsyncMutex, Notify, RwLock};
 
-use caffold_claude_runner::protocol::SessionState as RunnerSessionState;
+use caffold_runner::protocol::SessionState as RunnerSessionState;
 
 use super::protocol::{BASE_ARGUMENTS, SESSION_ENVIRONMENT};
 use super::runner::RunnerSession;
@@ -68,7 +68,7 @@ impl ClaudeClient {
         start: SessionStart,
         options: &ClaudeTurnOptions,
     ) -> Result<(Arc<Session>, bool), ClaudeError> {
-        let spawn = caffold_claude_runner::protocol::SpawnRequest {
+        let spawn = caffold_runner::protocol::SpawnRequest {
             argv: session_argv(id, start, options),
             cwd: spawn_cwd.to_string(),
             env: SESSION_ENVIRONMENT
@@ -409,8 +409,9 @@ fn session_argv(id: &str, start: SessionStart, options: &ClaudeTurnOptions) -> V
 
 #[cfg(test)]
 mod tests {
-    use super::super::session::WorkingDirectoryMove;
     use super::super::{ClaudeClient, ClaudeRuntimeEvent, ClaudeTurnOptions, protocol, status_of};
+    use super::WorkingDirectoryMove;
+    use crate::agent::CAFFOLD_SESSION_INSTRUCTIONS;
     use crate::agent::{SessionEventKind, ThreadActiveFlag, ThreadStatus, TurnStatus};
     use serde_json::Value;
 
@@ -757,7 +758,7 @@ mod tests {
         let setup = hello["request"]["appendSystemPrompt"]
             .as_str()
             .expect("reattachment refreshes the session instructions");
-        assert_eq!(setup, crate::agent::CAFFOLD_SESSION_INSTRUCTIONS);
+        assert_eq!(setup, CAFFOLD_SESSION_INSTRUCTIONS);
         assert!(!setup.contains("newly created Caffold task"));
     }
 

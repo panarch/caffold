@@ -30,6 +30,7 @@ pub(crate) enum TaskProvider {
     Codex,
     Claude,
     Grok,
+    Antigravity,
 }
 
 impl TaskProvider {
@@ -38,6 +39,7 @@ impl TaskProvider {
             Self::Codex => "codex",
             Self::Claude => "claude",
             Self::Grok => "grok",
+            Self::Antigravity => "antigravity",
         }
     }
 }
@@ -65,6 +67,9 @@ pub(crate) enum RunBy {
     Grok {
         cwd: String,
     },
+    Antigravity {
+        cwd: String,
+    },
 }
 
 impl RunBy {
@@ -73,6 +78,7 @@ impl RunBy {
             Self::Codex => TaskProvider::Codex,
             Self::Claude { .. } => TaskProvider::Claude,
             Self::Grok { .. } => TaskProvider::Grok,
+            Self::Antigravity { .. } => TaskProvider::Antigravity,
         }
     }
 
@@ -80,7 +86,7 @@ impl RunBy {
     pub(crate) fn cwd(&self) -> Option<&str> {
         match self {
             Self::Codex => None,
-            Self::Claude { cwd } | Self::Grok { cwd } => Some(cwd),
+            Self::Claude { cwd } | Self::Grok { cwd } | Self::Antigravity { cwd } => Some(cwd),
         }
     }
 
@@ -96,6 +102,10 @@ impl RunBy {
             "grok" => cwd
                 .filter(|cwd| !cwd.trim().is_empty())
                 .map(|cwd| Self::Grok { cwd })
+                .ok_or(TaskStoreError::InvalidRow("cwd")),
+            "antigravity" => cwd
+                .filter(|cwd| !cwd.trim().is_empty())
+                .map(|cwd| Self::Antigravity { cwd })
                 .ok_or(TaskStoreError::InvalidRow("cwd")),
             // Not a guess to make. The migration wrote a provider into every
             // row that existed, so an unrecognized one is a Task written by a
@@ -687,6 +697,7 @@ pub(super) fn mark_seen<S>(
     glue: &mut Glue<S>,
     thread_id: &str,
     canonical_activity_ms: u64,
+    completed_at_ms: Option<u64>,
     opened_at_ms: u64,
 ) -> Result<Option<ManagedThread>>
 where
@@ -698,8 +709,7 @@ where
     thread.last_observed_recency_ms =
         max_optional(thread.last_observed_recency_ms, Some(canonical_activity_ms));
     thread.last_opened_at_ms = max_optional(thread.last_opened_at_ms, Some(opened_at_ms));
-    thread.last_seen_activity_ms =
-        max_optional(thread.last_seen_activity_ms, thread.last_completed_at_ms);
+    thread.last_seen_activity_ms = max_optional(thread.last_seen_activity_ms, completed_at_ms);
     update_all(glue, &thread)?;
     Ok(Some(thread))
 }
@@ -1863,10 +1873,33 @@ mod tests {
         let completed = update_completed_at(&mut glue, "task", 35).unwrap().unwrap();
         assert_eq!(completed.last_completed_at_ms, Some(45));
 
-        let seen = mark_seen(&mut glue, "task", 40, 150).unwrap().unwrap();
+        let seen = mark_seen(&mut glue, "task", 40, Some(45), 150)
+            .unwrap()
+            .unwrap();
         assert_eq!(seen.last_opened_at_ms, Some(150));
         assert_eq!(seen.last_seen_activity_ms, Some(45));
         assert!(!seen.unseen());
+    }
+
+    #[test]
+    fn seeing_recovered_history_does_not_acknowledge_a_later_completion() {
+        let mut glue = memory();
+        claim(&mut glue, thread("task", Some(20)), 100).unwrap();
+        // History was recovered without observing its live completion event.
+        let seen = mark_seen(&mut glue, "task", 40, Some(45), 150)
+            .unwrap()
+            .unwrap();
+        assert_eq!(seen.last_seen_activity_ms, Some(45));
+        assert_eq!(seen.last_completed_at_ms, None);
+
+        update_completed_at(&mut glue, "task", 60).unwrap();
+        // A click for the previous completion raced with the next completion.
+        let seen = mark_seen(&mut glue, "task", 40, Some(45), 160)
+            .unwrap()
+            .unwrap();
+        assert_eq!(seen.last_completed_at_ms, Some(60));
+        assert_eq!(seen.last_seen_activity_ms, Some(45));
+        assert!(seen.unseen());
     }
 
     #[test]
@@ -1957,7 +1990,10 @@ mod tests {
             update_completed_at(&mut glue, "missing", 100).unwrap(),
             None
         );
-        assert_eq!(mark_seen(&mut glue, "missing", 100, 100).unwrap(), None);
+        assert_eq!(
+            mark_seen(&mut glue, "missing", 100, None, 100).unwrap(),
+            None
+        );
         assert_eq!(
             update_composer_settings(&mut glue, "missing", &ComposerSettings::default()).unwrap(),
             None

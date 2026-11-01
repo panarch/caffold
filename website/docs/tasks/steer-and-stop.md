@@ -2,15 +2,18 @@
 
 ## Steer a running turn
 
-You do not have to wait for a turn to finish. A prompt you send while the agent
-is working goes into the running turn, and the agent takes it in as it works.
+Codex, Claude Code, and Grok accept a prompt while working into the running
+turn. Antigravity does not support steering: keep editing your next draft,
+then send it after the current request finishes.
 
 ![A running turn with a prompt sent into it, and the Stop button in the Composer](../assets/screenshots/running-turn-desktop.png)
 
 ## Stop a turn
 
 While a turn runs and the Composer is empty, the send button becomes
-**Stop current turn**. Stopping keeps everything the agent already did.
+**Stop current turn**. Antigravity keeps Stop available even with a draft or
+while preparing the request. Its next input stays disabled while stopping.
+Stopping keeps everything the agent already did.
 
 Prompts you sent into the turn that the agent had not taken in yet come back
 to the Composer, in the order you sent them and ahead of anything you were

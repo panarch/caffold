@@ -362,6 +362,9 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "brand/claude-template.png" => Some(png(include_bytes!(
             "../../frontend/assets/brand/claude-template.png"
         ))),
+        "brand/antigravity-icon.svg" => Some(svg(include_str!(
+            "../../frontend/assets/brand/antigravity-icon.svg"
+        ))),
         "brand/grok-template.png" => Some(png(include_bytes!(
             "../../frontend/assets/brand/grok-template.png"
         ))),
@@ -711,24 +714,44 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/settings/grok/page.css.js"
         )))),
+        "pages/(task-workspace)/settings/antigravity/page.css.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/settings/antigravity/page.css.js"
+            ))))
+        }
         "pages/(task-workspace)/settings/grok/page.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/settings/grok/page.js"
+        )))),
+        "pages/(task-workspace)/settings/antigravity/page.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/antigravity/page.js"
         )))),
         "pages/(task-workspace)/settings/grok/display.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/settings/grok/display.js"
         )))),
-        "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css.js" => {
+        "pages/(task-workspace)/settings/components/runtime/components/runtime-restart-dialog.css.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css.js"
+                "/frontend/pages/(task-workspace)/settings/components/runtime/components/runtime-restart-dialog.css.js"
             ))))
         }
-        "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js" => {
+        "pages/(task-workspace)/settings/components/runtime.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/components/runtime.js"
+        )))),
+        "pages/(task-workspace)/settings/components/runtime.css.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js"
+                "/frontend/pages/(task-workspace)/settings/components/runtime.css.js"
+            ))))
+        }
+        "pages/(task-workspace)/settings/components/runtime/components/runtime-restart-dialog.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/settings/components/runtime/components/runtime-restart-dialog.js"
             ))))
         }
         "pages/(task-workspace)/settings/about/page.css.js" => Some(js(include_str!(concat!(
@@ -2585,7 +2608,8 @@ mod tests {
             "pages/(task-workspace)/notes/layout.css",
             "pages/(task-workspace)/settings/about/page.css",
             "pages/(task-workspace)/settings/appearance/page.css",
-            "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css",
+            "pages/(task-workspace)/settings/components/runtime/components/runtime-restart-dialog.css",
+            "pages/(task-workspace)/settings/components/runtime.css",
             "pages/(task-workspace)/settings/claude/page.css",
             "pages/(task-workspace)/settings/codex/page.css",
             "pages/(task-workspace)/settings/components/detail-list.css",
@@ -2594,6 +2618,7 @@ mod tests {
             "pages/(task-workspace)/settings/components/refresh-button.css",
             "pages/(task-workspace)/settings/files/page.css",
             "pages/(task-workspace)/settings/grok/page.css",
+            "pages/(task-workspace)/settings/antigravity/page.css",
             "pages/(task-workspace)/settings/jev/page.css",
             "pages/(task-workspace)/settings/keyboard/page.css",
             "pages/(task-workspace)/settings/layout.css",
@@ -2677,9 +2702,14 @@ mod tests {
             assert!(icon.body.starts_with(b"\x89PNG\r\n\x1a\n"));
         }
 
-        let brand_svg = get("brand/github-invertocat-light.svg").expect("brand svg asset");
-        assert_eq!(brand_svg.content_type, "image/svg+xml");
-        assert!(brand_svg.body.starts_with(b"<svg"));
+        for path in [
+            "brand/github-invertocat-light.svg",
+            "brand/antigravity-icon.svg",
+        ] {
+            let brand_svg = get(path).expect("brand svg asset");
+            assert_eq!(brand_svg.content_type, "image/svg+xml");
+            assert!(brand_svg.body.starts_with(b"<svg"));
+        }
 
         for path in [
             "brand/codex-template@2x.png",
@@ -2898,8 +2928,10 @@ mod tests {
             "pages/(task-workspace)/codex-status/components/reset-credit-dialog.js",
             "pages/(task-workspace)/settings/claude/page.js",
             "pages/(task-workspace)/settings/claude/display.js",
-            "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
+            "pages/(task-workspace)/settings/components/runtime/components/runtime-restart-dialog.js",
+            "pages/(task-workspace)/settings/components/runtime.js",
             "pages/(task-workspace)/settings/grok/page.js",
+            "pages/(task-workspace)/settings/antigravity/page.js",
             "pages/(task-workspace)/settings/grok/display.js",
             "pages/(task-workspace)/settings/about/page.js",
             "pages/(task-workspace)/tasks/components/directory-field/control.js",

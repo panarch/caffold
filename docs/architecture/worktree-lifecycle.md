@@ -31,6 +31,8 @@ pre-MCP threads. Claude receives the `mcp__caffold__isolate_current_task` tool
 from its in-process MCP server. Grok receives `caffold__isolate_current_task`
 from Caffold's HTTP MCP server, declared with a Task-bound header whenever its
 session is started or loaded.
+Antigravity receives the same base operation through its Task-bound HTTP MCP
+server on native new/load.
 It is an explicit preparation operation, intended for requests such as
 "prepare a worktree for this PR review". It does not start a child Task and
 does not automatically continue the review or other work.
@@ -66,6 +68,11 @@ source and refuses new turns with that reason until a prompt or a cold opening
 asks the fork again, so no turn runs in the wrong directory. The move's phases
 are written to the driver's binding file, and a backend that restarts takes the
 move up where it stopped.
+
+Antigravity prepares the same managed worktree through its Task-bound HTTP
+MCP server. Before the next input, its driver closes the prior child and loads
+the same native session UUID with the worktree cwd. It retains native history
+and does not fork or synthesize a new conversation identity.
 
 The branch behavior follows the source checkout:
 
@@ -132,9 +139,10 @@ managed worktree:
 - managed-worktree preflight completes before any provider archive attempt;
 - once the checks pass, the Task's [terminal](terminal.md#lifetime) closes
   before the worktree is removed, and a refused Archive leaves it running;
-- provider acquisition, description, and archive are best effort, so an
-  unavailable provider does not bypass local safety and does not strand the
-  Caffold-owned Task in Active;
+- Codex, Claude, and Grok acquisition, description, and archive are best effort,
+  so an unavailable provider does not bypass local safety or strand local
+  membership; Antigravity requires confirmed writer closure before removing
+  its cwd or active membership;
 - archive inspects the actual named branch and HEAD, then atomically records
   them as the checkout anchor while transitioning from `ready` to `removing`;
 - a clean managed worktree is removed from disk without `--force`;
@@ -241,8 +249,9 @@ Direct active Tasks under the old directory retain their relative subpaths.
 Each provider confirms the same Task at the destination: Codex updates native
 thread settings and reads effective cwd; Claude resumes existing history and
 moves its session/transcript; Grok switches its durable native binding while
-keeping the Caffold Task identity. Independently moved Task directories outside
-both source and target stay unchanged. Caffold persists Claude/Grok's new cwd;
+keeping the Caffold Task identity; Antigravity reloads its same native UUID at
+the destination. Independently moved Task directories outside
+both source and target stay unchanged. Caffold persists Claude/Grok/Antigravity's new cwd;
 Codex remains the owner of its native cwd. Moved Task terminals close.
 
 Affected active Task mutations are reserved in stable order. Running or unknown

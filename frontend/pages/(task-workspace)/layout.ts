@@ -57,8 +57,6 @@ import {
   CAFFOLD_UPDATE_TASK_REQUEST_EVENT,
   type CaffoldUpdateSnapshot,
 } from "./settings/about/page.js";
-import "./settings/claude/components/runtime-restart-dialog.js";
-import type { CaffoldClaudeRuntimeRestartDialog } from "./settings/claude/components/runtime-restart-dialog.js";
 import { CLAUDE_RUNTIME_RESTART_REQUEST_EVENT } from "./settings/claude/page.js";
 import "./settings/components/navigator.js";
 import type { CaffoldSettingsNavigator } from "./settings/components/navigator.js";
@@ -285,7 +283,7 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
     });
     this.addEventListener(CLAUDE_RUNTIME_RESTART_REQUEST_EVENT, (event) => {
       event.stopPropagation();
-      this.claudeRuntimeRestartDialog.open();
+      void this.restartClaudeRunner(event);
     });
   }
 
@@ -536,12 +534,11 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
         ? this.tasksPage.keyboardNavigationContexts()
         : this.mode === "notes"
           ? this.notesWorkspace.keyboardNavigationContexts()
-          : [];
+          : this.settingsWorkspace.keyboardNavigationContexts();
     return mergeKeyboardNavigationContexts(
       this.codexRuntimeRestartDialog.keyboardNavigationContexts(),
       this.codexRuntimeUpdateDialog.keyboardNavigationContexts(),
       this.codexResetCreditDialog.keyboardNavigationContexts(),
-      this.claudeRuntimeRestartDialog.keyboardNavigationContexts(),
       this.updateTaskDialog.keyboardNavigationContexts(),
       this.archivedDeleteDialog.keyboardNavigationContexts(),
       this.taskSwitcherDialog.keyboardNavigationContexts(),
@@ -872,10 +869,6 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
         ${drawn(this.parts.of("codex-reset-credit-dialog"))}
         @caffold:codex-reset-credit-confirmed=${this.consumeResetCredit}
       ></caffold-codex-reset-credit-dialog>
-      <caffold-claude-runtime-restart-dialog
-        ${drawn(this.parts.of("claude-runtime-restart-dialog"))}
-        @caffold:claude-runtime-restart-confirmed=${this.restartClaudeRunner}
-      ></caffold-claude-runtime-restart-dialog>
       <caffold-update-task-dialog
         ${drawn(this.parts.of("update-task-dialog"))}
         @caffold:task-create-intent=${this.startUpdateTask}
@@ -1364,12 +1357,6 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
   private get codexResetCreditDialog() {
     return this.child<CaffoldCodexResetCreditDialog>(
       "codex-reset-credit-dialog",
-    );
-  }
-
-  private get claudeRuntimeRestartDialog() {
-    return this.child<CaffoldClaudeRuntimeRestartDialog>(
-      "claude-runtime-restart-dialog",
     );
   }
 

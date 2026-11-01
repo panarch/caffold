@@ -335,7 +335,7 @@ impl Backend {
         PathBuf::from(BINARY)
             .parent()
             .expect("the binary lives somewhere")
-            .join("caffold-claude-runner")
+            .join("caffold-runner")
     }
 
     fn runner(&self, arguments: &[&str]) -> Value {
@@ -546,9 +546,12 @@ impl Task {
             .await
             .expect("the message is accepted");
         Said {
-            steered: answer["steered"].as_bool().unwrap_or(false),
-            turn_id: answer["turnId"].as_str().unwrap_or_default().to_string(),
-            user_message_id: answer["userMessageId"]
+            steered: answer["receipt"]["steered"].as_bool().unwrap_or(false),
+            turn_id: answer["receipt"]["turnId"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            user_message_id: answer["receipt"]["userMessageId"]
                 .as_str()
                 .unwrap_or_default()
                 .to_string(),

@@ -144,6 +144,7 @@ export interface TaskStateMessage {
   fastMode?: boolean;
   permissionMode?: string;
   context?: TaskContextUsage | null;
+  supportsSteering?: boolean;
 }
 
 // One conversation item that changed.

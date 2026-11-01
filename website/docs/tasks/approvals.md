@@ -20,9 +20,9 @@ request:
 | **Allow** | Allows this request once. |
 | **Allow for this session** | Codex: allows requests like this one for the rest of the session. |
 | **Allow Always** | Allows it now and keeps the rule the agent proposed, so the agent stops asking. Grok keeps that rule for the working directory, shared by every Caffold Task there. |
-| **Deny** | Refuses the request. Codex and Claude Code carry on without it; a Grok turn ends. |
+| **Deny** | Refuses the request. Codex, Claude Code, and Antigravity can carry on without it; a Grok turn ends. |
 | **Deny and Stop** | Refuses the request and stops the turn. |
-| **Cancel** | Skips a Codex tool call without stopping the turn. |
+| **Cancel** | Skips a Codex or Antigravity tool call without asking to stop the turn. |
 
 A refused request reads as declined in the conversation. While a request is
 waiting, the Task list shows the Task as waiting for approval, and a
@@ -33,7 +33,8 @@ Caffold has it ask in the conversation. Answer it in the Composer like any
 other message.
 
 Caffold's own tools, which name the Task, prepare a worktree, and keep Notes,
-run without an approval request.
+add no Caffold approval request. Antigravity may ask through its own native
+permission flow before calling them.
 
 ## Approval modes
 
@@ -48,7 +49,7 @@ such a mode.
 ![The Permissions menu of a Codex Task](../assets/screenshots/approval-modes-desktop.png)
 
 - The next turn always runs under the mode the Composer shows.
-- In a Codex or Claude Code Task you can change the mode between turns.
+- In a Codex, Claude Code, or Antigravity Task you can change the mode between turns.
 - A Grok Task fixes its mode when its conversation starts. Its Composer shows
   the mode but cannot change it; start a new Task to use another mode.
 

@@ -85,6 +85,7 @@ pub(super) async fn mark_task_seen(
     let managed = active_record(&state.task_store, &thread_id).await?;
     let worktree = runs_in_managed_worktree(&state.task_store, &thread_id).await?;
     let agent = state.task_runtime.task_agent(&thread_id).await?;
+    let snapshot = state.task_sessions.snapshot(&thread_id).await;
     let mut task = match agent.codex() {
         Some(connection) => {
             let conversation =
@@ -95,18 +96,30 @@ pub(super) async fn mark_task_seen(
                 .await;
             state.detail.record_from_conversation(&conversation)?
         }
-        None => match state
-            .task_sessions
-            .snapshot(&thread_id)
-            .await
-            .and_then(|snapshot| snapshot.conversation)
+        None => match snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.conversation.as_ref())
         {
-            Some(conversation) => state.detail.record_from_conversation(&conversation)?,
+            Some(conversation) => state.detail.record_from_conversation(conversation)?,
             None => unavailable_task_record(&managed),
         },
     };
+    // Recovered native history can expose a completion that no live event
+    // recorded in the Task index. Acknowledge that observed completion, without
+    // promoting a history read into a live turn event or acknowledging a later
+    // completion that arrives while the store operation is pending.
+    task.last_completed_ms = snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.turns_page.as_ref())
+        .into_iter()
+        .flat_map(|page| page.turns.iter())
+        .filter_map(|turn| turn.completed_at_ms)
+        .max()
+        .max(managed.last_completed_at_ms);
     let activity_ms = task_activity_ms(&task);
-    let Some(managed) = task_store_mark_seen(&state, &thread_id, activity_ms).await? else {
+    let Some(managed) =
+        task_store_mark_seen(&state, &thread_id, activity_ms, task.last_completed_ms).await?
+    else {
         return Err(moved_refusal(&state.task_store, &thread_id).await);
     };
     apply_managed_thread_metadata(&mut task, &managed);
@@ -595,6 +608,110 @@ mod tests {
         assert_eq!(managed.last_seen_activity_ms, Some(9_000));
         assert_eq!(managed.last_completed_at_ms, Some(9_000));
         assert_eq!(managed.last_observed_recency_ms, Some(10_000));
+    }
+
+    #[tokio::test]
+    async fn marking_recovered_antigravity_history_seen_keeps_it_seen_without_a_native_call() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "recovered-antigravity";
+        // Populate the shared canonical history through its real subscription
+        // boundary. The seen route must use this history without waking ACP.
+        let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            json!({
+                "cwd": root.path(), "thread": thread,
+                "initialTurnsPage": {"data": [{
+                    "id": "native-execution", "status": "completed",
+                    "startedAt": 3.0, "completedAt": 5.0, "items": []
+                }], "nextCursor": null}
+            }),
+        )]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        state
+            .task_store
+            .claim(
+                ManagedThread::new(
+                    thread_id,
+                    RunBy::Antigravity {
+                        cwd: root.path().display().to_string(),
+                    },
+                    Some(1_000),
+                    None,
+                    None,
+                ),
+                1,
+            )
+            .unwrap();
+        let _viewer = state
+            .task_sessions
+            .acquire_viewer(&client.driver(), 1, thread_id)
+            .await
+            .unwrap();
+        let before = state
+            .detail
+            .cached(thread_id)
+            .await
+            .unwrap()
+            .0
+            .task
+            .unwrap();
+        assert!(before.unseen);
+        assert_eq!(before.last_completed_ms, Some(5_000));
+        assert_eq!(
+            state
+                .task_store
+                .get(thread_id)
+                .unwrap()
+                .unwrap()
+                .last_completed_at_ms,
+            None
+        );
+
+        let response = router(state.clone())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("PUT")
+                    .uri(format!("/api/tasks/{thread_id}/seen"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let task: TaskRecord = serde_json::from_slice(&bytes).unwrap();
+        assert!(!task.unseen);
+        assert_eq!(task.last_completed_ms, Some(5_000));
+        let stored = state.task_store.get(thread_id).unwrap().unwrap();
+        assert_eq!(stored.last_seen_activity_ms, Some(5_000));
+        assert_eq!(
+            stored.last_completed_at_ms, None,
+            "a read is not a live completion"
+        );
+        assert!(
+            !state
+                .detail
+                .cached(thread_id)
+                .await
+                .unwrap()
+                .0
+                .task
+                .unwrap()
+                .unseen
+        );
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .iter()
+                .map(|(method, _)| method.as_str())
+                .collect::<Vec<_>>(),
+            ["thread/resume"]
+        );
     }
 
     #[tokio::test]

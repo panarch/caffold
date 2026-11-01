@@ -3,7 +3,8 @@ use tokio::time::Instant;
 use crate::agent::{SessionEvent, SessionEventKind, ThreadStatus, TurnStatus};
 
 use super::{
-    SessionEventOutcome, SessionLifecycle, SessionState, TaskSessions, TerminalTurnApplyOutcome,
+    SessionEventOutcome, SessionLifecycle, SessionState, SessionTurnPage, TaskSessions,
+    TerminalTurnApplyOutcome,
 };
 use super::{
     reconciliation::apply_thread_settings,
@@ -148,6 +149,29 @@ fn apply_session_event_state(
     kind: &SessionEventKind,
 ) -> SessionEventEffect {
     match kind {
+        SessionEventKind::ConversationReplaced { turns_page } => {
+            let Some(conversation) = &mut state.conversation else {
+                return SessionEventEffect::Ignored;
+            };
+            conversation.turns.clear();
+            if state.lifecycle != SessionLifecycle::Subscribing {
+                state.observation_epoch = state.observation_epoch.saturating_add(1);
+            }
+            state.events.replace_conversation(&conversation.id);
+            state
+                .events
+                .accept_history_page(conversation, turns_page, state.revision, None);
+            state.turns_page = Some(SessionTurnPage::from(turns_page));
+            state.active_turn_id = active_turn_id(conversation, state.turns_page.as_ref());
+            state.terminal_candidate_turn_id = state.active_turn_id.clone();
+            state.active_turn_cwd = state
+                .active_turn_id
+                .as_ref()
+                .map(|_| conversation.cwd.clone());
+            state.context = None;
+            state.runtime_lease = state.active_turn_id.is_some();
+            SessionEventEffect::CanonicalStateChanged
+        }
         SessionEventKind::ConversationStarted { conversation } => {
             if state.lifecycle == SessionLifecycle::Subscribing || state.conversation.is_some() {
                 return SessionEventEffect::Ignored;
@@ -288,8 +312,59 @@ fn apply_session_event_state(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::ContextUsage;
+    use crate::agent::{ContextUsage, Turn, TurnPage};
     use crate::app::tasks::sessions::test_support::*;
+
+    #[tokio::test]
+    async fn replacing_display_history_discards_old_turns_and_invalidates_inflight_reads() {
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            resume_response(
+                ThreadStatus::Idle,
+                vec![wire_turn("display-old", TurnStatus::Completed)],
+                Vec::new(),
+            ),
+        )]);
+        let sessions = TaskSessions::default();
+        let _viewer = sessions
+            .acquire_viewer(&client.driver(), 1, "thread-1")
+            .await
+            .unwrap();
+        let entry = sessions.existing_entry("thread-1").await.unwrap();
+        let old_epoch = entry.state.lock().await.observation_epoch;
+        let replacement = session_event(
+            "thread-1",
+            SessionEventKind::ConversationReplaced {
+                turns_page: TurnPage {
+                    turns: vec![Turn::from(&wire_turn(
+                        "native-current",
+                        TurnStatus::Completed,
+                    ))],
+                    ..Default::default()
+                },
+            },
+        );
+        let outcome = sessions
+            .apply_session_event_with_outcome(1, &replacement)
+            .await;
+        assert!(outcome.canonical_state_changed);
+        let state = entry.state.lock().await;
+        assert!(state.observation_epoch > old_epoch);
+        assert!(state.conversation.as_ref().unwrap().turns.is_empty());
+        assert_eq!(
+            state
+                .turns_page
+                .as_ref()
+                .unwrap()
+                .turns
+                .iter()
+                .map(|turn| turn.id.as_str())
+                .collect::<Vec<_>>(),
+            ["native-current"]
+        );
+        assert!(state.active_turn_id.is_none());
+        assert!(!state.runtime_lease);
+    }
 
     #[tokio::test]
     async fn item_and_diff_reports_advance_revision_without_changing_canonical_state() {

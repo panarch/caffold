@@ -14,11 +14,11 @@ Open the Task, choose **Task details** at its top right, and choose
 - A Task that is still running cannot be archived; stop or finish its turn
   first.
 - If the Task runs in a [worktree](worktrees.md) Caffold prepared, ordinary
-  Archive requires no uncommitted changes, including new files Git does not ignore,
-  such as [uploaded attachments](start-a-task.md#attach-files). Caffold then
+  Archive requires no uncommitted changes, including new files Git does not ignore. Caffold then
   removes the worktree and keeps its branch.
 - Caffold also asks the agent to archive or close its conversation. If the
-  agent cannot be reached, the Task is archived anyway.
+  agent cannot be reached, the Task is archived anyway, except Antigravity,
+  whose writer must be confirmed stopped before its files can be removed.
 - The Task's [terminal](terminal.md) closes. **Task details** says so above
   **Archive task**.
 

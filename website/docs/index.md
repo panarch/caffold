@@ -1,7 +1,7 @@
 ---
 template: home.html
 title: Leave your desk. Keep working.
-description: Leave your desk. Keep working. Codex, Claude Code, and Grok run on your Mac, and you follow, review, and direct them from any screen.
+description: Leave your desk. Keep working. Codex, Claude Code, Grok, and Antigravity run on your Mac, and you follow, review, and direct them from any screen.
 hide:
   - navigation
   - toc
@@ -14,7 +14,7 @@ hide:
 
 <h1><span>Leave your desk.</span> <span>Keep working.</span></h1>
 
-<p class="cf-lede">Codex, Claude Code, and Grok run on your Mac. From a
+<p class="cf-lede">Codex, Claude Code, Grok, and Antigravity run on your Mac. From a
 desktop, a tablet, or a phone, follow their work, answer their approvals, read
 the actual diff, and send the next instruction. Unfold a foldable, and you have
 the whole workspace.</p>
@@ -55,7 +55,7 @@ brew install --cask panarch/tap/caffold
 
 ### Ask
 
-Start a Task where the work belongs, choose a Codex, Claude, or Grok model,
+Start a Task where the work belongs, choose a Codex, Claude, Grok, or Antigravity model,
 and describe the work, with files or screenshots if they help.
 </div>
 
@@ -83,7 +83,7 @@ actual diff.
 ### Continue
 
 Say what comes next, from a fix to a commit, a worktree, or a Note. Steer a
-running turn, or pick up the same Task later.
+running turn where supported, or pick up the same Task later.
 </div>
 
 </div>
@@ -122,6 +122,12 @@ The Claude Code CLI, picking up each conversation from Claude's own history.
 ### Grok
 
 The Grok CLI, with sessions that keep running while Caffold restarts.
+</div>
+
+<div class="cf-agent" markdown>
+### Antigravity
+
+The official ACP agent, installed and signed in from Caffold Settings.
 </div>
 
 </div>

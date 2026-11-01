@@ -596,13 +596,12 @@ impl ClaudeClient {
     /// Stop the runner and start a fresh one, reporting the replacement.
     ///
     /// Every session ends with the old runner and every Task it was running
-    /// goes idle, exactly as an application update leaves them; conversations
-    /// resume from their files as Tasks are opened. What this buys is a runner
+    /// goes idle; conversations resume from their files as Tasks are opened. What this buys is a runner
     /// running the currently installed binary, a model list asked for again,
     /// and a deliberate way to put the whole Claude runtime down and up again.
     pub(crate) async fn restart_runtime(
         &self,
-    ) -> Result<caffold_claude_runner::protocol::DaemonStatus, ClaudeError> {
+    ) -> Result<caffold_runner::protocol::DaemonStatus, ClaudeError> {
         let sessions: Vec<Arc<Session>> =
             self.inner.sessions.lock().await.values().cloned().collect();
         for session in &sessions {
@@ -1976,6 +1975,7 @@ mod test_support {
             SessionEventKind::ConversationStarted { .. } => "conversation started",
             SessionEventKind::StatusChanged { .. } => "status change",
             SessionEventKind::ActivityChanged { .. } => "activity change",
+            SessionEventKind::ConversationReplaced { .. } => "conversation replacement",
             SessionEventKind::BackgroundWorkChanged { .. } => "background work change",
             SessionEventKind::TitleChanged { .. } => "title change",
             SessionEventKind::SettingsChanged { .. } => "settings",
@@ -2019,7 +2019,7 @@ mod tests {
     #[test]
     fn the_reviewed_mode_runs_claude_under_the_posture_that_asks_the_most() {
         assert_eq!(
-            super::claude_permission_mode(Some(super::REVIEWED_PERMISSION_MODE)),
+            claude_permission_mode(Some(REVIEWED_PERMISSION_MODE)),
             Some("default")
         );
     }
@@ -2033,9 +2033,9 @@ mod tests {
             "plan",
             "bypassPermissions",
         ] {
-            assert_eq!(super::claude_permission_mode(Some(mode)), Some(mode));
+            assert_eq!(claude_permission_mode(Some(mode)), Some(mode));
         }
-        assert_eq!(super::claude_permission_mode(None), None);
+        assert_eq!(claude_permission_mode(None), None);
     }
 
     use serde_json::json;

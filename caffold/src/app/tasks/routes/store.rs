@@ -71,11 +71,12 @@ pub(super) async fn task_store_mark_seen(
     state: &TaskState,
     thread_id: &str,
     canonical_activity_ms: u64,
+    completed_at_ms: Option<u64>,
 ) -> Result<Option<ManagedThread>, ApiError> {
     let store = state.task_store.clone();
     let thread_id = thread_id.to_string();
     tokio::task::spawn_blocking(move || {
-        store.mark_seen(&thread_id, canonical_activity_ms, now_ms())
+        store.mark_seen(&thread_id, canonical_activity_ms, completed_at_ms, now_ms())
     })
     .await
     .map_err(task_store_join_error)?

@@ -7,6 +7,9 @@
 //! installation key that signs a session to the Task its binding names. Claude
 //! serves the same tools in-process and uses none of it.
 
+mod task_binding;
+pub(crate) use task_binding::{TaskMcpBindings, task_mcp_initialize_result, valid_binding};
+
 use std::{
     path::PathBuf,
     sync::{Arc, OnceLock},

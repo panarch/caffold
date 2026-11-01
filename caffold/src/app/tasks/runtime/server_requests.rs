@@ -27,7 +27,7 @@ use crate::app::tasks::{
     },
     worktrees::{IsolateOutcome, inspect_ready_worktree},
 };
-use crate::task_store::{ManagedThread, ManagedWorktreeState, RunBy, TaskStoreError};
+use crate::task_store::{ManagedThread, ManagedWorktreeState, RunBy, TaskProvider, TaskStoreError};
 
 /// An approval waiting for an answer.
 ///
@@ -92,6 +92,7 @@ pub(super) enum AskedBy {
     /// Grok's driver keeps the request it must answer on, so nothing is
     /// needed here either.
     Grok,
+    Antigravity,
 }
 
 impl AskedBy {
@@ -101,6 +102,7 @@ impl AskedBy {
             Self::Codex { .. } => "codex",
             Self::Claude => "claude",
             Self::Grok => "grok",
+            Self::Antigravity => "antigravity",
         }
     }
 }
@@ -358,6 +360,7 @@ impl TaskRuntime {
                 }
                 (AskedBy::Claude, TaskAgent::Claude { .. }) => {}
                 (AskedBy::Grok, TaskAgent::Grok { .. }) => {}
+                (AskedBy::Antigravity, TaskAgent::Antigravity { .. }) => {}
                 _ => return Err(ApprovalResolveError::ResolutionMismatch),
             }
             if pending.phase != ApprovalPhase::Pending {
@@ -455,6 +458,11 @@ impl TaskRuntime {
                     agent::grok::GrokError::NoSuchApproval(_) => ApprovalResolveError::NotFound,
                     error => ApprovalResolveError::Agent(error.into()),
                 }),
+            (AskedBy::Antigravity, TaskAgent::Antigravity { .. }) => self
+                .antigravity
+                .resolve_approval(thread_id, approval_id, decision)
+                .await
+                .map_err(|error| ApprovalResolveError::Agent(error.into())),
             _ => unreachable!("reply claimed for the matching provider"),
         }
     }
@@ -676,7 +684,17 @@ impl TaskRuntime {
         .ok()?;
         let (managed, instructions) = reviewed;
         let managed = managed?;
-        if managed.permission_mode.as_deref() != Some(REVIEWED_PERMISSION_MODE) {
+        let reviewed_mode = match &asked_by {
+            AskedBy::Antigravity => self
+                .antigravity
+                .reviewed_permissions(&thread_id)
+                .await
+                .ok()?,
+            AskedBy::Codex { .. } | AskedBy::Claude | AskedBy::Grok => {
+                managed.permission_mode.as_deref() == Some(REVIEWED_PERMISSION_MODE)
+            }
+        };
+        if !reviewed_mode {
             return None;
         }
         // Where the agent is working now, asked of the agent that is asking.
@@ -688,6 +706,7 @@ impl TaskRuntime {
         let working_directory = match &asked_by {
             AskedBy::Claude => self.claude.working_directory(&thread_id).await,
             AskedBy::Grok => self.grok.working_directory(&thread_id).await.ok(),
+            AskedBy::Antigravity => self.antigravity.working_directory(&thread_id).await.ok(),
             AskedBy::Codex { .. } => request.detail.cwd.clone(),
         }
         .or_else(|| managed.run_by.cwd().map(str::to_string));
@@ -931,6 +950,10 @@ impl TaskRuntime {
                 .await
             }
             RunBy::Grok { .. } => self.execute_grok_tool(&managed, tool, arguments).await,
+            RunBy::Antigravity { .. } => {
+                self.execute_antigravity_tool(&managed, tool, arguments)
+                    .await
+            }
             RunBy::Claude { .. } => Err(
                 "Claude Tasks reach Caffold's tools through their own session, not this endpoint."
                     .to_string(),
@@ -1103,6 +1126,72 @@ impl TaskRuntime {
         }
     }
 
+    async fn execute_antigravity_tool(
+        &self,
+        managed: &ManagedThread,
+        tool: CaffoldTaskTool,
+        arguments: JsonValue,
+    ) -> Result<String, String> {
+        let task = &managed.thread_id;
+        match tool {
+            CaffoldTaskTool::RenameCurrentTask => {
+                let name = RenameCurrentTaskArguments::parse(arguments)?;
+                // ACP has no native rename operation. The Task display name
+                // is Caffold metadata and stays with its existing owner.
+                self.persist_display_name(task, &name).await?;
+                if let Some(lifecycle) = &self.lifecycle {
+                    lifecycle.refresh_task_list();
+                }
+                Ok(format!("Renamed the current Caffold task to `{name}`."))
+            }
+            CaffoldTaskTool::IsolateCurrentTask => {
+                let IsolateCurrentTaskArguments {
+                    branch_name,
+                    base_ref,
+                    include_changes,
+                } = IsolateCurrentTaskArguments::parse(arguments)?;
+                let source = self
+                    .antigravity
+                    .working_directory(task)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let lifecycle = self
+                    .lifecycle
+                    .as_ref()
+                    .ok_or_else(|| "Caffold Task lifecycle is unavailable".to_string())?;
+                let isolated = lifecycle
+                    .isolate_current_task(
+                        source.into(),
+                        task.clone(),
+                        managed.display_name.clone(),
+                        branch_name,
+                        base_ref,
+                        include_changes,
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(isolated_answer(isolated, include_changes))
+            }
+        }
+    }
+
+    pub(in crate::app::tasks) async fn execute_http_mcp_tool(
+        &self,
+        provider: TaskProvider,
+        task: &str,
+        tool: &str,
+        arguments: JsonValue,
+    ) -> Result<String, String> {
+        let managed = self
+            .managed_thread(task)
+            .await?
+            .ok_or_else(|| "Caffold does not manage this Task".to_string())?;
+        if managed.run_by.provider() != provider {
+            return Err("This MCP endpoint belongs to another agent".into());
+        }
+        self.execute_mcp_tool(task, tool, arguments).await
+    }
+
     async fn persist_display_name(&self, thread_id: &str, name: &str) -> Result<(), String> {
         let store = self.task_store.clone();
         let thread_id = thread_id.to_string();
@@ -1196,6 +1285,11 @@ impl TaskRuntime {
                 .working_directory(&managed.thread_id)
                 .await
                 .map_err(|error| error.to_string()),
+            RunBy::Antigravity { .. } => self
+                .antigravity
+                .working_directory(&managed.thread_id)
+                .await
+                .map_err(|e| e.to_string()),
         }
         .map_err(notes_cwd_unavailable)?;
         let cwd = PathBuf::from(cwd);
@@ -1241,6 +1335,32 @@ impl TaskRuntime {
         let mut approvals = self.approvals.lock().await;
         approvals.retain(|_, pending| {
             if pending.thread_id == thread_id && matches!(pending.asked_by, AskedBy::Grok) {
+                self.retire_without_asking(pending, ApprovalOutcome::Unavailable);
+                false
+            } else {
+                true
+            }
+        });
+    }
+
+    pub(super) async fn end_antigravity_approval(
+        &self,
+        thread_id: &str,
+        id: &str,
+        outcome: ApprovalOutcome,
+    ) {
+        let mut approvals = self.approvals.lock().await;
+        if approvals.get(id).is_some_and(|pending| {
+            pending.thread_id == thread_id && matches!(pending.asked_by, AskedBy::Antigravity)
+        }) && let Some(pending) = approvals.remove(id)
+        {
+            self.retire_without_asking(&pending, outcome);
+        }
+    }
+    pub(super) async fn withdraw_antigravity_approvals(&self, thread_id: &str) {
+        let mut approvals = self.approvals.lock().await;
+        approvals.retain(|_, pending| {
+            if pending.thread_id == thread_id && matches!(pending.asked_by, AskedBy::Antigravity) {
                 self.retire_without_asking(pending, ApprovalOutcome::Unavailable);
                 false
             } else {
@@ -1326,6 +1446,8 @@ fn approval_id_from_request(request_id: &JsonValue, params: &JsonValue) -> Strin
 
 #[cfg(test)]
 mod tests {
+    use crate::agent::antigravity::AntigravityClient;
+    use crate::app::jev::{self, PermissionReviewer};
     use std::{fs, path::Path, process::Command, sync::Arc, sync::Mutex as StdMutex};
 
     use tokio::sync::broadcast;
@@ -1483,6 +1605,7 @@ mod tests {
         TaskRuntime::new(
             agent::claude::ClaudeClient::mock().0,
             agent::grok::GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             TaskSessions::default(),
             events,
             store,
@@ -1846,7 +1969,7 @@ mod tests {
     /// directory the Task was given to work in.
     async fn claude_asking_under(
         mode: Option<&str>,
-        reviewer: Option<crate::app::jev::PermissionReviewer>,
+        reviewer: Option<PermissionReviewer>,
     ) -> (Vec<TaskEventRecord>, String) {
         use crate::agent::claude::ClaudeTurnOptions;
         use crate::app::tasks::test_support::task_state_with_reviewer;
@@ -1992,12 +2115,8 @@ mod tests {
     async fn a_task_under_another_mode_is_never_sent_to_the_reviewer() {
         let temp = tempfile::tempdir().unwrap();
         let (base, asked) = jev_answering(1.0).await;
-        let reviewer = crate::app::jev::test_reviewer(
-            temp.path(),
-            base,
-            "ts-test-key",
-            "Allow anything at all.",
-        );
+        let reviewer =
+            jev::test_reviewer(temp.path(), base, "ts-test-key", "Allow anything at all.");
 
         let (events, _) = claude_asking_under(Some("default"), Some(reviewer)).await;
 
@@ -2033,7 +2152,7 @@ mod tests {
     async fn an_allowed_request_arrives_already_answered_and_says_who_answered() {
         let temp = tempfile::tempdir().unwrap();
         let (base, asked) = jev_answering(0.03).await;
-        let reviewer = crate::app::jev::test_reviewer(
+        let reviewer = jev::test_reviewer(
             temp.path(),
             base,
             "ts-test-key",
@@ -2088,7 +2207,7 @@ mod tests {
     async fn a_judgement_below_the_threshold_leaves_the_request_to_a_person() {
         let temp = tempfile::tempdir().unwrap();
         let (base, asked) = jev_answering(0.9).await;
-        let reviewer = crate::app::jev::test_reviewer(
+        let reviewer = jev::test_reviewer(
             temp.path(),
             base,
             "ts-test-key",
@@ -2117,7 +2236,7 @@ mod tests {
     #[tokio::test]
     async fn an_unreachable_reviewer_leaves_the_request_to_a_person() {
         let temp = tempfile::tempdir().unwrap();
-        let reviewer = crate::app::jev::test_reviewer(
+        let reviewer = jev::test_reviewer(
             temp.path(),
             "http://127.0.0.1:1".to_string(),
             "ts-test-key",
@@ -3116,12 +3235,14 @@ mod tests {
             worktrees,
             claude.clone(),
             agent::grok::GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             TaskTerminals::for_tests(),
         );
         let (shutdown, _) = broadcast::channel(1);
         let runtime = TaskRuntime::new(
             claude,
             agent::grok::GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             sessions,
             events,
             store.clone(),

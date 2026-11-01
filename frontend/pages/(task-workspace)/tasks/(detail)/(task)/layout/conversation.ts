@@ -21,15 +21,35 @@ interface RevisedRange extends TaskEventsRange {
 export class ConversationProjection {
   private items = new Map<string, number>();
   private ranges: RevisedRange[] = [];
+  private resetRevision = 0;
+  private epoch: string | null = null;
 
   reset() {
     this.items = new Map();
     this.ranges = [];
+    this.resetRevision = 0;
   }
 
   snapshot(current: TaskEvent[], detail: TaskDetail) {
     const revision = projectionRevision(detail?.eventRevision);
     if (revision === null) return null;
+    const reset = projectionRevision(detail.eventResetRevision) ?? 0;
+    if (detail.eventEpoch && detail.eventEpoch !== this.epoch) {
+      if (reset < this.resetRevision) return null;
+      current = current.filter(
+        (event) =>
+          event.payload?.optimistic ||
+          (this.revision(event) > reset && this.epoch !== null && reset > 0),
+      );
+      this.epoch = detail.eventEpoch;
+    }
+    if (reset > this.resetRevision) {
+      current = current.filter(
+        (event) => event.payload?.optimistic || this.revision(event) > reset,
+      );
+      this.ranges.push({ from: null, to: null, revision: reset });
+      this.resetRevision = reset;
+    }
     const range = detail.eventsRange ?? null;
     const existing = new Map(
       current.map((event) => [eventIdentityKey(event), event]),

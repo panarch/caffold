@@ -29,6 +29,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::Serialize;
 use serde_json::Value;
 
+use super::antigravity::AntigravityClient;
 use super::claude::{ClaudeClient, ClaudeTurnOptions, WorkingDirectoryMove, claude_turn_options};
 use super::codex::{
     CodexThreadClient, CodexTurnOptions, codex_mode_id, codex_models, codex_permission_mode_name,
@@ -88,6 +89,7 @@ pub(crate) enum Driver {
     /// Grok carries where a Task works in its own binding, so the client is
     /// the whole of the driver.
     Grok(GrokClient),
+    Antigravity(AntigravityClient),
 }
 
 /// Claude, and where the Task being asked about works.
@@ -280,27 +282,42 @@ enum AgreedTurnOptions {
     Codex(CodexTurnOptions),
     Claude(ClaudeTurnOptions),
     Grok(GrokTurnOptions),
+    Antigravity(TurnOptions),
 }
 
 impl AcceptedTurnOptions {
     fn codex(&self) -> Result<&CodexTurnOptions, AgentError> {
         match &self.agreed {
             AgreedTurnOptions::Codex(codex) => Ok(codex),
-            AgreedTurnOptions::Claude(_) | AgreedTurnOptions::Grok(_) => Err(mismatched_agent()),
+            AgreedTurnOptions::Claude(_)
+            | AgreedTurnOptions::Grok(_)
+            | AgreedTurnOptions::Antigravity(_) => Err(mismatched_agent()),
         }
     }
 
     fn claude(&self) -> Result<&ClaudeTurnOptions, AgentError> {
         match &self.agreed {
             AgreedTurnOptions::Claude(claude) => Ok(claude),
-            AgreedTurnOptions::Codex(_) | AgreedTurnOptions::Grok(_) => Err(mismatched_agent()),
+            AgreedTurnOptions::Codex(_)
+            | AgreedTurnOptions::Grok(_)
+            | AgreedTurnOptions::Antigravity(_) => Err(mismatched_agent()),
         }
     }
 
     fn grok(&self) -> Result<&GrokTurnOptions, AgentError> {
         match &self.agreed {
             AgreedTurnOptions::Grok(grok) => Ok(grok),
-            AgreedTurnOptions::Codex(_) | AgreedTurnOptions::Claude(_) => Err(mismatched_agent()),
+            AgreedTurnOptions::Codex(_)
+            | AgreedTurnOptions::Claude(_)
+            | AgreedTurnOptions::Antigravity(_) => Err(mismatched_agent()),
+        }
+    }
+    fn antigravity(&self) -> Result<&TurnOptions, AgentError> {
+        match &self.agreed {
+            AgreedTurnOptions::Antigravity(options) => Ok(options),
+            AgreedTurnOptions::Codex(_)
+            | AgreedTurnOptions::Claude(_)
+            | AgreedTurnOptions::Grok(_) => Err(mismatched_agent()),
         }
     }
 }
@@ -359,8 +376,8 @@ pub(crate) struct StartedConversation {
 /// A turn the agent has begun.
 pub(crate) struct StartedTurn {
     pub(crate) turn: TurnState,
-    /// The prompt under the same stable identity the agent reports on its item
-    /// stream and in history.
+    /// The prompt under the stable identity used by this display conversation.
+    /// A driver may replace that conversation with native history on reconstruction.
     pub(crate) user_message: ConversationItem,
     /// What the agent settled on, which is not always what was asked for: a
     /// model without a faster tier answers a request for speed with its normal
@@ -426,12 +443,25 @@ fn image_paths(images: &[PromptImage]) -> Vec<String> {
 }
 
 impl Driver {
-    /// Ask the agent whether it will work this way.
+    pub(crate) fn supports_steering(&self) -> bool {
+        match self {
+            Self::Codex(_) | Self::Claude(_) | Self::Grok(_) => true,
+            Self::Antigravity(_) => false,
+        }
+    }
+
     pub(crate) async fn accept_turn_options(
         &self,
         options: &TurnOptions,
     ) -> Result<AcceptedTurnOptions, TurnRejected> {
         match self {
+            Self::Antigravity(client) => {
+                let accepted = client.accept_options(options).await?;
+                Ok(AcceptedTurnOptions {
+                    applied: accepted.clone(),
+                    agreed: AgreedTurnOptions::Antigravity(accepted),
+                })
+            }
             Self::Codex(client) => {
                 let codex = codex_turn_options(client, options).await?;
                 Ok(AcceptedTurnOptions {
@@ -488,6 +518,21 @@ impl Driver {
     /// composer shows come back.
     pub(crate) fn read_settings(&self, settings: &BTreeMap<String, Value>) -> TurnOptions {
         match self {
+            Self::Antigravity(_) => TurnOptions {
+                model: settings
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                effort: settings
+                    .get("reasoningEffort")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                fast_mode: false,
+                permission_mode: settings
+                    .get("permissionMode")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            },
             Self::Codex(_) => TurnOptions {
                 model: settings
                     .get("model")
@@ -541,6 +586,7 @@ impl Driver {
     /// The models this agent offers, in the order to show them.
     pub(crate) async fn models(&self) -> Result<Vec<ModelOption>, AgentError> {
         match self {
+            Self::Antigravity(client) => Ok(client.models().await?),
             Self::Codex(client) => Ok(codex_models(client).await?),
             Self::Claude(claude) => Ok(claude.client.models().await?),
             Self::Grok(client) => Ok(client.models().await?),
@@ -554,6 +600,9 @@ impl Driver {
         options: &AcceptedTurnOptions,
     ) -> Result<StartedConversation, AgentError> {
         match self {
+            Self::Antigravity(client) => Ok(client
+                .start_conversation(cwd, options.antigravity()?)
+                .await?),
             Self::Codex(client) => {
                 let codex = options.codex()?;
                 let started = client
@@ -596,7 +645,7 @@ impl Driver {
 
     /// Begin a turn on options the agent has already agreed to.
     ///
-    /// Codex opens an image file itself; Claude and Grok are handed the
+    /// Codex opens an image file itself; Claude, Grok, and Antigravity receive the
     /// picture inside the prompt.
     pub(crate) async fn start_turn(
         &self,
@@ -607,6 +656,9 @@ impl Driver {
         options: &AcceptedTurnOptions,
     ) -> Result<StartedTurn, AgentError> {
         match self {
+            Self::Antigravity(client) => Ok(client
+                .start_turn(conversation_id, cwd, prompt, images, options.antigravity()?)
+                .await?),
             Self::Codex(client) => {
                 let paths = image_paths(images);
                 let started = client
@@ -681,6 +733,9 @@ impl Driver {
         images: &[PromptImage],
     ) -> Result<ConversationItem, AgentError> {
         match self {
+            Self::Antigravity(_) => Err(AgentError::Failed(
+                "Antigravity does not support steering a running request".into(),
+            )),
             Self::Codex(client) => {
                 let paths = image_paths(images);
                 let steered = client
@@ -723,6 +778,10 @@ impl Driver {
         turn_id: Option<&str>,
     ) -> Result<Vec<CancelledPrompt>, AgentError> {
         match self {
+            Self::Antigravity(client) => {
+                client.interrupt(conversation_id).await?;
+                Ok(Vec::new())
+            }
             // Codex and Grok stop a turn by its identity, so without one there
             // is nothing of theirs to stop. Codex answers a stop with nothing,
             // and Grok is told one without answering at all, so neither says of
@@ -755,6 +814,7 @@ impl Driver {
         model: Option<&str>,
     ) -> Result<PermissionModes, AgentError> {
         match self {
+            Self::Antigravity(client) => Ok(client.permission_modes().await?),
             Self::Codex(client) => {
                 let (default_mode, options) = codex_permission_modes(client, cwd).await?;
                 Ok(PermissionModes {
@@ -785,7 +845,9 @@ impl Driver {
                     .prepare_directory_reconnection(conversation_id, &claude.cwd, destination)
                     .await?,
             )),
-            Self::Codex(_) | Self::Grok(_) => self.describe(conversation_id).await,
+            Self::Codex(_) | Self::Grok(_) | Self::Antigravity(_) => {
+                self.describe(conversation_id).await
+            }
         }
     }
 
@@ -796,6 +858,9 @@ impl Driver {
         fast_mode: bool,
     ) -> Result<Conversation, AgentError> {
         match self {
+            Self::Antigravity(client) => {
+                Ok(client.move_directory(conversation_id, destination).await?)
+            }
             Self::Codex(client) => Ok(client
                 .move_working_directory(
                     conversation_id,
@@ -877,7 +942,7 @@ impl Driver {
                 self.archive_conversation(conversation_id).await?;
                 Ok(conversation)
             }
-            Self::Grok(_) => {
+            Self::Grok(_) | Self::Antigravity(_) => {
                 let conversation = self
                     .move_working_directory(conversation_id, destination, fast_mode)
                     .await?;
@@ -904,6 +969,9 @@ impl Driver {
         fast_mode: bool,
     ) -> Result<OpenedConversation, AgentError> {
         match self {
+            Self::Antigravity(client) => Ok(client
+                .open_conversation(conversation_id, with_turns)
+                .await?),
             Self::Codex(client) => {
                 let response = client
                     .resume_thread_with_page(
@@ -972,6 +1040,9 @@ impl Driver {
         limit: usize,
     ) -> Result<TurnPage, AgentError> {
         match self {
+            Self::Antigravity(client) => {
+                Ok(client.read_turns(conversation_id, cursor, limit).await?)
+            }
             Self::Codex(client) => Ok(TurnPage::from(
                 &client
                     .list_thread_turns(conversation_id, cursor, limit)
@@ -997,7 +1068,9 @@ impl Driver {
     ) -> Result<(), AgentError> {
         match self {
             Self::Codex(client) => Ok(client.ensure_thread_archived(conversation_id).await?),
-            Self::Claude(_) | Self::Grok(_) => self.archive_conversation(conversation_id).await,
+            Self::Claude(_) | Self::Grok(_) | Self::Antigravity(_) => {
+                self.archive_conversation(conversation_id).await
+            }
         }
     }
 
@@ -1013,6 +1086,7 @@ impl Driver {
         conversation_id: &str,
     ) -> Result<(), AgentError> {
         match self {
+            Self::Antigravity(client) => Ok(client.close_conversation(conversation_id).await?),
             Self::Codex(client) => Ok(client.archive_thread(conversation_id).await?),
             Self::Claude(claude) => Ok(claude.client.close_conversation(conversation_id).await?),
             // Grok closes a session and keeps its files, which is the same
@@ -1033,6 +1107,15 @@ impl Driver {
         conversation_id: &str,
     ) -> Result<Option<Conversation>, AgentError> {
         match self {
+            Self::Antigravity(client) => {
+                if client.conversation_exists(conversation_id).await? {
+                    Ok(None)
+                } else {
+                    Err(AgentError::ConversationGone(
+                        "Antigravity native conversation is missing".into(),
+                    ))
+                }
+            }
             Self::Codex(client) => Ok(client
                 .unarchive_thread(conversation_id)
                 .await
@@ -1072,6 +1155,7 @@ impl Driver {
         conversation_id: &str,
     ) -> Result<(), AgentError> {
         match self {
+            Self::Antigravity(client) => Ok(client.erase(conversation_id).await?),
             Self::Codex(client) => Ok(client.delete_thread(conversation_id).await?),
             Self::Claude(claude) => Ok(claude.client.erase(conversation_id, &claude.cwd).await?),
             Self::Grok(client) => Ok(client.erase(conversation_id).await?),
@@ -1085,6 +1169,7 @@ impl Driver {
         conversation_id: &str,
     ) -> Result<(), AgentError> {
         match self {
+            Self::Antigravity(client) => Ok(client.erase_contents(conversation_id).await?),
             Self::Codex(client) => match client
                 .delete_thread(conversation_id)
                 .await
@@ -1103,6 +1188,7 @@ impl Driver {
         conversation_id: &str,
     ) -> Result<(), AgentError> {
         match self {
+            Self::Antigravity(client) => Ok(client.forget_erased_binding(conversation_id).await?),
             Self::Codex(_) | Self::Claude(_) => Ok(()),
             Self::Grok(client) => Ok(client.forget_erased_binding(conversation_id).await?),
         }
@@ -1114,8 +1200,12 @@ impl Driver {
     /// offered at all. Nothing is started to find out: Codex holds its archive
     /// and answers from it, Claude's answer is whether the transcript is there,
     /// and Grok's whether the session's directory is.
-    pub(crate) async fn conversation_exists(&self, conversation_id: &str) -> bool {
-        match self {
+    pub(crate) async fn conversation_exists(
+        &self,
+        conversation_id: &str,
+    ) -> Result<bool, AgentError> {
+        Ok(match self {
+            Self::Antigravity(client) => client.conversation_exists(conversation_id).await?,
             Self::Codex(client) => client.read_thread(conversation_id).await.is_ok(),
             Self::Claude(claude) => {
                 claude
@@ -1124,7 +1214,7 @@ impl Driver {
                     .await
             }
             Self::Grok(client) => client.conversation_exists(conversation_id).await,
-        }
+        })
     }
 
     /// A conversation as the agent has it, without starting anything.
@@ -1142,6 +1232,7 @@ impl Driver {
         conversation_id: &str,
     ) -> Result<Option<Conversation>, AgentError> {
         match self {
+            Self::Antigravity(client) => Ok(client.describe(conversation_id).await?),
             Self::Codex(client) => Ok(client
                 .read_thread(conversation_id)
                 .await
@@ -1154,6 +1245,7 @@ impl Driver {
     /// Stop watching a conversation. It carries on without an audience.
     pub(crate) async fn stop_watching(&self, conversation_id: &str) -> Result<(), AgentError> {
         match self {
+            Self::Antigravity(_) => Ok(()),
             Self::Codex(client) => {
                 client.unsubscribe_thread(conversation_id).await?;
                 Ok(())

@@ -187,6 +187,7 @@ enum SessionAgent {
     Codex,
     Claude,
     Grok,
+    Antigravity,
 }
 
 impl From<&Driver> for SessionAgent {
@@ -195,6 +196,7 @@ impl From<&Driver> for SessionAgent {
             Driver::Codex(_) => Self::Codex,
             Driver::Claude(_) => Self::Claude,
             Driver::Grok(_) => Self::Grok,
+            Driver::Antigravity(_) => Self::Antigravity,
         }
     }
 }

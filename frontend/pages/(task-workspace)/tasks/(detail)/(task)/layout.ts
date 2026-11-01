@@ -759,6 +759,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       reasoningEffort: message.reasoningEffort,
       fastMode: message.fastMode,
       context: message.context,
+      supportsSteering: message.supportsSteering ?? current.supportsSteering,
     };
     this.draw();
     this.markDisplayedTaskSeen(threadId, task);
@@ -1244,6 +1245,16 @@ export class CaffoldTaskDetail extends CaffoldElement {
         error: new Error(
           "Caffold server is unavailable. Wait for the task to reconnect.",
         ),
+      });
+      return;
+    }
+    if (
+      this.taskDetail?.supportsSteering === false &&
+      isTaskActivelyWorking(this.taskDetail.task)
+    ) {
+      composer.resolveSubmission(submissionId, {
+        status: "rejected",
+        error: new Error("Wait for the current turn to finish before sending."),
       });
       return;
     }
@@ -2057,6 +2068,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
     }
     const composer = this.ensureFollowUpComposer(threadId);
     composer.setContext({
+      supportsSteering: this.taskDetail?.supportsSteering !== false,
       mode: "follow-up",
       threadId,
       cwd: this.activeCwdPath(),

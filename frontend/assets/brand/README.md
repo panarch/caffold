@@ -28,6 +28,11 @@ that name each project.
   linked from `https://x.ai/legal/brand-guidelines`, sits behind a Cloudflare
   challenge that refuses every non-interactive download; it was not used.
 
+- `antigravity-icon.svg`: unchanged Icon - One Color SVG from Google Antigravity's
+  [official press assets](https://antigravity.google/press/), downloaded from
+  `https://antigravity.google/assets/image/brand/antigravity-icon__one-color.svg`
+  on 2026-11-01. It uses the same theme filter as the other single-color marks.
+
 Use each mark as its owner published it. A mark published as one file per
 background switches between those files when the theme changes. A template mark
 is published in a single color to be tinted, so it follows the theme through

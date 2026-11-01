@@ -92,25 +92,24 @@ existing ownership; Caffold adds no clarification ledger or waiting-state overla
 Task naming, managed-worktree preparation, and Notes are Caffold-owned
 operations, not general agent permissions. Caffold declares that closed tool set
 through each agent's native extension point and allows those calls without
-adding another approval card. Each tool still enforces its own checks, such as
+adding another Caffold approval card. Antigravity may ask before an MCP call
+through its own permission flow. Each tool still enforces its own checks, such as
 the Task and Git lifecycle for the Task tools and a Note's content version for
 the Notes tools. An unknown tool or an unmanaged conversation is refused.
 Caffold keeps no Note history, so a Notes tool that replaces or deletes content
 cannot be undone.
 
-Codex and Grok reach this surface through HTTP MCP addresses on the Caffold
-server, `/api/codex/mcp` and `/api/grok/mcp`. Each address has its own handler
+Codex, Grok, and Antigravity reach this surface through HTTP MCP addresses on the Caffold
+server at `/api/codex/mcp`, `/api/grok/mcp`, and `/api/antigravity/mcp`. Each address has its own handler
 and its own bindings, and the bound Task's recorded agent decides which driver
 carries a call out. Each request-scoped Codex app-server config carries a
-private opaque binding header, and each Grok session declaration carries one as
+private opaque binding header, and Grok/Antigravity session declarations carry one as
 an HTTP header.
 A Task-scoped call is authorized only by that header together with its signed
 MCP session. The session authenticates the provider thread ID and a digest of
-the binding header under one installation-local HMAC key that both addresses
-use, so neither the model nor tool arguments can choose another Task. An
+the binding header under one installation-local HMAC key that these addresses use, so neither the model nor tool arguments can choose another Task. An
 address issues sessions only for the bindings its own agent was given; a signed
-pair is then verified with that key wherever it arrives, so the two addresses
-are only the names each agent is given, not an isolation boundary between them. The
+pair is then verified with that key wherever it arrives, and the Grok/Antigravity handlers also check the Task's recorded provider. The
 bootstrap and Codex reinitialization sequence that establishes Codex's pair
 belongs to
 [Codex app-server integration](codex-app-server.md#thread-subscription-lifecycle).
@@ -121,9 +120,10 @@ session is created and may do so again later, so the binding stays bound while
 the session is open and is let go when the session is closed, erased, or loaded
 again under a new binding.
 
-Only the private `codex-mcp/signing.key` file survives backend generations; it
-signs the sessions of both addresses.
-Bootstrap bindings and provisional sessions remain process-local and are
+The private `codex-mcp/signing.key` survives backend generations and signs
+these HTTP MCP sessions. Antigravity also retains its exact Task-bound header
+in its driver binding so the surviving ACP child can initialize after backend
+replacement. Codex bootstrap bindings and provisional sessions remain process-local and are
 discarded after promotion; Caffold writes no Task, thread, grant, connection,
 or revocation records for this transport. A replacement backend validates an
 already initialized binding-and-session pair statelessly with the same key. A
@@ -145,14 +145,14 @@ This capability protects one Caffold integration inside the trusted-host
 deployment boundary; it is not browser authentication or authorization for
 public-internet exposure, nor is it a boundary against code that can already
 read Caffold's private data directory or inspect its process as the same host
-user. Because both routes share the main Caffold server, they can be reachable
+user. Because these routes share the main Caffold server, they can be reachable
 even when that installation is used only with Claude. The signing key is opened
 lazily only for a signed-session operation, route reachability does not start
-Codex or Grok or select a Task, and an unavailable key or a request without an
+an agent or select a Task, and an unavailable key or a request without an
 install-issued capability fails closed without preventing a Caffold service
 that lacks one of the agents from starting.
 
-Codex, Claude, and Grok expose the same MCP base names: the Task-owned
+All four supported agents expose the same MCP base names: the Task-owned
 `rename_current_task`, `isolate_current_task`, and `read_current_task_name`,
 plus the Notes tools listed in
 [Agent Runtimes](agent-runtimes.md#caffold-served-tools-and-worktrees).
@@ -173,9 +173,9 @@ not say.
 Caffold names exactly one mode of its own, **Ask Jev first**, and hands every
 other mode back to its agent unread. That one is Caffold's because it says what
 Caffold does rather than what an agent does; it is added to each list with the
-same wording, since it means the same thing in all three. Choosing it runs the
+same wording, since it means the same thing for every agent. Choosing it runs the
 agent under whichever of its own modes asks about the most — Claude's `default`,
-Codex's `AskForApproval` profile, Grok's neither-flag session — and Caffold
+Codex's `AskForApproval` profile, Grok's neither-flag session, Antigravity's `default` — and Caffold
 answers what [Reviewed Approvals](#reviewed-approvals) settles. Each driver owns
 that mapping, because which of its modes asks the most is the agent's knowledge.
 It is offered with nothing configured and withheld with its reason, so a mode
@@ -440,6 +440,30 @@ Current rules:
   unavailable; the leader asks again when the session is next loaded, under the
   same tool call identity and a new request.
 
+## Antigravity Execution Approvals
+
+The pinned ACP agent asks with `session/request_permission`. Caffold preserves
+the original child incarnation and RPC ID separately from native record keys.
+Fresh prompts attach approvals to the driver display turn and exact tool-call
+ID. After reconstruction, approvals without a native association keep empty
+turn/item IDs. Allow once,
+allow always, and deny use only the option IDs/kinds actually offered; cancel
+returns the native cancelled outcome. Deny and stop sends the native rejection
+then asks to interrupt. A terminal update for the exact wire tool-call ID
+withdraws its pending request. The agent's option warning is shown without
+broadening the native grant.
+
+Jev reads the prompt only when the approval names its exact display turn.
+A reconstructed approval without a native association does not guess a prompt.
+Task-level permission instructions remain separate.
+Structured questions are disabled through the native configuration; an
+unexpected reserved question callback receives clarification feedback as an
+unsupported-method error, not a user decision.
+
+Antigravity installation, personal Google credential ownership, exact callback
+handoff and sign-out scope belong to
+[Agent Runtimes](agent-runtimes.md#antigravity-lifecycle).
+
 ## Git Mutations
 
 Caffold does not expose direct Git mutation controls. Git mutations happen
@@ -490,15 +514,17 @@ directory; that directory and its layout are described in
 
 ## Worktree Deletion
 
-Caffold removes a worktree only as part of an explicit Archive action and only
+Caffold removes a worktree only through explicit archive or verified broken-Task deletion, and only
 when a matching `managed_worktrees` ownership record proves that Caffold created
 the UUID-derived path. The live Git common directory, branch, managed root, and
 clean state are revalidated before removal.
 
-Dirty managed worktrees block Archive; there is no force-delete confirmation
-path. External or merely cwd-derived worktrees are never deleted by Caffold.
-Archive retains the managed branch and record so Restore can recreate the same
-owned path.
+Dirty managed worktrees block ordinary Archive. Explicit **Discard changes and
+archive** requires confirmation and rechecks UUID ownership and native closure;
+the [worktree lifecycle](worktree-lifecycle.md#explicit-discard-and-archive)
+owns that operation. External or merely cwd-derived worktrees are never deleted
+by Caffold. Archive retains the managed branch and record so Restore can recreate
+the same owned path.
 
 ## Tailscale Assumption
 

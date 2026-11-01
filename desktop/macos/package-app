@@ -71,12 +71,11 @@ prepare_bundle() {
   cp "${REPO_DIR}/target/release/caffold" "${RESOURCES_DIR}/caffold"
   chmod 755 "${RESOURCES_DIR}/caffold"
 
-  # Beside the backend, because that is where the backend looks: a Claude Task
-  # is a process the runner holds, and a bundle without it can serve Codex
-  # Tasks and nothing else.
-  cp "${REPO_DIR}/target/release/caffold-claude-runner" \
-    "${RESOURCES_DIR}/caffold-claude-runner"
-  chmod 755 "${RESOURCES_DIR}/caffold-claude-runner"
+  # The shared transport locates this helper beside the backend. Claude and
+  # Antigravity use separate instances across backend replacement.
+  cp "${REPO_DIR}/target/release/caffold-runner" \
+    "${RESOURCES_DIR}/caffold-runner"
+  chmod 755 "${RESOURCES_DIR}/caffold-runner"
 
   xcrun swiftc \
     -O \
@@ -134,7 +133,7 @@ verify_bundle() {
 
   require_executable "${macos_dir}/CaffoldServer"
   require_executable "${resources_dir}/caffold"
-  require_executable "${resources_dir}/caffold-claude-runner"
+  require_executable "${resources_dir}/caffold-runner"
   require_file "${resources_dir}/CaffoldServer.icns"
   require_file "${resources_dir}/CaffoldMenuIcon.png"
   require_file "${plist}"
@@ -156,10 +155,10 @@ verify_bundle() {
   assert_plist_value "${plist}" LSMinimumSystemVersion "${MINIMUM_MACOS_VERSION}"
   verify_binary_architecture "${macos_dir}/CaffoldServer"
   verify_binary_architecture "${resources_dir}/caffold"
-  verify_binary_architecture "${resources_dir}/caffold-claude-runner"
+  verify_binary_architecture "${resources_dir}/caffold-runner"
   verify_portable_dependencies "${macos_dir}/CaffoldServer"
   verify_portable_dependencies "${resources_dir}/caffold"
-  verify_portable_dependencies "${resources_dir}/caffold-claude-runner"
+  verify_portable_dependencies "${resources_dir}/caffold-runner"
   codesign --verify --deep --strict "${app_dir}"
   plutil -lint "${plist}" >/dev/null
 }

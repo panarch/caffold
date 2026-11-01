@@ -70,8 +70,12 @@ for (const scopes of [[], ["allowForSession"], ["allowForSession", "allowAlways"
       ["Options", "horizontal"],
     ]));
     await expect(card.getByLabel("Options", { exact: true })).toHaveText(JSON.stringify({ comments: false, revision: null, sections: [1, 2] }, null, 2));
+    // The appearance fixture loads fonts asynchronously. Their metrics must
+    // be settled before testing native keyboard scrolling and geometry.
+    await page.evaluate(() => document.fonts.ready);
     await argument.scrollIntoViewIfNeeded();
     await argument.focus();
+    await expect(argument).toBeFocused();
     await argument.evaluate((node) => {
       window.__mcpScrollEnded = new Promise((resolve) => node.addEventListener("scrollend", () => resolve(true), { once: true }));
     });

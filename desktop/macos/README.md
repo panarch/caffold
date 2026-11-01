@@ -71,12 +71,13 @@ documents backup, shutdown, health verification, and rollback behavior.
   - Claude Code `2.1.259` or newer, available as `claude` on the wrapper's
     augmented `PATH`; or
   - the Grok CLI `1.0.30` or newer, available as `grok` on that `PATH` or at
-    `~/.grok/bin/grok` or `~/.local/bin/grok`
+    `~/.grok/bin/grok` or `~/.local/bin/grok`; or
+  - Antigravity ACP, installed and signed in through **Settings → Antigravity**
 - Git
 - GitHub CLI for GitHub views
 - Tailscale for private remote access
 
-The bundle contains the Caffold backend and `caffold-claude-runner`; it does not
+The bundle contains the Caffold backend and `caffold-runner`; it does not
 bundle any vendor's agent CLI. Missing integrations do not prevent the
 server from starting. Agent-specific creation fails only for the unavailable
 agent, and the menu status reports when Tailscale is unavailable or its Serve

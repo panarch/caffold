@@ -35,9 +35,9 @@ An update restarts the Caffold server, not the agents:
 
 - **Codex** and **Grok** turns keep running, and Caffold reconnects to them
   when it is back.
-- **Claude Code** sessions keep running if the new server is back within ten
-  minutes. Otherwise they stop, and each conversation resumes from Claude's
-  own history when you open its Task again.
+- **Claude Code** and **Antigravity** sessions keep running if the new server
+  is back within ten minutes. Otherwise they stop, and each conversation
+  resumes from its agent's own history when you open its Task again.
 - Open [terminals](../tasks/terminal.md) close.
 
 ## Codex
@@ -64,3 +64,10 @@ Claude's own history when you open its Task again.
 
 **Settings → Grok** shows the build of Caffold's Grok leader next to the
 installed version, so you can see when they differ.
+
+## Antigravity
+
+After replacing Caffold, **Settings → Antigravity → Restart runtime** loads the
+installed runner binary. It asks for confirmation before ending Antigravity
+turns. See [Antigravity settings](settings.md#antigravity) for the runtime report
+and preserved sign-in and conversations.

@@ -14,7 +14,7 @@ Ask the agent in any Task, in your own words:
 - "Add the new color to the Theme tokens Note."
 - "Read the Release checklist Note before you start."
 
-Every Codex, Claude Code, and Grok Task has Caffold's Notes tools. With them
+Every Codex, Claude Code, Grok, and Antigravity Task has Caffold's Notes tools. With them
 the agent can create, read, rename, move, rewrite, and delete Notes and the
 folders that hold them. A folder can be deleted only once it is empty.
 

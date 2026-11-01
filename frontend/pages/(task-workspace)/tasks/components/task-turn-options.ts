@@ -195,6 +195,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
   // its way until the loading delay passes.
   private shownPermission: PermissionFace | null = null;
   private readonly instanceId = ++turnOptionsInstanceSequence;
+  private choiceVersion = 0;
   private readonly modelPopoverId =
     `caffold-task-model-options-${this.instanceId}`;
   private readonly permissionPopoverId =
@@ -278,6 +279,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
   }
 
   reset(context: TurnOptionsContext = {}) {
+    this.choiceVersion += 1;
     this.choice = createChoice();
     this.browsedProvider = "";
     this.context = {
@@ -317,12 +319,25 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     return Boolean(this.selectedPermission());
   }
 
-  resetOverrides() {
+  choiceRevision() {
+    return this.choiceVersion;
+  }
+
+  resetOverrides(expectedRevision?: number) {
+    if (
+      expectedRevision !== undefined &&
+      expectedRevision !== this.choiceVersion
+    ) {
+      return false;
+    }
+    this.choiceVersion += 1;
     this.choice = createChoice();
     this.reconcile();
+    return true;
   }
 
   holdSubmissionOptions(options: Partial<TurnSubmissionOptions> = {}) {
+    this.choiceVersion += 1;
     if (options.model) {
       this.choice.model = {
         provider: options.provider ?? "",
@@ -340,6 +355,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
   }
 
   resetFastMode() {
+    this.choiceVersion += 1;
     this.choice.fastMode = null;
     this.reconcile();
   }
@@ -584,6 +600,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
       return;
     }
     this.chooseModel(model);
+    this.choiceVersion += 1;
     this.choice.effort = effort;
     hidePopover(this.modelPopover.value);
     this.reconcile();
@@ -595,6 +612,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
       return;
     }
     this.chooseModel(model);
+    this.choiceVersion += 1;
     this.choice.fastMode = fastMode && model.supportsFast;
     hidePopover(this.modelPopover.value);
     this.reconcile();
@@ -623,6 +641,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
       this.restorePermissionOptionFocus(control, permissionMode);
       return;
     }
+    this.choiceVersion += 1;
     this.choice.permissionMode = permissionMode;
     hidePopover(this.permissionPopover.value);
     this.reconcile();
@@ -828,6 +847,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     const shown = this.selectedModel() === model;
     const effort = shown ? this.selectedEffort() : "";
     const fastMode = shown ? this.selectedFastMode() : null;
+    this.choiceVersion += 1;
     this.choice.model = { provider: model.provider, model: model.model };
     this.choice.effort = effort || null;
     this.choice.fastMode = fastMode;
@@ -1531,6 +1551,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   codex: "Codex",
   claude: "Claude",
   grok: "Grok",
+  antigravity: "Antigravity",
 };
 
 // A mode is named by the agent that offers it, and the agent sends a label

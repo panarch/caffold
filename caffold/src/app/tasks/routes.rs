@@ -1,4 +1,8 @@
 #[cfg(test)]
+use super::detail::DetailLiveStream;
+use super::push;
+use super::runtime::CodexUsageDiagnostics;
+#[cfg(test)]
 use crate::app::error::ApiError;
 use crate::app::tasks::TaskDetailResponse;
 #[cfg(test)]
@@ -14,6 +18,7 @@ use axum::extract::Query;
 #[cfg(test)]
 use axum::extract::State;
 mod agent;
+mod antigravity;
 mod claude;
 mod codex;
 mod commands;
@@ -80,7 +85,7 @@ struct CodexStatusDiagnostics {
     process_generation: u64,
     process_connected: bool,
     thread_sessions: SessionsDiagnostics,
-    usage: super::runtime::CodexUsageDiagnostics,
+    usage: CodexUsageDiagnostics,
 }
 
 #[derive(Serialize)]
@@ -277,7 +282,7 @@ pub(super) async fn test_wait_for_task_list_refresh(events: TaskListEvents) {
 
 pub(super) fn router(state: TaskState) -> Router {
     Router::new()
-        .merge(super::push::router())
+        .merge(push::router())
         .merge(fork::routes())
         .route("/api/codex/status", get(codex_status))
         .route("/api/codex/readiness", get(codex_readiness))
@@ -292,6 +297,17 @@ pub(super) fn router(state: TaskState) -> Router {
         .route("/api/claude/status", get(claude_status))
         .route("/api/claude/restart", post(claude_restart))
         .route("/api/grok/status", get(grok_status))
+        .route("/api/antigravity/status", get(antigravity::status))
+        .route("/api/antigravity/restart", post(antigravity::restart))
+        .route("/api/antigravity/refresh", post(antigravity::refresh))
+        .route("/api/antigravity/install", post(antigravity::install))
+        .route("/api/antigravity/auth/login", post(antigravity::login))
+        .route("/api/antigravity/auth/logout", post(antigravity::logout))
+        .route("/api/antigravity/auth/cancel", post(antigravity::cancel))
+        .route(
+            "/api/antigravity/auth/callback",
+            post(antigravity::callback).layer(DefaultBodyLimit::max(40 * 1024)),
+        )
         .route("/api/agent/models", get(agent_models))
         .route("/api/agent/permissions", get(agent_permissions))
         .route(
@@ -390,7 +406,7 @@ pub(super) async fn test_task_detail(
 pub(super) async fn test_task_stream(
     state: TaskState,
     thread_id: String,
-) -> Result<super::detail::DetailLiveStream, ApiError> {
+) -> Result<DetailLiveStream, ApiError> {
     state.detail.stream(&thread_id).await
 }
 

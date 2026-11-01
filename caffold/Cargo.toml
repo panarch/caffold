@@ -17,12 +17,16 @@ path = "tests/codex_protocol.rs"
 name = "claude_live"
 path = "tests/claude_live.rs"
 
+[[test]]
+name = "antigravity_live"
+path = "tests/antigravity_live.rs"
+
 [dependencies]
 alacritty_terminal = "0.26.0"
 anyhow = "1.0.98"
 axum = { version = "0.8.4", features = ["ws"] }
 base64 = "0.22.1"
-caffold-claude-runner = { path = "../runners/claude" }
+caffold-runner = { path = "../runners/caffold" }
 chrono = "0.4.45"
 clap = { version = "4.5.40", features = ["derive"] }
 futures-util = "0.3.32"
@@ -33,10 +37,12 @@ libc = "0.2.186"
 notify = "8.2.0"
 percent-encoding = "2.3.2"
 pulldown-cmark = { version = "0.13.4", default-features = false }
+prost = "0.14.4"
 qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 reqwest = { version = "0.12.23", default-features = false, features = ["multipart", "rustls-tls", "stream"] }
 rustix = { version = "1.1.4", features = ["event", "fs", "process", "stdio", "termios"] }
 rustix-openpty = "0.2.0"
+rusqlite = { version = "=0.41.1", features = ["bundled"] }
 semver = "1.0.28"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
@@ -53,6 +59,7 @@ unicode-segmentation = "1.13.3"
 uuid = { version = "1.23.4", features = ["v4", "v7"] }
 url = "2.5.8"
 web-push-native = { version = "0.5.0", default-features = false, features = ["vapid"] }
+zip = { version = "=8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 whisper-rs = { version = "0.16.0", features = ["tracing_backend"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

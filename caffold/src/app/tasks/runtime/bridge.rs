@@ -319,6 +319,7 @@ fn changes_task_state_only(kind: &SessionEventKind) -> bool {
         | SessionEventKind::SettingsChanged { .. }
         | SessionEventKind::ContextReported { .. } => true,
         SessionEventKind::ConversationStarted { .. }
+        | SessionEventKind::ConversationReplaced { .. }
         | SessionEventKind::TurnStarted { .. }
         | SessionEventKind::TurnEnded { .. }
         | SessionEventKind::ItemChanged { .. }
@@ -332,6 +333,7 @@ fn changes_task_state_only(kind: &SessionEventKind) -> bool {
 mod tests {
     use crate::agent;
     use crate::agent::ThreadStatus;
+    use crate::agent::antigravity::AntigravityClient;
     use crate::agent::driver::REVIEWED_PERMISSION_MODE;
     use crate::task_store::ComposerSettings;
     use std::time::Duration;
@@ -358,6 +360,7 @@ mod tests {
         TaskRuntime::new(
             claude,
             agent::grok::GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             TaskSessions::new(events.clone()),
             events,
             store,
@@ -385,6 +388,7 @@ mod tests {
             worktrees,
             claude.clone(),
             agent::grok::GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             TaskTerminals::for_tests(),
         );
         let (shutdown, _) = broadcast::channel(1);
@@ -392,6 +396,7 @@ mod tests {
             TaskRuntime::new(
                 claude,
                 agent::grok::GrokClient::unreachable(),
+                AntigravityClient::uninstalled(),
                 sessions,
                 events,
                 store,
