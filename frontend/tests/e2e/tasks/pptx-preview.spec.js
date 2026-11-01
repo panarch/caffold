@@ -222,7 +222,7 @@ test("renders a PowerPoint deck as the only representation its file supports", {
   await captureReviewScreenshot(page, testInfo, "tasks-pptx-preview");
 });
 
-test("reaches the deck's links and jumps to a linked slide", { tag: "@viewport-independent" }, async ({
+test("reaches the deck's links and jumps to a linked slide", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo);
@@ -259,7 +259,7 @@ test("reaches the deck's links and jumps to a linked slide", { tag: "@viewport-i
   expect(await page.evaluate(() => window.__pptxLinkRan)).toBeUndefined();
 });
 
-test("reaches a link on a whole picture from the keyboard", { tag: "@viewport-independent" }, async ({
+test("reaches a link on a whole picture from the keyboard", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo);
@@ -286,7 +286,7 @@ test("reaches a link on a whole picture from the keyboard", { tag: "@viewport-in
   })).toBe(true);
 });
 
-test("shows a deck's media as its pictures without playing it", { tag: "@viewport-independent" }, async ({
+test("shows a deck's media as its pictures without playing it", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo);
@@ -307,7 +307,7 @@ test("shows a deck's media as its pictures without playing it", { tag: "@viewpor
   await expect(viewer.getByText("Media is not played in this preview.")).toHaveCount(0);
 });
 
-test("reports an unavailable deck without replacing the review surface", { tag: "@viewport-independent" }, async ({
+test("reports an unavailable deck without replacing the review surface", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   await page.route(/\/api\/document\?path=/, (route) =>

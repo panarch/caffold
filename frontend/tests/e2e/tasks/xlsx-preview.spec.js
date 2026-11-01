@@ -203,7 +203,7 @@ test("renders an Excel workbook as the only representation its file supports", {
   await captureReviewScreenshot(page, testInfo, "tasks-xlsx-preview");
 });
 
-test("draws the workbook's sizes, merges, hidden tracks, and formatting", { tag: "@viewport-independent" }, async ({
+test("draws the workbook's sizes, merges, hidden tracks, and formatting", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo);
@@ -251,7 +251,7 @@ test("draws the workbook's sizes, merges, hidden tracks, and formatting", { tag:
     .not.toHaveCSS("background-color", "rgb(255, 255, 255)");
 });
 
-test("keeps the headers and frozen panes in place while the sheet scrolls", { tag: "@viewport-independent" }, async ({
+test("keeps the headers and frozen panes in place while the sheet scrolls", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo);
@@ -296,7 +296,7 @@ test("keeps the headers and frozen panes in place while the sheet scrolls", { ta
   expect((await placement(viewer, frozenColumn)).left).toBe(columnBefore.left);
 });
 
-test("draws only the cells near the viewport of a large sheet", { tag: "@viewport-independent" }, async ({
+test("draws only the cells near the viewport of a large sheet", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo);
@@ -335,7 +335,7 @@ test("draws only the cells near the viewport of a large sheet", { tag: "@viewpor
   })).toBe(true);
 });
 
-test("switches sheets with the tabs and keeps the sheet when its file changes", { tag: "@viewport-independent" }, async ({
+test("switches sheets with the tabs and keeps the sheet when its file changes", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo, "preview", {
@@ -369,7 +369,7 @@ test("switches sheets with the tabs and keeps the sheet when its file changes", 
   await expect(sheetTab(viewer, "Ledger")).toHaveAttribute("aria-pressed", "true");
 });
 
-test("scrolls the sheet both ways and, with several sheets, the tabs sideways", { tag: "@viewport-independent" }, async ({
+test("scrolls the sheet both ways and, with several sheets, the tabs sideways", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo);
@@ -401,7 +401,7 @@ test("scrolls the sheet both ways and, with several sheets, the tabs sideways", 
   ]);
 });
 
-test("links a cell only to a web or mail address", { tag: "@viewport-independent" }, async ({
+test("links a cell only to a web or mail address", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo);
@@ -422,7 +422,7 @@ test("links a cell only to a web or mail address", { tag: "@viewport-independent
   expect(await page.evaluate(() => window.__xlsxLinkRan)).toBeUndefined();
 });
 
-test("reports an unavailable workbook without replacing the review surface", { tag: "@viewport-independent" }, async ({
+test("reports an unavailable workbook without replacing the review surface", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   await page.route(/\/api\/document\?path=/, (route) =>

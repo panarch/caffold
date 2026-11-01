@@ -23,7 +23,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 for (const [section, endpoint, report] of reports) {
-  test(`${section} stops while hidden and reads again even after a short return`, { tag: "@viewport-independent" }, async ({ page }) => {
+  test(`${section} stops while hidden and reads again even after a short return`, { tag: "@server-changes" }, async ({ page }) => {
     let reads = 0;
     await page.addInitScript(() => {
       window.settingsVisibility = "visible";
@@ -61,7 +61,7 @@ for (const [section, endpoint, report] of reports) {
     expect(reads).toBe(before + 2);
   });
 
-  test(`${section} stays idle while visible and refreshes after Tasks, Notes and reconnection`, { tag: "@viewport-independent" }, async ({ page }) => {
+  test(`${section} stays idle while visible and refreshes after Tasks, Notes and reconnection`, { tag: "@server-changes" }, async ({ page }) => {
     let reads = 0;
     let expensiveChecks = 0;
     await page.route(`**${endpoint}`, route => {
@@ -168,7 +168,7 @@ test("a Codex foreground refresh preserves the page's rows, focus, selection and
   expect(after).toEqual({ ...before, connected: true, focused: true });
 });
 
-test("a failed manual Codex refresh cannot authorize runtime actions from retained readiness", { tag: "@viewport-independent" }, async ({ page }) => {
+test("a failed manual Codex refresh cannot authorize runtime actions from retained readiness", { tag: "@server-changes" }, async ({ page }) => {
   let reads = 0;
   await page.route("**/api/codex/status", route => {
     reads += 1;
@@ -190,7 +190,7 @@ test("a failed manual Codex refresh cannot authorize runtime actions from retain
   expect(reads).toBe(3);
 });
 
-test("a Codex restart completed while hidden requires a fresh report on immediate return", { tag: "@viewport-independent" }, async ({ page }) => {
+test("a Codex restart completed while hidden requires a fresh report on immediate return", { tag: "@server-changes" }, async ({ page }) => {
   let reads = 0;
   let release;
   const restarted = new Promise(resolve => { release = resolve; });
@@ -228,7 +228,7 @@ test("a Codex restart completed while hidden requires a fresh report on immediat
   await expect(settings.getByRole("button", { name: "Restart runtime…", exact: true })).toBeEnabled();
 });
 
-test("Claude rejects a response superseded by re-entry and retries a failure on manual Refresh", { tag: "@viewport-independent" }, async ({ page }) => {
+test("Claude rejects a response superseded by re-entry and retries a failure on manual Refresh", { tag: "@server-changes" }, async ({ page }) => {
   let reads = 0;
   let release;
   const slow = new Promise(resolve => { release = resolve; });

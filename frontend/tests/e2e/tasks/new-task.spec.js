@@ -810,7 +810,7 @@ test("creates a task with responsive composer controls and canonical approval st
 
 });
 
-test("does not carry an older-history cursor into a newly created task", { tag: "@viewport-independent" }, async ({
+test("does not carry an older-history cursor into a newly created task", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { autoOpen: true });
@@ -1095,7 +1095,7 @@ test("says that a new task is starting until creation is answered", { tag: "@all
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("restores the exact new task draft when creation is rejected", { tag: "@viewport-independent" }, async ({
+test("restores the exact new task draft when creation is rejected", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const scenario = await installTaskLoopFixture(page, {

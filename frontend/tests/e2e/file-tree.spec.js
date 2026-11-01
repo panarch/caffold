@@ -5,7 +5,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("reorders existing rows while preserving structural and reconciled state", { tag: "@all-viewports" }, async ({
+test("reorders existing rows while preserving structural and reconciled state", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.goto("/settings/files");
@@ -381,7 +381,7 @@ test("places a status row's message on its branch guide below its folder's name"
   )).toEqual([]);
 });
 
-test("offers its rows as Action Hints: directories toggle, entries open, the open one stays out", { tag: "@viewport-independent" }, async ({
+test("offers its rows as Action Hints: directories toggle, entries open, the open one stays out", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.goto("/settings/files");
@@ -458,7 +458,7 @@ test("offers its rows as Action Hints: directories toggle, entries open, the ope
   });
 });
 
-test("names its scrollport as a Scroll surface after the owner", { tag: "@viewport-independent" }, async ({
+test("names its scrollport as a Scroll surface after the owner", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.goto("/settings/files");
@@ -491,7 +491,7 @@ test("names its scrollport as a Scroll surface after the owner", { tag: "@viewpo
   expect(surfaces).toEqual([[surface("Files")], [surface("Changed files")]]);
 });
 
-test("the file list offers Refresh files while it shows the button, under the label it shows", { tag: "@viewport-independent" }, async ({
+test("the file list offers Refresh files while it shows the button, under the label it shows", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.goto("/settings/files");

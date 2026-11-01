@@ -20,7 +20,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("keeps the selected Review file identity stable while content loads", { tag: "@all-viewports" }, async ({
+test("keeps the selected Review file identity stable while content loads", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const { reviewScenario, tasksPage, taskReview } =
@@ -506,7 +506,7 @@ test("supports every scope navigator and viewer combination", { tag: "@all-viewp
   }
 });
 
-test("preserves valid Task Review base routes and falls back for missing refs", { tag: "@all-viewports" }, async ({
+test("preserves valid Task Review base routes and falls back for missing refs", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const { taskScenario, taskReview } = await openCompletedTaskForReview(page);
@@ -709,7 +709,7 @@ test("hands the Branch comparison base Hint to its retained native select", { ta
   ).toBeAttached();
 });
 
-test("retires the Branch base owner when its select binding is replaced", { tag: "@viewport-independent" }, async ({
+test("retires the Branch base owner when its select binding is replaced", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
@@ -744,7 +744,7 @@ test("retires the Branch base owner when its select binding is replaced", { tag:
   await page.keyboard.press("Escape");
 });
 
-test("offers the Branch base Hint without ready compared files, and none without base refs", { tag: "@viewport-independent" }, async ({
+test("offers the Branch base Hint without ready compared files, and none without base refs", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const { reviewScenario, tasksPage, taskReview } =
@@ -807,7 +807,7 @@ test("offers the Branch base Hint without ready compared files, and none without
   await expect(hint.getByLabel(/ — Choose comparison base/)).toHaveCount(0);
 });
 
-test("keeps equivalent Branch header refreshes mutation-free", { tag: "@all-viewports" }, async ({ page }) => {
+test("keeps equivalent Branch header refreshes mutation-free", { tag: "@server-changes" }, async ({ page }) => {
   const { reviewScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
@@ -849,7 +849,7 @@ test("keeps equivalent Branch header refreshes mutation-free", { tag: "@all-view
   ).toEqual({ sameSelect: true, mutations: 0 });
 });
 
-test("refreshes Branch after returning from the background", { tag: "@viewport-independent" }, async ({
+test("refreshes Branch after returning from the background", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   await page.addInitScript(() => {
@@ -920,7 +920,7 @@ test("refreshes Branch after returning from the background", { tag: "@viewport-i
   ).toHaveText("-0");
 });
 
-test("shows Branch loading where it said nothing changed until it is read again after returning", { tag: "@viewport-independent" }, async ({
+test("shows Branch loading where it said nothing changed until it is read again after returning", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await controlPageVisibility(page);
@@ -960,7 +960,7 @@ test("shows Branch loading where it said nothing changed until it is read again 
   await expect(viewer).toContainText("new branch behavior");
 });
 
-test("reads Branch again when it is chosen after returning on Working Tree", { tag: "@viewport-independent" }, async ({
+test("reads Branch again when it is chosen after returning on Working Tree", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await controlPageVisibility(page);
@@ -999,7 +999,7 @@ test("reads Branch again when it is chosen after returning on Working Tree", { t
   ).toBeVisible();
 });
 
-test("reads Working Tree again when it is chosen after returning on Branch", { tag: "@viewport-independent" }, async ({
+test("reads Working Tree again when it is chosen after returning on Branch", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await controlPageVisibility(page);
@@ -1043,7 +1043,7 @@ test("reads Working Tree again when it is chosen after returning on Branch", { t
   await expect(reviewBranch).toBeHidden();
 });
 
-test("updates the loading viewer when a watch change replaces the Working Tree read after returning", { tag: "@viewport-independent" }, async ({
+test("updates the loading viewer when a watch change replaces the Working Tree read after returning", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await controlPageVisibility(page);
@@ -1079,7 +1079,7 @@ test("updates the loading viewer when a watch change replaces the Working Tree r
   await expect(viewer.locator(".loading-panel")).toHaveCount(0);
 });
 
-test("shows Branch loading, not the last error, while a failed reread is read again", { tag: "@viewport-independent" }, async ({
+test("shows Branch loading, not the last error, while a failed reread is read again", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await controlPageVisibility(page);
@@ -1119,7 +1119,7 @@ test("shows Branch loading, not the last error, while a failed reread is read ag
   await expect(viewer).toContainText("No changes in this scope.");
 });
 
-test("keeps the Working Tree loading text while another reread starts", { tag: "@viewport-independent" }, async ({
+test("keeps the Working Tree loading text while another reread starts", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await controlPageVisibility(page);
@@ -1156,7 +1156,7 @@ test("keeps the Working Tree loading text while another reread starts", { tag: "
   await expect(changes).toContainText("No changes.");
 });
 
-test("shows the error where Branch was loading when reading it again fails", { tag: "@viewport-independent" }, async ({
+test("shows the error where Branch was loading when reading it again fails", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await controlPageVisibility(page);
@@ -1188,7 +1188,7 @@ test("shows the error where Branch was loading when reading it again fails", { t
   await expect(viewer).not.toContainText("No changes in this scope.");
 });
 
-test("shows the error where Working Tree was loading when reading it again fails", { tag: "@viewport-independent" }, async ({
+test("shows the error where Working Tree was loading when reading it again fails", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await controlPageVisibility(page);
@@ -1221,7 +1221,7 @@ test("shows the error where Working Tree was loading when reading it again fails
   await expect(viewer).not.toContainText("No changes in this scope.");
 });
 
-test("keeps the open Branch diff where it was when Branch is read again", { tag: "@viewport-independent" }, async ({
+test("keeps the open Branch diff where it was when Branch is read again", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const { reviewScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
@@ -1245,7 +1245,7 @@ test("keeps the open Branch diff where it was when Branch is read again", { tag:
     .toEqual({ handedAgain: true, sameContent: true, loadingSeen: false, top });
 });
 
-test("keeps the open Working Tree diff where it was after returning", { tag: "@viewport-independent" }, async ({
+test("keeps the open Working Tree diff where it was after returning", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await controlPageVisibility(page);
@@ -1271,7 +1271,7 @@ test("keeps the open Working Tree diff where it was after returning", { tag: "@v
     .toEqual({ handedAgain: true, sameContent: true, loadingSeen: false, top });
 });
 
-test("keeps the open Branch Source where it was when Branch is read again", { tag: "@viewport-independent" }, async ({
+test("keeps the open Branch Source where it was when Branch is read again", { tag: "@server-changes" }, async ({
   page,
 }) => {
   let fileReads = 0;
@@ -1303,7 +1303,7 @@ test("keeps the open Branch Source where it was when Branch is read again", { ta
     .toEqual({ handedAgain: true, sameContent: true, loadingSeen: false, top });
 });
 
-test("falls back when the selected Branch base disappears", { tag: "@all-viewports" }, async ({ page }) => {
+test("falls back when the selected Branch base disappears", { tag: "@server-changes" }, async ({ page }) => {
   const { reviewScenario, taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
@@ -1729,7 +1729,7 @@ test("keeps compact review controls and available panes inside the workspace", {
   ).toHaveCount(2);
 });
 
-test("keeps a 180-file change set inspectable without clipping its identity", { tag: "@all-viewports" }, async ({
+test("keeps a 180-file change set inspectable without clipping its identity", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page, {
@@ -2044,7 +2044,7 @@ test("maps the visible source line when Diff and Source representations switch",
   await page.keyboard.press("Escape");
 });
 
-test("rejects a late compare response after the Branch base changes again", { tag: "@all-viewports" }, async ({
+test("rejects a late compare response after the Branch base changes again", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const { reviewScenario, taskScenario, tasksPage, taskReview } =

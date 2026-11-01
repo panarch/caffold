@@ -249,7 +249,7 @@ test("browses source through the shared Files navigator and one root watch", { t
     .toBe(true);
 });
 
-test("opens a folder and its parent from Action Hints outside Git", { tag: "@all-viewports" }, async ({
+test("opens a folder and its parent from Action Hints outside Git", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await page.route(/\/api\/list(?:\?|$)/, async (route) => {
@@ -285,7 +285,7 @@ test("opens a folder and its parent from Action Hints outside Git", { tag: "@all
   await expect(plannerFile).toHaveCount(0);
 });
 
-test("downloads a file Source cannot show from inside File details", { tag: "@viewport-independent" }, async ({
+test("downloads a file Source cannot show from inside File details", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const name = `download-${testInfo.project.name}.bin`;
@@ -318,7 +318,7 @@ test("downloads a file Source cannot show from inside File details", { tag: "@vi
   }
 });
 
-test("colors Source with the syntax the server names in File details", { tag: "@viewport-independent" }, async ({
+test("colors Source with the syntax the server names in File details", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const folder = "frontend/tests/e2e/fixtures/home/src/ignored-output";
@@ -641,7 +641,7 @@ test("renders a route-owned Markdown Preview without changing file selection", {
   await expect(previewControl).toBeHidden();
 });
 
-test("draws the workspace images a Markdown Preview names and leaves the rest as their descriptions", { tag: "@viewport-independent" }, async ({
+test("draws the workspace images a Markdown Preview names and leaves the rest as their descriptions", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   // Concurrent tests keep the rows they already have: the files go into a
@@ -746,7 +746,7 @@ test("shrinks a Markdown Preview image wider than the text to the text width", {
   }
 });
 
-test("keeps a Markdown Preview's reading position while it fetches its pictures again", { tag: "@viewport-independent" }, async ({
+test("keeps a Markdown Preview's reading position while it fetches its pictures again", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const folder = `planner/markdown-image-position-${testInfo.project.name}-${testInfo.repeatEachIndex}`;
@@ -819,7 +819,7 @@ test("keeps a Markdown Preview's reading position while it fetches its pictures 
   }
 });
 
-test("puts a Markdown Preview picture's loading phrase on the text line, or in the middle of the place it holds", { tag: "@viewport-independent" }, async ({
+test("puts a Markdown Preview picture's loading phrase on the text line, or in the middle of the place it holds", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const folder = `planner/markdown-image-loading-${testInfo.project.name}-${testInfo.repeatEachIndex}`;
@@ -994,7 +994,7 @@ test("selects supported source and preview representations for images", { tag: "
   }
 });
 
-test("fetches an image again only when the file may have changed", { tag: "@viewport-independent" }, async ({
+test("fetches an image again only when the file may have changed", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const imageName = "review-image-address.png";
@@ -1048,7 +1048,7 @@ test("fetches an image again only when the file may have changed", { tag: "@view
   }
 });
 
-test("fetches an image once when the file list arrives after it", { tag: "@viewport-independent" }, async ({
+test("fetches an image once when the file list arrives after it", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   // Concurrent tests keep the rows they already have: the picture goes into a
@@ -1102,7 +1102,7 @@ test("fetches an image once when the file list arrives after it", { tag: "@viewp
   }
 });
 
-test("fetches a large image in 64 KB cells, the later ones under its version", { tag: "@viewport-independent" }, async ({
+test("fetches a large image in 64 KB cells, the later ones under its version", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const imageName = "review-image-cells.png";
@@ -1156,7 +1156,7 @@ test("fetches a large image in 64 KB cells, the later ones under its version", {
   }
 });
 
-test("says an image is loading until it is drawn", { tag: "@viewport-independent" }, async ({
+test("says an image is loading until it is drawn", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const imageName = "review-image-loading.png";
@@ -1353,7 +1353,7 @@ test("keeps browser Back aligned with the semantic Review parent", { tag: ["@des
   await expect(page).toHaveURL("/");
 });
 
-test("keeps the open file shown while the next one loads and names a longer wait", { tag: "@viewport-independent" }, async ({
+test("keeps the open file shown while the next one loads and names a longer wait", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const { reviewScenario, tasksPage, taskReview } =
@@ -1405,7 +1405,7 @@ test("keeps the open file shown while the next one loads and names a longer wait
   );
 });
 
-test("the file viewer offers a notice's representation button, and details only for metadata", { tag: "@viewport-independent" }, async ({
+test("the file viewer offers a notice's representation button, and details only for metadata", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.goto("/settings/files");
@@ -1476,7 +1476,7 @@ test("the file viewer offers a notice's representation button, and details only 
   });
 });
 
-test("each document preview scrolls as one vertical surface named after its file", { tag: "@viewport-independent" }, async ({
+test("each document preview scrolls as one vertical surface named after its file", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.goto("/settings/files");
@@ -1518,7 +1518,7 @@ test("each document preview scrolls as one vertical surface named after its file
   ]));
 });
 
-test("the file viewer scrolls a source file and a notice under the names it shows", { tag: "@viewport-independent" }, async ({
+test("the file viewer scrolls a source file and a notice under the names it shows", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.goto("/settings/files");

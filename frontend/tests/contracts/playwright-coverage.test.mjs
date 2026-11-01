@@ -5,9 +5,9 @@ import test from "node:test";
 
 import {
   ALL_VIEWPORTS_TAG,
+  SINGLE_RUN_PROJECTS,
+  SINGLE_RUN_TAGS,
   VIEWPORT_COVERAGE_TAGS,
-  VIEWPORT_INDEPENDENT_PROJECT,
-  VIEWPORT_INDEPENDENT_TAG,
   VIEWPORT_PROJECTS,
   viewportCoveragePattern,
 } from "../e2e/support/project-coverage.js";
@@ -61,7 +61,7 @@ test("every Playwright test declares its minimum viewport coverage", async () =>
         tags.every((tag) => allowedTags.has(tag)),
         `unknown viewport coverage tag in ${file}: ${tags.join(", ")}`,
       );
-      for (const exclusiveTag of [ALL_VIEWPORTS_TAG, VIEWPORT_INDEPENDENT_TAG]) {
+      for (const exclusiveTag of [ALL_VIEWPORTS_TAG, ...SINGLE_RUN_TAGS]) {
         assert.ok(
           tags.length === 1 || !tags.includes(exclusiveTag),
           `${exclusiveTag} cannot be combined with other tags in ${file}`,
@@ -80,14 +80,18 @@ test("viewport projects select shared and project-specific coverage", () => {
     for (const other of VIEWPORT_PROJECTS.filter((candidate) => candidate !== project)) {
       assert.doesNotMatch(`@${other}`, pattern);
     }
-    assert.doesNotMatch(VIEWPORT_INDEPENDENT_TAG, pattern);
+    for (const tag of SINGLE_RUN_TAGS) {
+      assert.doesNotMatch(tag, pattern);
+    }
   }
 });
 
-test("the viewport-independent project selects only its own coverage", () => {
-  const pattern = viewportCoveragePattern(VIEWPORT_INDEPENDENT_PROJECT);
-  assert.match(VIEWPORT_INDEPENDENT_TAG, pattern);
-  for (const tag of VIEWPORT_COVERAGE_TAGS.filter((tag) => tag !== VIEWPORT_INDEPENDENT_TAG)) {
-    assert.doesNotMatch(tag, pattern);
+test("each single-run project selects only its own coverage", () => {
+  for (const project of SINGLE_RUN_PROJECTS) {
+    const pattern = viewportCoveragePattern(project);
+    assert.match(`@${project}`, pattern);
+    for (const tag of VIEWPORT_COVERAGE_TAGS.filter((tag) => tag !== `@${project}`)) {
+      assert.doesNotMatch(tag, pattern);
+    }
   }
 });

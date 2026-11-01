@@ -17,7 +17,7 @@ const LOADING_DELAY_MS = 180;
 const INSTALLED_AT = new Date("2026-01-01T00:00:00Z");
 const PAUSED_AT = new Date("2026-01-01T00:01:00Z");
 
-test("a model list that arrives before the delay is never seen loading", { tag: "@viewport-independent" }, async ({
+test("a model list that arrives before the delay is never seen loading", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const { models } = await installGatedTurnOptions(page);
@@ -47,7 +47,7 @@ test("a model list that arrives before the delay is never seen loading", { tag: 
     );
 });
 
-test("a model list still pending after the delay earns a spinner without moving anything", { tag: "@viewport-independent" }, async ({
+test("a model list still pending after the delay earns a spinner without moving anything", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const { models } = await installGatedTurnOptions(page);
@@ -99,7 +99,7 @@ test("a model list still pending after the delay earns a spinner without moving 
   expect(settled.send).toEqual(deferred.send);
 });
 
-test("a follow-up composer asks for no mode list until its model is known", { tag: "@viewport-independent" }, async ({
+test("a follow-up composer asks for no mode list until its model is known", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const { models, permissions } = await installGatedTurnOptions(page, {
@@ -128,7 +128,7 @@ test("a follow-up composer asks for no mode list until its model is known", { ta
   await expect(permissionButton).toContainText("Auto review");
 });
 
-test("a first permission pill appears where it will stay and turns once its own list is late", { tag: "@viewport-independent" }, async ({
+test("a first permission pill appears where it will stay and turns once its own list is late", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const { models, permissions } = await installGatedTurnOptions(page, {
@@ -188,7 +188,7 @@ test("a first permission pill appears where it will stay and turns once its own 
   expect(settled.send).toEqual(appeared.send);
 });
 
-test("a mode list asked for again keeps the label it replaces until the delay", { tag: "@viewport-independent" }, async ({
+test("a mode list asked for again keeps the label it replaces until the delay", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const asked = Promise.withResolvers();
@@ -228,7 +228,7 @@ test("a mode list asked for again keeps the label it replaces until the delay", 
   await expect(send).toBeEnabled();
 });
 
-test("a mode list that returns before the delay swaps the label without a spinner", { tag: "@viewport-independent" }, async ({
+test("a mode list that returns before the delay swaps the label without a spinner", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const answered = Promise.withResolvers();

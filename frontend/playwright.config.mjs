@@ -43,10 +43,16 @@ export default defineConfig({
       grep: viewportCoveragePattern("desktop"),
       use: desktopBrowser,
     },
+    // Behavior the viewport does not change runs once, in the desktop browser,
+    // split by whether server state changes during the test.
     {
-      // Behavior no viewport owns runs once, in the desktop browser.
-      name: "viewport-independent",
-      grep: viewportCoveragePattern("viewport-independent"),
+      name: "server-changes",
+      grep: viewportCoveragePattern("server-changes"),
+      use: desktopBrowser,
+    },
+    {
+      name: "server-steady",
+      grep: viewportCoveragePattern("server-steady"),
       use: desktopBrowser,
     },
     {

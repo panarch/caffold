@@ -126,7 +126,7 @@ test("previews a Markdown fence in a modal and returns focus to its Preview butt
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("keeps the preview through a detail rerender and closes it when the Task changes or its detail is left", { tag: "@viewport-independent" }, async ({
+test("keeps the preview through a detail rerender and closes it when the Task changes or its detail is left", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const scenario = await seedPreviewTask(
@@ -175,7 +175,7 @@ test("keeps the preview through a detail rerender and closes it when the Task ch
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("closes the preview when a Note link in it opens the Note", { tag: "@viewport-independent" }, async ({
+test("closes the preview when a Note link in it opens the Note", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const scenario = await seedPreviewTask(
@@ -202,7 +202,7 @@ test("closes the preview when a Note link in it opens the Note", { tag: "@viewpo
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("drives the preview with Action Hints and Scroll mode", { tag: "@viewport-independent" }, async ({
+test("drives the preview with Action Hints and Scroll mode", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const scenario = await seedPreviewTask(

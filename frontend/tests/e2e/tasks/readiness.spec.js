@@ -87,7 +87,7 @@ test.beforeEach(async ({ page }) => {
 
 // Codex is one agent among several: opening Tasks asks it nothing, and the
 // Tasks home is held by no agent.
-test("opening Tasks asks Codex nothing and holds nothing on the home", { tag: "@all-viewports" }, async ({
+test("opening Tasks asks Codex nothing and holds nothing on the home", { tag: "@server-steady" }, async ({
   page,
 }) => {
   let statusRequests = 0;
@@ -155,7 +155,7 @@ test("keeps the stable Task shell while the Task list loads", { tag: "@all-viewp
   await expect(newTask).toHaveAttribute("title", "New Task");
 });
 
-test("waits for explicit route activation when readiness settles first", { tag: "@all-viewports" }, async ({ page }) => {
+test("waits for explicit route activation when readiness settles first", { tag: "@server-changes" }, async ({ page }) => {
   await page.goto("/");
 
   const routeOpens = await page.evaluate(async (status) => {
@@ -185,7 +185,7 @@ test("waits for explicit route activation when readiness settles first", { tag: 
   });
 });
 
-test("New Task activation preserves the parent's Task-store takeover", { tag: "@viewport-independent" }, async ({ page }) => {
+test("New Task activation preserves the parent's Task-store takeover", { tag: "@server-steady" }, async ({ page }) => {
   await page.goto("/tasks/new");
   const newTask = page.locator("caffold-task-new");
   const prompt = newTask.locator("textarea[name=prompt]");
@@ -305,7 +305,7 @@ test("keeps the Task-store takeover on New Task below the compact Back", { tag: 
   expect(layout.takeoverTop).toBeGreaterThanOrEqual(layout.backBottom);
 });
 
-test("a blocking transition releases the Task list and disables existing actions", { tag: "@all-viewports" }, async ({
+test("a blocking transition releases the Task list and disables existing actions", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, {
@@ -416,7 +416,7 @@ test("a blocking transition releases the Task list and disables existing actions
   await expect(archivedRow).toContainText("updateRequired diagnostic");
 });
 
-test("a Task-store takeover hands the open Task back when it clears", { tag: "@all-viewports" }, async ({
+test("a Task-store takeover hands the open Task back when it clears", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const detail = taskDetailFixture();
@@ -454,7 +454,7 @@ test("a Task-store takeover hands the open Task back when it clears", { tag: "@a
   await expect(composer).toBeEnabled();
 });
 
-test("a Codex-run submit surfaces the server's refusal and keeps the draft", { tag: "@all-viewports" }, async ({
+test("a Codex-run submit surfaces the server's refusal and keeps the draft", { tag: "@server-steady" }, async ({
   page,
 }) => {
   // No surface pre-guesses the submit's fate from the snapshot: the server
@@ -501,7 +501,7 @@ test("a Codex-run submit surfaces the server's refusal and keeps the draft", { t
   await expect(composer).toHaveValue("carry on with the plan");
 });
 
-test("a Claude Task never looks at Codex readiness", { tag: "@all-viewports" }, async ({
+test("a Claude Task never looks at Codex readiness", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const detail = { ...taskDetailFixture(), provider: "claude" };
@@ -550,7 +550,7 @@ test("a Claude Task never looks at Codex readiness", { tag: "@all-viewports" }, 
   ).toHaveCount(0);
 });
 
-test("Settings opens its usual first page", { tag: "@all-viewports" }, async ({ page }) => {
+test("Settings opens its usual first page", { tag: "@server-steady" }, async ({ page }) => {
   // A listed Task keeps the phone home on the list, where the tabs are.
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({ json: activeTaskProjection([cachedTask()]) }),
@@ -569,7 +569,7 @@ test("Settings opens its usual first page", { tag: "@all-viewports" }, async ({ 
   await expect(codex).toHaveAccessibleName("Codex");
 });
 
-test("a blocked Codex found by Codex Settings marks no navigation", { tag: "@viewport-independent" }, async ({ page }) => {
+test("a blocked Codex found by Codex Settings marks no navigation", { tag: "@server-steady" }, async ({ page }) => {
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({ json: statusFor("signInRequired") }),
   );
@@ -593,7 +593,7 @@ test("a blocked Codex found by Codex Settings marks no navigation", { tag: "@vie
   );
 });
 
-test("consumes the real backend readiness contract and gates Task creation", { tag: "@all-viewports" }, async ({ page }) => {
+test("consumes the real backend readiness contract and gates Task creation", { tag: "@server-steady" }, async ({ page }) => {
   await page.goto("/");
 
   await expect.poll(() => presentedTaskPaneChildren(page)).toEqual([

@@ -25,7 +25,7 @@ test("menus switch between their own anchors and mobile placement when resized",
   }
 });
 
-test("browses providers without changing the selected model or requesting its permissions", { tag: "@viewport-independent" }, async ({ page }) => {
+test("browses providers without changing the selected model or requesting its permissions", { tag: "@server-steady" }, async ({ page }) => {
   const requests = await installCatalog(page);
   await page.goto("/tasks/new?cwd=src");
   const form = page.locator(".task-new-form");
@@ -51,7 +51,7 @@ test("browses providers without changing the selected model or requesting its pe
   await expect(menu.locator('[data-model="shared"]')).toBeFocused();
 });
 
-test("chooses a model before exposing only that model's settings", { tag: "@viewport-independent" }, async ({ page }) => {
+test("chooses a model before exposing only that model's settings", { tag: "@server-steady" }, async ({ page }) => {
   const requests = await installCatalog(page);
   await page.goto("/tasks/new?cwd=src");
   const picker = page.locator(".task-new-form caffold-task-turn-options");
@@ -196,7 +196,7 @@ test("fits a narrow phone with enlarged Interface text", { tag: "@phone" }, asyn
   await captureReviewScreenshot(page, testInfo, "model-picker-narrow-large");
 });
 
-test("opening the menu again offers the models the agents answer now", { tag: "@viewport-independent" }, async ({ page }) => {
+test("opening the menu again offers the models the agents answer now", { tag: "@server-changes" }, async ({ page }) => {
   const agents = { models: catalog() };
   const asked = await answerModelsFrom(page, agents);
   await page.goto("/tasks/new?cwd=src");
@@ -217,7 +217,7 @@ test("opening the menu again offers the models the agents answer now", { tag: "@
   await expect(menu.locator('[data-model="shared"]')).toHaveAttribute("aria-pressed", "true");
 });
 
-test("a list that cannot be read again leaves the model unavailable", { tag: "@viewport-independent" }, async ({ page }) => {
+test("a list that cannot be read again leaves the model unavailable", { tag: "@server-changes" }, async ({ page }) => {
   const agents = { models: catalog() };
   const asked = await answerModelsFrom(page, agents);
   await page.goto("/tasks/new?cwd=src");
@@ -237,7 +237,7 @@ test("a list that cannot be read again leaves the model unavailable", { tag: "@v
   await expect(picker.locator(".task-permission-picker")).toBeHidden();
 });
 
-test("offers only the existing Task's provider", { tag: "@viewport-independent" }, async ({ page }) => {
+test("offers only the existing Task's provider", { tag: "@server-steady" }, async ({ page }) => {
   await installCatalog(page);
   const detail = taskDetailFixture({ model: "shared", reasoningEffort: "xhigh" });
   await page.route("**/api/tasks/thread-1", (route) => route.fulfill({ json: detail }));

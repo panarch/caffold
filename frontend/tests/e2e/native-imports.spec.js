@@ -7,7 +7,7 @@ const installedLitHtml = JSON.parse(
   readFileSync(new URL("../../node_modules/lit-html/package.json", import.meta.url), "utf8"),
 ).version;
 
-test("native import aliases share module identity with asset URLs and register their consumers", { tag: "@viewport-independent" }, async ({ page }) => {
+test("native import aliases share module identity with asset URLs and register their consumers", { tag: "@server-steady" }, async ({ page }) => {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await installBrowserDefaults(page);
@@ -48,7 +48,7 @@ test("native import aliases share module identity with asset URLs and register t
   expect(errors).toEqual([]);
 });
 
-test("Lit loads by its package name, one module per package, served and precached by Caffold", { tag: "@viewport-independent" }, async ({ page }) => {
+test("Lit loads by its package name, one module per package, served and precached by Caffold", { tag: "@server-steady" }, async ({ page }) => {
   const errors = [];
   const litRequests = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -98,7 +98,7 @@ test("Lit loads by its package name, one module per package, served and precache
   expect(errors).toEqual([]);
 });
 
-test("compiled modules take their helpers from tslib, served and precached by Caffold", { tag: "@viewport-independent" }, async ({ page }) => {
+test("compiled modules take their helpers from tslib, served and precached by Caffold", { tag: "@server-steady" }, async ({ page }) => {
   const errors = [];
   const tslibRequests = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -133,7 +133,7 @@ test("compiled modules take their helpers from tslib, served and precached by Ca
   expect(errors).toEqual([]);
 });
 
-test("TypeScript modules are served as the JavaScript tsc writes, with source maps outside the shell cache", { tag: "@viewport-independent" }, async ({ page }) => {
+test("TypeScript modules are served as the JavaScript tsc writes, with source maps outside the shell cache", { tag: "@server-steady" }, async ({ page }) => {
   await installBrowserDefaults(page);
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace")).toBeVisible();

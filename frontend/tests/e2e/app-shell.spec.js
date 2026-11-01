@@ -6,7 +6,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("serves one Task workspace shell and only active static assets", { tag: "@all-viewports" }, async ({
+test("serves one Task workspace shell and only active static assets", { tag: "@server-steady" }, async ({
   page,
   request,
 }) => {
@@ -92,7 +92,7 @@ test("serves one Task workspace shell and only active static assets", { tag: "@a
   expect(serviceWorker).not.toContain("networkFirst");
 });
 
-test("keeps bootstrap Retry keyboard-accessible outside the hidden workspace", { tag: "@all-viewports" }, async ({
+test("keeps bootstrap Retry keyboard-accessible outside the hidden workspace", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await page.goto("/");
@@ -117,7 +117,7 @@ test("keeps bootstrap Retry keyboard-accessible outside the hidden workspace", {
   await expect(workspace).toBeVisible();
 });
 
-test("merges foreground Retry with normal workspace targets", { tag: "@all-viewports" }, async ({
+test("merges foreground Retry with normal workspace targets", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await page.goto("/");
@@ -152,7 +152,7 @@ test("merges foreground Retry with normal workspace targets", { tag: "@all-viewp
   )).toBe(1);
 });
 
-test("returns a workspace tab to the screen it last showed", { tag: "@viewport-independent" }, async ({
+test("returns a workspace tab to the screen it last showed", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.goto("/");
@@ -179,7 +179,7 @@ test("returns a workspace tab to the screen it last showed", { tag: "@viewport-i
   await expect(page).toHaveURL("/");
 });
 
-test("puts the screens under a request into another tab's page", { tag: "@viewport-independent" }, async ({
+test("puts the screens under a request into another tab's page", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const healthRequested = Promise.withResolvers();
@@ -225,7 +225,7 @@ test("puts the screens under a request into another tab's page", { tag: "@viewpo
 
 // iOS Safari and the home-screen application have no Navigation API, so the
 // shell keeps a History fallback that the default browser never exercises.
-test("keeps tab depth and Back on the History fallback path", { tag: "@viewport-independent" }, async ({
+test("keeps tab depth and Back on the History fallback path", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -270,7 +270,7 @@ for (const [label, prepare] of [
     });
   }],
 ]) {
-  test(`puts the screens under an address-entered route into history${label}`, { tag: "@viewport-independent" }, async ({
+  test(`puts the screens under an address-entered route into history${label}`, { tag: "@server-steady" }, async ({
     page,
   }) => {
     await prepare(page);
@@ -290,7 +290,7 @@ for (const [label, prepare] of [
 // A native link inside a tab is a step in that tab's flow, so Back returns to
 // the screen it was followed from. A link into another tab is an arrival, and
 // that tab's own screens go in beneath it.
-test("puts the screens under a link that crosses into another tab", { tag: "@viewport-independent" }, async ({
+test("puts the screens under a link that crosses into another tab", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.goto("/settings/keyboard");
@@ -322,7 +322,7 @@ function followLink(page, href) {
   }, href);
 }
 
-test("does not serve obsolete standalone application routes", { tag: "@all-viewports" }, async ({ request }) => {
+test("does not serve obsolete standalone application routes", { tag: "@server-steady" }, async ({ request }) => {
   for (const route of [
     "/files",
     "/git/diff",

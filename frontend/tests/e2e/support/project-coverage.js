@@ -4,21 +4,26 @@ export const VIEWPORT_PROJECTS = Object.freeze([
   "phone",
 ]);
 
-export const VIEWPORT_INDEPENDENT_PROJECT = "viewport-independent";
+export const SINGLE_RUN_PROJECTS = Object.freeze([
+  "server-changes",
+  "server-steady",
+]);
 
 export const ALL_VIEWPORTS_TAG = "@all-viewports";
 
-export const VIEWPORT_INDEPENDENT_TAG = `@${VIEWPORT_INDEPENDENT_PROJECT}`;
+export const SINGLE_RUN_TAGS = Object.freeze(
+  SINGLE_RUN_PROJECTS.map((project) => `@${project}`),
+);
 
 export const VIEWPORT_COVERAGE_TAGS = Object.freeze([
   ALL_VIEWPORTS_TAG,
-  VIEWPORT_INDEPENDENT_TAG,
+  ...SINGLE_RUN_TAGS,
   ...VIEWPORT_PROJECTS.map((project) => `@${project}`),
 ]);
 
 export function viewportCoveragePattern(project) {
-  if (project === VIEWPORT_INDEPENDENT_PROJECT) {
-    return new RegExp(`${VIEWPORT_INDEPENDENT_TAG}\\b`);
+  if (SINGLE_RUN_PROJECTS.includes(project)) {
+    return new RegExp(`@${project}\\b`);
   }
   if (!VIEWPORT_PROJECTS.includes(project)) {
     throw new Error(`Unknown viewport project: ${project}`);

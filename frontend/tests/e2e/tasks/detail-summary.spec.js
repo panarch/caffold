@@ -409,7 +409,7 @@ test("offers Git and GitHub from the listed Section before Task details arrive",
   await captureReviewScreenshot(page, testInfo, "tasks-header-folder");
 });
 
-test("forks an idle Codex Task and opens the distinct child", { tag: "@all-viewports" }, async ({
+test("forks an idle Codex Task and opens the distinct child", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const sourceThreadId = "thread_summary_fork_source";
@@ -490,7 +490,7 @@ test("forks an idle Codex Task and opens the distinct child", { tag: "@all-viewp
   expect(requestCount).toBe(1);
 });
 
-test("keeps fork disabled for Claude Tasks and reports why", { tag: "@all-viewports" }, async ({ page }) => {
+test("keeps fork disabled for Claude Tasks and reports why", { tag: "@server-steady" }, async ({ page }) => {
   const threadId = "thread_summary_claude_fork";
   const task = {
     ...summaryTask(threadId, "Claude source", "repo-claude", 100),
@@ -515,7 +515,7 @@ test("keeps fork disabled for Claude Tasks and reports why", { tag: "@all-viewpo
   );
 });
 
-test("keeps the source selected and shows a fork failure inline", { tag: "@viewport-independent" }, async ({
+test("keeps the source selected and shows a fork failure inline", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const threadId = "thread_summary_fork_failure";
@@ -714,7 +714,7 @@ test("uses light-dismiss review popovers and preserves them across same-Task syn
   await expect(infoPopover).toBeHidden();
 });
 
-test("keeps the task info spinner stable across equivalent detail activity", { tag: "@all-viewports" }, async ({
+test("keeps the task info spinner stable across equivalent detail activity", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const threadId = "thread_summary_spinner_equivalent";
@@ -825,7 +825,7 @@ test("keeps the task info spinner stable across equivalent detail activity", { t
   });
 });
 
-test("keeps canonical task status stable while the detail transport reconnects", { tag: "@all-viewports" }, async ({
+test("keeps canonical task status stable while the detail transport reconnects", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const threadId = "thread_summary_spinner_reconnecting";
@@ -923,7 +923,7 @@ test("keeps canonical task status stable while the detail transport reconnects",
   await expect(infoButton).toHaveAttribute("title", "Status: idle");
 });
 
-test("draws the task info status chip without the pill border, like the Task list", { tag: "@viewport-independent" }, async ({
+test("draws the task info status chip without the pill border, like the Task list", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const states = {

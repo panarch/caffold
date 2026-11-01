@@ -20,7 +20,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("starts a completed task follow-up clock only from canonical turn metadata", { tag: "@viewport-independent" }, async ({
+test("starts a completed task follow-up clock only from canonical turn metadata", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, {
@@ -493,7 +493,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
     }),
   ).toHaveAttribute("data-delivery-state", "outcomeUnknown");
 });
-test("keeps exact prompt order when Detail or live content arrives before the prompt response", { tag: "@viewport-independent" }, async ({
+test("keeps exact prompt order when Detail or live content arrives before the prompt response", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, {
@@ -738,7 +738,7 @@ test("keeps exact prompt order when Detail or live content arrives before the pr
   );
 
 });
-test("unlocks canonical follow-ups after switching tasks with a pending response", { tag: "@viewport-independent" }, async ({
+test("unlocks canonical follow-ups after switching tasks with a pending response", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, { autoOpen: true });
@@ -1028,7 +1028,7 @@ test("places attachment remove controls over thumbnail corners inside the attach
   }
 });
 
-test("keeps the attachment remove X legible on its circle in Light and Dark", { tag: "@viewport-independent" }, async ({
+test("keeps the attachment remove X legible on its circle in Light and Dark", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const scenario = await installTaskLoopFixture(page);
@@ -1060,7 +1060,7 @@ test("keeps the attachment remove X legible on its circle in Light and Dark", { 
   }
 });
 
-test("offers the New Task Composer's prompt, Attach, and Start once there is a draft", { tag: "@viewport-independent" }, async ({
+test("offers the New Task Composer's prompt, Attach, and Start once there is a draft", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const scenario = await installTaskLoopFixture(page);
@@ -1078,7 +1078,7 @@ test("offers the New Task Composer's prompt, Attach, and Start once there is a d
   await expect.poll(targets).toContainEqual(["primary:send", "Start task"]);
 });
 
-test("attaches files from the picker, the clipboard, and a drop onto the Composer", { tag: "@viewport-independent" }, async ({
+test("attaches files from the picker, the clipboard, and a drop onto the Composer", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const scenario = await installTaskLoopFixture(page);
@@ -1141,7 +1141,7 @@ test("attaches files from the picker, the clipboard, and a drop onto the Compose
   await expect(files).toHaveCount(2);
 });
 
-test("stops at ten attachments and says so", { tag: "@viewport-independent" }, async ({ page }) => {
+test("stops at ten attachments and says so", { tag: "@server-steady" }, async ({ page }) => {
   const scenario = await installTaskLoopFixture(page);
   await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
   const form = page.locator('form[data-task-form="create"]');
@@ -1160,7 +1160,7 @@ test("stops at ten attachments and says so", { tag: "@viewport-independent" }, a
   );
 });
 
-test("keeps each attachment on screen while others come and go", { tag: "@viewport-independent" }, async ({
+test("keeps each attachment on screen while others come and go", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const scenario = await installTaskLoopFixture(page);
@@ -1200,7 +1200,7 @@ test("keeps each attachment on screen while others come and go", { tag: "@viewpo
   await expect(pictures.nth(1)).toHaveAttribute("title", "third.png");
 });
 
-test("draws a large picture's thumbnail from a reduced copy and previews the original", { tag: "@viewport-independent" }, async ({
+test("draws a large picture's thumbnail from a reduced copy and previews the original", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const scenario = await installTaskLoopFixture(page);

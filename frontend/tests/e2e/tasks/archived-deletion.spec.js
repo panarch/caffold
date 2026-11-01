@@ -56,7 +56,7 @@ async function mockArchivedList(page, tasks) {
   );
 }
 
-test("turns the status ring of an archived Task that is still running", { tag: "@viewport-independent" }, async ({
+test("turns the status ring of an archived Task that is still running", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await mockArchivedList(page, [{

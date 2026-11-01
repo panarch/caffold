@@ -73,7 +73,7 @@ test("previews a composer image without coupling preview and removal", { tag: "@
   await expect(dialog).toBeHidden();
 });
 
-test("keeps one sent-image dialog stable through live conversation updates", { tag: "@all-viewports" }, async ({
+test("keeps one sent-image dialog stable through live conversation updates", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const scenario = await installTaskLoopFixture(page);
@@ -152,7 +152,7 @@ test("keeps one sent-image dialog stable through live conversation updates", { t
   await expect(dialog).toBeHidden();
 });
 
-test("says a sent picture is loading until it is drawn, in the list and in the preview", { tag: "@viewport-independent" }, async ({
+test("says a sent picture is loading until it is drawn, in the list and in the preview", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const scenario = await installTaskLoopFixture(page);
@@ -201,7 +201,7 @@ test("says a sent picture is loading until it is drawn, in the list and in the p
   await expect(thumbnailLoading).toBeHidden();
 });
 
-test("renders and previews assistant-generated images after history reload", { tag: "@all-viewports" }, async ({
+test("renders and previews assistant-generated images after history reload", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const scenario = await installTaskLoopFixture(page);

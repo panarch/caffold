@@ -319,7 +319,7 @@ test("opens resolved Markdown file links through Task Review with native link se
   );
 });
 
-test("opens a Note an agent message links in place, in the Notes tab", { tag: "@viewport-independent" }, async ({
+test("opens a Note an agent message links in place, in the Notes tab", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await stubLinkedNotes(page);
@@ -697,7 +697,7 @@ async function stubLinkedNotes(page) {
   });
 }
 
-test("preserves ordered-list starts through Task Markdown sanitization", { tag: "@all-viewports" }, async ({ page }) => {
+test("preserves ordered-list starts through Task Markdown sanitization", { tag: "@server-steady" }, async ({ page }) => {
   const completedAssistantResponse = [
     "1. First",
     "",
@@ -1688,7 +1688,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   await captureReviewScreenshot(page, testInfo, "tasks-conversation");
 });
 
-test("shows the turn's time on an answer the provider did not time", { tag: "@viewport-independent" }, async ({
+test("shows the turn's time on an answer the provider did not time", { tag: "@server-steady" }, async ({
   page,
 }) => {
   // Codex times items while it reports them live and stops timing them in the

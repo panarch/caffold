@@ -165,7 +165,7 @@ test("renders a PDF as the only representation its file supports", { tag: "@all-
   await captureReviewScreenshot(page, testInfo, "tasks-pdf-preview");
 });
 
-test("reads the document again after the file changes", { tag: "@viewport-independent" }, async ({
+test("reads the document again after the file changes", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const { pattern, requests } = documentRequests(page, testInfo);
@@ -202,7 +202,7 @@ test("reads the document again after the file changes", { tag: "@viewport-indepe
   expect(requests).toHaveLength(2);
 });
 
-test("reads a document once when the file list arrives after it", { tag: "@viewport-independent" }, async ({
+test("reads a document once when the file list arrives after it", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
   const { pattern, requests } = documentRequests(page, testInfo);
@@ -254,7 +254,7 @@ test("reads a document once when the file list arrives after it", { tag: "@viewp
   expect(requests).toHaveLength(1);
 });
 
-test("keeps the drawn document when a check finds the file unchanged", { tag: "@viewport-independent" }, async ({
+test("keeps the drawn document when a check finds the file unchanged", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const { pattern, requests } = documentRequests(page, testInfo);
@@ -277,7 +277,7 @@ test("keeps the drawn document when a check finds the file unchanged", { tag: "@
   await expect(viewer).toHaveAttribute("data-render-state", "pdf");
 });
 
-test("keeps the open document while the review switches representations", { tag: "@viewport-independent" }, async ({
+test("keeps the open document while the review switches representations", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const { requests } = documentRequests(page, testInfo);
@@ -299,7 +299,7 @@ test("keeps the open document while the review switches representations", { tag:
   expect(requests[0]).toEqual(requests[1]);
 });
 
-test("reads the newly selected document into the retained PDF panel", { tag: "@viewport-independent" }, async ({
+test("reads the newly selected document into the retained PDF panel", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const first = documentRequests(page, testInfo);
@@ -330,7 +330,7 @@ test("reads the newly selected document into the retained PDF panel", { tag: "@v
   }
 });
 
-test("reports an unavailable PDF without replacing the review surface", { tag: "@viewport-independent" }, async ({
+test("reports an unavailable PDF without replacing the review surface", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const { pattern } = documentRequests(page, testInfo);

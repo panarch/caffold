@@ -178,7 +178,7 @@ test("keeps the code-block toolbar dense and usable across Task viewports", { ta
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("copies each block exactly with bounded success and retryable failure", { tag: "@viewport-independent" }, async ({
+test("copies each block exactly with bounded success and retryable failure", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const scenario = await seedCodeBlockTask(page, "thread_code_copy");
@@ -285,7 +285,7 @@ test("copies each block exactly with bounded success and retryable failure", { t
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("keeps excluded conversation surfaces plain", { tag: "@viewport-independent" }, async ({
+test("keeps excluded conversation surfaces plain", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const scenario = await seedCodeBlockTask(page, "thread_code_exclusions", {
@@ -332,7 +332,7 @@ async function activateFirstActionHint(page, accessibleName) {
   await expect(dialog).toBeHidden();
 }
 
-test("keeps Markdown fallback text plain", { tag: "@viewport-independent" }, async ({ page }) => {
+test("keeps Markdown fallback text plain", { tag: "@server-steady" }, async ({ page }) => {
   const scenario = await seedCodeBlockTask(page, "thread_code_fallback");
   await page.evaluate(() => {
     const fallback = document.createElement("caffold-task-markdown");
@@ -351,7 +351,7 @@ test("keeps Markdown fallback text plain", { tag: "@viewport-independent" }, asy
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("keeps opt-in code blocks current across rerenders", { tag: "@viewport-independent" }, async ({
+test("keeps opt-in code blocks current across rerenders", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const scenario = await seedCodeBlockTask(page, "thread_code_rerender");

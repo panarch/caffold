@@ -31,7 +31,7 @@ test.beforeEach(async ({ page }) => {
   await mockAgentModels(page);
 });
 
-test("leaving Settings pauses Serve progress reads and re-entry reads the server again", { tag: "@viewport-independent" }, async ({ page }) => {
+test("leaving Settings pauses Serve progress reads and re-entry reads the server again", { tag: "@server-changes" }, async ({ page }) => {
   let reads = 0;
   let state = "configuring";
   await page.route("**/api/tailscale/status", route => {
@@ -53,7 +53,7 @@ test("leaving Settings pauses Serve progress reads and re-entry reads the server
   expect(reads).toBe(away + 1);
 });
 
-test("presents every canonical Tailscale state with only its available action", { tag: "@all-viewports" }, async ({
+test("presents every canonical Tailscale state with only its available action", { tag: "@server-steady" }, async ({
   page,
 }) => {
   let state = "notInstalled";
@@ -96,7 +96,7 @@ test("presents every canonical Tailscale state with only its available action", 
   }
 });
 
-test("enables, retries, and disables only Caffold's Serve mapping", { tag: "@all-viewports" }, async ({
+test("enables, retries, and disables only Caffold's Serve mapping", { tag: "@server-changes" }, async ({
   page,
 }) => {
   let current = tailscaleStatus("serveOff");
@@ -300,7 +300,7 @@ test("hands off one exact private URL while remote management stays read-only", 
   expect(serveUpdates).toBe(0);
 });
 
-test("keeps canonical local status when a refresh request fails", { tag: "@viewport-independent" }, async ({
+test("keeps canonical local status when a refresh request fails", { tag: "@server-changes" }, async ({
   page,
 }) => {
   let requestCount = 0;
@@ -337,7 +337,7 @@ test("keeps canonical local status when a refresh request fails", { tag: "@viewp
   await expect(remoteAccess.getByRole("button", { name: "Retry" })).toBeEnabled();
 });
 
-test("presents an initial status request failure without inventing read-only state", { tag: "@viewport-independent" }, async ({
+test("presents an initial status request failure without inventing read-only state", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.route(/\/api\/tailscale\/status(?:\?|$)/, (route) =>
@@ -357,7 +357,7 @@ test("presents an initial status request failure without inventing read-only sta
   await expect(remoteAccess.getByRole("button", { name: "Retry" })).toBeEnabled();
 });
 
-test("offers the controls each state shows as Action Hints", { tag: "@viewport-independent" }, async ({
+test("offers the controls each state shows as Action Hints", { tag: "@server-changes" }, async ({
   page,
 }) => {
   let state = "ready";

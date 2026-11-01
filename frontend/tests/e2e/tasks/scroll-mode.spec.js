@@ -381,7 +381,7 @@ test("selects nested Conversation code and table scrollports and cancels a lost 
   await page.keyboard.press("Escape");
 });
 
-test("cancels the frozen selector when Task list topology loses eligibility", { tag: "@viewport-independent" }, async ({
+test("cancels the frozen selector when Task list topology loses eligibility", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const { detail, tasks } = await installScrollFixture(page);
@@ -501,7 +501,7 @@ test("keeps active Scroll on S when only the current surface remains", { tag: "@
     .toBeLessThan(before.conversation);
 });
 
-test("switches active Scroll to fresh Action Hints with F", { tag: "@viewport-independent" }, async ({
+test("switches active Scroll to fresh Action Hints with F", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const { detail } = await installScrollFixture(page);
@@ -533,7 +533,7 @@ test("switches active Scroll to fresh Action Hints with F", { tag: "@viewport-in
   await expect(hints).toBeHidden();
 });
 
-test("keeps the exact active Task list through content patches and exits when it stops overflowing", { tag: "@viewport-independent" }, async ({
+test("keeps the exact active Task list through content patches and exits when it stops overflowing", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const { detail, tasks } = await installScrollFixture(page);
@@ -673,7 +673,7 @@ test("shares code, click, and native keyboard selection without background leaka
   await expect(entryOwner).toBeFocused();
 });
 
-test("keeps keyboard scrolling on the Conversation native anchor path", { tag: "@viewport-independent" }, async ({
+test("keeps keyboard scrolling on the Conversation native anchor path", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const { detail } = await installScrollFixture(page);

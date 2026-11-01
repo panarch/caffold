@@ -229,7 +229,7 @@ test("opens global shortcut help from Normal and replaces Action Hints", { tag: 
   await expect(opener).toBeFocused();
 });
 
-test("⇧⌘F and Ctrl+Shift+F show actions from the prompt, even with keyboard navigation off", { tag: "@viewport-independent" }, async ({
+test("⇧⌘F and Ctrl+Shift+F show actions from the prompt, even with keyboard navigation off", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installActionHintFixture(page, actionHintTasks(2));
@@ -256,7 +256,7 @@ test("⇧⌘F and Ctrl+Shift+F show actions from the prompt, even with keyboard 
   await expect(prompt).toBeFocused();
 });
 
-test("Action Hints inside shortcut help reach its Close button", { tag: "@viewport-independent" }, async ({
+test("Action Hints inside shortcut help reach its Close button", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   await installActionHintFixture(page, actionHintTasks(2));
@@ -288,7 +288,7 @@ test("Action Hints inside shortcut help reach its Close button", { tag: "@viewpo
   await expect(opener).toBeFocused();
 });
 
-test("closes Hint when printable input cannot match an action", { tag: "@all-viewports" }, async ({
+test("closes Hint when printable input cannot match an action", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installActionHintFixture(page, actionHintTasks(2));
@@ -343,7 +343,7 @@ test("closes Hint when printable input cannot match an action", { tag: "@all-vie
   await expect(dialog).toBeHidden();
 });
 
-test("keeps Hint ownership across an unrelated disclosure change", { tag: "@all-viewports" }, async ({
+test("keeps Hint ownership across an unrelated disclosure change", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installActionHintFixture(page, actionHintTasks(2));
@@ -487,7 +487,7 @@ test("allocates Settings navigation automatically and accepts F inside Hint mode
   }
 });
 
-test("keeps badge Tab order and native click, Enter, and Space activation", { tag: "@all-viewports" }, async ({
+test("keeps badge Tab order and native click, Enter, and Space activation", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const tasks = actionHintTasks(1);
@@ -521,7 +521,7 @@ test("keeps badge Tab order and native click, Enter, and Space activation", { ta
   await expect(page).toHaveURL(`/tasks/${tasks[0].threadId}`);
 });
 
-test("keeps keyboard navigation available after opening New Task", { tag: "@all-viewports" }, async ({
+test("keeps keyboard navigation available after opening New Task", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installActionHintFixture(page, actionHintTasks(2));
@@ -545,7 +545,7 @@ test("keeps keyboard navigation available after opening New Task", { tag: "@all-
   await expect(prompt).toHaveValue("");
 });
 
-test("does not enter while a Task route is still loading", { tag: "@viewport-independent" }, async ({
+test("does not enter while a Task route is still loading", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const tasks = actionHintTasks(1);
@@ -725,7 +725,7 @@ test("hands create M to the native model popover and P to prompt editing", { tag
   await expect(actionHintDialog(page)).toBeVisible();
 });
 
-test("hands follow-up M to the native model popover and P to prompt editing", { tag: "@all-viewports" }, async ({
+test("hands follow-up M to the native model popover and P to prompt editing", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const [task] = actionHintTasks(1);
@@ -828,7 +828,7 @@ test("switches a session-bound popover to Scroll with S and recaptures hints wit
   await expect(modelPopover).toBeHidden();
 });
 
-test("keeps same-named models distinct by provider through native selection", { tag: "@all-viewports" }, async ({
+test("keeps same-named models distinct by provider through native selection", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installActionHintFixture(page, []);
@@ -896,7 +896,7 @@ test("keeps same-named models distinct by provider through native selection", { 
   await expect(options.locator(".task-model-button")).toBeFocused();
 });
 
-test("uses a mouse-open Permission context and preserves its existing confirmation", { tag: "@all-viewports" }, async ({
+test("uses a mouse-open Permission context and preserves its existing confirmation", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installActionHintFixture(page, []);
@@ -1025,7 +1025,7 @@ test("selects Reorder through its declared popover and entered-mode contexts", {
   await expect(navigator).toHaveAttribute("data-reorder-mode", "none");
 });
 
-test("honors the setting, editing ownership, and composition-safe Latin fallback", { tag: "@all-viewports" }, async ({
+test("honors the setting, editing ownership, and composition-safe Latin fallback", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installActionHintFixture(page, []);
@@ -1536,7 +1536,7 @@ test("retires only a changed Conversation owner while preserving codes and the r
   await page.keyboard.press("Escape");
 });
 
-test("reconciles local owners and cancels on interaction, viewport, and route changes", { tag: "@viewport-independent" }, async ({
+test("reconciles local owners and cancels on interaction, viewport, and route changes", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installActionHintFixture(page, actionHintTasks(8));

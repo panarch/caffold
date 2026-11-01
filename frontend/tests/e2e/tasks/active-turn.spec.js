@@ -17,7 +17,7 @@ test.beforeEach(async ({ page }) => {
   await mockAgentModels(page);
 });
 
-test("shows context compaction only while its lifecycle item is active", { tag: "@viewport-independent" }, async ({
+test("shows context compaction only while its lifecycle item is active", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const threadId = "thread_context_compaction_status";
@@ -86,7 +86,7 @@ test("shows context compaction only while its lifecycle item is active", { tag: 
   ).toHaveCount(0);
 });
 
-test("preserves active-turn and spinner identity until the turn changes", { tag: "@all-viewports" }, async ({
+test("preserves active-turn and spinner identity until the turn changes", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const threadId = "thread_active_turn_identity";
