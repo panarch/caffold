@@ -184,6 +184,7 @@ test("shows the compact Back and the Task switcher on Task, Section, and New Tas
 test("composes the keyboard contexts of the shown workspace mode", () => {
   const tasksContext = { id: "tasks" };
   const notesContext = { id: "notes" };
+  const settingsContext = { id: "settings-modal" };
   const dialog = { keyboardNavigationContexts: () => [] };
   const owner = {
     hidden: false,
@@ -191,10 +192,10 @@ test("composes the keyboard contexts of the shown workspace mode", () => {
     performUpdate() {},
     tasksPage: { keyboardNavigationContexts: () => [tasksContext] },
     notesWorkspace: { keyboardNavigationContexts: () => [notesContext] },
+    settingsWorkspace: { keyboardNavigationContexts: () => [settingsContext] },
     codexRuntimeRestartDialog: dialog,
     codexRuntimeUpdateDialog: dialog,
     codexResetCreditDialog: dialog,
-    claudeRuntimeRestartDialog: dialog,
     updateTaskDialog: dialog,
     archivedDeleteDialog: dialog,
     taskSwitcherDialog: dialog,
@@ -204,7 +205,7 @@ test("composes the keyboard contexts of the shown workspace mode", () => {
   owner.mode = "tasks";
   assert.deepEqual(workspace.keyboardNavigationContexts.call(owner), [tasksContext]);
   owner.mode = "settings";
-  assert.deepEqual(workspace.keyboardNavigationContexts.call(owner), []);
+  assert.deepEqual(workspace.keyboardNavigationContexts.call(owner), [settingsContext]);
   owner.mode = "notes";
   owner.hidden = true;
   assert.deepEqual(workspace.keyboardNavigationContexts.call(owner), []);

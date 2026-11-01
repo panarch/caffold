@@ -92,6 +92,10 @@ impl From<FsError> for ApiError {
 impl From<AgentError> for ApiError {
     fn from(error: AgentError) -> Self {
         match error {
+            AgentError::TurnRunning(message) => Self::Conflict {
+                code: "turn_running",
+                message,
+            },
             AgentError::Held(message) => Self::Unavailable {
                 code: "codex_readiness_blocked",
                 message,

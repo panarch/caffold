@@ -59,6 +59,11 @@ impl TaskSessions {
         })?;
 
         if matches!(thread.status, ThreadStatus::Active { .. }) {
+            if !driver.supports_steering() {
+                return Err(AgentError::TurnRunning(
+                    "This agent does not support input while it is working".into(),
+                ));
+            }
             let turn_id = if let Some(turn_id) = current.active_turn_id {
                 turn_id
             } else {

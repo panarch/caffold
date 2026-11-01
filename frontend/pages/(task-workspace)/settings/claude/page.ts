@@ -20,6 +20,9 @@ import {
   usageWindowValue,
 } from "./display.js";
 
+import "../components/runtime.js";
+import type { CaffoldSettingsRuntime } from "../components/runtime.js";
+
 import styles from "./page.css.js";
 
 export const CLAUDE_RUNTIME_RESTART_REQUEST_EVENT =
@@ -52,6 +55,7 @@ export class CaffoldSettingsClaudePage extends CaffoldElement {
 
   static override styles = styles;
 
+  private readonly runtime = new DrawnRef<CaffoldSettingsRuntime>(this);
   private operation = 0;
   private active = false;
   private readonly hints: ActionHints = new ActionHints(this, {
@@ -80,6 +84,7 @@ export class CaffoldSettingsClaudePage extends CaffoldElement {
     if (!this.active) return;
     this.active = false;
     this.operation += 1;
+    this.runtime.value?.close();
   }
 
   async reconcile() {
@@ -155,42 +160,21 @@ export class CaffoldSettingsClaudePage extends CaffoldElement {
               .rows=${unanswered ?? this.agentRows()}
             ></caffold-settings-detail-list>
           </section>
-          <section aria-labelledby="settings-claude-runtime-title">
-            <div class="settings-runtime-control">
-              <div>
-                <h3 id="settings-claude-runtime-title">Runtime</h3>
-                <p data-runtime-summary>
-                  Restarting stops the runner and every Claude session it holds,
-                  the way an application update does. Conversations resume from
-                  their files as their Tasks are opened.
-                </p>
-              </div>
-              <button
-                ${this.hints.button({
-                  id: "restart-runtime",
-                  label: "Restart runtime",
-                  action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-                })}
-                type="button"
-                data-action="open-claude-restart"
-                ?disabled=${restarting}
-                @click=${this.openRestart}
-              >${restarting ? "Restarting…" : "Restart runtime"}</button>
-            </div>
-            <caffold-settings-detail-list
-              data-claude-runner
-              .rows=${unanswered ?? this.runnerRows()}
-            ></caffold-settings-detail-list>
-            <p
-              class="settings-runtime-message"
-              role="status"
-              data-state=${this.restartState}
-              ?hidden=${!this.restartMessage}
-            >${this.restartMessage}</p>
+          <section aria-label="Runtime">
+            <caffold-settings-runtime ${drawn(this.runtime)}
+              .description=${"Restarting stops the runner and every Claude session it holds. Conversations resume from their files as their Tasks are opened."}
+              .rows=${unanswered ?? this.runnerRows()} .restarting=${restarting}
+              .message=${this.restartMessage} .failed=${this.restartState === "failed"}
+              @caffold:runtime-restart-confirmed=${this.requestRestart}
+            ></caffold-settings-runtime>
           </section>
         </div>
       </div>
     `;
+  }
+
+  keyboardNavigationContexts() {
+    return this.runtime.value?.keyboardNavigationContexts() ?? [];
   }
 
   actionHintScope({
@@ -200,6 +184,15 @@ export class CaffoldSettingsClaudePage extends CaffoldElement {
     const own = this.hints.scope({ ...pull, scopeId });
     return mergeActionHintScopes(
       own,
+      this.runtime.value?.actionHintScope({
+        ...pull,
+        scopeId,
+        clipRoots: [
+          this,
+          this.scrollport.value as HTMLDivElement,
+          ...(pull.clipRoots ?? []),
+        ],
+      }),
       this.refreshButton.value?.actionHintScope({
         scopeId,
         clipRoots: [
@@ -312,7 +305,8 @@ export class CaffoldSettingsClaudePage extends CaffoldElement {
     void this.reconcile();
   }
 
-  private openRestart() {
+  private requestRestart(event: Event) {
+    event.stopPropagation();
     this.dispatchEvent(
       new CustomEvent(CLAUDE_RUNTIME_RESTART_REQUEST_EVENT, {
         bubbles: true,

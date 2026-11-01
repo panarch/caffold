@@ -34,6 +34,11 @@ const ITEMS: readonly SettingsNavigatorEntry[] = [
   { section: "codex", label: "Codex", brand: "codex-template@2x.png" },
   { section: "claude", label: "Claude", brand: "claude-template.png" },
   { section: "grok", label: "Grok", brand: "grok-template.png" },
+  {
+    section: "antigravity",
+    label: "Antigravity",
+    brand: "antigravity-icon.svg",
+  },
   { section: "about", label: "About Caffold", icon: "Info" },
 ];
 

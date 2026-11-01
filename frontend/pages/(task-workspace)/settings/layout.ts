@@ -7,6 +7,7 @@ import {
   ActionHints,
   mergeActionHintScopes,
 } from "#app/action-hints.js";
+import type { KeyboardNavigationContext } from "#app/keyboard-navigation.js";
 import {
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
@@ -30,6 +31,7 @@ import type {
 import type { CaffoldSettingsNavigator } from "./components/navigator.js";
 import "./files/page.js";
 import "./grok/page.js";
+import "./antigravity/page.js";
 import "./jev/page.js";
 import "./keyboard/page.js";
 import "./notifications/page.js";
@@ -57,6 +59,7 @@ const TITLES: Readonly<Record<string, string>> = {
   codex: "Codex",
   claude: "Claude",
   grok: "Grok",
+  antigravity: "Antigravity",
   about: "About Caffold",
 };
 const SETTINGS_MASTER_DETAIL_MEDIA_QUERY = "(min-width: 900px)";
@@ -66,6 +69,7 @@ const ACTIVE_PAGES = [
   "codex",
   "claude",
   "grok",
+  "antigravity",
   "notifications",
   "remote-access",
   "voice",
@@ -75,6 +79,7 @@ const ACTIVE_PAGES = [
 const ROUTED_PAGES = ["appearance", "keyboard", "files"];
 
 interface SettingsPage extends HTMLElement {
+  keyboardNavigationContexts?: () => KeyboardNavigationContext[];
   activate?: () => void;
   deactivate?: () => void;
   prepareRoute?: () => void;
@@ -234,6 +239,10 @@ export class CaffoldSettingsWorkspace extends CaffoldElement {
             ${drawn(this.pages.of("grok"))}
             ?hidden=${presented !== "grok"}
           ></caffold-settings-grok-page>
+          <caffold-settings-antigravity-page
+            ${drawn(this.pages.of("antigravity"))}
+            ?hidden=${presented !== "antigravity"}
+          ></caffold-settings-antigravity-page>
           <caffold-settings-about-page
             ${drawn(this.pages.of("about"))}
             ?hidden=${presented !== "about"}
@@ -320,6 +329,12 @@ export class CaffoldSettingsWorkspace extends CaffoldElement {
           ...(pull.clipRoots ?? []),
         ],
       }),
+    );
+  }
+
+  keyboardNavigationContexts() {
+    return (
+      this.page(this.presentedSection())?.keyboardNavigationContexts?.() ?? []
     );
   }
 

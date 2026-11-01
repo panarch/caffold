@@ -21,7 +21,7 @@ use crate::{
     watch::WatchHub,
 };
 
-use super::{CodexMcpHost, GrokMcpHost};
+use super::{CodexMcpHost, HttpMcpHost};
 use crate::app::{jev::PermissionReviewer, terminal::TaskTerminals};
 
 #[derive(Clone)]
@@ -103,7 +103,8 @@ pub(in crate::app) struct PersistentTasksGateway {
     database_path: PathBuf,
     worktree_root: PathBuf,
     codex_mcp: CodexMcpHost,
-    grok_mcp: GrokMcpHost,
+    grok_mcp: HttpMcpHost,
+    antigravity_mcp: HttpMcpHost,
     watch_hub: WatchHub,
     permission_reviewer: PermissionReviewer,
     terminals: TaskTerminals,
@@ -118,7 +119,8 @@ impl PersistentTasksGateway {
         database_path: PathBuf,
         worktree_root: PathBuf,
         codex_mcp: CodexMcpHost,
-        grok_mcp: GrokMcpHost,
+        grok_mcp: HttpMcpHost,
+        antigravity_mcp: HttpMcpHost,
         watch_hub: WatchHub,
         permission_reviewer: PermissionReviewer,
         terminals: TaskTerminals,
@@ -153,6 +155,7 @@ impl PersistentTasksGateway {
             worktree_root,
             codex_mcp,
             grok_mcp,
+            antigravity_mcp,
             watch_hub,
             permission_reviewer,
             terminals,
@@ -176,6 +179,7 @@ impl PersistentTasksGateway {
                     self.worktree_root.clone(),
                     self.codex_mcp.clone(),
                     self.grok_mcp.clone(),
+                    self.antigravity_mcp.clone(),
                     self.watch_hub.clone(),
                     self.permission_reviewer.clone(),
                     self.terminals.clone(),

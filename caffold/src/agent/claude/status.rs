@@ -283,7 +283,7 @@ fn window_of(row: &Value) -> Option<UsageWindow> {
 /// simply not running stays an ordinary answer.
 fn runner_block(
     socket_problem: Option<String>,
-    answered: Option<Option<caffold_claude_runner::protocol::DaemonStatus>>,
+    answered: Option<Option<caffold_runner::protocol::DaemonStatus>>,
 ) -> Result<RunnerReport, String> {
     if let Some(problem) = socket_problem {
         return Err(problem);
@@ -297,7 +297,7 @@ fn runner_block(
 }
 
 /// The runner block, from the runner or from its absence.
-fn runner_report(status: Option<caffold_claude_runner::protocol::DaemonStatus>) -> RunnerReport {
+fn runner_report(status: Option<caffold_runner::protocol::DaemonStatus>) -> RunnerReport {
     match status {
         Some(status) => RunnerReport {
             running: true,

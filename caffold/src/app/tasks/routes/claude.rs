@@ -20,15 +20,15 @@ pub(super) async fn claude_status(
 
 /// Restart the Claude runtime, on a person's explicit say-so.
 ///
-/// The runner is stopped — ending every session it holds, the way an
-/// application update ends them — and a fresh one is started running whatever
+/// The runner is stopped, ending every session it holds, and a fresh one
+/// is started running whatever
 /// binary is installed now. Conversations resume from their files as their
 /// Tasks are opened. Nothing calls this on the backend's own behalf: quitting
 /// is covered by the runner's idle timeout, and this route exists for the one
 /// case only a person can mean — put the Claude runtime down and up again.
 pub(super) async fn claude_restart(
     State(state): State<TaskState>,
-) -> Result<Json<caffold_claude_runner::protocol::DaemonStatus>, ApiError> {
+) -> Result<Json<caffold_runner::protocol::DaemonStatus>, ApiError> {
     state
         .task_runtime
         .claude()

@@ -1376,3 +1376,14 @@ function restoreGlobal(name, value) {
     globalThis[name] = value;
   }
 }
+
+test("a late prompt response clears only the options captured for that request", () => {
+  const element=turnOptionsHost({}, {reconcile(){}});
+  element.holdSubmissionOptions({provider:"antigravity",model:"fixture",effort:"low",permissionMode:"default"});
+  const submitted=element.choiceRevision();
+  element.holdSubmissionOptions({provider:"antigravity",model:"fixture",effort:"high",permissionMode:"default"});
+  const latest=element.choiceRevision();
+  assert.equal(element.resetOverrides(submitted),false);
+  assert.equal(element.choiceRevision(),latest);
+  assert.equal(element.resetOverrides(latest),true);
+});

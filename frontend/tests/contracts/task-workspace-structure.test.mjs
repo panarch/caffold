@@ -270,7 +270,7 @@ test("registered dialog contexts stay owned and compose through public providers
   assert.match(appShell, /this\.updateDialog\.value\?\.keyboardNavigationContexts/);
   assert.match(appShell, /this\.taskWorkspace\.keyboardNavigationContexts/);
   assert.match(workspace, /this\.codexRuntimeRestartDialog\.keyboardNavigationContexts/);
-  assert.match(workspace, /this\.claudeRuntimeRestartDialog\.keyboardNavigationContexts/);
+  assert.match(workspace, /this\.settingsWorkspace\.keyboardNavigationContexts/);
   assert.match(workspace, /this\.archivedDeleteDialog\.keyboardNavigationContexts/);
   assert.match(workspace, /this\.taskSwitcherDialog\.keyboardNavigationContexts/);
   assert.match(tasks, /this\.imagePreviewDialog\.value\?\.keyboardNavigationContexts/);
@@ -294,7 +294,7 @@ test("registered product dialogs retain one context-local keyboard presentation"
     "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.ts",
     "pages/(task-workspace)/codex-status/components/runtime-update-dialog.ts",
     "pages/(task-workspace)/codex-status/components/reset-credit-dialog.ts",
-    "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.ts",
+    "pages/(task-workspace)/settings/components/runtime/components/runtime-restart-dialog.ts",
     "pages/(task-workspace)/tasks/components/archived-delete-dialog.ts",
     "pages/(task-workspace)/tasks/components/task-switcher-dialog.ts",
     "pages/(task-workspace)/tasks/components/image-preview-dialog.ts",

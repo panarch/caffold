@@ -296,6 +296,17 @@ const ROUTE_DEFINITIONS = [
     parent: () => settingsRoute(),
   }),
   routeDefinition({
+    id: "settings-antigravity",
+    kind: "settings",
+    pattern: "/settings/antigravity",
+    surface: "task-workspace",
+    target: "antigravity",
+    toRoute: () => settingsRoute("antigravity"),
+    matchesRoute: (route) =>
+      route?.kind === "settings" && route.section === "antigravity",
+    parent: () => settingsRoute(),
+  }),
+  routeDefinition({
     id: "settings-about",
     kind: "settings",
     pattern: "/settings/about",
@@ -1118,6 +1129,7 @@ function settingsRoute(section = ""): ParsedRoute {
       "codex",
       "claude",
       "grok",
+      "antigravity",
       "about",
     ].includes(section)
       ? section

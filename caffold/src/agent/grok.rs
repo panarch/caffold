@@ -14,7 +14,6 @@
 
 mod binding;
 mod history;
-mod mcp;
 mod protocol;
 mod reading;
 mod session;
@@ -23,10 +22,10 @@ mod switching;
 mod translate;
 mod transport;
 
-pub(crate) use self::mcp::{GrokMcpBindings, grok_mcp_initialize_result};
 pub(crate) use self::status::GrokStatus;
 #[cfg(test)]
 pub(crate) use self::transport::mock::MockLeader;
+pub(crate) use super::http_mcp::TaskMcpBindings as GrokMcpBindings;
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -57,9 +56,9 @@ use self::{
     transport::{Bridge, LEADER_SOCKET_FILE_NAME, Transport},
 };
 use super::{
-    ActivityStatus, ApprovalDecision, ApprovalRequest, ContextUsage, Conversation,
-    ConversationItem, ItemKind, SessionEvent, SessionEventKind, ThreadStatus, Turn, TurnPage,
-    TurnState, TurnStatus,
+    ActivityStatus, ApprovalDecision, ApprovalRequest, CAFFOLD_SESSION_INSTRUCTIONS, ContextUsage,
+    Conversation, ConversationItem, ItemKind, SessionEvent, SessionEventKind, ThreadStatus, Turn,
+    TurnPage, TurnState, TurnStatus,
     driver::{
         AgentError, Driver, ModelOption, PermissionModeOption, PermissionModes,
         REVIEWED_PERMISSION_MODE, TurnOptions, TurnRejected, bounded,
@@ -405,8 +404,7 @@ impl GrokClient {
         let (mcp_servers, offered) = self.mcp_servers_for(&id).await;
         let rules = format!(
             "{}\n\n{}",
-            super::CAFFOLD_SESSION_INSTRUCTIONS,
-            CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS
+            CAFFOLD_SESSION_INSTRUCTIONS, CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS
         );
         let created = self
             .inner
@@ -1868,7 +1866,7 @@ mod tests {
     #[test]
     fn the_reviewed_mode_runs_grok_under_the_posture_that_asks_the_most() {
         assert_eq!(
-            super::grok_permission_mode(Some(super::REVIEWED_PERMISSION_MODE)),
+            grok_permission_mode(Some(REVIEWED_PERMISSION_MODE)),
             Some("ask")
         );
     }
@@ -1876,9 +1874,9 @@ mod tests {
     #[test]
     fn groks_own_modes_are_carried_back_unchanged() {
         for mode in ["ask", "autoMode", "yoloMode", "somethingElse"] {
-            assert_eq!(super::grok_permission_mode(Some(mode)), Some(mode));
+            assert_eq!(grok_permission_mode(Some(mode)), Some(mode));
         }
-        assert_eq!(super::grok_permission_mode(None), None);
+        assert_eq!(grok_permission_mode(None), None);
     }
 
     use serde_json::json;

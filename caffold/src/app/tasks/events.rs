@@ -126,6 +126,8 @@ pub(in crate::app::tasks) struct TaskHistoryCursor {
 
 #[derive(Debug, Clone)]
 pub(in crate::app::tasks) struct TaskHistoryPage {
+    pub(in crate::app::tasks) reset_revision: u64,
+    pub(in crate::app::tasks) epoch: String,
     pub(in crate::app::tasks) events: Vec<TaskEventRecord>,
     pub(in crate::app::tasks) next: Option<TaskHistoryCursor>,
     pub(in crate::app::tasks) owns_extent: bool,
@@ -205,6 +207,7 @@ impl TaskEvents {
                 now_ms(),
             )),
             SessionEventKind::ConversationStarted { .. }
+            | SessionEventKind::ConversationReplaced { .. }
             | SessionEventKind::BackgroundWorkChanged { .. }
             | SessionEventKind::TitleChanged { .. }
             | SessionEventKind::SettingsChanged { .. }
@@ -241,6 +244,10 @@ impl TaskEvents {
         }
         self.cache
             .accept_page(&conversation.id, page, by_turn, base_revision, cursor)
+    }
+
+    pub(in crate::app::tasks) fn replace_conversation(&self, thread_id: &str) {
+        self.cache.replace_conversation(thread_id);
     }
 
     pub(in crate::app::tasks) fn cached_history_page(

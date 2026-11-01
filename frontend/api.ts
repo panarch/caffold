@@ -87,6 +87,114 @@ export async function getGrokStatus() {
   return requestJson<GrokStatus>("/api/grok/status");
 }
 
+export function getAntigravityStatus({
+  signal,
+}: {
+  signal?: AbortSignal;
+} = {}) {
+  return requestJson<AntigravityStatus>(
+    "/api/antigravity/status",
+    {},
+    { signal },
+  );
+}
+export function installAntigravity() {
+  return requestJson<AntigravityStatus>(
+    "/api/antigravity/install",
+    {},
+    { method: "POST" },
+  );
+}
+export function refreshAntigravity() {
+  return requestJson<AntigravityStatus>(
+    "/api/antigravity/refresh",
+    {},
+    { method: "POST", timeoutMs: 180_000 },
+  );
+}
+export function restartAntigravityRuntime() {
+  return requestJson<AntigravityStatus>(
+    "/api/antigravity/restart",
+    {},
+    { method: "POST", timeoutMs: 180_000 },
+  );
+}
+export function signInAntigravity() {
+  return requestJson<AntigravityStatus>(
+    "/api/antigravity/auth/login",
+    {},
+    { method: "POST" },
+  );
+}
+export function signOutAntigravity() {
+  return requestJson<AntigravityStatus>(
+    "/api/antigravity/auth/logout",
+    {},
+    { method: "POST" },
+  );
+}
+export function completeAntigravityAuth(requestId: string, url: string) {
+  return requestJson<AntigravityStatus>(
+    "/api/antigravity/auth/callback",
+    {},
+    { method: "POST", body: { requestId, url } },
+  );
+}
+export function cancelAntigravityAuth(requestId: string) {
+  return requestJson<AntigravityStatus>(
+    "/api/antigravity/auth/cancel",
+    {},
+    { method: "POST", body: { requestId } },
+  );
+}
+export interface AntigravityStatus {
+  runtime: {
+    restarting: boolean;
+    running: boolean | null;
+    pid: number | null;
+    version: string | null;
+    sessions: number | null;
+    idleTimeoutSecs: number | null;
+    error: string | null;
+  };
+  installation: {
+    phase: "idle" | "downloading" | "verifying" | "extracting" | "publishing";
+    supported: boolean;
+    version: string;
+    installed: boolean | null;
+    executable: string | null;
+    error: string | null;
+  };
+  auth: {
+    phase:
+      | "idle"
+      | "starting"
+      | "awaitingCallback"
+      | "completing"
+      | "signingOut";
+    requestId: string | null;
+    authorizationUrl: string | null;
+    verified: {
+      authenticated: boolean;
+      tier: { id: string; name: string } | null;
+      verifiedAtMs: number;
+    } | null;
+    error: string | null;
+  };
+  usage: {
+    windows: Array<{
+      group: string;
+      period: "fiveHours" | "weekly";
+      percent: number;
+      resetsAt: string;
+    }>;
+    error: string | null;
+  };
+  refreshing: boolean;
+  modelsAvailable: boolean;
+  modelsError: string | null;
+}
+
 // Restarts the Claude runner; its conversations resume as their Tasks open.
 export async function restartClaudeRuntime() {
   return requestJson("/api/claude/restart", {}, { method: "POST" });
@@ -1604,12 +1712,15 @@ export interface TaskEventsRange {
 // it: the Task, a page of its items and the extent they cover, the
 // publication revision they carry, and what its next turn runs under.
 export interface TaskDetail {
+  supportsSteering?: boolean;
   threadId?: string;
   task: Task | null;
   events?: TaskEvent[];
   fileLinks?: TaskFileLink[];
   revision?: number;
   eventRevision?: number;
+  eventResetRevision?: number;
+  eventEpoch?: string | null;
   eventsRange?: TaskEventsRange | null;
   eventsPage?: { nextCursor?: string | null } | null;
   historyLoading?: boolean;

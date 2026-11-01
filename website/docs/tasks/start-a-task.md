@@ -20,14 +20,16 @@ a model, and a first prompt.
 5. Write the prompt and send it. You can [attach files](#attach-files) to it,
    or [dictate it](../voice-input.md).
 
-The Task opens right away with your message. Near the end of the first turn,
+The Task opens right away and your prompt appears immediately in the
+conversation. Near the end of the first turn,
 the agent names the Task after what you asked for. To rename it later, ask the
 agent, for example `Rename this task to Dark theme`.
 
 ## Attach files
 
 Every Composer takes files: New Task, a Task's next prompt, and a prompt you
-send into a running turn. Attach up to ten files of up to 5 GB each:
+send into a running turn that supports steering. Attach up to ten files of up
+to 5 GB each:
 
 - choose **Attach files**, the paper clip, and pick them;
 - paste files or screenshots into the prompt; or
@@ -39,8 +41,8 @@ see larger, and any other file by its name; the X on each takes it out.
 ![New Task with a pasted screenshot and an attached log](../assets/screenshots/composer-attachments-desktop.png)
 
 Sending uploads the files to the Mac one at a time, into a folder of their own
-under `.caffold/uploads/` in the Task's working directory, and the message
-shows the upload's progress. **Cancel upload** stops it and returns the prompt
+under `.caffold/uploads/` in the Task's working directory, and upload progress
+appears in the message. **Cancel upload** stops it and returns the prompt
 to the Composer; during a running turn, that button is **Stop current turn** and
 also stops the turn.
 
@@ -60,7 +62,7 @@ them with the worktree.
 
 ## The model chooses the agent
 
-Every model belongs to one agent: Codex, Claude Code, or Grok. The model you
+Every model belongs to one agent: Codex, Claude Code, Grok, or Antigravity. The model you
 choose for a new Task decides which agent runs it, and the Task keeps that
 agent for its whole life. To work with another agent, start another Task.
 

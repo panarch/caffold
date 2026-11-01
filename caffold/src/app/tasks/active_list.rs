@@ -13,7 +13,7 @@ use crate::{
         grok::GrokClient,
     },
     app::error::ApiError,
-    app::tasks::sessions::TaskSessions,
+    app::tasks::sessions::{SessionLifecycle, TaskSessions},
     fs::RootedFs,
     task_store::{
         ComposerSettings, ManagedSection, ManagedThread, ManagedWorktree, ManagedWorktreeState,
@@ -24,7 +24,7 @@ use crate::{
 use super::sections::DirectoryObservation;
 use super::{
     TaskRecord,
-    recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason},
+    recovery::{self, ActiveTaskRecovery, ActiveTaskRecoveryReason},
 };
 use crate::agent::Conversation;
 use crate::git;
@@ -284,6 +284,11 @@ pub(in crate::app::tasks) async fn load_runtime_snapshot(
             // process has loaded are being watched; the rest are described
             // from their rows, like Claude's.
             RunBy::Grok { .. } => grok.watched_conversation(&managed.thread_id).await,
+            RunBy::Antigravity { .. } => sessions
+                .snapshot(&managed.thread_id)
+                .await
+                .filter(|snapshot| snapshot.lifecycle == SessionLifecycle::Subscribed)
+                .and_then(|snapshot| snapshot.conversation),
         };
         let Some(conversation) = conversation else {
             continue;
@@ -307,7 +312,7 @@ async fn listed_codex_threads(codex: Option<&CodexConnection>) -> Vec<CodexThrea
     let Some(connection) = codex else {
         return Vec::new();
     };
-    match super::recovery::list_all_global_threads(&connection.client).await {
+    match recovery::list_all_global_threads(&connection.client).await {
         Ok(threads) => threads,
         Err(error) => {
             eprintln!(

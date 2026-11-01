@@ -412,7 +412,9 @@ function completedTurnEntries(
   const lastWork = workEvents.at(-1);
   if (lastWork) {
     output.push([
-      [lastWork],
+      // A resolved control can arrive after the answer. The completed work
+      // summary still belongs before that answer, without rewriting events.
+      finalAssistantEvent ? [lastWork, finalAssistantEvent] : [lastWork],
       turnWorkEntry(
         group,
         workEvents,

@@ -43,6 +43,11 @@ pub(crate) enum SessionEventKind {
     ConversationStarted {
         conversation: Conversation,
     },
+    /// The driver discarded its display conversation and reconstructed it.
+    /// Old identities are no longer members, including outside this first page.
+    ConversationReplaced {
+        turns_page: TurnPage,
+    },
     StatusChanged {
         status: ThreadStatus,
     },

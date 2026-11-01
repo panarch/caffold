@@ -64,3 +64,24 @@ test("invalid revisions are rejected and a new baseline may restart revision num
   events = model.snapshot(events, snapshot([item("one", 1, "restart")], 1, from(1)));
   assert.equal(events[0].payload.text, "restart");
 });
+
+test("display reconstruction removes old identities outside the latest page and fences stale history", () => {
+  const model = new ConversationProjection();
+  let events = model.snapshot([], { ...snapshot([item("old", 1)], 10, from(1)), eventEpoch: "old" });
+  events = model.delta(events, item("new-live", 4), 25);
+  events = model.snapshot(events, { ...snapshot([item("native", 3)], 24, from(3)), eventEpoch: "new", eventResetRevision: 20 });
+  assert.deepEqual(events.map(({id}) => id), ["native", "new-live"]);
+  assert.equal(model.delta(events, item("old", 1), 19), null);
+  assert.equal(model.snapshot(events, { ...snapshot([item("old", 1)], 19, from(1)), eventEpoch: "old" }), null);
+});
+
+test("ordinary reconnect keeps older pages while a new backend replaces display identities", () => {
+  const model = new ConversationProjection();
+  let events = model.snapshot([], { ...snapshot([item("old-page", 1), item("live", 3)], 10, from(1)), eventEpoch: "backend-one" });
+  model.reset();
+  events = model.snapshot(events, { ...snapshot([item("live", 3)], 11, from(3)), eventEpoch: "backend-one" });
+  assert.deepEqual(events.map(({id}) => id), ["old-page", "live"]);
+  model.reset();
+  events = model.snapshot(events, { ...snapshot([item("native", 3)], 1, from(3)), eventEpoch: "backend-two" });
+  assert.deepEqual(events.map(({id}) => id), ["native"]);
+});

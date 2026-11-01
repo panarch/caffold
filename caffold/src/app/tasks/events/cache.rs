@@ -16,6 +16,7 @@ use super::TaskEventSnapshot;
 use crate::agent::{Turn, TurnPage, TurnStatus};
 #[cfg(test)]
 use std::collections::HashSet;
+use uuid::Uuid;
 
 use super::super::detail::TASK_DETAIL_EVENT_LIMIT;
 use super::{
@@ -28,6 +29,8 @@ pub(super) const RETAINED_ITEM_LIMIT: usize = 300;
 
 #[derive(Default)]
 struct ThreadEvents {
+    reset_revision: u64,
+    epoch: Option<Uuid>,
     turns: HashMap<String, CachedTurn>,
     supplemental: Vec<TaskEventObservation>,
     latest: Option<String>,
@@ -55,12 +58,34 @@ struct CachedTurn {
     access: u64,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub(super) struct TurnEventCache {
+    epoch: Uuid,
     state: Arc<Mutex<HashMap<String, ThreadEvents>>>,
 }
 
+impl Default for TurnEventCache {
+    fn default() -> Self {
+        Self {
+            epoch: Uuid::new_v4(),
+            state: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+}
+
 impl TurnEventCache {
+    pub(super) fn replace_conversation(&self, thread_id: &str) {
+        let mut state = self.state.lock().expect("conversation cache lock");
+        let thread = state.entry(thread_id.into()).or_default();
+        let revision = thread.revision.saturating_add(1);
+        *thread = ThreadEvents {
+            revision,
+            reset_revision: revision,
+            epoch: Some(Uuid::new_v4()),
+            history_request: thread.history_request.saturating_add(1),
+            ..ThreadEvents::default()
+        };
+    }
     pub(super) fn record_observation(
         &self,
         mut event: TaskEventRecord,
@@ -175,6 +200,8 @@ impl TurnEventCache {
         sort_task_events(&mut events);
         thread.revision = thread.revision.saturating_add(1);
         TaskHistoryPage {
+            reset_revision: thread.reset_revision,
+            epoch: thread.epoch.unwrap_or(self.epoch).to_string(),
             events,
             next: page.next_cursor.as_ref().map(|cursor| TaskHistoryCursor {
                 turns: Some(cursor.clone()),
@@ -237,6 +264,8 @@ impl TurnEventCache {
             sort_task_events(&mut events);
             thread.revision = thread.revision.saturating_add(1);
             return Some(TaskHistoryPage {
+                reset_revision: thread.reset_revision,
+                epoch: thread.epoch.unwrap_or(self.epoch).to_string(),
                 events,
                 next: None,
                 revision: thread.revision,
@@ -281,6 +310,8 @@ impl TurnEventCache {
         sort_task_events(&mut events);
         thread.revision = thread.revision.saturating_add(1);
         Some(TaskHistoryPage {
+            reset_revision: thread.reset_revision,
+            epoch: thread.epoch.unwrap_or(self.epoch).to_string(),
             events,
             next,
             revision: thread.revision,

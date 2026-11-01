@@ -1,3 +1,4 @@
+use crate::agent::antigravity::AntigravityClient;
 use std::{path::PathBuf, sync::Arc};
 
 use serde::Serialize;
@@ -90,6 +91,7 @@ pub(in crate::app::tasks) struct TaskLifecycle {
     worktrees: ManagedWorktrees,
     claude: ClaudeClient,
     grok: GrokClient,
+    antigravity: AntigravityClient,
     terminals: TaskTerminals,
 }
 
@@ -103,6 +105,7 @@ impl TaskLifecycle {
         worktrees: ManagedWorktrees,
         claude: ClaudeClient,
         grok: GrokClient,
+        antigravity: AntigravityClient,
         terminals: TaskTerminals,
     ) -> Self {
         Self {
@@ -113,6 +116,7 @@ impl TaskLifecycle {
             worktrees,
             claude,
             grok,
+            antigravity,
             terminals,
         }
     }
@@ -553,6 +557,11 @@ impl TaskLifecycle {
                     eprintln!("failed to remove an unclaimed Grok session: {error}");
                 }
             }
+            TaskAgent::Antigravity { .. } => {
+                if let Err(error) = self.antigravity.erase(conversation_id).await {
+                    eprintln!("failed to remove an unclaimed Antigravity session: {error}");
+                }
+            }
         }
     }
 }
@@ -661,6 +670,7 @@ mod tests {
                 worktrees,
                 claude,
                 GrokClient::unreachable(),
+                AntigravityClient::uninstalled(),
                 TaskTerminals::for_tests(),
             ),
         )

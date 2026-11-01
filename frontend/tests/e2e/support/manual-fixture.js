@@ -149,7 +149,7 @@ export async function installManualDefaults(page) {
     );
   });
   await page.route("**/api/agent/models", (route) =>
-    route.fulfill({ json: AGENT_CATALOG }),
+    route.fulfill({ json: {...AGENT_CATALOG,models:[...AGENT_CATALOG.models,{provider:"antigravity",model:"gemini-3.8-flash",displayName:"Gemini 3.8 Flash",isDefault:true,defaultEffort:"high",efforts:["low","medium","high"],supportsFastMode:false}]} }),
   );
   await page.route("**/api/agent/permissions*", (route) => {
     const url = new URL(route.request().url());
@@ -696,6 +696,7 @@ function manualCodexStatus() {
 
 function detailFor(task, overrides = {}) {
   return {
+ supportsSteering:true,
     threadId: task.threadId,
     provider: "codex",
     syncState: "ready",
@@ -1329,3 +1330,18 @@ const NOTES = {
     updatedBy: { threadId: MANUAL_TASKS.darkTheme.threadId, state: "active", displayName: MANUAL_TASKS.darkTheme.title },
   },
 };
+
+export async function installManualAntigravity(page) {
+  await page.route("**/api/antigravity/{status,refresh}",route=>route.fulfill({json:{
+    runtime:{restarting:false,running:true,pid:4301,version:"0.7.2",sessions:2,idleTimeoutSecs:600,error:null},
+    installation:{phase:"idle",supported:true,version:"1.4.5",installed:true,executable:"/Users/alex/Library/Application Support/Caffold/data/antigravity/versions/1.4.5/agy_acp_server.par",error:null},
+    auth:{phase:"idle",requestId:null,authorizationUrl:null,verified:{authenticated:true,tier:{id:"g1-pro-tier",name:"Google AI Pro"},verifiedAtMs:MANUAL_NOW},error:null},
+    usage:{windows:[
+      {group:"Gemini",period:"weekly",percent:9,resetsAt:"2026-11-07T08:50:00Z"},
+      {group:"Gemini",period:"fiveHours",percent:3,resetsAt:"2026-11-01T08:24:00Z"},
+      {group:"Claude / GPT",period:"weekly",percent:0,resetsAt:"2026-11-08T05:30:00Z"},
+      {group:"Claude / GPT",period:"fiveHours",percent:0,resetsAt:"2026-11-01T10:30:00Z"},
+      {group:"Gemini 4 Argon",period:"weekly",percent:1,resetsAt:"2026-11-07T03:18:00Z"},
+    ],error:null},refreshing:false,modelsAvailable:true,modelsError:null,
+  }}));
+}

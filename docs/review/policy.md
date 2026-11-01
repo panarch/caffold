@@ -92,6 +92,11 @@ Caffold should present state without pretending to own state it does not own.
 - Grok's leader is the source of truth for Grok sessions, turns, approvals, and
   history; Caffold's driver-private binding owns only which native session a
   Task runs on.
+- Antigravity's native SQLite trajectory owns persisted history; its live ACP
+  process owns input, permissions and settings. Its driver owns disposable
+  display identities and replaces them on reconstruction. Driver checkpoints
+  retain request control and the same child's latest account/context
+  observations, never a second conversation ledger.
 - Caffold storage is for Caffold-owned metadata, indexes, recovery data,
   UI-facing summaries, and the Notes agents keep through Caffold's Notes tools.
 - The browser UI is a view and control surface, not durable state.

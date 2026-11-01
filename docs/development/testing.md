@@ -75,9 +75,10 @@ one records where it runs from and what it needs:
 | `cargo test --test codex_protocol -- --ignored` | repository root | installed Codex CLI | Codex CLI schema compatibility without authentication or model usage |
 | `cargo test -p caffold --lib codex -- --ignored --list` | repository root | Rust test toolchain | discover Codex backend live checks; execution requirements depend on the selected test |
 | `npm run test:codex-live` | `frontend/` | authenticated Codex CLI | authenticated Codex browser coverage with model usage |
-| `cargo test -p caffold-claude-runner --test live -- --ignored` | repository root | authenticated Claude CLI | that Claude still returns an unanswered permission request to a client that reattaches, with model usage |
+| `cargo test -p caffold-runner --test live -- --ignored` | repository root | authenticated Claude CLI | that Claude still returns an unanswered permission request to a client that reattaches, with model usage |
 | `cargo test -p caffold --test claude_live -- --ignored --test-threads=1` | repository root | authenticated Claude CLI | what a person sees when the backend is replaced or the runner is killed under a working Claude Task, that each permission decision does what it says, that the agent reaches the tool Caffold serves it, and that the installation reports its status, with model usage |
 | `cargo test -p caffold --lib -- agent::grok` | repository root | Rust test toolchain | the Grok driver against a scripted leader that answers as `grok 1.0.30` did: creation, turns, approvals, history, worktree moves, reconnection, and the Settings report, without an installed Grok |
+| `cargo test -p caffold --test antigravity_live -- --ignored --test-threads=1` | repository root | authenticated macOS arm64 ACP installation | official package, cached Google sign-in, native history, permissions and backend replacement; the prompt scenario consumes model usage |
 | `cargo test -p caffold --lib voice -- --ignored --list` | repository root | Rust test toolchain | discover the voice live checks; a transcription check needs a Whisper model file or a provider API key and a speech recording, and the Grok key check needs only internet access |
 | `node --test docs/tests/*.test.mjs` | repository root | Node | documentation index, links, entrypoints, and this command index |
 | `node --test scripts/tests/*.test.mjs` | repository root | Node | release version tooling |
@@ -100,9 +101,11 @@ application. The frontend package keeps its own under
 
 The workspace has two Rust members, and each keeps its tests with it. The
 server is `caffold/`, and `caffold/tests/` holds its Cargo integration tests
-and the fixtures the backend shares — today the Codex protocol contract and the
-stub Codex CLI that the readiness tests and the browser server both use. The
-Claude runner is `runners/claude/`, and `runners/claude/tests/` holds its own:
+and the fixtures the backend shares: native-agent HTTP/process live suites,
+the Codex protocol contract, and the stub Codex CLI that readiness tests and
+the browser server both use. The
+shared process runner is `runners/caffold/`, and `runners/caffold/tests/` holds
+its own:
 a suite driven by a stand-in agent, which is deterministic and spends no model
 usage, and the opt-in live check above. `cargo test` from the repository root
 covers every member, so neither needs its own job.
@@ -356,7 +359,7 @@ whether the installed Claude CLI redelivers an unanswered permission request
 after the client reattaches.
 
 ```sh
-cargo test -p caffold-claude-runner --test live -- --ignored
+cargo test -p caffold-runner --test live -- --ignored
 ```
 
 The backend live suite drives the shipped Caffold server and runner against an
@@ -384,6 +387,34 @@ checking the installed CLI is a manual run of `caffold serve` against a
 throwaway directory, where **Settings → Grok** and a Grok Task show what the
 installation does. Such a run starts Caffold's Grok leader on
 `~/.grok/leader-caffold.sock` and leaves it running.
+
+## Antigravity compatibility and live tests
+
+The deterministic suite covers the pinned native record reader, ACP input and
+approval state, runner replay, and remote callback validation. Browser cases
+are `settings-antigravity.spec.js` and `tasks/antigravity-input.spec.js`.
+
+On an authenticated macOS arm64 host, build both shipped binaries before the
+opt-in public HTTP checks:
+
+```sh
+cargo build -p caffold -p caffold-runner
+cargo test -p caffold --test antigravity_live official_install_auth_catalog_and_empty_task_lifecycle -- --ignored --nocapture
+cargo test -p caffold --test antigravity_live native_prompt_permission_survives_display_reconstruction -- --ignored --nocapture
+```
+
+The first downloads and verifies the official pinned ACP release, uses cached
+personal Google authentication, reads model choices, and creates/archives/
+restores/deletes an empty Task without model prompts. It also replaces the
+AGY runner over HTTP, checks process isolation and preserved authentication, and
+reopens the same native conversation. The second spends one
+short prompt and checks native permissions, backend process replacement and
+exact-ID history, plus context retention across active and idle backend
+replacement. Neither signs out or copies credentials. Complete Google
+sign-in in Settings first; a missing cached sign-in cancels the test's job.
+Each test reports its temporary evidence directory and retains bindings on
+failure so cleanup can use exact native IDs. A passing deterministic suite does
+not establish these official package, account or native runtime boundaries.
 
 ## Voice provider checks
 

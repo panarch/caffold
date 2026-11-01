@@ -56,7 +56,7 @@ pub(super) async fn agent_models(
     let mut unavailable = Vec::new();
 
     // Every agent is asked at once, so none waits its turn behind another.
-    let (codex, claude, grok) = tokio::join!(
+    let (codex, claude, grok, antigravity) = tokio::join!(
         async {
             match state.detail.connection().await {
                 Ok(connection) => connection
@@ -69,6 +69,7 @@ pub(super) async fn agent_models(
         },
         state.task_runtime.claude().models(),
         state.task_runtime.grok().models(),
+        state.task_runtime.antigravity().models(),
     );
 
     match codex {
@@ -91,6 +92,13 @@ pub(super) async fn agent_models(
         Ok(offered) => extend(&mut models, TaskProvider::Grok, offered),
         Err(error) => unavailable.push(UnavailableAgent {
             provider: TaskProvider::Grok.as_str(),
+            message: error.to_string(),
+        }),
+    }
+    match antigravity {
+        Ok(offered) => extend(&mut models, TaskProvider::Antigravity, offered),
+        Err(error) => unavailable.push(UnavailableAgent {
+            provider: TaskProvider::Antigravity.as_str(),
             message: error.to_string(),
         }),
     }
@@ -124,6 +132,7 @@ pub(super) async fn agent_permissions(
     let driver = match query.provider.as_deref().map(str::trim) {
         Some("claude") => state.task_runtime.claude().driver(&cwd),
         Some("grok") => state.task_runtime.grok().driver(),
+        Some("antigravity") => state.task_runtime.antigravity().driver(),
         None | Some("") | Some("codex") => require_codex_thread_client(&state).await?.driver(),
         Some(_) => {
             return Err(ApiError::BadRequest {

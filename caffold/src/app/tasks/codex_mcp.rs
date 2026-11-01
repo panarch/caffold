@@ -179,6 +179,7 @@ async fn serve_mcp(State(host): State<CodexMcpHost>, headers: HeaderMap, body: B
 
 #[cfg(test)]
 mod tests {
+    use crate::agent::antigravity::AntigravityClient;
     use crate::fs::RootedFs;
     use anyhow::Context;
     use axum::{
@@ -673,6 +674,7 @@ mod tests {
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             TaskSessions::default(),
             TaskEvents::default(),
             store,
@@ -812,6 +814,7 @@ mod tests {
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             TaskSessions::default(),
             TaskEvents::default(),
             store.clone(),
@@ -929,6 +932,7 @@ mod tests {
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             TaskSessions::default(),
             TaskEvents::default(),
             store.clone(),
@@ -1016,6 +1020,7 @@ mod tests {
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             TaskSessions::default(),
             TaskEvents::default(),
             store.clone(),
@@ -1095,6 +1100,7 @@ mod tests {
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             TaskSessions::default(),
             TaskEvents::default(),
             store.clone(),
@@ -1162,6 +1168,7 @@ mod tests {
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             TaskSessions::default(),
             TaskEvents::default(),
             store.clone(),
@@ -1219,6 +1226,7 @@ mod tests {
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             TaskSessions::default(),
             TaskEvents::default(),
             store.clone(),
@@ -1272,6 +1280,7 @@ mod tests {
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             TaskSessions::default(),
             TaskEvents::default(),
             store.clone(),
@@ -1333,6 +1342,7 @@ mod tests {
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             TaskSessions::default(),
             TaskEvents::default(),
             store.clone(),
@@ -1402,6 +1412,7 @@ mod tests {
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             TaskSessions::default(),
             TaskEvents::default(),
             store.clone(),
@@ -1557,6 +1568,7 @@ mod tests {
             let replacement_runtime = TaskRuntime::new(
                 ClaudeClient::mock().0,
                 GrokClient::unreachable(),
+                AntigravityClient::uninstalled(),
                 TaskSessions::default(),
                 TaskEvents::default(),
                 store.clone(),
@@ -1689,6 +1701,7 @@ mod tests {
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             TaskSessions::default(),
             TaskEvents::default(),
             store.clone(),

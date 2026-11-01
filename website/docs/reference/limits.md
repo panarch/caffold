@@ -8,9 +8,10 @@ lists what is planned.
 - **One person, one Mac.** Caffold has no sign-in and is not for the public
   internet; see [Who can use Caffold](data-and-privacy.md#who-can-use-caffold).
   It runs only on Apple silicon Macs with macOS 14 or later.
-- **Three built-in agents.** Caffold works with Codex, Claude Code, and Grok and
+- **Four built-in agents.** Caffold works with Codex, Claude Code, Grok, and Antigravity and
   cannot load other agents. A Task cannot switch agents, and a feature one
   agent offers may not exist in another; forking, for example, is Codex only.
+  Antigravity supports Stop and editable drafts during work, but no steering.
 - **No code editor, and one terminal per Task.** Ask the agent to change
   files, or edit them in the [terminal](../tasks/terminal.md). A terminal
   appears in place of the conversation, not beside it, and closes when Caffold

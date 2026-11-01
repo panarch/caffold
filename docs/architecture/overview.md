@@ -17,6 +17,10 @@ flowchart TD
     AppServer["Persistent Codex app-server daemon"]
     Runner["Caffold Claude runner"]
     ClaudeSession["claude session process"]
+    GrokBridge["Grok stdio bridge"]
+    GrokLeader["Caffold-started Grok leader"]
+    AgRunner["Caffold Antigravity runner"]
+    AgSession["Official ACP child per Task"]
     Git["Git checkout / worktree"]
     Whisper["Host-local Whisper model"]
     SpeechApi["OpenAI, Gemini, or Grok speech-to-text API"]
@@ -31,6 +35,10 @@ flowchart TD
     Proxy --> AppServer
     Backend -->|"Unix socket"| Runner
     Runner -->|"stdio"| ClaudeSession
+    Backend -->|"stdio"| GrokBridge
+    GrokBridge --> GrokLeader
+    Backend -->|"opaque recovery transport"| AgRunner
+    AgRunner -->|"stdio"| AgSession
     Backend --> Git
     Backend -->|"PTY"| Shell
     Backend --> Whisper
@@ -65,7 +73,7 @@ The backend owns:
 
 - host instance and HTTP/SSE lifecycle;
 - Task membership, routing, and per-Task agent selection;
-- the Codex proxy connection and Claude runner supervision;
+- the Codex proxy connection and separate Claude/Antigravity runner supervision;
 - translation from each agent into Caffold's conversation, event, approval,
   and failure vocabulary;
 - live file, Git, GitHub, and managed-worktree operations;
@@ -81,30 +89,31 @@ The backend owns:
 - shared server settings, PWA assets, and capabilities consumed by browser and
   platform clients.
 
-It does not own either agent's model harness or transcript. The architecture
+It does not own an agent's model harness or transcript. The architecture
 and rationale for that boundary belongs to
 [Agent Runtimes](agent-runtimes.md).
 
 ### Agent runtimes
 
-A Task is bound to Codex, Claude, or Grok. Codex app-server owns Codex thread,
+A Task is bound to Codex, Claude, Grok, or Antigravity. Codex app-server owns Codex thread,
 turn, approval, cwd, and event behavior. Claude Code owns its transcript,
 stream-json/control behavior, tools, and permission model. Caffold's Claude
 runner supplies process survival and frame relay without parsing the agent
 protocol. Grok's leader owns Grok sessions, turns, approvals, and the session
-record; Caffold's Grok driver keeps only the binding between a Task and the
-native session it runs on.
+record; Caffold's Grok driver keeps only the Task's native-session binding.
+Antigravity's ACP process owns requests and permissions, and its native SQLite
+trajectory owns history.
 
 The shared Task application works only in Caffold's small product vocabulary.
 Provider wire methods and payloads stop in the driver. See
 [Codex App Server](codex-app-server.md) and
-[caffold-claude-runner](../../runners/claude/README.md) for the provider and
+[caffold-runner](../../runners/caffold/README.md) for the provider and
 transport details.
 
 Conversation delivery crosses these ownership boundaries:
 
 ```text
-Codex app-server or Claude transcript/live process
+Agent-owned history and live process
                         |
                         v
 native driver translates provider evidence
@@ -183,6 +192,8 @@ caffold/src/app/tasks/runtime.rs       per-Task driver routing and orchestration
 caffold/src/app/tasks/runtime/
   bridge.rs                            Codex event bridge, connection reactions, managed-session recovery
   claude_bridge.rs                     Claude reports, approvals, and served-tool routing
+  grok_bridge.rs                       Grok session reports and approvals
+  antigravity_bridge.rs                ACP controls and native record invalidation
   server_requests.rs                   Codex approvals and dynamic-tool requests
 caffold/src/app/tasks/sync.rs          revisioned Task Detail publication channel
 caffold/src/app/tasks/projection.rs    pure conversation-to-browser Task projection
@@ -193,13 +204,15 @@ caffold/src/agent/notes_tools.rs       Notes tool catalog and argument checks fo
 caffold/src/agent/codex.rs             Codex app-server boundary
 caffold/src/agent/codex/client.rs      Codex connection, generation, readiness answer, restart and update
 caffold/src/agent/claude.rs            Claude CLI boundary
+caffold/src/agent/grok.rs              Grok leader boundary
+caffold/src/agent/antigravity.rs       Official ACP and native trajectory boundary
 caffold/src/app/voice.rs               voice settings, Whisper lifecycle, WAV validation, provider routing
 caffold/src/app/tailscale.rs           status and constrained Serve orchestration
 caffold/src/app/terminal.rs            terminal HTTP/WebSocket routes and the Task close capability
 caffold/src/app/terminal/              terminal registry, shells on PTYs, screen snapshots
 caffold/src/watch.rs                   reference-counted native filesystem watches
 caffold/src/task_store.rs              Caffold-owned durable Task, Notes, and recovery data
-runners/claude/                         transport-only Claude process supervisor
+runners/caffold/                         transport-only process supervisor for separate Claude/Antigravity instances
 ```
 
 `caffold/src/app.rs` constructs completed feature applications; it does not own
@@ -215,6 +228,9 @@ writers for provider state.
 | Codex conversations, turns, activity, and cwd | Codex app-server |
 | Claude conversation history | Claude transcript files |
 | Live Claude process and control requests | Claude process held by the Caffold runner |
+| Grok sessions, history and approvals | Grok leader |
+| Antigravity history and turns | Native SQLite trajectory |
+| Antigravity input and permissions | Official ACP child held by its separate runner |
 | Task membership, provider, stable navigator name, Section placement, composer state, Push subscriptions, and managed-worktree recovery | Caffold Redb |
 | Notes, their directories, and the Tasks that created and last changed them | Caffold Redb |
 | Current plan documents and checklist markers | Filesystem under the Task's effective working directory |
@@ -243,7 +259,12 @@ pending approvals can be recovered. It shuts down after its bounded
 no-subscriber interval or an explicit restart. The runner keeps no history;
 Claude's transcript does.
 
-The browser can disconnect without stopping either runtime. Task viewer, request,
+Grok retains sessions in its leader. Antigravity has a separate Caffold runner
+whose bounded memory journal retains unacknowledged output and the driver's
+opaque checkpoint across backend replacement. Its native store owns
+conversation history. [Agent Runtimes](agent-runtimes.md) owns their lifecycles.
+
+The browser can disconnect without stopping these runtimes. Task viewer, request,
 and runtime leases determine which live subscriptions Caffold maintains, but
 they do not redefine agent status.
 

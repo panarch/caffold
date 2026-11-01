@@ -1,7 +1,7 @@
 # Codex App Server
 
 This document owns Caffold's Codex-specific transport and state contract. The
-cross-agent boundary and the reason Codex, Claude, and Grok keep separate
+cross-agent boundary and the reason Codex, Claude, Grok, and Antigravity keep separate
 native drivers are defined in [Agent Runtimes](agent-runtimes.md).
 
 The supported protocol baseline is the experimental v2 app-server protocol
@@ -81,7 +81,7 @@ crosses from `agent::codex` is the client handle, its errors, turn options, and
 readiness — the control surface rather than the conversation.
 
 `caffold/src/agent/driver.rs` exposes the verified Task operations shared by
-Codex, Claude, and Grok. Codex model, effort, speed, and permission choices are still
+Codex, Claude, Grok, and Antigravity. Codex model, effort, speed, and permission choices are still
 assembled and validated by the Codex driver under Codex's own identifiers. The
 driver and capability policy are owned by
 [Agent Runtimes](agent-runtimes.md#boundary); this document describes how the

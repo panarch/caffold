@@ -63,11 +63,14 @@ pub(in crate::app::tasks) struct DetailContext {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(in crate::app::tasks) struct TaskDetailResponse {
+    pub(in crate::app::tasks) supports_steering: bool,
     pub(in crate::app::tasks) thread_id: String,
     pub(in crate::app::tasks) sync_state: TaskSyncState,
     pub(in crate::app::tasks) revision: u64,
     /// Publication watermark for the canonical conversation projection.
     pub(in crate::app::tasks) event_revision: u64,
+    pub(in crate::app::tasks) event_reset_revision: u64,
+    pub(in crate::app::tasks) event_epoch: Option<String>,
     pub(in crate::app::tasks) task: Option<TaskRecord>,
     pub(in crate::app::tasks) events: Vec<TaskEventRecord>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -158,6 +161,7 @@ pub(in crate::app) struct TaskDetailSync {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(in crate::app) struct TaskDetailState {
+    supports_steering: bool,
     pub(in crate::app::tasks) thread_id: String,
     pub(in crate::app::tasks) revision: u64,
     pub(in crate::app::tasks) task: Option<TaskRecord>,
@@ -174,6 +178,7 @@ impl TaskDetailState {
     /// The part of a full answer that lies beside its conversation.
     fn of(detail: TaskDetailResponse) -> Self {
         Self {
+            supports_steering: detail.supports_steering,
             thread_id: detail.thread_id,
             revision: detail.revision,
             task: detail.task,
@@ -539,6 +544,11 @@ impl DetailContext {
             cursor.turns.is_some() || cursor.before.is_some() || cursor.turn_id.is_some();
         let page = response_page.or_else(|| self.events.cached_history_page(&thread_id, &cursor));
         let history_loading = snapshot.turns_page.is_none();
+        let event_epoch = page.as_ref().map(|page| page.epoch.clone());
+        let event_reset_revision = page
+            .as_ref()
+            .map(|page| page.reset_revision)
+            .unwrap_or_default();
         let event_revision = page.as_ref().map(|page| page.revision).unwrap_or_default();
         let older_turns = page.as_ref().and_then(|page| page.next.clone());
         let owns_extent = page.as_ref().is_some_and(|page| page.owns_extent);
@@ -578,10 +588,13 @@ impl DetailContext {
             let reasoning_effort = session_reasoning_effort.or(current.reasoning_effort);
             let permission_mode = permission_mode.or(current.permission_mode);
             return Ok(TaskDetailResponse {
+                supports_steering: provider.is_some_and(supports_steering),
                 thread_id,
                 sync_state: TaskSyncState::Ready,
                 revision,
                 event_revision,
+                event_reset_revision,
+                event_epoch,
                 task: Some(task),
                 events,
                 file_links,
@@ -798,6 +811,7 @@ pub(in crate::app::tasks) fn loading_detail(
     managed: Option<&ManagedThread>,
 ) -> TaskDetailResponse {
     TaskDetailResponse {
+        supports_steering: managed.is_some_and(|task| supports_steering(task.run_by.provider())),
         thread_id: thread_id.to_string(),
         sync_state: TaskSyncState::Loading,
         revision,
@@ -805,6 +819,8 @@ pub(in crate::app::tasks) fn loading_detail(
         // claim to cover retained deltas that a later readable snapshot will
         // include.
         event_revision: 0,
+        event_reset_revision: 0,
+        event_epoch: None,
         task: None,
         events: Vec::new(),
         file_links: Vec::new(),
@@ -855,10 +871,13 @@ fn opening_messages(
 /// a browser already shows.
 fn without_conversation(detail: &TaskDetailResponse) -> TaskDetailResponse {
     TaskDetailResponse {
+        supports_steering: detail.supports_steering,
         thread_id: detail.thread_id.clone(),
         sync_state: detail.sync_state,
         revision: detail.revision,
         event_revision: 0,
+        event_reset_revision: 0,
+        event_epoch: None,
         task: detail.task.clone(),
         events: Vec::new(),
         file_links: Vec::new(),
@@ -872,6 +891,13 @@ fn without_conversation(detail: &TaskDetailResponse) -> TaskDetailResponse {
         reasoning_effort: detail.reasoning_effort.clone(),
         fast_mode: detail.fast_mode,
         context: detail.context,
+    }
+}
+
+fn supports_steering(provider: TaskProvider) -> bool {
+    match provider {
+        TaskProvider::Codex | TaskProvider::Claude | TaskProvider::Grok => true,
+        TaskProvider::Antigravity => false,
     }
 }
 
@@ -1479,9 +1505,12 @@ mod inline_tests {
 
 #[cfg(test)]
 mod request_tests {
+    use super::inline_tests;
     use crate::agent::TurnPage;
+    use crate::agent::antigravity::AntigravityClient;
     use crate::agent::codex::{CodexThread, MockCodexResponse, TurnsPage};
     use crate::agent::driver::REVIEWED_PERMISSION_MODE;
+    use crate::app::tasks::sessions::SessionTurnPage;
     use std::time::Duration;
 
     use futures_util::StreamExt;
@@ -1515,7 +1544,7 @@ mod request_tests {
     async fn snapshot_assembly_broadcasts_the_broken_worktree_diagnosis() {
         let root = tempfile::tempdir().unwrap();
         let source = root.path().join("source");
-        super::inline_tests::initialize_repository(&source);
+        inline_tests::initialize_repository(&source);
         let thread_id = "thread-broken-snapshot";
         let client = CodexThreadClient::mock(Vec::new());
         let state =
@@ -1993,9 +2022,7 @@ mod request_tests {
         let mut snapshot = SessionSnapshot {
             lifecycle: SessionLifecycle::Subscribed,
             conversation: Some(Conversation::from(&thread)),
-            turns_page: Some(crate::app::tasks::sessions::SessionTurnPage::from(
-                &TurnPage::from(&turns_page),
-            )),
+            turns_page: Some(SessionTurnPage::from(&TurnPage::from(&turns_page))),
             active_turn_id: None,
             active_turn_cwd: None,
             active_turn_prompt: None,
@@ -2091,9 +2118,7 @@ mod request_tests {
         let snapshot = SessionSnapshot {
             lifecycle: SessionLifecycle::Subscribed,
             conversation: Some(Conversation::from(&thread)),
-            turns_page: Some(crate::app::tasks::sessions::SessionTurnPage::from(
-                &TurnPage::from(&turns_page),
-            )),
+            turns_page: Some(SessionTurnPage::from(&TurnPage::from(&turns_page))),
             active_turn_id: None,
             active_turn_cwd: None,
             active_turn_prompt: None,
@@ -3285,6 +3310,7 @@ mod request_tests {
         let runtime = TaskRuntime::new(
             claude,
             agent::grok::GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             sessions.clone(),
             TaskEvents::default(),
             TaskStore::memory().unwrap(),
@@ -3693,11 +3719,14 @@ mod request_tests {
 
     fn readable_detail(thread_id: &str) -> TaskDetailResponse {
         TaskDetailResponse {
+            supports_steering: true,
             provider: Some(TaskProvider::Codex),
             thread_id: thread_id.to_string(),
             sync_state: TaskSyncState::Ready,
             revision: 7,
             event_revision: 11,
+            event_reset_revision: 0,
+            event_epoch: None,
             task: Some(TaskRecord {
                 id: thread_id.to_string(),
                 thread_id: thread_id.to_string(),
@@ -4056,6 +4085,7 @@ mod serialization_tests {
 
 #[cfg(test)]
 mod continuity_tests {
+    use crate::app::live_updates;
     use std::time::Duration;
 
     use axum::{body::Body, http::Request};
@@ -4454,7 +4484,7 @@ mod continuity_tests {
         // Give the real gateway its own lifetime so ending the Task source cannot
         // accidentally pass by shutting down the entire physical connection.
         let (gateway_shutdown, _) = tokio::sync::broadcast::channel(1);
-        let app = crate::app::live_updates::router(
+        let app = live_updates::router(
             TaskLiveSource::new(&state),
             WatchHub::new(state.fs.clone(), gateway_shutdown.clone()),
             gateway_shutdown.clone(),

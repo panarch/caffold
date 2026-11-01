@@ -836,6 +836,7 @@ fn bad_push_request(message: &'static str) -> ApiError {
 #[cfg(test)]
 mod tests {
     use crate::agent;
+    use crate::agent::antigravity::AntigravityClient;
     use crate::app::tasks::AgentRuntimeDependencies;
     use crate::app::terminal::TaskTerminals;
     use std::collections::HashMap;
@@ -1263,6 +1264,7 @@ mod tests {
             root.path().join("worktrees"),
             push_runtime.service(),
             AgentRuntimeDependencies {
+                antigravity: AntigravityClient::uninstalled(),
                 claude: agent::claude::ClaudeClient::mock().0,
                 grok: agent::grok::GrokClient::unreachable(),
                 codex_mcp: None,

@@ -1583,7 +1583,7 @@ test("rewrites only the Claude row whose value changed", { tag: "@viewport-indep
     });
     // The runner's rows are drawn in its detail list's own shadow root.
     window.claudeRunnerObserver.observe(
-      element.shadowRoot.querySelector("[data-claude-runner]").shadowRoot,
+      element.shadowRoot.querySelector("caffold-settings-runtime").shadowRoot.querySelector("caffold-settings-detail-list").shadowRoot,
       { subtree: true, childList: true, attributes: true, characterData: true },
     );
   });

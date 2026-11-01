@@ -25,6 +25,47 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
+test("keeps folded work before the final answer after a late unbound permission settlement", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
+  const scenario = await installTaskLoopFixture(page, {
+    completedAssistantResponse: "Implemented the planner changes and verified the tests.",
+    threadId: "late-native-permission",
+  });
+  await scenario.seedCompletedTask();
+  const answer = scenario.events.findLast((event) => event.type === "assistant_message");
+  const terminal = scenario.events.findLast((event) => event.type === "turn_completed");
+  expect(answer).toBeTruthy();
+  expect(terminal).toBeTruthy();
+  scenario.events = [
+    ...scenario.events.filter((event) => event.id !== terminal.id),
+    {
+      id: "native-permission:resolved", threadId: scenario.threadId,
+      type: "approval_resolved", summary: "Allowed",
+      position: { anchorMs: answer.position.anchorMs + 1, index: 0 },
+      payload: { approvalId: "native-permission", outcome: "accepted" },
+    },
+    { ...terminal, position: { anchorMs: answer.position.anchorMs + 2, index: 0 } },
+  ];
+  await page.goto(`/tasks/${scenario.threadId}`);
+  const conversation = page.locator("caffold-task-conversation");
+  const work = conversation.locator(".task-turn-work");
+  const final = conversation.locator(".task-assistant-message").last();
+  await expect(work).toHaveCount(1);
+  await expect(final).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  await expect(work.locator('details[data-work-details-disclosure-key="root"]')).not.toHaveAttribute("open");
+  // Read both rectangles in one frame; initial tail scrolling may still move
+  // the viewport between separate asynchronous measurements.
+  const ordered = await page.evaluate(([work, final]) =>
+    work.getBoundingClientRect().bottom <= final.getBoundingClientRect().top,
+  await elementHandles(conversation, [".task-turn-work", ".task-assistant-message"]));
+  expect(ordered).toBe(true);
+  await work.scrollIntoViewIfNeeded();
+  await expect(work).toBeInViewport();
+  await expect(final).toBeInViewport();
+  await captureReviewScreenshot(page, testInfo, "tasks-work-before-final-after-approval");
+  expect(scenario.pageErrors).toEqual([]);
+});
+
 test("opens resolved Markdown file links through Task Review with native link semantics", { tag: "@all-viewports" }, async ({
   context,
   page,

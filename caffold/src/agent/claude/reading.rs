@@ -12,7 +12,6 @@ use serde_json::{Value, json};
 
 use crate::agent::{CAFFOLD_CLARIFICATION_FEEDBACK, ContextUsage};
 
-use super::runner::{self, RunnerEvent};
 use super::translate::{answers_tool_calls, message_items};
 use super::{
     ActivityStatus, Answers, ApprovalDecision, ApprovalDetail, ApprovalRequest, ClaudeClient,
@@ -23,10 +22,11 @@ use super::{
     move_unowned_turn, now_ms, parse_timestamp_ms, place_item, protocol, status_of, take_up_turn,
     turn_status_of,
 };
+use crate::agent::runner::{RunnerEvent, SessionEvents};
 
 impl ClaudeClient {
     /// Read one session for as long as it says anything.
-    pub(super) fn spawn_reader(&self, session: Arc<Session>, mut events: runner::SessionEvents) {
+    pub(super) fn spawn_reader(&self, session: Arc<Session>, mut events: SessionEvents) {
         let client = self.clone();
         tokio::spawn(async move {
             let mut said_goodbye = false;

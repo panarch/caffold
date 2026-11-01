@@ -13,6 +13,7 @@ use tokio::sync::{MutexGuard, oneshot};
 use super::{events::TaskEvents, lifecycle::TaskLifecycle, push::PushService};
 use crate::agent::AgentError;
 use crate::{
+    agent::antigravity::AntigravityClient,
     agent::claude::ClaudeClient,
     agent::codex::{
         CodexClient, CodexConnection, CodexDaemonInfo, CodexMcpBindings, CodexReadiness,
@@ -27,6 +28,7 @@ use crate::{
     task_store::{ManagedThread, RunBy, TaskStore},
 };
 
+mod antigravity_bridge;
 mod bridge;
 mod claude_bridge;
 mod grok_bridge;
@@ -59,6 +61,7 @@ pub(in crate::app::tasks) struct TaskRuntime {
     codex: CodexClient,
     claude: ClaudeClient,
     grok: GrokClient,
+    antigravity: AntigravityClient,
     sessions: TaskSessions,
     events: TaskEvents,
     task_store: TaskStore,
@@ -100,6 +103,7 @@ pub(in crate::app::tasks) enum TaskAgent {
     Codex(CodexConnection),
     Claude { driver: Driver },
     Grok { driver: Driver },
+    Antigravity { driver: Driver },
 }
 
 /// Which connection a Claude answer came from.
@@ -116,12 +120,15 @@ const CLAUDE_GENERATION: u64 = 1;
 /// event, and a session that lost its bridge says so and is opened again. So
 /// the application has nothing to count here either.
 const GROK_GENERATION: u64 = 1;
+const ANTIGRAVITY_GENERATION: u64 = 1;
 
 impl TaskAgent {
     pub(in crate::app::tasks) fn driver(&self) -> Driver {
         match self {
             Self::Codex(connection) => connection.driver(),
-            Self::Claude { driver } | Self::Grok { driver } => driver.clone(),
+            Self::Claude { driver } | Self::Grok { driver } | Self::Antigravity { driver } => {
+                driver.clone()
+            }
         }
     }
 
@@ -130,6 +137,7 @@ impl TaskAgent {
             Self::Codex(connection) => connection.generation,
             Self::Claude { .. } => CLAUDE_GENERATION,
             Self::Grok { .. } => GROK_GENERATION,
+            Self::Antigravity { .. } => ANTIGRAVITY_GENERATION,
         }
     }
 
@@ -146,6 +154,7 @@ impl TaskAgent {
             Self::Grok { .. } => RunBy::Grok {
                 cwd: cwd.to_string(),
             },
+            Self::Antigravity { .. } => RunBy::Antigravity { cwd: cwd.into() },
         }
     }
 
@@ -157,7 +166,7 @@ impl TaskAgent {
     pub(in crate::app::tasks) fn codex(&self) -> Option<&CodexConnection> {
         match self {
             Self::Codex(connection) => Some(connection),
-            Self::Claude { .. } | Self::Grok { .. } => None,
+            Self::Claude { .. } | Self::Grok { .. } | Self::Antigravity { .. } => None,
         }
     }
 }
@@ -205,6 +214,7 @@ impl TaskRuntime {
     pub(in crate::app::tasks) fn new(
         claude: ClaudeClient,
         grok: GrokClient,
+        antigravity: AntigravityClient,
         sessions: TaskSessions,
         events: TaskEvents,
         task_store: TaskStore,
@@ -216,6 +226,7 @@ impl TaskRuntime {
             permission_reviewer: None,
             claude,
             grok,
+            antigravity,
             sessions,
             events,
             task_store,
@@ -243,6 +254,8 @@ impl TaskRuntime {
     pub(in crate::app::tasks) fn startup(&self) {
         self.watch_claude();
         self.watch_grok();
+        self.spawn_antigravity_bridge(self.shutdown.subscribe());
+        self.take_up_antigravity();
         let runtime = self.clone();
         tokio::spawn(async move {
             let status = runtime.status().await;
@@ -343,6 +356,7 @@ impl TaskRuntime {
     }
 
     pub(in crate::app::tasks) async fn shutdown(&self) {
+        self.antigravity.stop().await;
         self.codex.shutdown().await;
         // The bridge goes down with the backend; Grok's leader stays up.
         self.grok.stop().await;
@@ -522,7 +536,9 @@ impl TaskRuntime {
     pub(in crate::app::tasks) fn grok(&self) -> &GrokClient {
         &self.grok
     }
-
+    pub(in crate::app::tasks) fn antigravity(&self) -> &AntigravityClient {
+        &self.antigravity
+    }
     /// The agent that owns this Task.
     ///
     /// The Task says which one, so a Claude Task is never held up by Codex
@@ -588,6 +604,9 @@ impl TaskRuntime {
             RunBy::Grok { .. } => Ok(TaskAgent::Grok {
                 driver: self.grok.driver(),
             }),
+            RunBy::Antigravity { .. } => Ok(TaskAgent::Antigravity {
+                driver: self.antigravity.driver(),
+            }),
         }
     }
 
@@ -650,6 +669,7 @@ mod tests {
         TaskRuntime::new(
             agent::claude::ClaudeClient::mock().0,
             agent::grok::GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             TaskSessions::default(),
             TaskEvents::default(),
             store,
@@ -804,6 +824,7 @@ mod tests {
         let runtime = TaskRuntime::new(
             agent::claude::ClaudeClient::mock().0,
             agent::grok::GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             sessions.clone(),
             events,
             store,
@@ -914,6 +935,7 @@ mod tests {
         let runtime = TaskRuntime::new(
             agent::claude::ClaudeClient::mock().0,
             agent::grok::GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
             sessions.clone(),
             TaskEvents::default(),
             TaskStore::memory().expect("in-memory task store"),

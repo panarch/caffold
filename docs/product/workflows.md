@@ -8,7 +8,7 @@ Caffold supports three entry paths into the same repeated development loop:
 
 ```text
 Global New
-        -> choose a cwd and a Codex, Claude, or Grok model
+        -> choose a cwd and a Codex, Claude, Grok, or Antigravity model
         -> start a Task with that agent
         -> optionally prepare the same Task in an isolated worktree
 
@@ -40,7 +40,7 @@ implemented outer lifecycle.
 2. For Global New, confirm or choose the cwd. Section New uses its managed
    logical path.
 3. Choose a model. Each offered model identifies its agent, so this choice also
-   binds the new Task to Codex, Claude, or Grok. Choose the available effort, speed,
+   binds the new Task to Codex, Claude, Grok, or Antigravity. Choose the available effort, speed,
    and permission mode, then send a prompt. Grok keeps that permission mode for
    the rest of the Task.
 4. Caffold starts the chosen agent's empty conversation in that cwd, durably
@@ -50,21 +50,21 @@ implemented outer lifecycle.
    output.
 5. The browser opens that Task immediately and transfers its retained text,
    attachments, and turn options into the Task Composer. The message then uses
-   the ordinary prompt request, adapter handoff, exact accepted-message
-   identity, reconciliation, and error behavior used by later messages.
-6. A definitive prompt rejection removes the optimistic message and restores
-   the retained Composer in the valid empty Task. A transport failure whose
-   outcome is unknown remains visibly unconfirmed and is not replayed
-   automatically. A backend replacement before submission therefore leaves an
-   honest empty Task rather than an inferred or hidden first-turn state.
+   the ordinary prompt contract used by later messages, with immediate display
+   and the exact identity supplied by the adapter on acceptance.
+6. A definitive prompt rejection restores the retained Composer in the valid
+   empty Task and removes the optimistic message. An unknown outcome remains
+   visibly unconfirmed without automatic replay. A backend replacement before
+   submission leaves the valid empty Task without inferring first-turn state.
 7. Near the end of the first turn, the agent is instructed to replace the
    initial display name with a concise name based on the understood goal.
    Each agent receives the `rename_current_task` base operation through its
    native MCP integration. This remains model-followed behavior rather than a
    completion gate.
 8. Repository and worktree context is derived from the Task's current cwd.
-9. Every prompt, including the first, starts a new turn or steers an active one
-   through the same agent. The Task cannot switch agents in place.
+9. Every prompt uses the same agent. Steering is available only when that
+   agent supports it; Antigravity waits for its current request to finish.
+   The Task cannot switch agents in place.
 10. Approvals, completion, interruption, and failures remain visible in the
    agent-owned conversation projected into Caffold.
 
@@ -105,7 +105,8 @@ unclaimed child.
 2. Caffold opens the conversation through the Task's recorded agent. Codex
    reads its app-server thread; Claude reads its transcript and overlays any
    live runner-held session state; Grok loads the session its leader holds and
-   reads the session record.
+   reads the session record. Antigravity restores the retained ACP connection
+   and reads its native conversation store.
 3. Reconnecting preserves an already readable Detail while Caffold recovers
    current data. If live updates remain unavailable, the Detail reports that
    state without discarding readable content.
@@ -189,7 +190,7 @@ ordinary files in Files.
    part of the message: the agent reads it, and the conversation shows it as
    written.
 4. A PNG, JPEG, GIF, WebP, or AVIF picture of up to 10 MB also reaches the agent
-   as an image. Codex opens the uploaded file itself; Claude and Grok receive its
+   as an image. Codex opens the uploaded file itself; Claude, Grok, and Antigravity receive its
    bytes inside the prompt. Every other file, including a larger picture or one
    in another format, reaches the agent only through its path.
 5. Caffold deletes a send's folder only when the agent certainly did not
@@ -206,7 +207,7 @@ ordinary files in Files.
 
 1. In any Task, ask its agent to save something as a Note, or to change, move,
    or delete Notes. The agent works through the Notes tools every Codex,
-   Claude, and Grok Task receives.
+   Claude, Grok, and Antigravity Task receives.
 2. The agent finds a Note by listing the Notes tree one directory at a time from
    the top, then reads it. A Note's content changes only against the
    `contentVersion` the agent read, so two Tasks changing the same Note's
@@ -249,7 +250,7 @@ stops after worktree preparation.
 
 For an Issue:
 
-1. Choose a base ref and a Codex, Claude, or Grok model.
+1. Choose a base ref and a Codex, Claude, Grok, or Antigravity model.
 2. Caffold creates a Task at the repository root.
 3. The setup prompt treats the Issue body and URL as untrusted context, renames
    the Task, creates a concise branch from the selected base with
@@ -301,13 +302,14 @@ cwd movement, ownership, archive, and restore follow the
 - Ordinary Archive moves a Task's Caffold-owned membership out of the active
   navigator and retains its local metadata. Caffold also asks the recorded
   agent to archive or close the conversation, but provider acquisition, read,
-  or archive failure does not strand the local Task in Active.
+  or archive failure does not strand the local Task in Active. Antigravity
+  requires confirmed native closure before archive can remove its files.
 - A clean Caffold-managed worktree is removed during archive; its branch and
   ownership record remain available for restore.
 - The Task's terminal closes once the archive checks pass.
 - Dirty managed worktrees and a successfully read current Active status block
-  ordinary Archive. An unavailable provider is not presented as idle; it leaves the
-  provider state unknown while the explicit local Archive proceeds.
+  ordinary Archive. An unavailable provider is not presented as idle; its
+  state remains unknown. The closure requirement above still applies.
 - After a dirty or broken managed checkout refuses ordinary Archive, Task
   details can offer **Discard changes and archive**. After confirmation, it
   deletes the owned checkout's files while retaining the Task, conversation,
@@ -328,8 +330,8 @@ cwd movement, ownership, archive, and restore follow the
 - Tasks without a managed-worktree ownership record retain their cwd and files.
 - Ordinary permanent deletion requires archive. It removes the
   agent-owned conversation through that Task's driver — the Codex thread, the
-  Claude transcript and its same-session files, or every Grok session the Task
-  ran on — then removes Caffold's Task and worktree-ownership records. It does
+  Claude transcript and its same-session files, every Grok session the Task ran on, or the exact Antigravity native
+  session files — then removes Caffold's Task and worktree-ownership records. It does
   not delete the retained Git branch.
 - A verified broken managed worktree can also be deleted from its error
   screen after confirmation. This removes the remaining owned files, the
@@ -353,7 +355,7 @@ independent objects:
 | --- | --- |
 | Origin | Global New, managed Section, explicit GitHub Issue/PR Start Task, or a native fork of an existing Codex conversation. |
 | Task | Caffold-owned membership, display identity, selected agent, and review entry point. |
-| Agent conversation | Codex app-server thread, Claude session/transcript, or Grok leader-held session that owns prompts, turns, and agent activity. |
+| Agent conversation | Codex app-server thread, Claude session/transcript, Grok leader-held session, or Antigravity native trajectory that owns prompts, turns, and agent activity. |
 | Note | Caffold-owned Markdown record shared by every Task, changed only through agents' Notes tools. |
 | Repository | Git repository in which the job is evaluated. |
 | Worktree | Git-owned execution and inspection environment. |
@@ -369,7 +371,8 @@ All Tasks on one host share the Caffold backend, but they do not share one
 synthetic agent runtime. Codex Tasks use the user-global Codex app-server
 daemon. Claude Tasks use one Caffold runner per data directory and one `claude`
 process per live session. Grok Tasks use the one Grok leader Caffold starts for
-itself. Preparing a worktree changes the Task's cwd; it does not create another
+itself. Antigravity uses a separate Caffold runner with one official ACP
+child per Task. Preparing a worktree changes the Task's cwd; it does not create another
 agent service.
 
 See [Agent runtimes](../architecture/agent-runtimes.md),
