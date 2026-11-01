@@ -13,7 +13,7 @@ import {
   sectionLabel,
   shortId,
   taskEventObservedMs,
-  toolCallPresentation,
+  otherWorkPresentation,
 } from "./task-format.js";
 
 test("Task event time distinguishes direct evidence from a history placement anchor", () => {
@@ -195,22 +195,22 @@ test("every decision Caffold offers has a label", () => {
   assert.equal(formatDecision("denyAndStop"), "Deny and Stop");
 });
 
-test("a tool call reads by the agent's own name for it", () => {
-  assert.deepEqual(toolCallPresentation({ name: "Web search", status: "inProgress" }), {
+test("other work reads by the agent's own name for it", () => {
+  assert.deepEqual(otherWorkPresentation({ name: "Web search", status: "inProgress" }), {
     label: "Web search",
     text: "Status: inProgress",
     tone: "neutral",
   });
-  assert.deepEqual(toolCallPresentation({ name: "inspector.probe", status: "failed" }), {
-    label: "inspector.probe",
+  assert.deepEqual(otherWorkPresentation({ name: "Compacting context", status: "failed" }), {
+    label: "Compacting context",
     text: "Status: failed",
     tone: "danger",
   });
 });
 
-test("a tool call with nothing said about it is still nameable", () => {
-  assert.deepEqual(toolCallPresentation({}), {
-    label: "Tool call",
+test("other work with nothing said about it is still nameable", () => {
+  assert.deepEqual(otherWorkPresentation({}), {
+    label: "Other work",
     text: "",
     tone: "neutral",
   });

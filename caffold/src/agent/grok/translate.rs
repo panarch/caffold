@@ -5,7 +5,7 @@
 //! `toolCallId` and the same shape, so both come through here. Only a few
 //! tools get a surface of their own — a command has output to read, an edit
 //! has paths to open — and everything else is a [`ItemKind::ToolCall`] under
-//! Grok's own name for it.
+//! Grok's own name for it, with what it was given and what it returned.
 
 use serde_json::Value;
 
@@ -13,10 +13,11 @@ use super::protocol::{
     ContentBlock, OPTION_ALLOW_ALWAYS, OPTION_ALLOW_ONCE, OPTION_REJECT_ONCE,
     PermissionRequestParams, PlanEntry, ToolCall, ToolCallUpdate, ToolIdentity, TurnUsage,
 };
+use crate::agent::mcp_content::tool_result_part;
 use crate::agent::{
-    ActivityStatus, ApprovalArgument, ApprovalDecision, ApprovalDetail, ApprovalRequest,
+    self, ActivityStatus, ApprovalArgument, ApprovalDecision, ApprovalDetail, ApprovalRequest,
     ApprovalToolDetail, CommandExecution, ConversationItem, ItemKind, MessageContent,
-    ThreadActiveFlag, ThreadStatus, TokenCount, TokenUsage, TurnStatus,
+    ThreadActiveFlag, ThreadStatus, TokenCount, TokenUsage, ToolResultPart, TurnStatus,
 };
 
 pub(super) const RUN_TERMINAL_COMMAND: &str = "run_terminal_command";
@@ -34,6 +35,7 @@ pub(super) fn tool_call_item(call: &ToolCall) -> ConversationItem {
             call.kind.as_deref(),
             &call.raw_input,
             &Value::Null,
+            &[],
             &[],
         ),
     }
@@ -75,6 +77,7 @@ pub(super) fn tool_call_update_item(
         update.kind.as_deref(),
         &raw_input,
         &update.raw_output,
+        &update.content,
         &paths,
     );
     if let (ItemKind::CommandExecution(command), Some(ItemKind::CommandExecution(earlier))) =
@@ -94,6 +97,19 @@ pub(super) fn tool_call_update_item(
         && command.output.is_none()
     {
         command.output = content_text(&update.content);
+    }
+    if let (ItemKind::ToolCall(call), Some(ItemKind::ToolCall(earlier))) =
+        (&mut kind, before.map(|item| &item.kind))
+    {
+        if call.input.is_none() {
+            call.input = earlier.input.clone();
+        }
+        if call.server.is_none() {
+            call.server = earlier.server.clone();
+        }
+        if call.result.is_empty() {
+            call.result = earlier.result.clone();
+        }
     }
     let status = match update.status.as_deref() {
         _ if declined => ActivityStatus::Declined,
@@ -124,8 +140,8 @@ fn identity_of(item: &ConversationItem) -> Option<ToolIdentity> {
             kind: Some("edit".to_string()),
             label: None,
         }),
-        ItemKind::ToolCall { name } => Some(ToolIdentity {
-            name: name.clone(),
+        ItemKind::ToolCall(call) => Some(ToolIdentity {
+            name: call.name.clone(),
             kind: None,
             label: None,
         }),
@@ -139,6 +155,7 @@ fn tool_kind(
     acp_kind: Option<&str>,
     raw_input: &Value,
     raw_output: &Value,
+    content: &[Value],
     paths: &[String],
 ) -> ItemKind {
     let name = identity.name.as_str();
@@ -171,18 +188,63 @@ fn tool_kind(
         }
         return ItemKind::FileChange { paths: changed };
     }
-    if name == USE_TOOL {
-        return ItemKind::ToolCall {
-            name: string_field(raw_input, "tool_name").unwrap_or_else(|| USE_TOOL.to_string()),
-        };
+    let (name, input) = if name == USE_TOOL
+        || raw_input.get("variant").and_then(Value::as_str) == Some("UseTool")
+    {
+        (
+            string_field(raw_input, "tool_name").unwrap_or_else(|| USE_TOOL.to_string()),
+            raw_input.get("tool_input"),
+        )
+    } else if name.is_empty() {
+        (
+            identity.label.clone().unwrap_or_else(|| "tool".to_string()),
+            Some(raw_input),
+        )
+    } else {
+        (name.to_string(), Some(raw_input))
+    };
+    ItemKind::ToolCall(agent::ToolCall {
+        name,
+        server: mcp_output(raw_output).and_then(|output| string_field(output, "server_name")),
+        input: input.filter(|input| !input.is_null()).cloned(),
+        result: tool_result(raw_output, content),
+        duration_ms: None,
+    })
+}
+
+/// What a tool returned. It arrives with Grok's raw output; content sent
+/// without one is Grok describing the call while it runs. Grok's standard ACP
+/// content is the result where it sends some; otherwise its own output is,
+/// unwrapped from the envelope Grok puts an MCP result in.
+fn tool_result(raw_output: &Value, content: &[Value]) -> Vec<ToolResultPart> {
+    if raw_output.is_null() {
+        return Vec::new();
     }
-    ItemKind::ToolCall {
-        name: if name.is_empty() {
-            identity.label.clone().unwrap_or_else(|| "tool".to_string())
-        } else {
-            name.to_string()
-        },
+    if !content.is_empty() {
+        return content
+            .iter()
+            .map(|entry| match entry.get("type").and_then(Value::as_str) {
+                Some("content") => entry
+                    .get("content")
+                    .map(tool_result_part)
+                    .unwrap_or_else(|| ToolResultPart::Json(entry.clone())),
+                _ => ToolResultPart::Json(entry.clone()),
+            })
+            .collect();
     }
+    let unwrapped = mcp_output(raw_output)
+        .and_then(|output| output.get("output"))
+        .and_then(|output| output.get("OkayOutput").or_else(|| output.get("Error")));
+    vec![match unwrapped {
+        Some(Value::String(text)) => ToolResultPart::Text(text.clone()),
+        Some(other) => ToolResultPart::Json(other.clone()),
+        None => ToolResultPart::Json(raw_output.clone()),
+    }]
+}
+
+/// Grok's output for an MCP tool, which names the server apart from the tool.
+fn mcp_output(raw_output: &Value) -> Option<&Value> {
+    (raw_output.get("type").and_then(Value::as_str) == Some("MCP")).then_some(raw_output)
 }
 
 fn content_text(content: &[Value]) -> Option<String> {
@@ -579,9 +641,13 @@ mod tests {
         })).unwrap());
         assert_eq!(
             mcp.kind,
-            ItemKind::ToolCall {
-                name: "caffold__rename_current_task".to_string()
-            }
+            ItemKind::ToolCall(agent::ToolCall {
+                name: "caffold__rename_current_task".to_string(),
+                server: None,
+                input: Some(json!({ "name": "x" })),
+                result: Vec::new(),
+                duration_ms: None,
+            })
         );
 
         let edit = tool_call_update_item(None, &serde_json::from_value(json!({
@@ -602,12 +668,134 @@ mod tests {
             }))
             .unwrap(),
         );
-        assert_eq!(
-            unknown.kind,
-            ItemKind::ToolCall {
-                name: "search_tool".to_string()
-            }
+        assert!(matches!(
+            &unknown.kind,
+            ItemKind::ToolCall(call)
+                if call.name == "search_tool" && call.input == Some(json!({ "query": "x" }))
+        ));
+    }
+
+    #[test]
+    fn an_mcp_call_takes_its_server_and_result_from_the_output_grok_wraps() {
+        let started = tool_call_update_item(None, &serde_json::from_value(json!({
+            "toolCallId": "call-5", "kind": "other", "title": "caffold__create_note_directory",
+            "rawInput": { "variant": "UseTool", "tool_name": "caffold__create_note_directory", "tool_input": { "name": "Grok" } },
+            "_meta": { "x.ai/tool": { "name": "use_tool", "kind": "use_tool" } }
+        })).unwrap(), false);
+        let finished = tool_call_update_item(
+            Some(&started),
+            &serde_json::from_value(json!({
+                "toolCallId": "call-5", "status": "completed",
+                "rawOutput": {
+                    "type": "MCP", "tool_name": "create_note_directory", "server_name": "caffold",
+                    "output": { "OkayOutput": "{\"directoryId\":\"d-1\"}" }
+                }
+            }))
+            .unwrap(),
+            false,
         );
+        let failed = tool_call_update_item(
+            Some(&started),
+            &serde_json::from_value(json!({
+                "toolCallId": "call-5", "status": "failed",
+                "rawOutput": {
+                    "type": "MCP", "tool_name": "create_note_directory", "server_name": "caffold",
+                    "output": { "Error": "The Note changed after it was read." }
+                }
+            }))
+            .unwrap(),
+            false,
+        );
+
+        let ItemKind::ToolCall(running) = &started.kind else {
+            panic!("an MCP call is a tool call");
+        };
+        assert_eq!(
+            running.server, None,
+            "Grok names the server only once the call ends"
+        );
+        assert!(running.result.is_empty());
+        assert_eq!(
+            finished.kind,
+            ItemKind::ToolCall(agent::ToolCall {
+                name: "caffold__create_note_directory".to_string(),
+                server: Some("caffold".to_string()),
+                input: Some(json!({ "name": "Grok" })),
+                result: vec![ToolResultPart::Text(
+                    "{\"directoryId\":\"d-1\"}".to_string()
+                )],
+                duration_ms: None,
+            })
+        );
+        assert_eq!(failed.status, ActivityStatus::Failed);
+        assert!(matches!(
+            &failed.kind,
+            ItemKind::ToolCall(call)
+                if call.result == [ToolResultPart::Text("The Note changed after it was read.".to_string())]
+        ));
+    }
+
+    #[test]
+    fn an_mcp_call_s_input_is_its_tool_input_even_when_an_update_repeats_it() {
+        let started = tool_call_update_item(None, &serde_json::from_value(json!({
+            "toolCallId": "call-9", "kind": "other",
+            "rawInput": { "variant": "UseTool", "tool_name": "caffold__read_note", "tool_input": { "noteId": "n-1" } },
+            "_meta": { "x.ai/tool": { "name": "use_tool", "kind": "use_tool" } }
+        })).unwrap(), false);
+        let repeated = tool_call_update_item(Some(&started), &serde_json::from_value(json!({
+            "toolCallId": "call-9", "status": "in_progress",
+            "rawInput": { "variant": "UseTool", "tool_name": "caffold__read_note", "tool_input": { "noteId": "n-1" } }
+        })).unwrap(), false);
+
+        assert!(matches!(
+            &repeated.kind,
+            ItemKind::ToolCall(call)
+                if call.name == "caffold__read_note" && call.input == Some(json!({ "noteId": "n-1" }))
+        ));
+    }
+
+    #[test]
+    fn a_tool_result_is_its_content_or_else_grok_s_own_output() {
+        let read = tool_call_update_item(None, &serde_json::from_value(json!({
+            "toolCallId": "call-6", "status": "completed", "kind": "read",
+            "rawInput": { "target_file": "/w/a.rs" },
+            "rawOutput": { "type": "ReadFile", "FileContent": "fn main() {}" },
+            "content": [{ "type": "content", "content": { "type": "text", "text": "fn main() {}" } }],
+            "_meta": { "x.ai/tool": { "name": "read_file", "kind": "read" } }
+        })).unwrap(), false);
+        let listed = tool_call_update_item(
+            None,
+            &serde_json::from_value(json!({
+                "toolCallId": "call-7", "status": "completed",
+                "rawInput": { "target_directory": "/w" },
+                "rawOutput": { "type": "ListDir", "Content": "a.rs" },
+                "_meta": { "x.ai/tool": { "name": "list_dir", "kind": "read" } }
+            }))
+            .unwrap(),
+            false,
+        );
+
+        assert!(matches!(
+            &read.kind,
+            ItemKind::ToolCall(call) if call.result == [ToolResultPart::Text("fn main() {}".to_string())]
+        ));
+        assert!(matches!(
+            &listed.kind,
+            ItemKind::ToolCall(call)
+                if call.result == [ToolResultPart::Json(json!({ "type": "ListDir", "Content": "a.rs" }))]
+        ));
+    }
+
+    #[test]
+    fn content_sent_while_a_call_runs_is_not_its_result() {
+        let running = tool_call_update_item(None, &serde_json::from_value(json!({
+            "toolCallId": "call-8", "status": "in_progress",
+            "rawInput": { "description": "Review local changes" },
+            "content": [{ "type": "content", "content": { "type": "text", "text": "Review local changes" } }],
+            "_meta": { "x.ai/tool": { "name": "spawn_subagent", "kind": "other" } }
+        })).unwrap(), false);
+
+        assert!(matches!(&running.kind, ItemKind::ToolCall(call) if call.result.is_empty()));
     }
 
     #[test]

@@ -1592,7 +1592,7 @@ fn compaction_item(id: String, status: ActivityStatus) -> ConversationItem {
         id,
         observed_at_ms: None,
         status,
-        kind: ItemKind::ToolCall {
+        kind: ItemKind::OtherWork {
             name: "Compacting context".to_string(),
         },
     }

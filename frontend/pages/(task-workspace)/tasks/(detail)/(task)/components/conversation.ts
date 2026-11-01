@@ -52,6 +52,10 @@ import type {
   CaffoldTaskOlderHistory,
   OlderHistoryIntentDetail,
 } from "./conversation/components/older-history.js";
+import {
+  CaffoldTaskToolCall,
+  type ToolCallIntentDetail,
+} from "./conversation/components/tool-call.js";
 import "./conversation/components/user-message.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import { scopedStyle } from "#app/scoped-style.js";
@@ -93,7 +97,8 @@ export type ConversationIntent =
   | { type: "approval"; approvalId: string; decision: string }
   | { type: "suggested-prompt"; prompt: string }
   | { type: "older-history"; retry?: boolean }
-  | { type: "command-output"; command: TaskEvent };
+  | { type: "command-output"; command: TaskEvent }
+  | { type: "tool-call-details"; toolCall: TaskEvent };
 
 // Where a reader was in the conversation: the first event in view and how far
 // from the top it stood, and whether they were at the bottom.
@@ -132,6 +137,7 @@ const CONVERSATION_COMPONENTS = [
   "caffold-task-markdown-code-block",
   "caffold-task-message-attachments",
   "caffold-task-older-history",
+  "caffold-task-tool-call",
   "caffold-task-user-message",
   "caffold-task-work-details",
 ].join(", ");
@@ -350,6 +356,7 @@ export class CaffoldTaskConversation extends CaffoldElement {
         @caffold:task-suggested-prompt-intent=${this.sendSuggestedPrompt}
         @caffold:task-older-history-intent=${this.requestOlderHistory}
         @caffold:task-command-intent=${this.openCommandOutput}
+        @caffold:task-tool-call-intent=${this.openToolCallDetails}
         @caffold:task-command-disclosure-intent=${this.holdCommandAnchor}
         @caffold:task-command-group-disclosure-intent=${this.holdGroupAnchor}
         @caffold:task-work-details-disclosure-intent=${this.holdWorkAnchor}
@@ -513,6 +520,8 @@ export class CaffoldTaskConversation extends CaffoldElement {
         return part("thinking");
       case "command":
         return part("command");
+      case "tool-call":
+        return part("tool-call");
       case "command-group":
         return part("command-group");
       case "turn-work":
@@ -667,6 +676,18 @@ export class CaffoldTaskConversation extends CaffoldElement {
               clipRoots: () => [this, this.list.value],
             })}
           >${entry.text}</pre>
+        </li>`;
+      case "tool-call":
+        return html`<li
+          class="task-event task-tool-call"
+          data-event-id=${entry.eventId || nothing}
+          data-conversation-entry-key=${entry.identity}
+          data-event-type=${entry.eventType}
+        >
+          <caffold-task-tool-call
+            ${drawn(this.parts.of(`tool-call:${entry.identity}`))}
+            .event=${entry.event}
+          ></caffold-task-tool-call>
         </li>`;
       case "command":
         return html`<li
@@ -936,6 +957,30 @@ export class CaffoldTaskConversation extends CaffoldElement {
     );
     if (command) {
       this.dispatchIntent({ type: "command-output", command });
+    }
+  }
+
+  private openToolCallDetails(event: CustomEvent<ToolCallIntentDetail>) {
+    // The element that sent it: a tool call in Work details' root reaches this
+    // root with Work details as its target.
+    const owner = event.composedPath()[0];
+    if (
+      !(owner instanceof CaffoldTaskToolCall) ||
+      !containsAcrossShadowRoots(this, owner)
+    ) {
+      return;
+    }
+    event.stopPropagation();
+    if (event.detail.type !== "tool-call-details") {
+      return;
+    }
+    const { toolCallKey } = event.detail;
+    const toolCall = dedupeCanonicalEvents(this.snapshot.events).find(
+      (entry) =>
+        entry.type === "tool_call" && eventIdentityKey(entry) === toolCallKey,
+    );
+    if (toolCall) {
+      this.dispatchIntent({ type: "tool-call-details", toolCall });
     }
   }
 

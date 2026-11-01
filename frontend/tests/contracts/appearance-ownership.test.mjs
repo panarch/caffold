@@ -36,6 +36,8 @@ const codeOwners = new Set([
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/tool-call-dialog.css",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/tool-call.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css",
@@ -854,6 +856,11 @@ test("icon-only controls use square slots from their semantic control tier", () 
       "--interface-control-hit-size",
     ],
     [
+      "pages/(task-workspace)/tasks/(detail)/(task)/components/tool-call-dialog.css",
+      ".task-tool-call-dialog-close",
+      "--interface-control-hit-size",
+    ],
+    [
       "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.css",
       ".task-markdown-preview-close",
       "--interface-control-hit-size",
@@ -1056,6 +1063,11 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
     [
       "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
       ".task-command-dialog-close::before",
+      "--interface-control-hit-outset",
+    ],
+    [
+      "pages/(task-workspace)/tasks/(detail)/(task)/components/tool-call-dialog.css",
+      ".task-tool-call-dialog-close::before",
       "--interface-control-hit-outset",
     ],
     [

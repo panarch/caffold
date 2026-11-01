@@ -273,7 +273,7 @@ Cancel has initial focus; only confirmation sends the destructive request.
 Conversation renders the canonical agent conversation as a review timeline:
 
 - prompts and agent responses;
-- reasoning summaries and tool activity;
+- reasoning summaries, tool calls, and other work the agent names;
 - commands, output, and file-change records;
 - approvals and canonical outcomes;
 - interruption, failure, reconnect, completion, and unavailable states;
@@ -286,6 +286,17 @@ commands folds in with them, as a **Thinking** row holding only its time. A
 command still running stays on its own with its live output and joins the card
 when it ends. A finished turn's work details fold their commands the same way,
 and a card stays open or closed as it was left.
+
+A tool call reads as one line laid out as a finished command's: how far along
+it is, the agent's own name for the tool, the MCP server and duration when the
+agent reports them, and **View details**. View details opens **Tool call
+details**, which shows the tool, server, status, and duration above an
+**Input** section with what the agent passed the tool and a **Result** section
+with each piece of what came back, in order: text as text, other content as
+JSON, and binary content such as a picture as a note of its kind. A call still
+running offers View details too; its Result says no result has arrived yet and
+fills in when one does. Work that is not a call to a tool keeps a card with the
+agent's name for it and its status.
 
 A prompt reads as the characters typed into the Composer, so Markdown syntax in
 it stays literal. Agent responses and reasoning summaries render as Markdown.

@@ -681,13 +681,14 @@ Custom children retain their own action knowledge. Work Details merges its own
 summary with its direct retained children. Command Group merges its summary
 with its commands' scopes only while it is open, since a folded group's rows
 are not on screen. Command declares active disclosure
-or terminal View output from the same provider, Assistant Message Copy declares
+or terminal View output from the same provider, Tool Call declares its View
+details, Assistant Message Copy declares
 its one button, Suggested Prompts declares one action per request that can be
 chosen, Message Attachments declares one Preview per picture it can
 open, Markdown Code Block declares Wrap, Copy, and Preview, and Conversation
 merges those public scopes through its retained Assistant Message, User
-Message, Message Attachments, Markdown, Command Group, and Work Details
-children. Reusable
+Message, Message Attachments, Markdown, Command Group, Tool Call, and Work
+Details children. Reusable
 controls such as the segmented
 control, file tree, pagination, file navigator, and file viewer expose public
 scope providers; their screen owner supplies the semantic action and scope
@@ -723,11 +724,11 @@ do not enumerate or reach through descendant DOM. A retained pane with no
 layout box is omitted before merge, so its hidden mutation and scroll
 dependencies cannot invalidate the visible pane's session.
 
-The eleven registered Task Workspace product dialogs follow the same
+The twelve registered Task Workspace product dialogs follow the same
 owner-first contract: Codex restart, Codex update, Claude restart,
 archived-task deletion, Task switcher, image preview, Conversation fork,
-command output, code-block Markdown preview, Current Plan document, and GitHub
-Task Start. Every currently visible and enabled button has
+command output, tool call details, code-block Markdown preview, Current Plan
+document, and GitHub Task Start. Every currently visible and enabled button has
 an owner declaration, without semantic deduplication, and controls owned by a
 direct child compose through the same public scope interface. Fork additionally
 declares its Thread-ID textbox, while the Task Start issue child declares its
@@ -883,10 +884,11 @@ retained Assistant Message,
 Thinking, active Command, expanded Work Details, tool-output, and approval
 command scopes. Collapsed disclosures publish no inner surface.
 
-Five registered product dialogs publish their exact parent surface:
-Conversation fork body, command-output body, code-block Markdown preview,
-Current Plan Markdown preview, and Task Start body. Command Output additionally
-publishes its output `pre`; the code-block
+Six registered product dialogs publish their exact parent surface:
+Conversation fork body, command-output body, tool-call-details body, code-block
+Markdown preview, Current Plan Markdown preview, and Task Start body. Command
+Output additionally publishes its output `pre`, and Tool Call Details its Input
+`pre` and each Result `pre`; the code-block
 and Current Plan Markdown previews delegate the shared preview's code and table
 scopes; and Pull Task Start merges its base/head relationship `dl`. A modal may
 therefore select among parent and nested surfaces. Each
@@ -1060,9 +1062,9 @@ view switch's row while it waits. A Task switch, deactivation, successful
 Archive, or an archived or missing Task clears that fallback identity.
 
 `caffold-task-detail` is the canonical owner of the selected Task
-snapshot and live event application, Conversation, Command dialog, code-block
-Markdown preview dialog, current-plan strip, follow-up Composer, and Task
-mutations. It publishes a subject snapshot upward; it does not mount Integrated
+snapshot and live event application, Conversation, Command dialog, Tool call
+details dialog, code-block Markdown preview dialog, current-plan strip,
+follow-up Composer, and Task mutations. It publishes a subject snapshot upward; it does not mount Integrated
 Review, Git, GitHub, or their Summary controls.
 
 Task Detail's `force-archive-dialog` owns only native confirmation, the captured
@@ -1288,7 +1290,8 @@ Conversation also owns its Detail retry and exact rendered Thinking disclosure
 controls. Detail retry uses Conversation's coarse owner; each Thinking
 disclosure uses the exact retained timeline entry that contains it. A custom
 child owns its own controls: Approval owns its offered decisions, Command owns
-its active disclosure or terminal View output, Command Group owns its
+its active disclosure or terminal View output, Tool Call owns its View details,
+Command Group owns its
 disclosure, Work Details owns its root
 disclosure, Message Attachments owns each picture's preview, and Markdown Code
 Block owns Wrap, Copy, and Preview. Preview appears only on a `markdown` or `md`
@@ -2132,6 +2135,7 @@ frontend/
 |               |       |-- summary.ts
 |               |       |-- conversation.ts
 |               |       |-- command-dialog.ts
+|               |       |-- tool-call-dialog.ts
 |               |       |-- current-plan.ts
 |               |       |-- current-plan/
 |               |       |   |-- model.ts

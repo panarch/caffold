@@ -10,7 +10,7 @@ test("hands the turn in progress what it is doing and since when", () => {
   });
   const compactionStarted = turnEvent(
     "turn-1:context-compaction-1",
-    "tool_call",
+    "other_work",
     2,
     {
       itemId: "context-compaction-1",
@@ -211,38 +211,54 @@ test("a pending approval stays visible beside the command it is asking about", (
   }
 });
 
-test("a running tool call is a card, not a status chip", () => {
+test("a running tool call is a row of its own, not a status chip", () => {
   // While the turn runs, its work is drawn one entry at a time; only after the
   // turn ends does it collapse into work details. A tool call has to be the
   // same thing on both, or the conversation changes shape underneath a reader
   // at the moment the turn finishes.
   const running = turnEvent("thread-1:turn-1:tool-1", "tool_call", 2, {
     itemId: "tool-1",
-    name: "Web search",
+    name: "mcp__caffold__read_note",
     status: "inProgress",
+    input: { noteId: "n-1" },
+    result: [],
   });
 
   const [entry] = conversationEntries([running], activeTask());
 
-  assert.equal(
-    entry.kind,
-    "tool",
-    "a tool call names itself rather than restating its own summary",
-  );
-  assert.equal(entry.label, "Web search");
-  assert.equal(entry.text, "Status: inProgress");
+  assert.equal(entry.kind, "tool-call");
+  assert.equal(entry.event, running, "the row reads the event it stands for");
+  assert.equal(entry.identity, "item:thread-1:turn-1:tool-1");
 });
 
-test("a failed tool call reads as failed while the turn is still running", () => {
-  const failed = turnEvent("thread-1:turn-1:tool-1", "tool_call", 2, {
-    itemId: "tool-1",
-    name: "inspector.probe",
+test("other work is a card under the agent's own name for it", () => {
+  const running = turnEvent("thread-1:turn-1:work-1", "other_work", 2, {
+    itemId: "work-1",
+    name: "Compacting context",
+    status: "inProgress",
+  });
+  const failed = turnEvent("thread-1:turn-1:work-2", "other_work", 3, {
+    itemId: "work-2",
+    name: "Web search",
     status: "failed",
   });
+  const unnamed = turnEvent("thread-1:turn-1:work-3", "other_work", 4, {
+    itemId: "work-3",
+    status: "completed",
+  });
 
-  const [entry] = conversationEntries([failed], activeTask());
+  const entries = conversationEntries([running, failed, unnamed], activeTask());
 
-  assert.equal(entry.tone, "danger");
+  assert.deepEqual(
+    entries
+      .filter((entry) => entry.kind === "tool")
+      .map(({ label, text, tone }) => ({ label, text, tone })),
+    [
+      { label: "Compacting context", text: "Status: inProgress", tone: "neutral" },
+      { label: "Web search", text: "Status: failed", tone: "danger" },
+      { label: "Other work", text: "Status: completed", tone: "neutral" },
+    ],
+  );
 });
 
 test("an agent failure is an error card, not the agent talking", () => {
@@ -298,17 +314,6 @@ test("a completed turn shows its failure beside the messages, not folded away", 
     ),
     "the failure must not need work details expanded to be seen",
   );
-});
-
-test("a tool call the agent did not name is still an entry", () => {
-  const unnamed = turnEvent("thread-1:turn-1:tool-1", "tool_call", 2, {
-    itemId: "tool-1",
-    status: "completed",
-  });
-
-  const [entry] = conversationEntries([unnamed], activeTask());
-
-  assert.equal(entry.label, "Tool call");
 });
 
 test("a completed background turn renders its answer without a user message", () => {

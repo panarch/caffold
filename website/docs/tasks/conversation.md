@@ -22,7 +22,8 @@ for.
 
 ![The same turn with its work unfolded: a progress message, the test command, and the changed files](../assets/screenshots/task-work-details-desktop.png)
 
-**View output** on a command opens its full output.
+**View output** on a command opens its full output. **View details** on a tool
+call shows what the agent passed the tool and what came back.
 
 ## Copy an answer
 

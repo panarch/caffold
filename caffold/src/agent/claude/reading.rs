@@ -2375,7 +2375,7 @@ mod tests {
         assert_eq!(item.status, ActivityStatus::InProgress);
         assert_eq!(
             item.kind,
-            ItemKind::ToolCall {
+            ItemKind::OtherWork {
                 name: "Compacting context".to_string()
             }
         );

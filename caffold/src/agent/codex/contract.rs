@@ -8,10 +8,11 @@
 //! Reading a conversation is the larger half. Codex reports work as one typed
 //! item per capability — a command execution, a file change, a web search —
 //! and eighteen of those exist today. Caffold renders seven of them with a
-//! surface of their own; the rest become [`ItemKind::ToolCall`], named after
-//! whatever Codex called them. Nothing is dropped for being unrecognized, so a
-//! kind added to app-server arrives as work Caffold can show rather than as a
-//! gap in the conversation.
+//! surface of their own and the two kinds of tool call as
+//! [`ItemKind::ToolCall`], with what the tool was passed and returned; the rest
+//! become [`ItemKind::OtherWork`], named after whatever Codex called them.
+//! Nothing is dropped for being unrecognized, so a kind added to app-server
+//! arrives as work Caffold can show rather than as a gap in the conversation.
 //!
 //! Answering an approval is the smaller half and runs the other way. Caffold's
 //! approval decisions become Codex's response for the request that asked, and
@@ -36,11 +37,12 @@ use super::{CodexThreadClient, CodexThreadError, CodexTurnOptions, NORMAL_SERVIC
 use crate::agent::driver::{
     ModelOption, PermissionModeOption, REVIEWED_PERMISSION_MODE, TurnOptions, TurnRejected, bounded,
 };
+use crate::agent::mcp_content::tool_result_part;
 use crate::agent::{
     self, ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, CommandExecution,
     ContextUsage, Conversation, ConversationItem, GeneratedImage, ItemKind, MessageContent,
-    MessagePhase, PermissionRow, SessionEvent, SessionEventKind, TokenCount, TokenUsage, Turn,
-    TurnOrigin, TurnPage, TurnState,
+    MessagePhase, PermissionRow, SessionEvent, SessionEventKind, TokenCount, TokenUsage, ToolCall,
+    ToolResultPart, Turn, TurnOrigin, TurnPage, TurnState,
 };
 use file_citations::link_cited_files;
 use suggested_prompts::take_suggested_prompts;
@@ -383,7 +385,7 @@ impl From<&TokenUsageBreakdown> for TokenCount {
 /// One Codex thread item, as the conversation shows it.
 ///
 /// Codex sends items as open JSON rather than a closed union, so this reads
-/// what it recognizes and treats the rest as a tool call. `None` means the
+/// what it recognizes and treats the rest as other work. `None` means the
 /// value was not an item at all: without an identity a live update and a later
 /// read of the same work cannot be recognized as one entry, and two different
 /// items cannot be told apart.
@@ -439,8 +441,22 @@ pub(crate) fn conversation_item(
             saved_path: text_field(item, "savedPath"),
             encoded: text_field(item, "result"),
         }),
-        _ => ItemKind::ToolCall {
-            name: tool_call_name(item, item_type),
+        "mcpToolCall" => ItemKind::ToolCall(ToolCall {
+            name: text_field(item, "tool").unwrap_or_else(|| item_type.to_string()),
+            server: text_field(item, "server"),
+            input: tool_input(item),
+            result: mcp_tool_result(item),
+            duration_ms: item.get("durationMs").and_then(Value::as_u64),
+        }),
+        "dynamicToolCall" => ItemKind::ToolCall(ToolCall {
+            name: text_field(item, "tool").unwrap_or_else(|| item_type.to_string()),
+            server: None,
+            input: tool_input(item),
+            result: dynamic_tool_result(item),
+            duration_ms: item.get("durationMs").and_then(Value::as_u64),
+        }),
+        _ => ItemKind::OtherWork {
+            name: other_work_name(item, item_type),
         },
     };
     Some(ConversationItem {
@@ -456,7 +472,7 @@ pub(crate) fn conversation_item(
 /// Codex mirrors some items a second time in the shape the model returned them,
 /// under the same item id. Recognizing only what maps onto an item Caffold
 /// already shows is deliberate: an unrecognized entry here is a second view of
-/// work the thread stream already reported, so treating it as a tool call the
+/// work the thread stream already reported, so treating it as other work the
 /// way an unknown thread item is treated would draw that work twice.
 pub(crate) fn response_item(item: &Value) -> Option<ConversationItem> {
     let id = text_field(item, "id")?;
@@ -659,12 +675,81 @@ impl From<TurnStatus> for agent::TurnStatus {
     }
 }
 
+/// What a tool was called with, unless Codex reports nothing.
+fn tool_input(item: &Value) -> Option<Value> {
+    item.get("arguments")
+        .filter(|arguments| !arguments.is_null())
+        .cloned()
+}
+
+/// What an MCP tool returned: its content blocks, then its structured content,
+/// or the error Codex reports when the tool returned nothing.
+fn mcp_tool_result(item: &Value) -> Vec<ToolResultPart> {
+    let Some(result) = item.get("result").filter(|result| !result.is_null()) else {
+        return item
+            .pointer("/error/message")
+            .and_then(Value::as_str)
+            .map(|message| vec![ToolResultPart::Text(message.to_string())])
+            .unwrap_or_default();
+    };
+    let mut parts = result
+        .get("content")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(tool_result_part)
+        .collect::<Vec<_>>();
+    if let Some(structured) = result
+        .get("structuredContent")
+        .filter(|structured| !structured.is_null())
+    {
+        parts.push(ToolResultPart::Json(structured.clone()));
+    }
+    parts
+}
+
+/// What a dynamic tool returned. A picture or a sound comes as a URL; one that
+/// carries the bytes itself is a data URL, which names its kind up front.
+fn dynamic_tool_result(item: &Value) -> Vec<ToolResultPart> {
+    item.get("contentItems")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|content| {
+            let kind = content.get("type").and_then(Value::as_str);
+            if kind == Some("inputText")
+                && let Some(text) = content.get("text").and_then(Value::as_str)
+            {
+                return ToolResultPart::Text(text.to_string());
+            }
+            let url = match kind {
+                Some("inputImage") => content.get("imageUrl"),
+                Some("inputAudio") => content.get("audioUrl"),
+                _ => None,
+            };
+            match url
+                .and_then(Value::as_str)
+                .and_then(|url| url.strip_prefix("data:"))
+            {
+                Some(data) => ToolResultPart::Binary {
+                    media_type: data
+                        .split_once([';', ','])
+                        .map(|(media_type, _)| media_type)
+                        .filter(|media_type| !media_type.is_empty())
+                        .map(str::to_string),
+                },
+                None => ToolResultPart::Json(content.clone()),
+            }
+        })
+        .collect()
+}
+
 /// What to call work Caffold does not draw a surface for.
 ///
-/// A tool call names its tool, which is the useful thing to show. The rest are
-/// activities rather than tools, and their Codex type name would mean nothing
-/// to a reader, so each says what it is.
-fn tool_call_name(item: &Value, item_type: &str) -> String {
+/// An item that names its tool is called by it, which is the useful thing to
+/// show. The rest are activities rather than tools, and their Codex type name
+/// would mean nothing to a reader, so each says what it is.
+fn other_work_name(item: &Value, item_type: &str) -> String {
     if let Some(tool) = text_field(item, "tool") {
         return tool;
     }
@@ -1546,7 +1631,7 @@ mod tests {
     }
 
     #[test]
-    fn an_item_type_codex_adds_later_arrives_as_a_tool_call() {
+    fn an_item_type_codex_adds_later_arrives_as_other_work() {
         let item = json!({ "type": "somethingNew", "id": "item_1", "tool": "inspector" });
 
         let decoded = conversation_item(&item, ActivityStatus::InProgress)
@@ -1554,13 +1639,163 @@ mod tests {
 
         assert_eq!(
             decoded.kind,
-            ItemKind::ToolCall {
+            ItemKind::OtherWork {
                 name: "inspector".to_string()
             }
         );
         // Codex says nothing about this item's own progress, so the item is as
         // far along as the notification that carried it.
         assert_eq!(decoded.status, ActivityStatus::InProgress);
+    }
+
+    #[test]
+    fn work_that_is_not_a_tool_call_keeps_only_a_name() {
+        for (item_type, name) in [
+            ("webSearch", "Web search"),
+            ("imageView", "Viewing an image"),
+            ("contextCompaction", "Compacting context"),
+        ] {
+            let item = json!({ "type": item_type, "id": "item_1", "query": "codex" });
+
+            let decoded = conversation_item(&item, ActivityStatus::Completed).unwrap();
+
+            assert_eq!(
+                decoded.kind,
+                ItemKind::OtherWork {
+                    name: name.to_string()
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn an_mcp_tool_call_carries_its_server_input_and_result() {
+        let item = json!({
+            "type": "mcpToolCall",
+            "id": "item_1",
+            "server": "caffold",
+            "tool": "list_notes",
+            "status": "completed",
+            "arguments": { "directoryId": "d-1" },
+            "result": {
+                "content": [
+                    { "type": "text", "text": "{\"notes\":[]}" },
+                    { "type": "image", "data": "iVBOR", "mimeType": "image/png" }
+                ],
+                "structuredContent": { "notes": [] }
+            },
+            "durationMs": 42
+        });
+
+        let decoded = conversation_item(&item, ActivityStatus::InProgress).unwrap();
+
+        assert_eq!(decoded.status, ActivityStatus::Completed);
+        assert_eq!(
+            decoded.kind,
+            ItemKind::ToolCall(ToolCall {
+                name: "list_notes".to_string(),
+                server: Some("caffold".to_string()),
+                input: Some(json!({ "directoryId": "d-1" })),
+                result: vec![
+                    ToolResultPart::Text("{\"notes\":[]}".to_string()),
+                    ToolResultPart::Binary {
+                        media_type: Some("image/png".to_string())
+                    },
+                    ToolResultPart::Json(json!({ "notes": [] })),
+                ],
+                duration_ms: Some(42),
+            })
+        );
+    }
+
+    #[test]
+    fn a_failed_mcp_tool_call_says_why() {
+        let item = json!({
+            "type": "mcpToolCall",
+            "id": "item_1",
+            "server": "caffold",
+            "tool": "read_note",
+            "status": "failed",
+            "arguments": {},
+            "error": { "message": "No such Note." }
+        });
+
+        let ItemKind::ToolCall(call) = conversation_item(&item, ActivityStatus::Completed)
+            .unwrap()
+            .kind
+        else {
+            panic!("an MCP call is a tool call");
+        };
+
+        assert_eq!(
+            call.result,
+            vec![ToolResultPart::Text("No such Note.".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_running_mcp_tool_call_has_its_input_and_no_result_yet() {
+        let item = json!({
+            "type": "mcpToolCall",
+            "id": "item_1",
+            "server": "caffold",
+            "tool": "read_note",
+            "status": "inProgress",
+            "arguments": { "noteId": "n-1" },
+            "result": null
+        });
+
+        let ItemKind::ToolCall(call) = conversation_item(&item, ActivityStatus::InProgress)
+            .unwrap()
+            .kind
+        else {
+            panic!("an MCP call is a tool call");
+        };
+
+        assert_eq!(call.input, Some(json!({ "noteId": "n-1" })));
+        assert!(call.result.is_empty());
+        assert_eq!(call.duration_ms, None);
+    }
+
+    #[test]
+    fn a_dynamic_tool_call_keeps_text_and_the_kind_of_what_it_returned() {
+        let item = json!({
+            "type": "dynamicToolCall",
+            "id": "item_1",
+            "tool": "rename_current_thread",
+            "status": "completed",
+            "arguments": { "name": "Fix the build" },
+            "contentItems": [
+                { "type": "inputText", "text": "Renamed." },
+                { "type": "inputImage", "imageUrl": "data:image/png;base64,iVBOR" },
+                { "type": "inputImage", "imageUrl": "https://example.com/a.png" }
+            ],
+            "durationMs": 7
+        });
+
+        let ItemKind::ToolCall(call) = conversation_item(&item, ActivityStatus::Completed)
+            .unwrap()
+            .kind
+        else {
+            panic!("a dynamic tool call is a tool call");
+        };
+
+        assert_eq!(call.name, "rename_current_thread");
+        assert_eq!(call.server, None);
+        assert_eq!(call.input, Some(json!({ "name": "Fix the build" })));
+        assert_eq!(
+            call.result,
+            vec![
+                ToolResultPart::Text("Renamed.".to_string()),
+                ToolResultPart::Binary {
+                    media_type: Some("image/png".to_string())
+                },
+                ToolResultPart::Json(
+                    json!({ "type": "inputImage", "imageUrl": "https://example.com/a.png" })
+                ),
+            ]
+        );
+        assert_eq!(call.duration_ms, Some(7));
     }
 
     #[test]

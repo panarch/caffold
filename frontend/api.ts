@@ -1824,7 +1824,19 @@ export interface TaskEventPayload {
   } | null>;
   tool?: ApprovalTool | null;
   reviewed?: { concern?: number; model?: string } | null;
+  // A tool call's MCP server, when the agent reports one apart from its name,
+  // what it was given, and what came back.
+  server?: string | null;
+  input?: unknown;
+  result?: TaskToolResultPart[];
 }
+
+// One piece of what a tool returned, in the order the agent reported it.
+// Binary content keeps only the kind it was.
+export type TaskToolResultPart =
+  | { type: "text"; text: string }
+  | { type: "json"; value: unknown }
+  | { type: "binary"; mediaType: string | null };
 
 export interface TaskMessageContent {
   type?: string;

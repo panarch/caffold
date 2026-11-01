@@ -95,9 +95,10 @@ app-server — becomes no report at all rather than an unread branch in each
 consumer.
 
 Codex reports eighteen kinds of thread item. Caffold draws seven of them with a
-surface of its own and shows the rest as tool calls named after whatever Codex
-called them, so an item kind added to app-server appears as work rather than
-disappearing from the conversation.
+surface of its own, shows MCP and dynamic tool calls as tool calls with what the
+tool was given and returned, and shows the rest as other work named after
+whatever Codex called them, so an item kind added to app-server appears as work
+rather than disappearing from the conversation.
 
 `caffold/src/agent/codex/readiness.rs` owns executable eligibility before
 daemon startup. `caffold/src/agent/codex/status.rs` owns the

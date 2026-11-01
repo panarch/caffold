@@ -11,7 +11,7 @@ use tokio::sync::broadcast;
 use crate::agent::{
     ActivityStatus, ApprovalOutcome, ApprovalRequest, BackgroundTask, Conversation,
     ConversationItem, ItemKind, MessageContent, SessionEvent, SessionEventKind, SuggestedPrompt,
-    ThreadStatus, TurnOrigin, TurnPage, TurnState, TurnStatus,
+    ThreadStatus, ToolResultPart, TurnOrigin, TurnPage, TurnState, TurnStatus,
 };
 
 use super::generated_images::{GeneratedImageObservation, GeneratedImageStore};
@@ -827,8 +827,20 @@ pub(in crate::app::tasks) fn task_event_from_item(
             }),
             GeneratedImageObservation::for_item(&item.id, image),
         ),
-        ItemKind::ToolCall { name } => (
+        ItemKind::ToolCall(call) => (
             "tool_call",
+            format!("{}: {}", call.name, activity_word(item.status)),
+            json!({
+                "name": call.name,
+                "server": call.server,
+                "input": call.input,
+                "result": tool_result_payload(&call.result),
+                "durationMs": call.duration_ms,
+            }),
+            None,
+        ),
+        ItemKind::OtherWork { name } => (
+            "other_work",
             format!("{name}: {}", activity_word(item.status)),
             json!({ "name": name }),
             None,
@@ -1046,6 +1058,19 @@ fn suggested_prompts_payload(prompts: &[SuggestedPrompt]) -> Vec<JsonValue> {
     prompts
         .iter()
         .map(|prompt| json!({ "label": prompt.label, "prompt": prompt.prompt }))
+        .collect()
+}
+
+fn tool_result_payload(parts: &[ToolResultPart]) -> Vec<JsonValue> {
+    parts
+        .iter()
+        .map(|part| match part {
+            ToolResultPart::Text(text) => json!({ "type": "text", "text": text }),
+            ToolResultPart::Json(value) => json!({ "type": "json", "value": value }),
+            ToolResultPart::Binary { media_type } => {
+                json!({ "type": "binary", "mediaType": media_type })
+            }
+        })
         .collect()
 }
 
@@ -2157,7 +2182,7 @@ mod tests {
             .expect("context compaction completed event");
 
         assert_eq!(started.id, completed.id);
-        assert_eq!(started.event_type, "tool_call");
+        assert_eq!(started.event_type, "other_work");
         assert_eq!(
             started.payload.as_ref().unwrap()["name"],
             "Compacting context"
@@ -2173,6 +2198,50 @@ mod tests {
         assert!(
             serialized.get("updatedMs").is_none(),
             "same-live lifecycle bookkeeping stays behind the Task-event wire boundary"
+        );
+    }
+
+    #[test]
+    fn a_tool_call_event_carries_what_the_tool_was_given_and_returned() {
+        let call = json!({
+            "type": "mcpToolCall",
+            "id": "mcp_1",
+            "server": "caffold",
+            "tool": "read_note",
+            "status": "completed",
+            "arguments": { "noteId": "n-1" },
+            "result": {
+                "content": [
+                    { "type": "text", "text": "# Note" },
+                    { "type": "image", "data": "iVBORw0KGgo", "mimeType": "image/png" }
+                ],
+                "structuredContent": { "name": "Note" }
+            },
+            "durationMs": 12
+        });
+
+        let event = codex_item_event("turn_1", 10, ActivityStatus::Completed, call)
+            .expect("tool call event");
+
+        assert_eq!(event.event_type, "tool_call");
+        assert_eq!(event.summary, "read_note: completed");
+        let payload = event.payload.expect("tool call payload");
+        assert_eq!(payload["name"], "read_note");
+        assert_eq!(payload["server"], "caffold");
+        assert_eq!(payload["input"], json!({ "noteId": "n-1" }));
+        assert_eq!(
+            payload["result"],
+            json!([
+                { "type": "text", "text": "# Note" },
+                { "type": "binary", "mediaType": "image/png" },
+                { "type": "json", "value": { "name": "Note" } },
+            ])
+        );
+        assert_eq!(payload["durationMs"], 12);
+        assert_eq!(payload["status"], "completed");
+        assert!(
+            !payload.to_string().contains("iVBORw0KGgo"),
+            "a picture's bytes stay out of the conversation"
         );
     }
 

@@ -29,6 +29,7 @@ pub(crate) mod conversation;
 pub(crate) mod driver;
 pub(crate) mod grok;
 pub(crate) mod http_mcp;
+mod mcp_content;
 pub(crate) mod notes_tools;
 pub(crate) mod runner;
 
@@ -80,8 +81,8 @@ pub(crate) use approval::{
 pub(crate) use conversation::{
     ActivityStatus, BackgroundTask, CommandExecution, ContextUsage, Conversation, ConversationItem,
     GeneratedImage, ItemKind, MessageContent, MessagePhase, SessionEvent, SessionEventKind,
-    SuggestedPrompt, ThreadActiveFlag, ThreadStatus, TokenCount, TokenUsage, Turn, TurnOrigin,
-    TurnPage, TurnState, TurnStatus,
+    SuggestedPrompt, ThreadActiveFlag, ThreadStatus, TokenCount, TokenUsage, ToolCall,
+    ToolResultPart, Turn, TurnOrigin, TurnPage, TurnState, TurnStatus,
 };
 pub(crate) use driver::{
     AgentError, Driver, OpenedConversation, PermissionModes, PromptImage, TurnOptions, TurnRejected,

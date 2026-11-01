@@ -56,7 +56,7 @@ test("shows context compaction only while its lifecycle item is active", { tag: 
     id: `${turnId}:context-compaction-1`,
     threadId,
     turnId,
-    type: "tool_call",
+    type: "other_work",
     anchorMs: startedAtMs + 1_000,
     payload: {
       itemId: "context-compaction-1",

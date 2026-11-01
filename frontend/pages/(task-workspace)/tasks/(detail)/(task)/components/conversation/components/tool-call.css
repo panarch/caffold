@@ -1,0 +1,104 @@
+/* Measures as a finished command's row in caffold-task-command, so the two
+   kinds of work line up wherever they sit next to each other. */
+:host {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+
+:host([data-tool-call-tone="danger"]) {
+  border-color: var(--danger-faint-border);
+  background: var(--danger-faint);
+}
+
+.task-tool-call-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--interface-space-4);
+  width: 100%;
+  min-width: 0;
+  min-height: var(--interface-control-size);
+  padding: 0.4375rem 0.6875rem;
+  border-radius: inherit;
+  color: var(--text);
+  text-align: left;
+}
+
+.task-tool-call-summary-status,
+.task-tool-call-summary-meta,
+.task-tool-call-summary-action {
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+  white-space: nowrap;
+}
+
+.task-tool-call-summary-status {
+  color: var(--muted);
+}
+
+.task-tool-call-summary-status[data-tool-call-status="failed"] {
+  color: var(--danger);
+}
+
+.task-tool-call-summary-label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--code-font-size);
+  line-height: var(--code-line-height);
+  text-overflow: ellipsis;
+  user-select: text;
+  white-space: nowrap;
+}
+
+.task-tool-call-summary-meta {
+  color: var(--muted);
+}
+
+/* The last column even when the row has no server or duration to show, so
+   every View details ends at the row's edge. */
+.task-tool-call-summary-action {
+  grid-column: -2 / -1;
+  height: var(--interface-control-size);
+  margin-block: -0.4375rem;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--link-fg);
+  cursor: pointer;
+}
+
+.task-tool-call-summary-action:focus-visible {
+  background: var(--control-hover-bg);
+  outline: none;
+}
+
+@media (hover: hover) {
+  .task-tool-call-summary-action:hover {
+    background: var(--control-hover-bg);
+    outline: none;
+  }
+}
+
+.task-tool-call-summary-action:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--focus-ring);
+}
+
+.task-tool-call-summary-action:active {
+  background: var(--control-active-bg);
+}
+
+@media (max-width: 620px) {
+  .task-tool-call-summary {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .task-tool-call-summary-meta {
+    display: none;
+  }
+}

@@ -6,13 +6,15 @@
 //!
 //! The vocabulary is deliberately the size of what Caffold renders and no
 //! larger. An item gets its own kind because a surface draws it differently —
-//! a command has output to inspect, a file change has paths to open. Anything
-//! else the agent did is a [`ItemKind::ToolCall`], carrying the name the agent
-//! used, because that is all Caffold can honestly say about work whose meaning
-//! belongs to the harness that did it.
+//! a command has output to inspect, a file change has paths to open. A tool
+//! the agent called is a [`ItemKind::ToolCall`], with what the agent passed it
+//! and what came back. Anything else the agent did is
+//! [`ItemKind::OtherWork`], carrying the name the agent used, because that is
+//! all Caffold can honestly say about work whose meaning belongs to the
+//! harness that did it.
 //!
 //! That fallback is what makes the vocabulary safe to hold still. Agents grow
-//! new kinds of work constantly; each one arrives here as a tool call rather
+//! new kinds of work constantly; each one arrives here as other work rather
 //! than as a parse failure or a silently dropped item.
 //!
 //! A conversation is also read live. An agent Caffold is watching reports what
@@ -314,12 +316,14 @@ pub(crate) enum ItemKind {
         paths: Vec<String>,
     },
     GeneratedImage(GeneratedImage),
+    /// A tool the agent called with an input and that answered with a result.
+    ToolCall(ToolCall),
     /// Work Caffold has no surface of its own for.
     ///
-    /// The name is the agent's — a Codex item type, a Claude tool name — shown
-    /// as-is because inventing a Caffold word for work Caffold does not model
-    /// would claim an understanding it does not have.
-    ToolCall {
+    /// The name is the agent's — a Codex item type, Caffold's own word for a
+    /// compaction — shown as-is because inventing a Caffold word for work
+    /// Caffold does not model would claim an understanding it does not have.
+    OtherWork {
         name: String,
     },
     /// The agent's harness reporting that the turn could not run — an API
@@ -371,6 +375,33 @@ impl GeneratedImage {
     pub(crate) fn is_available(&self) -> bool {
         self.saved_path.is_some() || self.encoded.is_some()
     }
+}
+
+/// A tool call, under the agent's own name for the tool, with what the agent
+/// passed it and what came back, as the agent reported them.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ToolCall {
+    pub(crate) name: String,
+    /// The MCP server the tool belongs to, only when the agent reports it
+    /// apart from the name.
+    pub(crate) server: Option<String>,
+    pub(crate) input: Option<Value>,
+    /// Empty until the tool answers.
+    pub(crate) result: Vec<ToolResultPart>,
+    pub(crate) duration_ms: Option<u64>,
+}
+
+/// One piece of what a tool returned, in the order the agent reported it.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ToolResultPart {
+    Text(String),
+    /// A piece that is not text, as the agent sent it.
+    Json(Value),
+    /// Binary content, such as a picture or a PDF, left out of the
+    /// conversation; only what kind it was is kept.
+    Binary {
+        media_type: Option<String>,
+    },
 }
 
 /// A request the agent offered for the person to send next.

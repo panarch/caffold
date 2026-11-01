@@ -15,8 +15,9 @@
 //! is not how common they are but whether Caffold has something to show that a
 //! name does not already say: a command has output to read, a file change has
 //! paths to open, a plan is prose. Everything else is a
-//! [`ItemKind::ToolCall`] under the agent's own name for it, which keeps a tool
-//! the agent adds tomorrow rendering as work rather than disappearing.
+//! [`ItemKind::ToolCall`] under the agent's own name for it, with the input it
+//! was given and the result it returned, which keeps a tool the agent adds
+//! tomorrow rendering as work rather than disappearing.
 
 use std::collections::HashMap;
 
@@ -25,6 +26,7 @@ use serde_json::Value;
 use super::protocol::{ContentBlock, ImageSource, Message, MessageContent, image_source};
 use crate::agent::{
     ActivityStatus, CommandExecution, ConversationItem, ItemKind, MessageContent as CaffoldContent,
+    ToolCall, ToolResultPart,
 };
 
 /// A tool call the agent has started, kept until its result arrives.
@@ -333,10 +335,48 @@ fn tool_kind(name: &str, input: &Value, result: Option<&Value>) -> ItemKind {
         "ExitPlanMode" => ItemKind::Plan {
             text: string_field(input, "plan").unwrap_or_default(),
         },
-        other => ItemKind::ToolCall {
+        other => ItemKind::ToolCall(ToolCall {
             name: other.to_string(),
-        },
+            // An MCP tool's name carries its server, but Claude reports no
+            // server apart from it.
+            server: None,
+            input: (!input.is_null()).then(|| input.clone()),
+            result: result.map(tool_result).unwrap_or_default(),
+            duration_ms: None,
+        }),
     }
+}
+
+/// What a tool returned, as Claude reports it: one string, or blocks in
+/// Claude's own shapes. A picture or a document that carries its bytes keeps
+/// only its kind.
+fn tool_result(content: &Value) -> Vec<ToolResultPart> {
+    match content {
+        Value::Null => Vec::new(),
+        Value::String(text) => vec![ToolResultPart::Text(text.clone())],
+        Value::Array(blocks) => blocks.iter().map(tool_result_block).collect(),
+        other => vec![ToolResultPart::Json(other.clone())],
+    }
+}
+
+fn tool_result_block(block: &Value) -> ToolResultPart {
+    let kind = block.get("type").and_then(Value::as_str);
+    if kind == Some("text")
+        && let Some(text) = block.get("text").and_then(Value::as_str)
+    {
+        return ToolResultPart::Text(text.to_string());
+    }
+    if matches!(kind, Some("image" | "document"))
+        && block.pointer("/source/type").and_then(Value::as_str) == Some("base64")
+    {
+        return ToolResultPart::Binary {
+            media_type: block
+                .pointer("/source/media_type")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+        };
+    }
+    ToolResultPart::Json(block.clone())
 }
 
 /// A todo list as the lines a person reads.
@@ -506,7 +546,93 @@ mod tests {
 
         assert!(matches!(
             &items[0].kind,
-            ItemKind::ToolCall { name } if name == "WebSearch"
+            ItemKind::ToolCall(call) if call.name == "WebSearch"
+        ));
+    }
+
+    #[test]
+    fn a_tool_call_keeps_what_it_was_given_and_what_came_back() {
+        let mut calls = ToolCalls::default();
+        let started = items(
+            json!({
+                "content": [{
+                    "type": "tool_use", "id": "toolu_1", "name": "mcp__caffold__list_notes",
+                    "input": { "directoryId": "d-1" },
+                }],
+            }),
+            &mut calls,
+        );
+        let finished = items(
+            json!({
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_1",
+                    "content": [
+                        { "type": "text", "text": "{\"notes\":[]}" },
+                        { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "iVBOR" } },
+                        { "type": "document", "source": { "type": "base64", "media_type": "application/pdf", "data": "JVBER" } },
+                        { "type": "tool_reference", "tool_name": "mcp__caffold__read_note" },
+                    ],
+                }],
+            }),
+            &mut calls,
+        );
+
+        let ItemKind::ToolCall(running) = &started[0].kind else {
+            panic!("an MCP tool is a tool call");
+        };
+        assert_eq!(running.name, "mcp__caffold__list_notes");
+        assert_eq!(running.server, None);
+        assert_eq!(running.input, Some(json!({ "directoryId": "d-1" })));
+        assert!(running.result.is_empty());
+        let ItemKind::ToolCall(done) = &finished[0].kind else {
+            panic!("the finished call is the same tool call");
+        };
+        assert_eq!(done.input, running.input);
+        assert_eq!(
+            done.result,
+            vec![
+                ToolResultPart::Text("{\"notes\":[]}".to_string()),
+                ToolResultPart::Binary {
+                    media_type: Some("image/png".to_string())
+                },
+                ToolResultPart::Binary {
+                    media_type: Some("application/pdf".to_string())
+                },
+                ToolResultPart::Json(
+                    json!({ "type": "tool_reference", "tool_name": "mcp__caffold__read_note" })
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_tool_result_given_as_one_string_is_one_piece_of_text() {
+        let mut calls = ToolCalls::default();
+        items(
+            json!({
+                "content": [{
+                    "type": "tool_use", "id": "toolu_1", "name": "Read",
+                    "input": { "file_path": "/src/main.rs" },
+                }],
+            }),
+            &mut calls,
+        );
+        let failed = items(
+            json!({
+                "content": [{
+                    "type": "tool_result", "tool_use_id": "toolu_1",
+                    "content": "File does not exist.", "is_error": true,
+                }],
+            }),
+            &mut calls,
+        );
+
+        assert_eq!(failed[0].status, ActivityStatus::Failed);
+        assert!(matches!(
+            &failed[0].kind,
+            ItemKind::ToolCall(call)
+                if call.result == [ToolResultPart::Text("File does not exist.".to_string())]
         ));
     }
 

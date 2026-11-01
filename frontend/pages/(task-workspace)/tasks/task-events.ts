@@ -142,6 +142,7 @@ export function isWorkEvent(event: TaskEvent) {
     "command_execution",
     "file_change",
     "tool_call",
+    "other_work",
     "task_failed",
     "approval_resolved",
   ].includes(event.type);

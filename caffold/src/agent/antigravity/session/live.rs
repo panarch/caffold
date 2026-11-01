@@ -9,8 +9,8 @@ use uuid::Uuid;
 use super::super::{AntigravityError, protocol};
 use crate::agent::{
     ActivityStatus, CommandExecution, ConversationItem, GeneratedImage, ItemKind, MessageContent,
-    MessagePhase, SessionEventKind, TokenCount, TokenUsage, Turn, TurnOrigin, TurnPage, TurnState,
-    TurnStatus,
+    MessagePhase, SessionEventKind, TokenCount, TokenUsage, ToolCall, Turn, TurnOrigin, TurnPage,
+    TurnState, TurnStatus,
 };
 
 pub(super) struct Live {
@@ -396,7 +396,7 @@ fn tool_item(
                     .filter_map(|location| location["path"].as_str().map(str::to_string))
                     .collect(),
             },
-            _ => ItemKind::ToolCall { name: title },
+            _ => tool_call(value, title),
         }
     };
     Ok(ConversationItem {
@@ -404,6 +404,27 @@ fn tool_item(
         observed_at_ms: previous.and_then(|item| item.observed_at_ms).or(Some(at)),
         status,
         kind,
+    })
+}
+
+/// A tool call from the frames merged so far. An MCP call names its tool and
+/// server in `_meta.mcp` and carries its arguments twice in `rawInput`, spread
+/// out and once more under `arguments`; the latter is the shape the native
+/// record keeps. The server fills a finished call's `rawOutput` with the step's
+/// summary, such as "List notes", rather than what the tool returned, so the
+/// call has no result here; reading the native record brings the result.
+fn tool_call(value: &Value, title: String) -> ItemKind {
+    let mcp = &value["_meta"]["mcp"];
+    let input = match &value["rawInput"] {
+        input if mcp.is_object() && !input["arguments"].is_null() => &input["arguments"],
+        input => input,
+    };
+    ItemKind::ToolCall(ToolCall {
+        name: mcp["tool"].as_str().map_or(title, str::to_string),
+        server: mcp["server"].as_str().map(str::to_string),
+        input: (!input.is_null()).then(|| input.clone()),
+        result: Vec::new(),
+        duration_ms: None,
     })
 }
 
@@ -440,6 +461,69 @@ mod tests {
                 text: "Inspect".into(),
             }],
         )
+    }
+
+    #[test]
+    fn an_mcp_call_shows_its_own_tool_server_and_arguments() {
+        let mut live = Live::new(TurnPage::default());
+        let turn = prompt(&mut live);
+        live.update(&json!({
+            "sessionUpdate":"tool_call", "toolCallId":"call_1", "kind":"other", "status":"pending",
+            "title":"caffold_rename_current_task", "content":[],
+            "rawInput":{"arguments":{"name":"Greeting"}, "name":"Greeting"},
+            "_meta":{"mcp":{"tool":"rename_current_task", "server":"caffold"}, "is_mcp_tool_call":true, "prompt":"Renaming current task"}
+        })).unwrap();
+        let running = live.read_page(None, 8).unwrap().unwrap().turns[0].items[1].clone();
+        live.update(&json!({
+            "sessionUpdate":"tool_call_update", "toolCallId":"call_1", "status":"completed",
+            "rawOutput":"Rename current task",
+            "content":[{"type":"content", "content":{"type":"text", "text":"Rename current task"}}]
+        }))
+        .unwrap();
+        let page = live.read_page(None, 8).unwrap().unwrap();
+        let done = &page.turns[0].items[1];
+
+        assert_eq!(page.turns[0].id, turn.id);
+        assert_eq!(running.status, ActivityStatus::InProgress);
+        assert!(matches!(&running.kind, ItemKind::ToolCall(call) if call.result.is_empty()));
+        assert_eq!(done.id, running.id);
+        assert_eq!(done.status, ActivityStatus::Completed);
+        assert_eq!(
+            done.kind,
+            ItemKind::ToolCall(ToolCall {
+                name: "rename_current_task".into(),
+                server: Some("caffold".into()),
+                input: Some(json!({"name":"Greeting"})),
+                result: Vec::new(),
+                duration_ms: None,
+            })
+        );
+    }
+
+    #[test]
+    fn a_tool_call_without_mcp_keeps_its_title_and_input_but_not_the_step_summary() {
+        let mut live = Live::new(TurnPage::default());
+        prompt(&mut live);
+        live.update(&json!({
+            "sessionUpdate":"tool_call", "toolCallId":"fetch", "kind":"fetch", "status":"in_progress",
+            "title":"Running read_url_content", "rawInput":{"Url":"https://example.com", "toolSummary":"Read example"},
+            "content":[{"type":"content", "content":{"type":"text", "text":"https://example.com"}}]
+        })).unwrap();
+        live.update(&json!({"sessionUpdate":"tool_call_update", "toolCallId":"fetch", "status":"completed", "rawOutput":"Read example"})).unwrap();
+        let page = live.read_page(None, 8).unwrap().unwrap();
+        let item = &page.turns[0].items[1];
+
+        assert_eq!(item.status, ActivityStatus::Completed);
+        assert_eq!(
+            item.kind,
+            ItemKind::ToolCall(ToolCall {
+                name: "Running read_url_content".into(),
+                server: None,
+                input: Some(json!({"Url":"https://example.com", "toolSummary":"Read example"})),
+                result: Vec::new(),
+                duration_ms: None,
+            })
+        );
     }
 
     #[test]

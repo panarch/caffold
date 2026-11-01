@@ -242,7 +242,7 @@ echoes from sessions started with `--replay-user-messages` are such frames.
 
 Claude reports compacting its context only on the stream: a `status` frame says
 `compacting`, and a later one clears the status with the compaction's result.
-The driver draws that span as the "Compacting context" tool activity that
+The driver draws that span as the "Compacting context" other work that
 Codex's compaction also produces, identified by the starting frame's `uuid`,
 and finishes it as completed or failed when the status clears. A turn that ends
 first closes it with the tool calls it left open. The transcript keeps the
@@ -504,7 +504,8 @@ It contains only what the interface and Task lifecycle consume:
 
 - user and agent messages, with any requests an agent offers for the person to
   send next;
-- reasoning and tool activity;
+- reasoning;
+- tool calls, and other work the agent names;
 - commands, output, and changed paths;
 - turn and conversation status;
 - token usage where the agent reports it;
@@ -512,6 +513,13 @@ It contains only what the interface and Task lifecycle consume:
   the count and the window; and
 - approvals under a Caffold identity paired privately with the provider
   request that must be answered.
+
+A tool call carries the agent's own name for the tool, the MCP server only
+when the agent reports it apart from that name, the input as the agent gave
+it, and what came back in the order the agent reported it: text as text,
+anything else as the JSON it arrived in, and a picture, document, sound, or
+resource's bytes only as the kind they were. Work that is not a call to a tool
+is other work, which carries only the agent's name for it.
 
 ### Provider evidence
 
@@ -522,6 +530,18 @@ and stored — and `_x.ai` notifications; a frame marked as a replay is not a
 new event. Antigravity translates conversation updates inside its live display
 view and native trajectory steps when reconstructing persisted history; session
 observations such as context are independent of display ownership.
+Codex reports an MCP or dynamic tool call with its arguments, result, and
+duration, and an MCP call with its server; its other item kinds are other
+work. Claude names an MCP tool after its server and reports no server apart
+from it. Grok reports an MCP call's server once the call ends, and a call's
+result arrives with its raw output; content sent before that describes the
+call. Antigravity's live view reads a call's input from `rawInput`, and an MCP
+call's tool, server, and arguments from `_meta.mcp` and `rawInput.arguments`;
+the server fills a finished call's `rawOutput` with the step's summary rather
+than the tool's output, so a live call has no result. Its native record keeps
+the arguments of every step that records a tool call, but a result only as an
+MCP step's text, a viewed file's content, or an error step's message; a step
+that records no tool call is other work.
 A Claude `thinking` block that carries text is the agent's
 progress note between tool calls and reads as an agent message; an empty one
 reads as reasoning with nothing to show. A file citation that Codex's document
@@ -537,7 +557,7 @@ message's suggested prompts, its short name and its `prompt` as written, while
 the syntax inside a sentence stays in the text. Claude and Grok can each
 suggest a next prompt only when a client asks for it, which Caffold does not,
 so their messages carry none. Unknown optional events may be ignored or
-presented as generic tool activity; missing load-bearing fields fail
+presented as other work; missing load-bearing fields fail
 explicitly. The provider's raw protocol does not escape into Task or frontend
 state.
 

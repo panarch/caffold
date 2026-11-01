@@ -5,8 +5,8 @@ import { activeTurnDuration, activeTurnPresentation } from "./active-turn.js";
 
 test("work Caffold has no surface for says what it is while it runs", () => {
   const task = activeTask();
-  const running = toolCall("Compacting context", "inProgress");
-  const finished = toolCall("Compacting context", "completed");
+  const running = otherWork("Compacting context", "inProgress");
+  const finished = otherWork("Compacting context", "completed");
 
   assert.equal(
     activeTurnPresentation([running], task).state,
@@ -21,7 +21,8 @@ test("preserves active-turn label precedence and work labels", () => {
     [event("command_execution", "inProgress"), "Running command"],
     [event("file_change", "inProgress"), "Editing files"],
     [event("reasoning", "inProgress"), "Thinking"],
-    [toolCall("Web search", "inProgress"), "Web search…"],
+    [toolCall("mcp__caffold__read_note", "inProgress"), "mcp__caffold__read_note…"],
+    [otherWork("Web search", "inProgress"), "Web search…"],
   ];
 
   for (const [activeEvent, expected] of cases) {
@@ -71,6 +72,10 @@ function activeTask(activeFlags = []) {
 
 function toolCall(name, status) {
   return event("tool_call", status, { name });
+}
+
+function otherWork(name, status) {
+  return event("other_work", status, { name });
 }
 
 function event(type, status, payload = {}) {

@@ -124,6 +124,8 @@ pub(super) struct ToolCall {
     pub(super) id: String,
     #[prost(string, tag = "2")]
     pub(super) name: String,
+    #[prost(string, tag = "3")]
+    pub(super) arguments_json: String,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -208,6 +210,8 @@ pub(super) struct FileChange {
 pub(super) struct ViewFile {
     #[prost(string, tag = "1")]
     pub(super) absolute_path_uri: String,
+    #[prost(string, tag = "4")]
+    pub(super) content: String,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -216,6 +220,11 @@ pub(super) struct McpTool {
     pub(super) server: String,
     #[prost(message, optional, tag = "2")]
     pub(super) call: Option<ToolCall>,
+    #[prost(string, tag = "3")]
+    pub(super) result_string: String,
+    /// Where the harness saved a result too large to keep in the step.
+    #[prost(string, tag = "8")]
+    pub(super) result_uri: String,
 }
 
 #[derive(Clone, PartialEq, Message)]
