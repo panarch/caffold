@@ -141,6 +141,7 @@ export class CaffoldDetailLayout extends CaffoldElement {
   private taskSnapshot: TaskSubjectSnapshot | null = null;
   private managedTask: ListedTask | null = null;
   private managedTaskRepository = false;
+  private managedTaskPinned = false;
   private sectionActivationKey = "";
   private sharedDomainContextKey = "";
   private domainActivationPromise: Promise<unknown> | null = null;
@@ -207,6 +208,7 @@ export class CaffoldDetailLayout extends CaffoldElement {
     if (taskThreadId(this.managedTask) !== `${threadId ?? ""}`) {
       this.managedTask = null;
       this.managedTaskRepository = false;
+      this.managedTaskPinned = false;
     }
     this.taskRoute = { ...(options.route ?? { kind: "tasks", threadId }) };
     this.keepTerminalTakeFor(this.taskRoute.terminal ? `task:${threadId}` : "");
@@ -260,6 +262,7 @@ export class CaffoldDetailLayout extends CaffoldElement {
     }
     this.managedTask = null;
     this.managedTaskRepository = false;
+    this.managedTaskPinned = false;
     const contextChanged = !this.sectionContextMatches(section);
     if (contextChanged) {
       this.deactivateSectionSurfaces();
@@ -333,7 +336,7 @@ export class CaffoldDetailLayout extends CaffoldElement {
 
   setManagedTask(
     task: ListedTask | null | undefined,
-    { repository = false, missingSectionId = "" } = {},
+    { repository = false, pinned = false, missingSectionId = "" } = {},
   ) {
     this.performUpdate();
     this.taskDetail.value?.setMissingSection(missingSectionId);
@@ -343,14 +346,17 @@ export class CaffoldDetailLayout extends CaffoldElement {
         ? (task ?? null)
         : null;
     const nextRepository = Boolean(nextTask) && Boolean(repository);
+    const nextPinned = Boolean(nextTask) && Boolean(pinned);
     if (
       this.managedTask === nextTask &&
-      this.managedTaskRepository === nextRepository
+      this.managedTaskRepository === nextRepository &&
+      this.managedTaskPinned === nextPinned
     ) {
       return;
     }
     this.managedTask = nextTask;
     this.managedTaskRepository = nextRepository;
+    this.managedTaskPinned = nextPinned;
     this.taskDetail.value?.setManagedTask(nextTask);
     if (this.subjectKind === "task") {
       this.syncTaskPresentation();
@@ -372,6 +378,7 @@ export class CaffoldDetailLayout extends CaffoldElement {
     }
     this.managedTask = null;
     this.managedTaskRepository = false;
+    this.managedTaskPinned = false;
   }
 
   suspendForeground() {
@@ -845,6 +852,10 @@ export class CaffoldDetailLayout extends CaffoldElement {
       permissionMode: snapshot?.permissionMode,
       archiveState: snapshot?.archiveState,
       forkState: snapshot?.forkState,
+      // The list says whether the Task is pinned; a Task it has not placed in
+      // a Section cannot be.
+      pinned: this.listedTask() ? this.managedTaskPinned : null,
+      pinState: snapshot?.pinState,
     });
     const reviewChoice = !repository
       ? "review"
@@ -1228,6 +1239,8 @@ export class CaffoldDetailLayout extends CaffoldElement {
       );
     } else if (event.detail?.type === "fork") {
       void this.taskDetail.value?.forkSelectedTask();
+    } else if (event.detail?.type === "pin" || event.detail?.type === "unpin") {
+      void this.taskDetail.value?.pinSelectedTask(event.detail.type === "pin");
     } else if (event.detail?.type === "permission-instructions") {
       // Focus returns to the details button, because the popover the action
       // came from closes as the dialog takes over.

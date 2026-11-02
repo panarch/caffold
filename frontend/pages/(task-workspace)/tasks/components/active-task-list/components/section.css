@@ -88,6 +88,11 @@ button.task-repository-select:focus-visible,
   stroke-width: 1.8;
 }
 
+/* Lucide draws the pin upright; the Pinned group tilts it like a pushpin. */
+.task-repository-pin-icon {
+  rotate: 45deg;
+}
+
 .task-repository-label {
   overflow: hidden;
   font-weight: 600;

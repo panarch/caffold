@@ -65,6 +65,83 @@ test("finds the Section a listed Task sits in", () => {
   assert.equal(list.sectionForTask("thread-unlisted"), null);
 });
 
+test("names the Section of a pinned Task and draws the pinned Tasks first", () => {
+  const list = listHost({
+    pinnedGroup: pinnedGroup([
+      ["thread-pinned", "app"],
+      ["thread-gone", "removed"],
+    ]),
+    sections: [
+      {
+        id: "app",
+        name: "Workspace/app",
+        repository: true,
+        composerSettings: null,
+        tasks: [{ threadId: "thread-b" }],
+      },
+    ],
+    unsectioned: [{ threadId: "thread-recovery" }],
+  });
+
+  assert.equal(list.isPinned("thread-pinned"), true);
+  assert.equal(list.isPinned("thread-b"), false);
+  assert.equal(list.sectionForTask("thread-pinned").id, "app");
+  assert.equal(list.taskFor("thread-pinned").threadId, "thread-pinned");
+  assert.deepEqual(
+    list.tasksWithSections().map(({ task, sectionName, pinned }) => [
+      task.threadId,
+      sectionName,
+      pinned,
+    ]),
+    [
+      ["thread-pinned", "app", true],
+      ["thread-gone", "", true],
+      ["thread-b", "app", false],
+      ["thread-recovery", "", false],
+    ],
+  );
+
+  const [pinned, section, recovery] = list.projectedSections();
+  assert.equal(pinned.pinned, true);
+  assert.equal(pinned.label, "Pinned");
+  assert.deepEqual(pinned.tasks.map(({ threadId }) => threadId), [
+    "thread-pinned",
+    "thread-gone",
+  ]);
+  assert.equal(section.id, "app");
+  assert.equal(recovery.recovery, true);
+  assert.equal(
+    listHost({ sections: list.sections }).projectedSections()[0].id,
+    "app",
+  );
+});
+
+test("keeps a Section listed while a pinned Task still names it", () => {
+  const list = listHost({
+    pinnedGroup: pinnedGroup([["thread-pinned", "app"]]),
+  });
+  const sections = [
+    { id: "app", name: "app", repository: false, tasks: [{ threadId: "a" }] },
+    { id: "docs", name: "docs", repository: false, tasks: [{ threadId: "b" }] },
+  ];
+
+  assert.deepEqual(
+    list.withoutTask(sections, "a").map(({ id, tasks }) => [id, tasks.length]),
+    [
+      ["app", 0],
+      ["docs", 1],
+    ],
+  );
+  assert.deepEqual(
+    list.withoutTask(sections, "b").map(({ id }) => id),
+    ["app"],
+  );
+  assert.deepEqual(
+    list.withoutTask(sections, "b", "docs").map(({ id }) => id),
+    ["app", "docs"],
+  );
+});
+
 test("gives a caller that joins a Task list load the answer when the first caller no longer wants it", async () => {
   const originalWindow = globalThis.window;
   const originalFetch = globalThis.fetch;
@@ -105,7 +182,11 @@ test("gives a caller that joins a Task list load the answer when the first calle
     answer();
 
     assert.equal(await stale, null);
-    assert.deepEqual(await current, { sections: [], unsectioned: [] });
+    assert.deepEqual(await current, {
+      pinned: [],
+      sections: [],
+      unsectioned: [],
+    });
     assert.equal(list.taskListLoaded, true);
   } finally {
     globalThis.window = originalWindow;
@@ -139,6 +220,7 @@ test("frames its Sections with the load's state and the outcome of a move", () =
 
 function listHost(properties) {
   return Object.create(List.prototype, Object.getOwnPropertyDescriptors({
+    pinnedGroup: pinnedGroup([]),
     sections: [],
     unsectioned: [],
     taskListLoading: false,
@@ -149,6 +231,18 @@ function listHost(properties) {
     querySelector: () => null,
     ...properties,
   }));
+}
+
+function pinnedGroup(entries) {
+  return {
+    id: "pinned",
+    name: "Pinned Tasks",
+    label: "Pinned",
+    repository: false,
+    pinned: true,
+    sectionIds: new Map(entries),
+    tasks: entries.map(([threadId]) => ({ threadId })),
+  };
 }
 
 function html(list) {

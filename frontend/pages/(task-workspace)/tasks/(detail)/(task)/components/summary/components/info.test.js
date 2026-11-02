@@ -83,6 +83,48 @@ test("keeps Fork unavailable without canonical Detail", () => {
   );
 });
 
+test("offers Pin or Unpin only for a Task the list has placed", () => {
+  const task = { threadId: "thread-a", threadStatus: { type: "idle" } };
+  const pinBlock = (snapshot) =>
+    drawnActions({ task, ...snapshot }).markup.match(
+      /task-detail-pin-action"[^>]*\?hidden="(true|false)" > <p>([^<]*)<\/p>.*?data-task-info-action="(pin|unpin)"[^>]*>([^<]*)<\/button>/,
+    )?.slice(1);
+
+  assert.equal(pinBlock({ pinned: null })[0], "true");
+  assert.deepEqual(pinBlock({ pinned: false }), [
+    "false",
+    "Pinned Tasks stay at the top of the Task list and the Task Switcher.",
+    "pin",
+    "Pin task",
+  ]);
+  assert.deepEqual(pinBlock({ pinned: true }), [
+    "false",
+    "This Task is pinned. Unpinning returns it to the top of its Section.",
+    "unpin",
+    "Unpin task",
+  ]);
+  assert.equal(
+    pinBlock({ pinned: false, pinState: { loading: true, error: null } })[3],
+    "Pinning...",
+  );
+  assert.equal(
+    drawnActions({
+      task,
+      pinned: true,
+      pinState: { loading: true, error: null },
+    }).disabled("unpin"),
+    true,
+  );
+  assert.match(
+    drawnActions({
+      task,
+      pinned: false,
+      pinState: { loading: false, error: new Error("Pin failed.") },
+    }).markup,
+    /task-detail-pin-error" role="alert" \?hidden="false" >Pin failed\.</,
+  );
+});
+
 test("closes the Task details popover when its bound Action Hint session is dismissed", () => {
   let hidden = 0;
   const popover = {

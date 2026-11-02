@@ -123,6 +123,13 @@ dialog::backdrop {
   list-style: none;
 }
 
+/* Between the pinned Tasks and the rest. */
+.task-switcher-divider {
+  height: 1px;
+  margin-block: var(--interface-space-3);
+  background: var(--border);
+}
+
 .task-switcher-empty {
   margin: 0;
   padding: var(--interface-space-5) var(--interface-space-8);

@@ -21,7 +21,7 @@ pub(super) async fn persist_started_turn_composer_settings(
             else {
                 return Ok(None);
             };
-            let section = match thread.section_id.as_deref() {
+            let section = match thread.section_id() {
                 Some(section_id) => Some(
                     tables
                         .update_managed_section_composer_settings(section_id, &settings)?

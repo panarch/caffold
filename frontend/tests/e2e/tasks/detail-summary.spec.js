@@ -6,6 +6,7 @@ import {
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { elementHandles } from "../support/element-handles.js";
 import {
+  activeListTask,
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
@@ -492,6 +493,104 @@ test(`forks an idle ${provider} Task and opens the distinct child`, { tag: "@ser
 });
 
 }
+
+test("pins and unpins the open Task, holding the button until the list reads it back", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const rootPath = "repo-pin";
+  const other = summaryTask("thread_pin_other", "Other task", rootPath, 200);
+  const target = summaryTask("thread_pin_target", "Pinned task", rootPath, 100);
+  const state = { pinned: [], order: [other, target] };
+  const requests = [];
+  let holdList = null;
+  await installSummaryFixture(page, [other, target]);
+  await page.route(/\/api\/tasks(?:\?|$)/, async (route) => {
+    await holdList;
+    await route.fulfill({
+      json: {
+        pinned: state.pinned.map((task) => ({
+          sectionId: "section-pin",
+          task: activeListTask(task),
+        })),
+        sections: [
+          {
+            id: "section-pin",
+            name: rootPath,
+            repository: true,
+            tasks: state.order.map(activeListTask),
+          },
+        ],
+        unsectioned: [],
+      },
+    });
+  });
+  let releasePin;
+  const pinGate = new Promise((resolve) => {
+    releasePin = resolve;
+  });
+  await page.route(/\/api\/tasks\/thread_pin_target\/(pin|unpin)$/, async (route) => {
+    const action = new URL(route.request().url()).pathname.split("/").at(-1);
+    requests.push(action);
+    if (action === "pin") {
+      await pinGate;
+      state.order = state.order.filter((task) => task !== target);
+      state.pinned = [target];
+    } else {
+      state.pinned = [];
+      state.order = [target, ...state.order];
+    }
+    await route.fulfill({
+      json: { threadId: target.threadId, pinned: action === "pin", changed: true },
+    });
+  });
+
+  await page.goto(`/tasks/${target.threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(target));
+  const summary = page.locator("caffold-task-detail-summary");
+  await summary.getByRole("button", { name: /Task details/ }).click();
+  const popover = summary.locator(".task-detail-popover");
+  const pin = popover.locator(".task-detail-pin-action button");
+  await expect(popover.locator(".task-detail-pin-action > p").first()).toHaveText(
+    "Pinned Tasks stay at the top of the Task list and the Task Switcher.",
+  );
+  await expect(pin).toHaveText("Pin task");
+
+  let releaseList;
+  holdList = new Promise((resolve) => {
+    releaseList = resolve;
+  });
+  await pin.click();
+  await expect.poll(() => requests).toEqual(["pin"]);
+  await expect(pin).toHaveText("Pinning...");
+  await expect(pin).toBeDisabled();
+  const listRead = page.waitForRequest(/\/api\/tasks(?:\?|$)/);
+  releasePin();
+  await listRead;
+  await expect(pin).toHaveText("Pinning...");
+  releaseList();
+
+  await expect(pin).toHaveText("Unpin task");
+  await expect(pin).toBeEnabled();
+  await expect(popover.locator(".task-detail-pin-action > p").first()).toHaveText(
+    "This Task is pinned. Unpinning returns it to the top of its Section.",
+  );
+  const list = page.locator("caffold-active-task-list");
+  const pinnedGroup = list.locator(".task-repository-group[data-task-pinned]");
+  await expect(pinnedGroup.locator(".task-row-title")).toHaveText(["Pinned task"]);
+  const section = list.locator(
+    '.task-repository-group[data-task-repository-key="section-pin"]',
+  );
+  await expect(section.locator(".task-row-title")).toHaveText(["Other task"]);
+
+  await pin.click();
+  await expect(pin).toHaveText("Pin task");
+  await expect(pinnedGroup).toHaveCount(0);
+  await expect(section.locator(".task-row-title")).toHaveText([
+    "Pinned task",
+    "Other task",
+  ]);
+  expect(requests).toEqual(["pin", "unpin"]);
+});
 
 test("keeps fork disabled for Antigravity Tasks and reports why", { tag: "@server-steady" }, async ({ page }) => {
   const threadId = "thread_summary_antigravity_fork";

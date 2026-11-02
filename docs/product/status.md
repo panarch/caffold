@@ -53,6 +53,8 @@ boundaries.
   account, plan usage, and runner state, and the Grok executable, leader,
   connection, account, and plan usage, as each CLI reports them;
 - selectable managed Sections with fixed-directory Task creation;
+- pinned Tasks, kept above every Section in the Task list and first in the
+  Task Switcher;
 - shared integrated Working Tree/Branch, file/source, Git Compare/Log, and
   GitHub review surfaces for repository-backed Tasks and Sections;
 - explicit Task creation from GitHub Issue and Pull Request detail;

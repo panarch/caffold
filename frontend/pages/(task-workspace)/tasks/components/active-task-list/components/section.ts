@@ -35,7 +35,8 @@ const rowComponents = new WeakMap<HTMLLIElement, CaffoldActiveTaskRow>();
 export type ReorderMode = "none" | "tasks" | "sections";
 
 // A Section as the list shows it. The Tasks awaiting recovery are shown as one
-// more Section, with a label of their own and nothing to reorder.
+// more Section, with a label of their own and nothing to reorder; so are the
+// pinned Tasks, which reorder among themselves.
 export interface ListedSection {
   id: string;
   name: string;
@@ -43,6 +44,7 @@ export interface ListedSection {
   directory?: SectionDirectoryObservation;
   label?: string;
   recovery?: boolean;
+  pinned?: boolean;
   tasks: ListedTask[];
 }
 
@@ -328,7 +330,8 @@ export class CaffoldActiveTaskSection extends CaffoldElement {
       this.dataset.reorderMode = reorderMode;
     }
     this.toggleAttribute("data-task-reveal", revealTasks);
-    const sectionId = section && !section.recovery ? section.id : undefined;
+    const sectionId =
+      section && !section.recovery && !section.pinned ? section.id : undefined;
     if (this.dataset.sectionId !== sectionId) {
       if (sectionId === undefined) {
         delete this.dataset.sectionId;
@@ -338,16 +341,19 @@ export class CaffoldActiveTaskSection extends CaffoldElement {
     }
   }
 
-  // A selectable Section opens from a button; a recovery group, or any Section
-  // while the list reorders, shows the same name without one.
+  // A selectable Section opens from a button; a recovery or pinned group, or
+  // any Section while the list reorders, shows the same name without one.
   private header(section: ListedSection) {
     const { reorderMode, selectedSectionId, pending } = this.snapshot;
     const label = section.label ?? sectionLabel(section.name);
+    const group = section.recovery || section.pinned;
     const [icon, iconLabel] = section.recovery
       ? ["CircleAlert", "Section recovery"]
-      : section.repository
-        ? ["FolderGit2", "Git repository"]
-        : ["Folder", "Directory"];
+      : section.pinned
+        ? ["Pin", "Pinned"]
+        : section.repository
+          ? ["FolderGit2", "Git repository"]
+          : ["Folder", "Directory"];
     const labelContent =
       section.directory?.status === "missing"
         ? html`
@@ -360,15 +366,17 @@ export class CaffoldActiveTaskSection extends CaffoldElement {
     const name = html`${inlineIcon(
       icon,
       iconLabel,
-      "task-repository-icon",
+      section.pinned
+        ? "task-repository-icon task-repository-pin-icon"
+        : "task-repository-icon",
     )}<span class="task-repository-label">${labelContent}</span>`;
-    const current = section.recovery
+    const current = group
       ? nothing
       : selectedSectionId === section.id
         ? "page"
         : "false";
     const select =
-      !section.recovery && reorderMode === "none"
+      !group && reorderMode === "none"
         ? html`<button
             ${this.hints.button({
               id: `section:${section.id}`,
@@ -386,10 +394,10 @@ export class CaffoldActiveTaskSection extends CaffoldElement {
         : html`<div
             class="task-repository-select"
             title=${section.name}
-            data-section-id=${section.recovery ? nothing : section.id}
+            data-section-id=${group ? nothing : section.id}
             aria-current=${current}
           >${name}</div>`;
-    const handle = section.recovery
+    const handle = group
       ? nothing
       : html`<button
           ${drawn(this.handle)}

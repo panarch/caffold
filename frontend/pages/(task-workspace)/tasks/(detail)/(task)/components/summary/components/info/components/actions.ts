@@ -22,6 +22,10 @@ import styles from "./actions.css.js";
 const REVIEWED_PERMISSION_MODE = "caffold:ask-jev-first";
 const PERMISSION_INSTRUCTIONS_ABOUT =
   "This Task keeps what your own prompts say it may and may not do, for Jev to read when it answers a permission request here.";
+const PIN_ABOUT =
+  "Pinned Tasks stay at the top of the Task list and the Task Switcher.";
+const UNPIN_ABOUT =
+  "This Task is pinned. Unpinning returns it to the top of its Section.";
 const FORK_ABOUT =
   "Create a new Task at the project root with this conversation's history. Files and worktrees are not copied.";
 const ARCHIVE_ABOUT =
@@ -36,8 +40,9 @@ export interface TaskActionState {
 }
 
 // What the actions show: the Task, whether its details have been read, its
-// live connection, its agent and approval mode, and its Archive and Fork
-// requests. Archive waits while the agent is working on the Task.
+// live connection, its agent and approval mode, whether it is pinned (null
+// while the list has not placed it in a Section), and its Archive, Fork, and
+// pin requests. Archive waits while the agent is working on the Task.
 export interface TaskInfoActionsSnapshot {
   task: ListedTask | null;
   canonicalTaskAvailable: boolean;
@@ -47,12 +52,16 @@ export interface TaskInfoActionsSnapshot {
   permissionMode: string;
   archiveState: TaskActionState;
   forkState: TaskActionState;
+  pinned: boolean | null;
+  pinState: TaskActionState;
 }
 
 type TaskInfoAction =
   | "archive"
   | "force-archive"
   | "fork"
+  | "pin"
+  | "unpin"
   | "permission-instructions";
 
 export interface TaskInfoActionIntent {
@@ -61,8 +70,8 @@ export interface TaskInfoActionIntent {
 
 /**
  * What can be done with the Task from its details popover: read what its
- * prompts settled, fork it, and archive it, each with why it cannot be done
- * now.
+ * prompts settled, pin or unpin it, fork it, and archive it, each with why it
+ * cannot be done now.
  */
 @customElement("caffold-task-detail-info-actions")
 export class CaffoldTaskDetailInfoActions extends CaffoldElement {
@@ -93,6 +102,10 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
     const forkLabel = snapshot.forkState.openCreated
       ? "Open forked task"
       : "Fork task";
+    const pinned = snapshot.pinned;
+    const pinning = snapshot.pinState.loading;
+    const pinError = actionErrorMessage(snapshot.pinState.error);
+    const pinLabel = pinned ? "Unpin task" : "Pin task";
     const archiving = snapshot.archiveState.loading;
     const archiveError = actionErrorMessage(snapshot.archiveState.error);
     const archiveFailure = snapshot.archiveState
@@ -123,6 +136,31 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
           data-task-info-action="permission-instructions"
           @click=${this.requestAction}
         >What your prompts settled</button>
+      </div>
+      <div
+        class="task-detail-task-action task-detail-pin-action"
+        ?hidden=${pinned === null}
+      >
+        <p>${pinned ? UNPIN_ABOUT : PIN_ABOUT}</p>
+        <button
+          ${this.hints.button({
+            id: `${threadId}:pin`,
+            label: pinLabel,
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            when: pinned !== null,
+            badgeAtEnd: true,
+          })}
+          type="button"
+          class="task-secondary-button"
+          data-task-info-action=${pinned ? "unpin" : "pin"}
+          ?disabled=${pinning}
+          @click=${this.requestAction}
+        >${pinning ? (pinned ? "Unpinning..." : "Pinning...") : pinLabel}</button>
+        <p
+          class="task-detail-action-error task-detail-pin-error"
+          role="alert"
+          ?hidden=${!pinError}
+        >${pinError}</p>
       </div>
       <div class="task-detail-task-action task-detail-fork-action">
         <p>${FORK_ABOUT}</p>

@@ -235,7 +235,7 @@ impl SectionDirectories {
             .map_err(store_error)?;
         let section_tasks = active
             .into_iter()
-            .filter(|task| task.section_id.as_deref() == Some(id))
+            .filter(|task| task.section_id() == Some(id))
             .collect::<Vec<_>>();
         let new_common = target.join(".git");
         let mut records = worktrees
@@ -393,7 +393,7 @@ impl SectionDirectories {
                 let section_tasks = tables
                     .active_managed_threads()?
                     .into_iter()
-                    .filter(|task| task.section_id.as_deref() == Some(&plan.section.section_id))
+                    .filter(|task| task.section_id() == Some(plan.section.section_id.as_str()))
                     .collect::<Vec<_>>();
                 let old_common = plan.original.join(".git");
                 let new_common = plan.target.join(".git");

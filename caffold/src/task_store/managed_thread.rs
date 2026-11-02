@@ -116,6 +116,116 @@ impl RunBy {
         }
     }
 }
+
+/// Where an active Task is listed: at its place in its Section, or at its place
+/// among the pinned Tasks above every Section.
+///
+/// The table keeps a Section and two places as three nullable columns. Above
+/// the row conversion a placed Task has its Section and exactly one place. A
+/// pinned Task keeps its Section, which the list names it by and unpinning
+/// returns it to. Archived Tasks, and Tasks still waiting for a Section, have
+/// no placement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Placement {
+    pub section_id: String,
+    pub position: Position,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Position {
+    InSection(i64),
+    Pinned(i64),
+}
+
+impl Placement {
+    fn pinned(&self) -> bool {
+        matches!(self.position, Position::Pinned(_))
+    }
+
+    /// Read the three columns the table keeps, refusing any combination that
+    /// does not name exactly one place.
+    fn from_row(
+        section_id: Option<String>,
+        position_in_section: Option<i64>,
+        pin_position: Option<i64>,
+        archived: bool,
+    ) -> Result<Option<Self>> {
+        let section_id = section_id.filter(|section_id| !section_id.trim().is_empty());
+        let position = match (position_in_section, pin_position) {
+            (None, None) => None,
+            (Some(position), None) => Some(Position::InSection(position)),
+            (None, Some(position)) => Some(Position::Pinned(position)),
+            (Some(_), Some(_)) => return Err(TaskStoreError::InvalidRow("section_placement")),
+        };
+        match (section_id, position) {
+            (None, None) => Ok(None),
+            (Some(section_id), Some(position)) if !archived => Ok(Some(Self {
+                section_id,
+                position,
+            })),
+            _ => Err(TaskStoreError::InvalidRow("section_placement")),
+        }
+    }
+
+    /// The `section_id`, `position_in_section`, and `pin_position` columns.
+    fn to_row(
+        placement: Option<&Self>,
+        archived: bool,
+    ) -> Result<(Option<String>, Option<i64>, Option<i64>)> {
+        let Some(placement) = placement else {
+            return Ok((None, None, None));
+        };
+        if archived || placement.section_id.trim().is_empty() {
+            return Err(TaskStoreError::InvalidRow("section_placement"));
+        }
+        let section_id = Some(placement.section_id.clone());
+        Ok(match placement.position {
+            Position::InSection(position) => (section_id, Some(position), None),
+            Position::Pinned(position) => (section_id, None, Some(position)),
+        })
+    }
+}
+
+impl Position {
+    /// The same kind of place, at another position.
+    fn at(self, value: i64) -> Self {
+        match self {
+            Self::InSection(_) => Self::InSection(value),
+            Self::Pinned(_) => Self::Pinned(value),
+        }
+    }
+}
+
+/// One ordered run of the list: a Section's own Tasks, or the pinned Tasks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Order {
+    Section(String),
+    Pinned,
+}
+
+impl Order {
+    fn of(placement: &Placement) -> Self {
+        match placement.position {
+            Position::InSection(_) => Self::Section(placement.section_id.clone()),
+            Position::Pinned(_) => Self::Pinned,
+        }
+    }
+
+    /// Where a Task stands in this run, if it is in it.
+    fn position_of(&self, thread: &ManagedThread) -> Option<i64> {
+        let placement = thread.placement.as_ref()?;
+        match (self, placement.position) {
+            (Self::Section(section_id), Position::InSection(position))
+                if placement.section_id == *section_id =>
+            {
+                Some(position)
+            }
+            (Self::Pinned, Position::Pinned(position)) => Some(position),
+            _ => None,
+        }
+    }
+}
+
 pub(super) const POSITION_STEP: i64 = 1024;
 
 const COLUMN_DEFINITIONS: &[&str] = &[
@@ -136,6 +246,7 @@ const COLUMN_DEFINITIONS: &[&str] = &[
     "cwd TEXT NULL",
     "permission_mode TEXT NULL",
     "permission_instructions TEXT NULL",
+    "pin_position INTEGER NULL",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -147,8 +258,7 @@ pub(crate) struct ManagedThread {
     /// to ask about a Task without asking anyone.
     pub run_by: RunBy,
     pub display_name: String,
-    pub section_id: Option<String>,
-    pub position_in_section: Option<i64>,
+    pub placement: Option<Placement>,
     pub archived_at_ms: Option<u64>,
     pub last_observed_recency_ms: Option<u64>,
     pub claimed_at_ms: u64,
@@ -174,8 +284,7 @@ impl ManagedThread {
             display_name: fallback_display_name(&thread_id),
             thread_id,
             run_by,
-            section_id: None,
-            position_in_section: None,
+            placement: None,
             archived_at_ms: None,
             last_observed_recency_ms,
             claimed_at_ms: 0,
@@ -186,6 +295,33 @@ impl ManagedThread {
             reasoning_effort,
             fast_mode: false,
             permission_mode: None,
+        }
+    }
+
+    /// The Section the Task is listed in or, while pinned, named by.
+    pub(crate) fn section_id(&self) -> Option<&str> {
+        self.placement
+            .as_ref()
+            .map(|placement| placement.section_id.as_str())
+    }
+
+    pub(crate) fn pinned(&self) -> bool {
+        self.placement.as_ref().is_some_and(Placement::pinned)
+    }
+
+    /// The Task's place among its Section's own Tasks; none while pinned.
+    pub(crate) fn position_in_section(&self) -> Option<i64> {
+        match self.placement.as_ref()?.position {
+            Position::InSection(position) => Some(position),
+            Position::Pinned(_) => None,
+        }
+    }
+
+    /// The Task's place among the pinned Tasks; none unless pinned.
+    pub(crate) fn pin_position(&self) -> Option<i64> {
+        match self.placement.as_ref()?.position {
+            Position::Pinned(position) => Some(position),
+            Position::InSection(_) => None,
         }
     }
 
@@ -228,6 +364,7 @@ pub(super) struct ManagedThreadRow {
     pub display_name: String,
     pub section_id: Option<String>,
     pub position_in_section: Option<i64>,
+    pub pin_position: Option<i64>,
     pub provider: String,
     pub cwd: Option<String>,
 }
@@ -236,17 +373,16 @@ impl TryFrom<&ManagedThread> for ManagedThreadRow {
     type Error = TaskStoreError;
 
     fn try_from(thread: &ManagedThread) -> Result<Self> {
+        let (section_id, position_in_section, pin_position) =
+            Placement::to_row(thread.placement.as_ref(), thread.archived_at_ms.is_some())?;
         Ok(Self {
             thread_id: thread.thread_id.clone(),
             provider: thread.run_by.provider().as_str().to_string(),
             cwd: thread.run_by.cwd().map(str::to_string),
             display_name: validate_display_name(&thread.display_name)?.to_string(),
-            section_id: thread.section_id.clone(),
-            position_in_section: to_db_position(
-                thread.section_id.as_deref(),
-                thread.position_in_section,
-                thread.archived_at_ms.is_some(),
-            )?,
+            section_id,
+            position_in_section,
+            pin_position,
             archived_at: to_optional_db_timestamp(thread.archived_at_ms, "archived_at_ms")?,
             last_observed_recency_at: to_optional_db_timestamp(
                 thread.last_observed_recency_ms,
@@ -284,12 +420,12 @@ impl TryFrom<ManagedThreadRow> for ManagedThread {
             thread_id: row.thread_id,
             run_by: RunBy::from_row(&row.provider, row.cwd)?,
             display_name: validate_display_name(&row.display_name)?.to_string(),
-            position_in_section: from_db_position(
-                row.section_id.as_deref(),
+            placement: Placement::from_row(
+                row.section_id,
                 row.position_in_section,
+                row.pin_position,
                 row.archived_at.is_some(),
             )?,
-            section_id: row.section_id,
             archived_at_ms: from_optional_db_timestamp(row.archived_at, "archived_at_ms")?,
             last_observed_recency_ms: from_optional_db_timestamp(
                 row.last_observed_recency_at,
@@ -372,8 +508,7 @@ where
         // directory its agent is started in.
         thread.run_by = existing.run_by;
         thread.display_name = existing.display_name;
-        thread.section_id = existing.section_id;
-        thread.position_in_section = existing.position_in_section;
+        thread.placement = existing.placement;
         thread.claimed_at_ms = existing.claimed_at_ms;
         thread.last_opened_at_ms = max_optional(existing.last_opened_at_ms, Some(now_ms));
         thread.last_completed_at_ms =
@@ -593,6 +728,7 @@ where
         )
         .set("section_id", null())
         .set("position_in_section", null())
+        .set("pin_position", null())
         .execute(glue)?;
     expect_single_update(payload)?;
     get_archived(glue, thread_id)
@@ -1033,6 +1169,7 @@ where
             "position_in_section",
             optional_integer(row.position_in_section),
         )
+        .set("pin_position", optional_integer(row.pin_position))
         .set(
             "last_observed_recency_at",
             optional_timestamp(row.last_observed_recency_at),
@@ -1114,40 +1251,128 @@ where
     if section_id.trim().is_empty() {
         return Err(TaskStoreError::InvalidRow("section_id"));
     }
-    let mut target_section = list(glue, None, usize::MAX)?
-        .0
+    // Only unpinning and archiving take a Task out of the pinned Tasks.
+    if let Some(placement) = target
+        .placement
+        .as_mut()
+        .filter(|placement| placement.pinned())
+    {
+        if placement.section_id != section_id {
+            placement.section_id = section_id.to_string();
+            update_all(glue, &target)?;
+        }
+        return Ok(target);
+    }
+    place_first_in_section(glue, target, section_id)
+}
+
+fn place_first_in_section<S>(
+    glue: &mut Glue<S>,
+    mut target: ManagedThread,
+    section_id: &str,
+) -> Result<ManagedThread>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let order = Order::Section(section_id.to_string());
+    let others = ordered(glue, &order)?
         .into_iter()
-        .filter(|thread| {
-            thread.thread_id != target.thread_id && thread.section_id.as_deref() == Some(section_id)
-        })
+        .filter(|thread| thread.thread_id != target.thread_id)
         .collect::<Vec<_>>();
-    sort_placed_threads(&mut target_section)?;
-    if target.section_id.as_deref() == Some(section_id)
-        && target_section
-            .first()
-            .is_none_or(|thread| target.position_in_section < thread.position_in_section)
+    let first = others.first().and_then(|thread| order.position_of(thread));
+    if order
+        .position_of(&target)
+        .is_some_and(|position| first.is_none_or(|first| position < first))
     {
         return Ok(target);
     }
-    target.section_id = Some(section_id.to_string());
-    target.position_in_section = match target_section.first() {
-        Some(first) => first
-            .position_in_section
-            .and_then(|position| position.checked_sub(POSITION_STEP)),
+    let position = match first {
+        Some(first) => first.checked_sub(POSITION_STEP),
         None => Some(0),
     };
-    if target.position_in_section.is_some() {
+    target.placement = Some(Placement {
+        section_id: section_id.to_string(),
+        position: Position::InSection(position.unwrap_or_default()),
+    });
+    if position.is_some() {
         update_all(glue, &target)?;
         return Ok(target);
     }
 
-    let mut final_order = Vec::with_capacity(target_section.len() + 1);
+    let mut final_order = Vec::with_capacity(others.len() + 1);
     final_order.push(target);
-    final_order.extend(target_section);
+    final_order.extend(others);
     rebalance(glue, &mut final_order)?;
     Ok(final_order.remove(0))
 }
 
+/// Put a placed Task first among the pinned Tasks. Reports whether it moved;
+/// a Task already pinned stays where it is.
+pub(super) fn pin<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<bool>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let Some(mut target) = get(glue, thread_id)? else {
+        return Err(TaskStoreError::TaskPinUnavailable(
+            "pinned Task is not managed and active",
+        ));
+    };
+    let Some(section_id) = target.section_id().map(str::to_string) else {
+        return Err(TaskStoreError::TaskPinUnavailable(
+            "pinned Task has no Section to be listed under",
+        ));
+    };
+    if target.pinned() {
+        return Ok(false);
+    }
+    let pinned = ordered(glue, &Order::Pinned)?;
+    let position = match pinned.first() {
+        Some(first) => Order::Pinned
+            .position_of(first)
+            .and_then(|position| position.checked_sub(POSITION_STEP)),
+        None => Some(0),
+    };
+    target.placement = Some(Placement {
+        section_id,
+        position: Position::Pinned(position.unwrap_or_default()),
+    });
+    if position.is_some() {
+        update_all(glue, &target)?;
+        return Ok(true);
+    }
+
+    let mut final_order = Vec::with_capacity(pinned.len() + 1);
+    final_order.push(target);
+    final_order.extend(pinned);
+    rebalance(glue, &mut final_order)?;
+    Ok(true)
+}
+
+/// Return a pinned Task to the top of its Section. Reports whether it moved;
+/// a Task that is not pinned stays where it is.
+pub(super) fn unpin<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<bool>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let Some(target) = get(glue, thread_id)? else {
+        return Err(TaskStoreError::TaskPinUnavailable(
+            "unpinned Task is not managed and active",
+        ));
+    };
+    let Some(section_id) = target
+        .placement
+        .as_ref()
+        .filter(|placement| placement.pinned())
+        .map(|placement| placement.section_id.clone())
+    else {
+        return Ok(false);
+    };
+    place_first_in_section(glue, target, &section_id)?;
+    Ok(true)
+}
+
+/// Move a Task within its own run of the list: its Section's Tasks, or the
+/// pinned Tasks. The anchor has to be in the same run.
 pub(super) fn move_before<S>(
     glue: &mut Glue<S>,
     thread_id: &str,
@@ -1161,16 +1386,11 @@ where
             "moved Task is not managed and active",
         ));
     };
-    let Some(section_id) = target.section_id.as_deref() else {
+    let Some(order) = target.placement.as_ref().map(Order::of) else {
         return Err(TaskStoreError::TaskReorderUnavailable(
             "moved Task has no canonical Section placement",
         ));
     };
-    if target.position_in_section.is_none() {
-        return Err(TaskStoreError::TaskReorderUnavailable(
-            "moved Task has no canonical Section rank",
-        ));
-    }
     if before_thread_id == Some(thread_id) {
         return Err(TaskStoreError::TaskReorderConflict(
             "a Task cannot be placed before itself",
@@ -1182,20 +1402,15 @@ where
                 "the requested anchor is missing or inactive",
             ));
         };
-        if anchor.section_id.as_deref() != Some(section_id) || anchor.position_in_section.is_none()
-        {
-            return Err(TaskStoreError::TaskReorderConflict(
-                "the requested anchor is not placed in the same Section",
-            ));
+        if order.position_of(&anchor).is_none() {
+            return Err(TaskStoreError::TaskReorderConflict(match order {
+                Order::Section(_) => "the requested anchor is not placed in the same Section",
+                Order::Pinned => "the requested anchor is not pinned",
+            }));
         }
     }
 
-    let mut original = list(glue, None, usize::MAX)?
-        .0
-        .into_iter()
-        .filter(|thread| thread.section_id.as_deref() == Some(section_id))
-        .collect::<Vec<_>>();
-    sort_placed_threads(&mut original)?;
+    let original = ordered(glue, &order)?;
     let Some(target_index) = original
         .iter()
         .position(|thread| thread.thread_id == thread_id)
@@ -1234,32 +1449,40 @@ where
         .ok_or(TaskStoreError::UnexpectedPayload)?;
     let previous = moved_index
         .checked_sub(1)
-        .and_then(|index| final_order[index].position_in_section);
+        .and_then(|index| order.position_of(&final_order[index]));
     let next = final_order
         .get(moved_index + 1)
-        .and_then(|thread| thread.position_in_section);
-    if let Some(position) = sparse_position_between(previous, next) {
-        final_order[moved_index].position_in_section = Some(position);
-        update_all(glue, &final_order[moved_index])?;
-    } else {
-        rebalance(glue, &mut final_order)?;
+        .and_then(|thread| order.position_of(thread));
+    match (
+        sparse_position_between(previous, next),
+        final_order[moved_index].placement.as_mut(),
+    ) {
+        (Some(position), Some(placement)) => {
+            placement.position = placement.position.at(position);
+            update_all(glue, &final_order[moved_index])?;
+        }
+        _ => rebalance(glue, &mut final_order)?,
     }
     Ok(true)
 }
 
-fn sort_placed_threads(threads: &mut [ManagedThread]) -> Result<()> {
-    if threads
-        .iter()
-        .any(|thread| thread.position_in_section.is_none())
-    {
-        return Err(TaskStoreError::InvalidRow("section_placement"));
-    }
+/// The active Tasks in one run of the list, in their order.
+fn ordered<S>(glue: &mut Glue<S>, order: &Order) -> Result<Vec<ManagedThread>>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let mut threads = list(glue, None, usize::MAX)?
+        .0
+        .into_iter()
+        .filter(|thread| order.position_of(thread).is_some())
+        .collect::<Vec<_>>();
     threads.sort_by(|left, right| {
-        left.position_in_section
-            .cmp(&right.position_in_section)
+        order
+            .position_of(left)
+            .cmp(&order.position_of(right))
             .then_with(|| left.thread_id.cmp(&right.thread_id))
     });
-    Ok(())
+    Ok(threads)
 }
 
 fn to_optional_db_timestamp(
@@ -1297,24 +1520,6 @@ fn validate_display_name(display_name: &str) -> Result<&str> {
     Ok(display_name)
 }
 
-fn to_db_position(
-    section_id: Option<&str>,
-    position: Option<i64>,
-    archived: bool,
-) -> Result<Option<i64>> {
-    validate_placement(section_id, position.is_some(), archived)?;
-    Ok(position)
-}
-
-fn from_db_position(
-    section_id: Option<&str>,
-    position: Option<i64>,
-    archived: bool,
-) -> Result<Option<i64>> {
-    validate_placement(section_id, position.is_some(), archived)?;
-    Ok(position)
-}
-
 fn sparse_position_between(previous: Option<i64>, next: Option<i64>) -> Option<i64> {
     match (previous, next) {
         (None, None) => Some(0),
@@ -1334,22 +1539,16 @@ where
     S: GStore + GStoreMut + Planner,
 {
     for (index, thread) in threads.iter_mut().enumerate() {
-        let index =
-            i64::try_from(index).map_err(|_| TaskStoreError::InvalidRow("position_in_section"))?;
-        thread.position_in_section = Some(
-            index
-                .checked_mul(POSITION_STEP)
-                .ok_or(TaskStoreError::InvalidRow("position_in_section"))?,
-        );
+        let placement = thread
+            .placement
+            .as_mut()
+            .ok_or(TaskStoreError::InvalidRow("section_placement"))?;
+        let position = i64::try_from(index)
+            .ok()
+            .and_then(|index| index.checked_mul(POSITION_STEP))
+            .ok_or(TaskStoreError::InvalidRow("section_placement"))?;
+        placement.position = placement.position.at(position);
         update_all(glue, thread)?;
-    }
-    Ok(())
-}
-
-fn validate_placement(section_id: Option<&str>, has_position: bool, archived: bool) -> Result<()> {
-    let has_section = section_id.is_some_and(|section_id| !section_id.trim().is_empty());
-    if has_section != has_position || (archived && has_section) {
-        return Err(TaskStoreError::InvalidRow("section_placement"));
     }
     Ok(())
 }
@@ -1427,23 +1626,37 @@ mod tests {
 
     fn place_with_rank(glue: &mut Glue<MemoryStorage>, id: &str, section_id: &str, position: i64) {
         let mut managed = claim(glue, thread(id, Some(1)), 1).unwrap();
-        managed.section_id = Some(section_id.to_string());
-        managed.position_in_section = Some(position);
+        managed.placement = Some(Placement {
+            section_id: section_id.to_string(),
+            position: Position::InSection(position),
+        });
         update_all(glue, &managed).unwrap();
     }
 
-    fn section_order(glue: &mut Glue<MemoryStorage>, section_id: &str) -> Vec<(String, i64)> {
-        let mut threads = list(glue, None, usize::MAX)
+    fn run_order(glue: &mut Glue<MemoryStorage>, order: &Order) -> Vec<(String, i64)> {
+        ordered(glue, order)
             .unwrap()
-            .0
             .into_iter()
-            .filter(|thread| thread.section_id.as_deref() == Some(section_id))
-            .collect::<Vec<_>>();
-        sort_placed_threads(&mut threads).unwrap();
-        threads
-            .into_iter()
-            .map(|thread| (thread.thread_id, thread.position_in_section.unwrap()))
+            .map(|thread| {
+                let position = order.position_of(&thread).unwrap();
+                (thread.thread_id, position)
+            })
             .collect()
+    }
+
+    fn section_order(glue: &mut Glue<MemoryStorage>, section_id: &str) -> Vec<(String, i64)> {
+        run_order(glue, &Order::Section(section_id.to_string()))
+    }
+
+    fn pinned_order(glue: &mut Glue<MemoryStorage>) -> Vec<(String, i64)> {
+        run_order(glue, &Order::Pinned)
+    }
+
+    fn position_in_section(glue: &mut Glue<MemoryStorage>, id: &str) -> Option<i64> {
+        let thread = get(glue, id).unwrap().unwrap();
+        thread
+            .section_id()
+            .and_then(|section_id| Order::Section(section_id.to_string()).position_of(&thread))
     }
 
     #[test]
@@ -1655,8 +1868,7 @@ mod tests {
                 cwd: "/Users/example/project".to_string(),
             },
             display_name: "Fully populated".to_string(),
-            section_id: None,
-            position_in_section: None,
+            placement: None,
             archived_at_ms: Some(110),
             last_observed_recency_ms: Some(120),
             claimed_at_ms: 100,
@@ -2042,17 +2254,11 @@ mod tests {
         for (id, name) in [("a", "Task A"), ("b", "Task B"), ("c", "Task C")] {
             claim_at_top(&mut glue, thread(id, Some(1)), name, "one", 1).unwrap();
         }
-        assert_eq!(
-            get(&mut glue, "c").unwrap().unwrap().position_in_section,
-            Some(-2048)
-        );
+        assert_eq!(position_in_section(&mut glue, "c"), Some(-2048));
 
         let archived = archive(&mut glue, "b", 2).unwrap().unwrap();
         assert_eq!(archived.display_name, "Task B");
-        assert_eq!(
-            (archived.section_id, archived.position_in_section),
-            (None, None)
-        );
+        assert_eq!(archived.placement, None);
         assert_eq!(
             section_order(&mut glue, "one"),
             [("c".to_string(), -2048), ("a".to_string(), 0)]
@@ -2060,7 +2266,7 @@ mod tests {
 
         let restored = restore_at_top(&mut glue, "b", "one").unwrap().unwrap();
         assert_eq!(restored.display_name, "Task B");
-        assert_eq!(restored.position_in_section, Some(-3072));
+        assert_eq!(position_in_section(&mut glue, "b"), Some(-3072));
         assert_eq!(
             section_order(&mut glue, "one"),
             [
@@ -2093,14 +2299,8 @@ mod tests {
             claim_at_top(&mut glue, thread(id, Some(1)), id, "one", 1).unwrap();
         }
         place_at_top(&mut glue, "a", "two").unwrap();
-        assert_eq!(
-            get(&mut glue, "b").unwrap().unwrap().position_in_section,
-            Some(-1024)
-        );
-        assert_eq!(
-            get(&mut glue, "a").unwrap().unwrap().position_in_section,
-            Some(0)
-        );
+        assert_eq!(position_in_section(&mut glue, "b"), Some(-1024));
+        assert_eq!(position_in_section(&mut glue, "a"), Some(0));
     }
 
     #[test]
@@ -2225,5 +2425,243 @@ mod tests {
             ));
         }
         assert_eq!(section_order(&mut glue, "one"), [("a".to_string(), 0)]);
+    }
+
+    #[test]
+    fn placement_columns_name_exactly_one_place() {
+        let in_section = Placement {
+            section_id: "one".to_string(),
+            position: Position::InSection(-1024),
+        };
+        let pinned = Placement {
+            section_id: "one".to_string(),
+            position: Position::Pinned(0),
+        };
+        for placement in [&in_section, &pinned] {
+            let (section_id, position_in_section, pin_position) =
+                Placement::to_row(Some(placement), false).unwrap();
+            assert_eq!(
+                Placement::from_row(section_id, position_in_section, pin_position, false)
+                    .unwrap()
+                    .as_ref(),
+                Some(placement)
+            );
+        }
+        assert_eq!(Placement::to_row(None, true).unwrap(), (None, None, None));
+        assert_eq!(
+            Placement::from_row(Some(" ".to_string()), None, None, false).unwrap(),
+            None
+        );
+
+        let refused = [
+            (Some("one"), Some(0), Some(0), false),
+            (None, None, Some(0), false),
+            (Some("one"), None, None, false),
+            (Some("one"), Some(0), None, true),
+            (Some("one"), None, Some(0), true),
+        ];
+        for (section_id, position_in_section, pin_position, archived) in refused {
+            assert!(matches!(
+                Placement::from_row(
+                    section_id.map(str::to_string),
+                    position_in_section,
+                    pin_position,
+                    archived,
+                ),
+                Err(TaskStoreError::InvalidRow("section_placement"))
+            ));
+        }
+        assert!(matches!(
+            Placement::to_row(Some(&pinned), true),
+            Err(TaskStoreError::InvalidRow("section_placement"))
+        ));
+    }
+
+    #[test]
+    fn pinning_puts_a_task_first_among_the_pinned_and_out_of_its_section() {
+        let mut glue = memory();
+        for id in ["a", "b", "c"] {
+            claim_at_top(&mut glue, thread(id, Some(1)), id, "one", 1).unwrap();
+        }
+
+        assert!(pin(&mut glue, "b").unwrap());
+        assert_eq!(pinned_order(&mut glue), [("b".to_string(), 0)]);
+        assert_eq!(
+            section_order(&mut glue, "one"),
+            [("c".to_string(), -2048), ("a".to_string(), 0)]
+        );
+        let pinned = get(&mut glue, "b").unwrap().unwrap();
+        assert!(pinned.pinned());
+        assert_eq!(pinned.section_id(), Some("one"));
+        assert_eq!(pinned.position_in_section(), None);
+
+        assert!(pin(&mut glue, "a").unwrap());
+        assert!(!pin(&mut glue, "a").unwrap());
+        assert_eq!(
+            pinned_order(&mut glue),
+            [("a".to_string(), -1024), ("b".to_string(), 0)]
+        );
+        assert_eq!(section_order(&mut glue, "one"), [("c".to_string(), -2048)]);
+    }
+
+    #[test]
+    fn unpinning_returns_a_task_to_the_top_of_its_section() {
+        let mut glue = memory();
+        for id in ["a", "b", "c"] {
+            claim_at_top(&mut glue, thread(id, Some(1)), id, "one", 1).unwrap();
+        }
+        pin(&mut glue, "a").unwrap();
+        pin(&mut glue, "b").unwrap();
+
+        assert!(unpin(&mut glue, "a").unwrap());
+        assert!(!unpin(&mut glue, "a").unwrap());
+        assert!(!unpin(&mut glue, "c").unwrap());
+        assert_eq!(pinned_order(&mut glue), [("b".to_string(), -1024)]);
+        assert_eq!(
+            section_order(&mut glue, "one"),
+            [("a".to_string(), -3072), ("c".to_string(), -2048)]
+        );
+        assert!(!get(&mut glue, "a").unwrap().unwrap().pinned());
+    }
+
+    #[test]
+    fn pinned_tasks_reorder_among_themselves_only() {
+        let mut glue = memory();
+        for id in ["a", "b", "c", "d"] {
+            claim_at_top(&mut glue, thread(id, Some(1)), id, "one", 1).unwrap();
+        }
+        for id in ["a", "b", "c"] {
+            pin(&mut glue, id).unwrap();
+        }
+        assert_eq!(
+            pinned_order(&mut glue),
+            [
+                ("c".to_string(), -2048),
+                ("b".to_string(), -1024),
+                ("a".to_string(), 0),
+            ]
+        );
+
+        assert!(move_before(&mut glue, "a", Some("c")).unwrap());
+        assert!(!move_before(&mut glue, "a", Some("c")).unwrap());
+        assert_eq!(
+            pinned_order(&mut glue),
+            [
+                ("a".to_string(), -3072),
+                ("c".to_string(), -2048),
+                ("b".to_string(), -1024),
+            ]
+        );
+        assert!(matches!(
+            move_before(&mut glue, "a", Some("d")),
+            Err(TaskStoreError::TaskReorderConflict(
+                "the requested anchor is not pinned"
+            ))
+        ));
+        assert!(matches!(
+            move_before(&mut glue, "d", Some("a")),
+            Err(TaskStoreError::TaskReorderConflict(
+                "the requested anchor is not placed in the same Section"
+            ))
+        ));
+        assert_eq!(section_order(&mut glue, "one"), [("d".to_string(), -3072)]);
+    }
+
+    #[test]
+    fn pinning_rebalances_checked_rank_underflow() {
+        let mut glue = memory();
+        place_with_rank(&mut glue, "a", "one", 0);
+        place_with_rank(&mut glue, "b", "one", 1024);
+        let mut first = get(&mut glue, "a").unwrap().unwrap();
+        first.placement = Some(Placement {
+            section_id: "one".to_string(),
+            position: Position::Pinned(i64::MIN),
+        });
+        update_all(&mut glue, &first).unwrap();
+
+        assert!(pin(&mut glue, "b").unwrap());
+
+        assert_eq!(
+            pinned_order(&mut glue),
+            [("b".to_string(), 0), ("a".to_string(), 1024)]
+        );
+    }
+
+    #[test]
+    fn placing_the_first_task_at_its_section_top_leaves_it_in_place() {
+        let mut glue = memory();
+        for id in ["a", "b"] {
+            claim_at_top(&mut glue, thread(id, Some(1)), id, "one", 1).unwrap();
+        }
+
+        place_at_top(&mut glue, "b", "one").unwrap();
+
+        assert_eq!(
+            section_order(&mut glue, "one"),
+            [("b".to_string(), -1024), ("a".to_string(), 0)]
+        );
+    }
+
+    #[test]
+    fn placing_at_a_section_top_leaves_a_pinned_task_pinned() {
+        let mut glue = memory();
+        for id in ["a", "b"] {
+            claim_at_top(&mut glue, thread(id, Some(1)), id, "one", 1).unwrap();
+        }
+        pin(&mut glue, "a").unwrap();
+
+        place_at_top(&mut glue, "a", "one").unwrap();
+        claim_at_top(&mut glue, thread("a", Some(2)), "a", "one", 2).unwrap();
+        assert_eq!(pinned_order(&mut glue), [("a".to_string(), 0)]);
+        assert_eq!(section_order(&mut glue, "one"), [("b".to_string(), -1024)]);
+
+        place_at_top(&mut glue, "a", "two").unwrap();
+        let moved = get(&mut glue, "a").unwrap().unwrap();
+        assert!(moved.pinned());
+        assert_eq!(moved.section_id(), Some("two"));
+        assert!(unpin(&mut glue, "a").unwrap());
+        assert_eq!(section_order(&mut glue, "two"), [("a".to_string(), 0)]);
+    }
+
+    #[test]
+    fn archiving_unpins_and_restoring_places_at_the_section_top() {
+        let mut glue = memory();
+        for id in ["a", "b"] {
+            claim_at_top(&mut glue, thread(id, Some(1)), id, "one", 1).unwrap();
+        }
+        pin(&mut glue, "a").unwrap();
+
+        let archived = archive(&mut glue, "a", 2).unwrap().unwrap();
+        assert_eq!(archived.placement, None);
+        assert!(pinned_order(&mut glue).is_empty());
+
+        let restored = restore_at_top(&mut glue, "a", "one").unwrap().unwrap();
+        assert!(!restored.pinned());
+        assert_eq!(
+            section_order(&mut glue, "one"),
+            [("a".to_string(), -2048), ("b".to_string(), -1024)]
+        );
+    }
+
+    #[test]
+    fn pinning_needs_an_active_task_with_a_section() {
+        let mut glue = memory();
+        claim(&mut glue, thread("unplaced", Some(1)), 1).unwrap();
+        place_with_rank(&mut glue, "archived", "one", 0);
+        archive(&mut glue, "archived", 2).unwrap();
+
+        for id in ["missing", "archived", "unplaced"] {
+            assert!(matches!(
+                pin(&mut glue, id),
+                Err(TaskStoreError::TaskPinUnavailable(_))
+            ));
+        }
+        for id in ["missing", "archived"] {
+            assert!(matches!(
+                unpin(&mut glue, id),
+                Err(TaskStoreError::TaskPinUnavailable(_))
+            ));
+        }
+        assert!(!unpin(&mut glue, "unplaced").unwrap());
     }
 }

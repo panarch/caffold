@@ -40,6 +40,14 @@ pub(in crate::app::tasks) struct ActiveTaskSection {
     pub(in crate::app::tasks) tasks: Vec<ActiveTask>,
 }
 
+/// A pinned Task, with the Section the list names it by.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(in crate::app::tasks) struct ActivePinnedTask {
+    pub(in crate::app::tasks) section_id: String,
+    pub(in crate::app::tasks) task: ActiveTask,
+}
+
 /// A Task as the Active list shows it.
 ///
 /// The list reads nothing else from a Task, so nothing else is sent to it.
@@ -83,6 +91,7 @@ impl From<&ComposerSettings> for ActiveTaskComposerSettings {
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(in crate::app::tasks) struct ActiveTaskProjection {
+    pub(in crate::app::tasks) pinned: Vec<ActivePinnedTask>,
     pub(in crate::app::tasks) sections: Vec<ActiveTaskSection>,
     pub(in crate::app::tasks) unsectioned: Vec<ActiveTaskRecovery>,
 }
@@ -101,6 +110,7 @@ pub(in crate::app::tasks) struct ActiveTaskRuntimeProjection {
 impl ActiveTaskProjection {
     fn empty() -> Self {
         Self {
+            pinned: Vec::new(),
             sections: Vec::new(),
             unsectioned: Vec::new(),
         }
@@ -153,7 +163,7 @@ pub(in crate::app::tasks) async fn load_cached(
     let mut grouped = BTreeMap::<String, Vec<ManagedThread>>::new();
     let mut recovery = Vec::new();
     for managed in active_threads {
-        match managed.section_id.as_deref() {
+        match managed.section_id() {
             Some(section_id) if sections.contains_key(section_id) => {
                 grouped
                     .entry(section_id.to_string())
@@ -167,13 +177,22 @@ pub(in crate::app::tasks) async fn load_cached(
         }
     }
 
+    // A Section stays listed while it holds an active Task, pinned or not.
+    let mut pinned = Vec::new();
     let projected_sections = stored_sections
         .into_iter()
         .filter_map(|section| {
-            let mut threads = grouped.remove(&section.section_id)?;
+            let mut threads = Vec::new();
+            for managed in grouped.remove(&section.section_id)? {
+                if managed.pinned() {
+                    pinned.push((section.section_id.clone(), managed));
+                } else {
+                    threads.push(managed);
+                }
+            }
             threads.sort_by(|left, right| {
-                left.position_in_section
-                    .cmp(&right.position_in_section)
+                left.position_in_section()
+                    .cmp(&right.position_in_section())
                     .then_with(|| left.thread_id.cmp(&right.thread_id))
             });
             Some(ActiveTaskSection {
@@ -197,7 +216,19 @@ pub(in crate::app::tasks) async fn load_cached(
             .cmp(&left.activity_ms())
             .then_with(|| left.thread_id.cmp(&right.thread_id))
     });
+    pinned.sort_by(|(_, left), (_, right)| {
+        left.pin_position()
+            .cmp(&right.pin_position())
+            .then_with(|| left.thread_id.cmp(&right.thread_id))
+    });
     Ok(ActiveTaskProjection {
+        pinned: pinned
+            .iter()
+            .map(|(section_id, managed)| ActivePinnedTask {
+                section_id: section_id.clone(),
+                task: stored_task(managed),
+            })
+            .collect(),
         sections: projected_sections,
         unsectioned: recovery,
     })
@@ -967,6 +998,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cached_projection_lists_pinned_tasks_first_and_keeps_their_sections() {
+        let (_root, fs, store) = fixture();
+        for (thread_id, recency_ms) in [("a-1", 100), ("a-2", 200)] {
+            claim_at_top(
+                &store,
+                thread_id,
+                thread_id,
+                recency_ms,
+                "section-a",
+                "Workspace/a",
+                0,
+            );
+        }
+        claim_at_top(&store, "b-1", "b-1", 300, "section-b", "Workspace/b", 1024);
+        store
+            .transaction(|tables| {
+                tables.pin_managed_thread("a-1")?;
+                tables.pin_managed_thread("b-1")?;
+                Ok(())
+            })
+            .unwrap();
+
+        let projection = load_cached(fs, store).await.unwrap();
+
+        assert_eq!(
+            projection
+                .pinned
+                .iter()
+                .map(|pinned| (pinned.section_id.as_str(), pinned.task.title.as_str()))
+                .collect::<Vec<_>>(),
+            [("section-b", "b-1"), ("section-a", "a-1")]
+        );
+        assert_eq!(
+            projection
+                .sections
+                .iter()
+                .map(|section| (
+                    section.id.as_str(),
+                    section
+                        .tasks
+                        .iter()
+                        .map(|task| task.title.as_str())
+                        .collect::<Vec<_>>()
+                ))
+                .collect::<Vec<_>>(),
+            [("section-a", vec!["a-2"]), ("section-b", vec![])],
+            "a Section whose Tasks are all pinned stays listed"
+        );
+        assert!(projection.unsectioned.is_empty());
+    }
+
+    #[tokio::test]
     async fn cached_projection_keeps_unplaced_rows_visible_for_explicit_recovery() {
         let (_root, fs, store) = fixture();
         store
@@ -1010,9 +1093,15 @@ mod tests {
 
         let marked = |thread_id: &str| {
             projection
-                .sections
+                .pinned
                 .iter()
-                .flat_map(|section| &section.tasks)
+                .map(|pinned| &pinned.task)
+                .chain(
+                    projection
+                        .sections
+                        .iter()
+                        .flat_map(|section| &section.tasks),
+                )
                 .chain(projection.unsectioned.iter().map(|recovery| &recovery.task))
                 .find(|task| task.thread_id == thread_id)
                 .unwrap_or_else(|| panic!("{thread_id} is listed"))

@@ -6,7 +6,8 @@ use super::store::{
 };
 use super::{
     SectionReorderRequest, SectionReorderResponse, TaskDeleteRequest, TaskDeleteResponse,
-    TaskForceArchiveRequest, TaskReorderRequest, TaskReorderResponse, TaskRestoreResponse,
+    TaskForceArchiveRequest, TaskPinResponse, TaskReorderRequest, TaskReorderResponse,
+    TaskRestoreResponse,
 };
 use crate::agent;
 use crate::agent::{Conversation, Driver};
@@ -56,6 +57,49 @@ pub(super) async fn task_reorder(
     Ok(Json(TaskReorderResponse {
         thread_id,
         before_thread_id,
+        changed,
+    }))
+}
+
+pub(super) async fn task_pin(
+    State(state): State<TaskState>,
+    AxumPath(thread_id): AxumPath<String>,
+) -> Result<Json<TaskPinResponse>, ApiError> {
+    change_pin(state, thread_id, true).await
+}
+
+pub(super) async fn task_unpin(
+    State(state): State<TaskState>,
+    AxumPath(thread_id): AxumPath<String>,
+) -> Result<Json<TaskPinResponse>, ApiError> {
+    change_pin(state, thread_id, false).await
+}
+
+async fn change_pin(
+    state: TaskState,
+    thread_id: String,
+    pinned: bool,
+) -> Result<Json<TaskPinResponse>, ApiError> {
+    let store = state.task_store.clone();
+    let target_thread_id = thread_id.clone();
+    let changed = tokio::task::spawn_blocking(move || {
+        store.transaction(|tables| {
+            if pinned {
+                tables.pin_managed_thread(&target_thread_id)
+            } else {
+                tables.unpin_managed_thread(&target_thread_id)
+            }
+        })
+    })
+    .await
+    .map_err(task_store_join_error)?
+    .map_err(task_store_api_error)?;
+    if changed {
+        state.task_list_events.refresh();
+    }
+    Ok(Json(TaskPinResponse {
+        thread_id,
+        pinned,
         changed,
     }))
 }
@@ -1388,7 +1432,7 @@ mod tests {
         assert_eq!(body["changed"], true);
         assert_eq!(state.task_list_events.refresh_count(), 1);
         let (_, mut threads) = cached_projection_rows(&state);
-        threads.sort_by_key(|thread| thread.position_in_section);
+        threads.sort_by_key(|thread| thread.position_in_section());
         assert_eq!(
             threads
                 .iter()
@@ -1480,9 +1524,105 @@ mod tests {
                 .iter()
                 .find(|thread| thread.thread_id == "thread-one")
                 .unwrap()
-                .position_in_section,
+                .position_in_section(),
             Some(0)
         );
+    }
+
+    async fn post_pin_request(state: &TaskState, uri: &str) -> (axum::http::StatusCode, JsonValue) {
+        let response = router(state.clone())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri(uri)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let body = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        (status, serde_json::from_slice(&body).unwrap())
+    }
+
+    #[tokio::test]
+    async fn pin_and_unpin_move_a_task_and_refresh_the_list_only_when_it_moved() {
+        let root = tempfile::tempdir().unwrap();
+        let state = task_state_with_codex_client(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        for id in ["thread-b", "thread-a"] {
+            claim_cached_active(&state, id, id, 1, "section-one", "/workspace/one");
+        }
+
+        let (status, body) = post_pin_request(&state, "/api/tasks/thread-b/pin").await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+        assert_eq!(
+            body,
+            serde_json::json!({ "threadId": "thread-b", "pinned": true, "changed": true })
+        );
+        assert_eq!(state.task_list_events.refresh_count(), 1);
+        let (_, threads) = cached_projection_rows(&state);
+        let pinned = threads
+            .iter()
+            .find(|thread| thread.thread_id == "thread-b")
+            .unwrap();
+        assert!(pinned.pinned());
+        assert_eq!(pinned.section_id(), Some("section-one"));
+
+        let (status, body) = post_pin_request(&state, "/api/tasks/thread-b/pin").await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+        assert_eq!(body["changed"], false);
+        assert_eq!(state.task_list_events.refresh_count(), 1);
+
+        let (status, body) = post_pin_request(&state, "/api/tasks/thread-b/unpin").await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+        assert_eq!(
+            body,
+            serde_json::json!({ "threadId": "thread-b", "pinned": false, "changed": true })
+        );
+        assert_eq!(state.task_list_events.refresh_count(), 2);
+        let (_, mut threads) = cached_projection_rows(&state);
+        threads.sort_by_key(|thread| thread.position_in_section());
+        assert_eq!(
+            threads
+                .iter()
+                .map(|thread| thread.thread_id.as_str())
+                .collect::<Vec<_>>(),
+            ["thread-b", "thread-a"]
+        );
+    }
+
+    #[tokio::test]
+    async fn pin_refuses_tasks_that_are_not_listed_in_a_section() {
+        let root = tempfile::tempdir().unwrap();
+        let state = task_state_with_codex_client(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        state
+            .task_store
+            .claim(
+                ManagedThread::new("thread-unplaced", RunBy::Codex, Some(1), None, None),
+                1,
+            )
+            .unwrap();
+
+        for uri in [
+            "/api/tasks/thread-unplaced/pin",
+            "/api/tasks/missing/pin",
+            "/api/tasks/missing/unpin",
+        ] {
+            let (status, body) = post_pin_request(&state, uri).await;
+            assert_eq!(status, axum::http::StatusCode::CONFLICT);
+            assert_eq!(body["error"]["code"], "task_pin_unavailable");
+        }
+        assert_eq!(state.task_list_events.refresh_count(), 0);
     }
 
     #[tokio::test]
@@ -2599,8 +2739,8 @@ mod tests {
         let (sections, threads) = cached_projection_rows(&state);
         assert_eq!(sections.len(), 1);
         assert_eq!(threads.len(), 1);
-        assert_eq!(threads[0].section_id.as_deref(), Some("section-root"));
-        assert_eq!(threads[0].position_in_section, Some(0));
+        assert_eq!(threads[0].section_id(), Some("section-root"));
+        assert_eq!(threads[0].position_in_section(), Some(0));
         assert_eq!(
             client
                 .mock_requests()
@@ -2642,10 +2782,10 @@ mod tests {
         );
         assert_eq!(threads.len(), 1);
         assert_eq!(
-            threads[0].section_id.as_deref(),
+            threads[0].section_id(),
             Some(restored.active_top_placement.section.id.as_str())
         );
-        assert_eq!(threads[0].position_in_section, Some(0));
+        assert_eq!(threads[0].position_in_section(), Some(0));
         assert_eq!(
             client
                 .mock_requests()

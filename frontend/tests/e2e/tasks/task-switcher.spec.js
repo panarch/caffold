@@ -415,6 +415,80 @@ test("shows each row the time the list is ordered by", { tag: "@server-steady" }
     .toBeGreaterThan(new Date(times[1]).getTime());
 });
 
+test("lists pinned Tasks first, above a divider, each part by when it finished", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const tasks = [
+    switcherTask("finished_last", "Finished last", {
+      recencyMs: NOW,
+      lastCompletedMs: NOW,
+    }),
+    switcherTask("pinned_earlier", "Pinned, finished earlier", {
+      recencyMs: NOW - 3_000,
+      lastCompletedMs: NOW - 3_000,
+    }),
+    switcherTask("pinned_later", "Pinned, finished later", {
+      recencyMs: NOW - 1_000,
+      lastCompletedMs: NOW - 1_000,
+    }),
+    switcherTask("finished_before", "Finished before", {
+      recencyMs: NOW - 2_000,
+      lastCompletedMs: NOW - 2_000,
+    }),
+  ];
+  // The list keeps its own pin order; the switcher does not follow it.
+  const pinnedIds = ["pinned_earlier", "pinned_later"];
+  await installSwitcherFixture(page, tasks);
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    const projection = activeTaskProjection(
+      tasks.filter((task) => !pinnedIds.includes(task.threadId)),
+    );
+    return route.fulfill({
+      json: {
+        ...projection,
+        pinned: pinnedIds.map((threadId) => ({
+          sectionId: projection.sections[0].id,
+          task: activeListTask(
+            tasks.find((task) => task.threadId === threadId),
+          ),
+        })),
+      },
+    });
+  });
+  await page.goto("/tasks");
+
+  const dialog = await openSwitcher(page);
+  await expect(dialog.locator(".task-switcher-row-title")).toHaveText([
+    "Pinned, finished later",
+    "Pinned, finished earlier",
+    "Finished last",
+    "Finished before",
+  ]);
+  expect(
+    await dialog
+      .locator(".task-switcher-list > li")
+      .evaluateAll((items) =>
+        items.map((item) =>
+          item.classList.contains("task-switcher-divider")
+            ? "divider"
+            : item.dataset.threadId,
+        )
+      ),
+  ).toEqual([
+    "pinned_later",
+    "pinned_earlier",
+    "divider",
+    "finished_last",
+    "finished_before",
+  ]);
+  // The top row is the one the dialog focuses when it opens.
+  await expect(dialog.locator(".task-switcher-row[autofocus]")).toHaveAttribute(
+    "title",
+    "Pinned, finished later",
+  );
+  await expect(dialog.locator(".task-switcher-row[autofocus]")).toHaveCount(1);
+});
+
 test("opens from the Task list header by pointer and closes with its X", { tag: "@server-steady" }, async ({
   page,
 }) => {

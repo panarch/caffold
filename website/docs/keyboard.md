@@ -35,8 +35,9 @@ or <kbd>Esc</kbd> to stop scrolling.
 ## Switch Tasks: <kbd>T</kbd>
 
 On the Tasks screen, <kbd>T</kbd> opens the Task Switcher with codes already on
-its rows. It lists your active Tasks, the most recently finished first, so the
-Task you just heard back from is at the top. Type a row's code, or choose a
+its rows. It lists your [pinned](tasks/sections.md#pin-a-task) Tasks first and
+then the rest, each part with the most recently finished first, so the Task
+you just heard back from leads its part. Type a row's code, or choose a
 row, to open that Task. The **Switch task** button, the clock at the top of the
 Task list, opens the same list.
 
