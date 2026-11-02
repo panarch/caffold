@@ -692,6 +692,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn full_access_can_be_chosen_for_a_session_opened_without_it() {
+        // A Task reopened after its runner restarted is opened without a mode.
+        let (client, runner, _events) = watching().await;
+
+        client
+            .start_turn(
+                SESSION,
+                "run it",
+                &[],
+                &ClaudeTurnOptions {
+                    permission_mode: Some("bypassPermissions".to_string()),
+                    ..options("opus")
+                },
+            )
+            .await
+            .expect("the agent takes Full access between turns");
+
+        assert_eq!(spoken(&runner).await, ["run it"]);
+    }
+
+    #[tokio::test]
     async fn a_model_the_agent_does_not_offer_is_refused_before_a_session_exists() {
         // Agreeing first is what stops a conversation being created under a
         // model that never existed and then left behind.
