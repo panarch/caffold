@@ -2,6 +2,7 @@ mod read;
 mod syntax;
 
 use std::{
+    collections::HashMap,
     env, fs, io,
     path::{Component, Path, PathBuf},
     time::UNIX_EPOCH,
@@ -712,7 +713,23 @@ impl RootedFs {
                 action: "read status",
                 path: requested_path.to_string(),
             })?;
-        let stats = git::working_tree_stats(&repository, &entries).ok_or_else(|| {
+        // Status lists the files and how they are staged; each file's letter
+        // is its change since the last commit, which its diff shows.
+        let base = diff_base(&repository, "HEAD", requested_path)?;
+        let changes = git::changed_files(&repository, &base)
+            .ok_or_else(|| FsError::GitCommandFailed {
+                action: "read changed files",
+                path: requested_path.to_string(),
+            })?
+            .into_iter()
+            .map(|file| (file.repo_relative_path, file.status))
+            .collect::<HashMap<_, _>>();
+        let untracked = entries
+            .iter()
+            .filter(|entry| entry.untracked)
+            .map(|entry| entry.repo_relative_path.clone())
+            .collect::<Vec<_>>();
+        let stats = git::changed_stats(&repository, &base, &untracked).ok_or_else(|| {
             FsError::GitCommandFailed {
                 action: "read status stats",
                 path: requested_path.to_string(),
@@ -722,10 +739,18 @@ impl RootedFs {
             .into_iter()
             .map(|entry| {
                 let category = git_change_category(&entry);
+                let status = if entry.untracked {
+                    "A".to_string()
+                } else {
+                    changes
+                        .get(&entry.repo_relative_path)
+                        .cloned()
+                        .unwrap_or_default()
+                };
                 GitChangedFile {
                     path: join_relative_path(&repository_info.root_path, &entry.repo_relative_path),
                     repo_relative_path: entry.repo_relative_path,
-                    status: entry.status,
+                    status,
                     category,
                     staged: entry.staged,
                     unstaged: entry.unstaged,
@@ -736,6 +761,56 @@ impl RootedFs {
 
         Ok(GitStatusResponse {
             repository: repository_info,
+            files,
+            additions: stats.additions,
+            deletions: stats.deletions,
+        })
+    }
+
+    /// What the working tree changes since it left `base_ref`, or the default
+    /// base: the files git compares and the untracked ones, all added.
+    pub fn git_branch_changes(
+        &self,
+        requested_path: &str,
+        base_ref: Option<&str>,
+    ) -> Result<GitCompareResponse, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let repository_info = self.git_info_for_repository(&repository)?;
+        let failed = |action| FsError::GitCommandFailed {
+            action,
+            path: requested_path.to_string(),
+        };
+        let base_ref = match base_ref {
+            Some(base_ref) => base_ref.to_string(),
+            None => {
+                git::default_compare_base_ref(&repository).ok_or_else(|| failed("resolve base"))?
+            }
+        };
+        let base = diff_base(&repository, &base_ref, requested_path)?;
+        let head_ref =
+            git::current_compare_ref(&repository).ok_or_else(|| failed("resolve head"))?;
+        let untracked =
+            git::untracked_paths(&repository).ok_or_else(|| failed("read untracked files"))?;
+        let changed = git::changed_files(&repository, &base)
+            .ok_or_else(|| failed("read changed files"))?
+            .into_iter()
+            .map(|file| (file.repo_relative_path, file.status));
+        let added = untracked.iter().map(|path| (path.clone(), "A".to_string()));
+        let files = changed
+            .chain(added)
+            .map(|(repo_relative_path, status)| GitCompareFile {
+                path: join_relative_path(&repository_info.root_path, &repo_relative_path),
+                repo_relative_path,
+                status,
+            })
+            .collect();
+        let stats = git::changed_stats(&repository, &base, &untracked)
+            .ok_or_else(|| failed("read changed stats"))?;
+
+        Ok(GitCompareResponse {
+            repository: repository_info,
+            base_ref: base.name,
+            head_ref,
             files,
             additions: stats.additions,
             deletions: stats.deletions,
@@ -1397,52 +1472,51 @@ impl RootedFs {
         })
     }
 
+    /// The file's diff from `base` (`HEAD` for Working Tree, the chosen base
+    /// for Branch) to the working tree.
     pub fn git_diff(
         &self,
         requested_path: &str,
         file_path: &str,
-        kind: &str,
+        base: &str,
     ) -> Result<GitDiffResponse, FsError> {
-        let repository = self.repository_for_request(requested_path)?;
-        let repository_info = self.git_info_for_repository(&repository)?;
-        let logical_file_path = normalize_relative_path(file_path)?;
-        let logical_file_path = relative_path_string(&logical_file_path);
-        let repo_relative_path = strip_repo_root(&repository_info.root_path, &logical_file_path)
-            .ok_or(FsError::PathEscapesRoot)?
-            .to_string();
-        let kind = normalize_diff_kind(kind);
-
-        if let Ok(canonical) = self.root.join(&logical_file_path).canonicalize()
-            && !canonical.starts_with(&repository.root)
+        let file = self.repository_file(requested_path, file_path)?;
+        if let Ok(canonical) = self.root.join(&file.path).canonicalize()
+            && !canonical.starts_with(&file.repository.root)
         {
             return Err(FsError::PathEscapesRoot);
         }
+        let failed = |action| FsError::GitCommandFailed {
+            action,
+            path: file_path.to_string(),
+        };
+        let base = diff_base(&file.repository, base, file_path)?;
+        let repository = &file.repository;
+        let repo_relative_path = file.repo_relative_path.as_str();
+        let untracked = git::is_untracked(repository, repo_relative_path)
+            .ok_or_else(|| failed("read untracked files"))?;
 
-        let diff = git::diff(&repository, &repo_relative_path, kind).ok_or_else(|| {
-            FsError::GitCommandFailed {
-                action: "read diff",
-                path: file_path.to_string(),
-            }
-        })?;
-        let stats = git::diff_stats(&repository, &repo_relative_path, kind).ok_or_else(|| {
-            FsError::GitCommandFailed {
-                action: "read diff stats",
-                path: file_path.to_string(),
-            }
-        })?;
+        let diff = git::diff(repository, &base, repo_relative_path, untracked)
+            .ok_or_else(|| failed("read diff"))?;
+        let stats = git::diff_stats(repository, &base, repo_relative_path, untracked)
+            .ok_or_else(|| failed("read diff stats"))?;
         let (additions, deletions) = optional_diff_stats(stats);
-        let syntax_spans =
-            git::whole_file_diff(&repository, &repo_relative_path, kind, MAX_FILE_BYTES).and_then(
-                |whole_file| {
-                    syntax::diff_syntax_spans(Path::new(&repo_relative_path), &diff, &whole_file)
-                },
-            );
+        let syntax_spans = git::whole_file_diff(
+            repository,
+            &base,
+            repo_relative_path,
+            untracked,
+            MAX_FILE_BYTES,
+        )
+        .and_then(|whole_file| {
+            syntax::diff_syntax_spans(Path::new(repo_relative_path), &diff, &whole_file)
+        });
 
         Ok(GitDiffResponse {
-            repository: repository_info,
-            path: logical_file_path,
-            repo_relative_path,
-            kind: kind.to_string(),
+            repository: file.info,
+            path: file.path,
+            repo_relative_path: file.repo_relative_path,
+            kind: base.name,
             additions,
             deletions,
             diff,
@@ -1454,21 +1528,25 @@ impl RootedFs {
         &self,
         requested_path: &str,
         file_path: &str,
-        kind: &str,
+        base: &str,
     ) -> Result<GitDiffVersionsResponse, FsError> {
         let file = self.repository_file(requested_path, file_path)?;
-        let kind = normalize_diff_kind(kind);
         if let Ok(canonical) = self.root.join(&file.path).canonicalize()
             && !canonical.starts_with(&file.repository.root)
         {
             return Err(FsError::PathEscapesRoot);
         }
-        let versions = git::diff_versions(&file.repository, &file.repo_relative_path, kind)
-            .ok_or_else(|| FsError::GitCommandFailed {
-                action: "read diff versions",
-                path: file_path.to_string(),
-            })?;
-        Ok(file.versions(kind.to_string(), versions))
+        let failed = |action| FsError::GitCommandFailed {
+            action,
+            path: file_path.to_string(),
+        };
+        let base = diff_base(&file.repository, base, file_path)?;
+        let untracked = git::is_untracked(&file.repository, &file.repo_relative_path)
+            .ok_or_else(|| failed("read untracked files"))?;
+        let versions =
+            git::diff_versions(&file.repository, &base, &file.repo_relative_path, untracked)
+                .ok_or_else(|| failed("read diff versions"))?;
+        Ok(file.versions(base.name, versions))
     }
 
     /// The repository `requested_path` belongs to and the file `file_path`
@@ -1740,12 +1818,15 @@ fn git_change_category(entry: &git::StatusEntry) -> GitChangeCategory {
     }
 }
 
-fn normalize_diff_kind(kind: &str) -> &'static str {
-    match kind {
-        "staged" => "staged",
-        "untracked" => "untracked",
-        _ => "unstaged",
-    }
+fn diff_base(
+    repository: &git::Repository,
+    base: &str,
+    path: &str,
+) -> Result<git::DiffBase, FsError> {
+    git::diff_base(repository, base).ok_or_else(|| FsError::GitCommandFailed {
+        action: "resolve diff base",
+        path: path.to_string(),
+    })
 }
 
 fn git_commit_summary(entry: git::LogEntry) -> GitCommitSummary {
@@ -2287,7 +2368,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_scope_matching_working_tree_diff_stats() {
+    fn reads_each_working_tree_diff_since_its_base() {
         if !git_is_available() {
             return;
         }
@@ -2295,10 +2376,14 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let repo_path = temp.path().join("repo");
         fs::create_dir(&repo_path).unwrap();
-        git(&repo_path, &["init"]);
+        git(&repo_path, &["init", "-b", "main"]);
         fs::write(repo_path.join("sample.txt"), "base\nkeep\n").unwrap();
         git(&repo_path, &["add", "sample.txt"]);
         commit(&repo_path, "Add sample");
+        git(&repo_path, &["checkout", "-b", "feature"]);
+        fs::write(repo_path.join("sample.txt"), "committed\nkeep\n").unwrap();
+        git(&repo_path, &["add", "sample.txt"]);
+        commit(&repo_path, "Change sample");
 
         fs::write(repo_path.join("sample.txt"), "staged\nkeep\n").unwrap();
         git(&repo_path, &["add", "sample.txt"]);
@@ -2307,26 +2392,147 @@ mod tests {
         fs::write(repo_path.join("binary.dat"), b"before\0after\n").unwrap();
 
         let rooted = RootedFs::new(temp.path()).unwrap();
-        let staged = rooted
-            .git_diff("repo", "repo/sample.txt", "staged")
-            .unwrap();
-        let unstaged = rooted
-            .git_diff("repo", "repo/sample.txt", "unstaged")
-            .unwrap();
+        let since_head = rooted.git_diff("repo", "repo/sample.txt", "HEAD").unwrap();
+        let since_main = rooted.git_diff("repo", "repo/sample.txt", "main").unwrap();
         let untracked = rooted
-            .git_diff("repo", "repo/untracked.txt", "untracked")
+            .git_diff("repo", "repo/untracked.txt", "HEAD")
             .unwrap();
-        let binary = rooted
-            .git_diff("repo", "repo/binary.dat", "untracked")
-            .unwrap();
+        let binary = rooted.git_diff("repo", "repo/binary.dat", "HEAD").unwrap();
 
-        assert_eq!((staged.additions, staged.deletions), (Some(1), Some(1)));
-        assert_eq!((unstaged.additions, unstaged.deletions), (Some(2), Some(1)));
+        // The staged and the unstaged edit show together, from the last
+        // commit or from where the branch left main.
+        assert_eq!(since_head.kind, "HEAD");
+        assert!(since_head.diff.contains("-committed\n+unstaged\n"));
+        assert_eq!(
+            (since_head.additions, since_head.deletions),
+            (Some(2), Some(1))
+        );
+        assert_eq!(since_main.kind, "main");
+        assert!(since_main.diff.contains("-base\n+unstaged\n"));
+        assert!(untracked.diff.contains("+first\n+second"));
         assert_eq!(
             (untracked.additions, untracked.deletions),
             (Some(2), Some(0))
         );
         assert_eq!((binary.additions, binary.deletions), (None, None));
+        assert!(matches!(
+            rooted.git_diff("repo", "repo/sample.txt", "missing"),
+            Err(FsError::GitCommandFailed {
+                action: "resolve diff base",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn letters_working_tree_files_by_their_change_since_the_last_commit() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let repo_path = temp.path().join("repo");
+        fs::create_dir(&repo_path).unwrap();
+        git(&repo_path, &["init"]);
+        fs::write(repo_path.join("both.txt"), "base\n").unwrap();
+        git(&repo_path, &["add", "both.txt"]);
+        commit(&repo_path, "Add file");
+        fs::write(repo_path.join("both.txt"), "staged\n").unwrap();
+        git(&repo_path, &["add", "both.txt"]);
+        fs::write(repo_path.join("both.txt"), "staged\nunstaged\n").unwrap();
+        fs::write(repo_path.join("added.txt"), "added\n").unwrap();
+        git(&repo_path, &["add", "added.txt"]);
+        fs::write(repo_path.join("added.txt"), "added\nedited\n").unwrap();
+        fs::write(repo_path.join("brief.txt"), "brief\n").unwrap();
+        git(&repo_path, &["add", "brief.txt"]);
+        fs::remove_file(repo_path.join("brief.txt")).unwrap();
+        fs::write(repo_path.join("untracked.txt"), "new\n").unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+        let status = rooted.git_status("repo").unwrap();
+        let mut files = status
+            .files
+            .iter()
+            .map(|file| {
+                (
+                    file.repo_relative_path.as_str(),
+                    file.status.as_str(),
+                    file.category,
+                )
+            })
+            .collect::<Vec<_>>();
+        files.sort_by_key(|file| file.0);
+
+        assert_eq!(
+            files,
+            [
+                ("added.txt", "A", GitChangeCategory::Unstaged),
+                ("both.txt", "M", GitChangeCategory::Unstaged),
+                ("brief.txt", "", GitChangeCategory::Unstaged),
+                ("untracked.txt", "A", GitChangeCategory::Untracked),
+            ]
+        );
+        assert_eq!((status.additions, status.deletions), (5, 1));
+    }
+
+    #[test]
+    fn lists_branch_changes_since_the_base_with_untracked_files() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let repo_path = temp.path().join("repo");
+        fs::create_dir(&repo_path).unwrap();
+        git(&repo_path, &["init", "-b", "main"]);
+        for name in ["committed.txt", "staged.txt", "unstaged.txt", "kept.txt"] {
+            fs::write(repo_path.join(name), "base\n").unwrap();
+        }
+        fs::write(repo_path.join(".gitignore"), "ignored.log\n").unwrap();
+        git(&repo_path, &["add", "."]);
+        commit(&repo_path, "Add files");
+        git(
+            &repo_path,
+            &["update-ref", "refs/remotes/origin/main", "HEAD"],
+        );
+        git(&repo_path, &["checkout", "-b", "feature"]);
+        fs::write(repo_path.join("committed.txt"), "committed\n").unwrap();
+        git(&repo_path, &["add", "committed.txt"]);
+        commit(&repo_path, "Commit a change");
+        fs::write(repo_path.join("staged.txt"), "staged\n").unwrap();
+        git(&repo_path, &["add", "staged.txt"]);
+        fs::write(repo_path.join("unstaged.txt"), "unstaged\n").unwrap();
+        fs::write(repo_path.join("new.txt"), "one\ntwo\n").unwrap();
+        fs::write(repo_path.join("ignored.log"), "ignored\n").unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+        let changes = rooted.git_branch_changes("repo", None).unwrap();
+        let mut files = changes
+            .files
+            .iter()
+            .map(|file| (file.path.as_str(), file.status.as_str()))
+            .collect::<Vec<_>>();
+        files.sort();
+
+        assert_eq!(changes.base_ref, "origin/main");
+        assert_eq!(changes.head_ref, "feature");
+        assert_eq!(
+            files,
+            [
+                ("repo/committed.txt", "M"),
+                ("repo/new.txt", "A"),
+                ("repo/staged.txt", "M"),
+                ("repo/unstaged.txt", "M"),
+            ]
+        );
+        assert_eq!((changes.additions, changes.deletions), (5, 3));
+        assert_eq!(
+            rooted
+                .git_branch_changes("repo", Some("main"))
+                .unwrap()
+                .base_ref,
+            "main"
+        );
     }
 
     #[test]
@@ -2358,9 +2564,7 @@ mod tests {
         let rooted = RootedFs::new(temp.path()).unwrap();
         let sha = rooted.git_log("repo", 1, 1).unwrap().commits[0].sha.clone();
         let diffs = [
-            rooted
-                .git_diff("repo", "repo/sample.rs", "unstaged")
-                .unwrap(),
+            rooted.git_diff("repo", "repo/sample.rs", "HEAD").unwrap(),
             rooted
                 .git_commit_diff("repo", &sha, "repo/sample.rs")
                 .unwrap(),
@@ -2373,7 +2577,7 @@ mod tests {
                 )
                 .unwrap(),
         ];
-        let big_diff = rooted.git_diff("repo", "repo/big.rs", "untracked").unwrap();
+        let big_diff = rooted.git_diff("repo", "repo/big.rs", "HEAD").unwrap();
 
         let keyword = 1;
         for response in &diffs {
@@ -2637,11 +2841,11 @@ mod tests {
         };
 
         let working = rooted
-            .git_diff_versions("repo", "repo/picture.png", "unstaged")
+            .git_diff_versions("repo", "repo/picture.png", "HEAD")
             .unwrap();
         assert_eq!(working.path, "repo/picture.png");
         assert_eq!(working.repo_relative_path, "picture.png");
-        assert_eq!(working.kind, "unstaged");
+        assert_eq!(working.kind, "HEAD");
         assert_eq!(
             sides(&working),
             (
@@ -2670,7 +2874,7 @@ mod tests {
         assert_eq!(sides(&compare_versions), committed);
 
         assert!(matches!(
-            rooted.git_diff_versions("repo", "picture.png", "unstaged"),
+            rooted.git_diff_versions("repo", "picture.png", "HEAD"),
             Err(FsError::PathEscapesRoot)
         ));
     }

@@ -35,7 +35,7 @@ test("keeps the selected Review file identity stable while content loads", { tag
     await expect(viewer.locator("caffold-loading-text")).toHaveText("Loading file...");
     await expect(viewer.locator(".viewer-title-block h2")).toHaveText("planner.rs");
     await expect(viewer.locator(".viewer-subtitle")).toHaveText(
-      "Modified · Unstaged",
+      "Modified · vs HEAD",
     );
     await expect(viewer.locator(".viewer-line-stats")).toHaveCount(0);
   } finally {
@@ -46,7 +46,7 @@ test("keeps the selected Review file identity stable while content loads", { tag
   );
   await expect(viewer.locator(".viewer-title-block h2")).toHaveText("planner.rs");
   await expect(viewer.locator(".viewer-subtitle")).toHaveText(
-    "Modified · Unstaged",
+    "Modified · vs HEAD",
   );
   await expect(viewer.locator(".viewer-line-stats")).toHaveAttribute(
     "aria-label",
@@ -71,6 +71,32 @@ test("keeps the selected Review file identity stable while content loads", { tag
   await expect(viewer.locator(".viewer-subtitle")).toHaveCount(0);
 });
 
+test("names what each scope's diff compares with", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  const viewer = taskReview.locator("caffold-review-file-viewer");
+  const subtitle = viewer.locator(".viewer-subtitle");
+  const comparedWith = viewer.locator('.viewer-meta-popover [data-field="kind"] dd');
+
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await taskReview
+    .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="planner.rs"]')
+    .click();
+  await expect(viewer.locator("caffold-diff-viewer")).toContainText("new planner behavior");
+  await expect(subtitle).toHaveText("Modified · vs HEAD");
+  await viewer.locator(".viewer-info-button").click();
+  await expect(comparedWith).toHaveText("vs HEAD");
+  await page.keyboard.press("Escape");
+
+  // origin/main is named as the Branch list names it.
+  await selectTaskReviewScope(tasksPage, "branch");
+  await expect(viewer.locator("caffold-diff-viewer")).toContainText("new branch behavior");
+  await expect(subtitle).toHaveText("Modified · vs main");
+  await viewer.locator(".viewer-info-button").click();
+  await expect(comparedWith).toHaveText("vs main");
+});
+
 test("normalizes and compacts shared file-tree statuses", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
@@ -88,7 +114,7 @@ test("normalizes and compacts shared file-tree statuses", { tag: "@all-viewports
     ["untracked.rs", "A", "added", "Added"],
     ["staged.rs", "M", "modified", "Modified"],
     ["mixed-modified.rs", "M", "modified", "Modified"],
-    ["added-modified.rs", "M", "modified", "Modified"],
+    ["added-modified.rs", "A", "added", "Added"],
     ["renamed.rs", "R", "renamed", "Renamed"],
     ["conflicted.rs", "U", "unmerged", "Unmerged"],
     ["unknown.rs", "?", "unknown", "Unknown"],

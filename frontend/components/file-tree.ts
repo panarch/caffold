@@ -2,10 +2,7 @@ import { html, nothing, type PropertyValues } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { type ActionHintPull, ActionHints } from "../action-hints.js";
-import {
-  type FileStatusContext,
-  fileStatusPresentation,
-} from "../file-status.js";
+import { fileStatusPresentation } from "../file-status.js";
 import {
   type ScrollSurfacePull,
   ScrollSurfaces,
@@ -49,7 +46,6 @@ export interface FileTreeNode {
   title?: string;
   ariaLabel?: string;
   status?: string;
-  statusContext?: FileStatusContext;
   isSymlink?: boolean;
   supported?: boolean;
   git?: { isRepoRoot?: boolean } | null;
@@ -222,10 +218,7 @@ export class CaffoldFileTree extends CaffoldElement {
             const expanded =
               node.kind === "directory" && this.expandedKeys.has(node.key);
             const selected = node.key === this.selectedKey;
-            const status = fileStatusPresentation(
-              node.status,
-              node.statusContext,
-            );
+            const status = fileStatusPresentation(node.status);
             const ariaLabel =
               node.ariaLabel ?? defaultAriaLabel(node, expanded);
             const hint = {

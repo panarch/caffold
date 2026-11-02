@@ -223,7 +223,7 @@ export class CaffoldGitDiffChangesTree extends CaffoldElement {
         detail: {
           path: file.path,
           kind: file.untracked ? "untracked" : file.category,
-          status: fileStatusPresentation(file.status, file).code,
+          status: fileStatusPresentation(file.status).code,
         },
       }),
     );
@@ -263,7 +263,6 @@ function changeNodes(files: GitChangedFile[]) {
         path: file.path,
         treePath: repoRelativePath,
         status: file.status,
-        statusContext: file,
         title: repoRelativePath,
         ariaLabel: `Show diff for ${repoRelativePath}`,
         source: file,

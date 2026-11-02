@@ -49,7 +49,7 @@ test("diff presentation derives one title and subtitle before content arrives", 
     repository: { rootPath: "src" },
     path: "src/planner/mod.rs",
     kind: "commit abcdef1",
-    status: " M",
+    status: "M",
   });
 
   assert.equal(presentation.title, "planner/mod.rs");
@@ -65,8 +65,8 @@ test("diff presentation derives one title and subtitle before content arrives", 
 test("diff presentation exposes authoritative line statistics when available", () => {
   const presentation = diffViewerPresentation({
     path: "src/planner/mod.rs",
-    kind: "unstaged",
-    status: " M",
+    kind: "vs HEAD",
+    status: "M",
     additions: 42,
     deletions: 17,
   });
@@ -77,8 +77,8 @@ test("diff presentation exposes authoritative line statistics when available", (
 test("diff presentation omits unavailable line statistics", () => {
   const presentation = diffViewerPresentation({
     path: "assets/logo.png",
-    kind: "unstaged",
-    status: " M",
+    kind: "vs HEAD",
+    status: "M",
     additions: null,
     deletions: null,
   });
@@ -86,15 +86,19 @@ test("diff presentation omits unavailable line statistics", () => {
   assert.equal(presentation.lineStats, null);
 });
 
-test("diff presentation does not repeat equivalent status and kind labels", () => {
+test("diff presentation names the change and what it compares with", () => {
   const presentation = diffViewerPresentation({
     path: "new-file.rs",
-    kind: "untracked",
-    status: "??",
+    kind: "vs HEAD",
+    status: "A",
   });
 
   assert.equal(presentation.title, "new-file.rs");
-  assert.equal(presentation.subtitle, "Added");
+  assert.equal(presentation.subtitle, "Added · vs HEAD");
+  assert.deepEqual(
+    presentation.metadata.find(({ field }) => field === "kind"),
+    { field: "kind", label: "Diff", value: "vs HEAD" },
+  );
 });
 
 test("diff presentation uses the safe shared label for unknown status input", () => {

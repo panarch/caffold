@@ -178,7 +178,7 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
           {
             path: "README.md",
             repoRelativePath: "README.md",
-            status: "??",
+            status: "A",
             category: "untracked",
             staged: false,
             unstaged: false,
@@ -202,7 +202,7 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
         },
         path: "README.md",
         repoRelativePath: "README.md",
-        kind: "untracked",
+        kind: "HEAD",
         diff: [
           "diff --git a/README.md b/README.md",
           "new file mode 100644",

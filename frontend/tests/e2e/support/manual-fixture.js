@@ -362,11 +362,11 @@ export async function installManualRepository(page) {
         files: WORKING_TREE_FILES.map((file) => ({
           path: file.path,
           status: file.status,
-          category: file.status === "??" ? "untracked" : "unstaged",
+          category: file.untracked ? "untracked" : "unstaged",
           repoRelativePath: file.path,
           staged: false,
-          unstaged: file.status !== "??",
-          untracked: file.status === "??",
+          unstaged: !file.untracked,
+          untracked: Boolean(file.untracked),
         })),
       },
     }),
@@ -381,7 +381,7 @@ export async function installManualRepository(page) {
         repository,
         path: file.path,
         repoRelativePath: file.path,
-        kind: file.status === "??" ? "untracked" : "unstaged",
+        kind: "HEAD",
         additions: file.additions,
         deletions: file.deletions,
         diff: file.diff,
@@ -1008,7 +1008,7 @@ function planDocument(name) {
 const WORKING_TREE_FILES = [
   {
     path: "src/settings/SettingsPage.tsx",
-    status: " M",
+    status: "M",
     additions: 8,
     deletions: 1,
     diff: [
@@ -1071,7 +1071,8 @@ const WORKING_TREE_FILES = [
   },
   {
     path: "src/settings/ThemePicker.tsx",
-    status: "??",
+    status: "A",
+    untracked: true,
     additions: 7,
     deletions: 0,
     diff: newFileDiff("src/settings/ThemePicker.tsx", [
@@ -1086,7 +1087,7 @@ const WORKING_TREE_FILES = [
   },
   {
     path: "src/styles/theme.css",
-    status: " M",
+    status: "M",
     additions: 2,
     deletions: 1,
     diff: [
@@ -1104,7 +1105,8 @@ const WORKING_TREE_FILES = [
   },
   {
     path: "tests/settings/theme.test.ts",
-    status: "??",
+    status: "A",
+    untracked: true,
     additions: 3,
     deletions: 0,
     diff: newFileDiff("tests/settings/theme.test.ts", [

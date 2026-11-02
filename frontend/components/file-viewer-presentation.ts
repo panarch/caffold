@@ -127,21 +127,10 @@ function cleanPath(path: string) {
 }
 
 function diffSubtitle(diff: ViewerDiff) {
-  const labels = [
-    diffStatusLabel(diff.status),
-    diffKindLabel(diff.kind),
-  ].filter(Boolean);
-
-  return labels
-    .filter((label, index) => labels.indexOf(label) === index)
+  return [diffStatusLabel(diff.status), diffKindLabel(diff.kind)]
+    .filter(Boolean)
     .join(" · ");
 }
-
-const DIFF_KIND_LABELS: Readonly<Record<string, string>> = {
-  staged: "Staged",
-  unstaged: "Unstaged",
-  untracked: "Added",
-};
 
 function diffKindLabel(kind: string | undefined) {
   if (!kind) {
@@ -152,7 +141,7 @@ function diffKindLabel(kind: string | undefined) {
     return `Commit ${kind.slice("commit ".length)}`;
   }
 
-  return DIFF_KIND_LABELS[kind] ?? kind;
+  return kind;
 }
 
 function diffStatusLabel(status: string | undefined) {

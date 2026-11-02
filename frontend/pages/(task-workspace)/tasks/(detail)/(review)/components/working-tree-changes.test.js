@@ -80,3 +80,43 @@ test("drops a Working Tree status read sent before the page came back", async (t
     { ok: true, hadData: true, wasOutdated: true, background: true },
   ]);
 });
+
+test("reads each diff from the last commit, whichever way the file is staged", async (t) => {
+  const previousFetch = globalThis.fetch;
+  const previousWindow = globalThis.window;
+  const requested = [];
+  globalThis.window = { location: { origin: "http://caffold.test" } };
+  globalThis.fetch = async (input) => {
+    requested.push(new URL(input));
+    return new Response("{}");
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  });
+  const owner = {
+    rootPath: "/repo",
+    base: workingTreeChanges.base,
+    status: {
+      files: [
+        { path: "repo/both.rs", status: "M", category: "unstaged", staged: true, unstaged: true, untracked: false },
+        { path: "repo/gone.rs", status: "D", category: "unstaged", staged: false, unstaged: true, untracked: false },
+      ],
+    },
+  };
+
+  await workingTreeChanges.readDiff.call(owner, "repo/both.rs");
+  await workingTreeChanges.readVersions.call(owner, "repo/both.rs");
+
+  assert.deepEqual(
+    requested.map((url) => [url.pathname, url.searchParams.get("base")]),
+    [
+      ["/api/git/diff", "HEAD"],
+      ["/api/git/diff-versions", "HEAD"],
+    ],
+  );
+  assert.equal(workingTreeChanges.diffKind.call(owner), "vs HEAD");
+  assert.equal(workingTreeChanges.change.call(owner, "repo/both.rs").deleted, false);
+  assert.equal(workingTreeChanges.change.call(owner, "repo/gone.rs").deleted, true);
+});

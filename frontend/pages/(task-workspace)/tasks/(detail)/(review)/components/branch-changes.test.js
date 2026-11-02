@@ -17,7 +17,7 @@ test("drops a Branch compare that returns after Review leaves Branch", async (t)
   const compares = [];
   globalThis.window = { location: { origin: "http://caffold.test" } };
   globalThis.fetch = (input, ...options) => {
-    if (new URL(input).pathname !== "/api/git/compare") {
+    if (new URL(input).pathname !== "/api/git/branch-changes") {
       return previousFetch(input, ...options);
     }
     const response = Promise.withResolvers();
@@ -76,4 +76,34 @@ test("drops a Branch compare that returns after Review leaves Branch", async (t)
   compares.at(-1).resolve(new Response(JSON.stringify(payload)));
   assert.equal(await late, null);
   assert.equal(drawn.length, 1);
+});
+
+test("reads each diff from where the working tree left the chosen base", async (t) => {
+  const previousFetch = globalThis.fetch;
+  const previousWindow = globalThis.window;
+  const requested = [];
+  globalThis.window = { location: { origin: "http://caffold.test" } };
+  globalThis.fetch = async (input) => {
+    requested.push(new URL(input));
+    return new Response("{}");
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  });
+  const owner = { rootPath: "/repo", baseRef: "origin/main" };
+
+  await branchChanges.readDiff.call(owner, "repo/src/planner.rs");
+  await branchChanges.readVersions.call(owner, "repo/logo.png");
+
+  assert.deepEqual(
+    requested.map((url) => [url.pathname, url.searchParams.get("file"), url.searchParams.get("base")]),
+    [
+      ["/api/git/diff", "repo/src/planner.rs", "origin/main"],
+      ["/api/git/diff-versions", "repo/logo.png", "origin/main"],
+    ],
+  );
+  assert.equal(branchChanges.base.call(owner), "origin/main");
+  assert.equal(branchChanges.diffKind.call(owner), "vs main");
 });

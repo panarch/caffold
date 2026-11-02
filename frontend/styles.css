@@ -432,6 +432,7 @@
   --diff-added-text: var(--success);
   --diff-removed-bg: #f9e5e2;
   --diff-removed-text: var(--danger);
+  --diff-removed-rule: #c93c37;
 
   /* Theme-sensitive in-app brand marks */
   --brand-git-image: url("/assets/brand/git-logomark-light.svg");
@@ -544,6 +545,7 @@
   --diff-added-text: #82d3a4;
   --diff-removed-bg: #3a2020;
   --diff-removed-text: #f0948f;
+  --diff-removed-rule: #f0948f;
 
   /* Theme-sensitive in-app brand marks */
   --brand-git-image: url("/assets/brand/git-logomark-dark.svg");

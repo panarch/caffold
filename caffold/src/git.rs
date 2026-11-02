@@ -35,7 +35,6 @@ pub(crate) struct RepositoryMetadataPaths {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StatusEntry {
     pub repo_relative_path: String,
-    pub status: String,
     pub staged: bool,
     pub unstaged: bool,
     pub untracked: bool,
@@ -83,6 +82,26 @@ pub(crate) struct FileVersions {
 pub(crate) enum FileVersion {
     Blob(String),
     WorkingTree,
+}
+
+/// What a Review scope compares the working tree with: the last commit for
+/// Working Tree, or the commit where the branch left its base for Branch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DiffBase {
+    /// The ref the scope names: `HEAD` or the chosen base.
+    pub name: String,
+    /// The commit the working tree is compared with, or the empty tree while
+    /// HEAD has no commit yet.
+    pub commit: String,
+}
+
+/// Where a file on disk differs from its base, by the file's own lines: the
+/// first and last line of each added run, and each place lines were removed,
+/// as the line they followed (0 before the first line).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct LineChanges {
+    pub added: Vec<(u64, u64)>,
+    pub removed_after: Vec<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -178,42 +197,114 @@ pub(crate) fn status_entries(repository: &Repository) -> Option<Vec<StatusEntry>
     Some(parse_status_entries(&output))
 }
 
-pub(crate) fn working_tree_stats(
+/// The base `base` names. `HEAD` is the last commit, or the empty tree before
+/// the first one; any other ref is where HEAD left it, their merge base.
+pub(crate) fn diff_base(repository: &Repository, base: &str) -> Option<DiffBase> {
+    if base.trim() == "HEAD" {
+        let commit = match run_git(
+            &repository.root,
+            &["rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
+        ) {
+            Some(commit) => commit,
+            None if head_is_unborn(repository) => empty_tree(repository)?,
+            None => return None,
+        };
+        return Some(DiffBase {
+            name: "HEAD".to_string(),
+            commit,
+        });
+    }
+
+    let name = resolve_compare_ref(repository, base)?;
+    let commit = run_git(&repository.root, &["merge-base", &name, "HEAD"])?;
+    Some(DiffBase { name, commit })
+}
+
+/// The files the working tree changes from `base`, each with git's status
+/// letter. A renamed or copied file is named by its new path; an untracked
+/// file is not among them.
+pub(crate) fn changed_files(repository: &Repository, base: &DiffBase) -> Option<Vec<CommitFile>> {
+    let output = run_git_bytes(
+        &repository.root,
+        &[
+            "diff",
+            "--name-status",
+            "-z",
+            "--find-renames",
+            &base.commit,
+            "--",
+        ],
+    )?;
+    Some(parse_name_status(&output))
+}
+
+/// The lines the working tree adds and removes from `base`, counting the
+/// lines of each `untracked` text file as added.
+pub(crate) fn changed_stats(
     repository: &Repository,
-    entries: &[StatusEntry],
+    base: &DiffBase,
+    untracked: &[String],
 ) -> Option<DiffStats> {
-    let has_head = run_git_bytes(&repository.root, &["rev-parse", "--verify", "HEAD"]).is_some();
-    let output = if has_head {
-        run_git_bytes(
-            &repository.root,
-            &["diff", "--numstat", "--find-renames", "HEAD", "--"],
-        )?
-    } else {
-        run_git_bytes(
-            &repository.root,
-            &["diff", "--cached", "--numstat", "--find-renames", "--"],
-        )?
-    };
+    let output = run_git_bytes(
+        &repository.root,
+        &["diff", "--numstat", "--find-renames", &base.commit, "--"],
+    )?;
     let mut stats = parse_diff_stats(&output);
-
-    if !has_head {
-        let unstaged = run_git_bytes(
-            &repository.root,
-            &["diff", "--numstat", "--find-renames", "--"],
-        )?;
-        let unstaged = parse_diff_stats(&unstaged);
-        stats.additions = stats.additions.saturating_add(unstaged.additions);
-        stats.deletions = stats.deletions.saturating_add(unstaged.deletions);
+    for path in untracked {
+        let lines = text_file_line_count(&repository.root.join(path)).unwrap_or(0);
+        stats.additions = stats.additions.saturating_add(lines);
     }
-
-    for entry in entries.iter().filter(|entry| entry.untracked) {
-        let path = repository.root.join(&entry.repo_relative_path);
-        stats.additions = stats
-            .additions
-            .saturating_add(text_file_line_count(&path).unwrap_or(0));
-    }
-
     Some(stats)
+}
+
+/// The files git lists as untracked: neither tracked nor ignored.
+pub(crate) fn untracked_paths(repository: &Repository) -> Option<Vec<String>> {
+    let output = run_git_bytes(
+        &repository.root,
+        &["ls-files", "--others", "--exclude-standard", "-z"],
+    )?;
+    Some(
+        output
+            .split(|byte| *byte == 0)
+            .filter(|record| !record.is_empty())
+            .map(|record| String::from_utf8_lossy(record).into_owned())
+            .collect(),
+    )
+}
+
+pub(crate) fn is_untracked(repository: &Repository, repo_relative_path: &str) -> Option<bool> {
+    let output = run_git_bytes(
+        &repository.root,
+        &[
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "-z",
+            "--",
+            repo_relative_path,
+        ],
+    )?;
+    Some(
+        output
+            .split(|byte| *byte == 0)
+            .any(|record| record == repo_relative_path.as_bytes()),
+    )
+}
+
+fn head_is_unborn(repository: &Repository) -> bool {
+    run_git(&repository.root, &["symbolic-ref", "--quiet", "HEAD"]).is_some()
+}
+
+fn empty_tree(repository: &Repository) -> Option<String> {
+    let output = run_git_with_stdin_allowing_status(
+        &repository.root,
+        &["hash-object", "-t", "tree", "--stdin"],
+        b"",
+        &[0],
+    )?;
+    String::from_utf8(output)
+        .ok()
+        .map(|id| id.trim().to_string())
 }
 
 pub(crate) fn ignored_paths(
@@ -247,13 +338,16 @@ pub(crate) fn ignored_paths(
         .collect()
 }
 
+/// The file's diff from `base` to the working tree. An `untracked` file is
+/// compared with nothing, so all of it is added.
 pub(crate) fn diff(
     repository: &Repository,
+    base: &DiffBase,
     repo_relative_path: &str,
-    kind: &str,
+    untracked: bool,
 ) -> Option<String> {
-    let args = diff_args(repo_relative_path, kind, DiffOutput::Patch);
-    let output = run_git_allowing_status(&repository.root, &args, diff_exit_codes(kind))?;
+    let args = diff_args(base, repo_relative_path, untracked, DiffOutput::Patch);
+    let output = run_git_allowing_status(&repository.root, &args, diff_exit_codes(untracked))?;
 
     String::from_utf8(output)
         .ok()
@@ -264,24 +358,77 @@ pub(crate) fn diff(
 /// output exceeds `limit` bytes.
 pub(crate) fn whole_file_diff(
     repository: &Repository,
+    base: &DiffBase,
     repo_relative_path: &str,
-    kind: &str,
+    untracked: bool,
     limit: u64,
 ) -> Option<String> {
-    let args = diff_args(repo_relative_path, kind, DiffOutput::WholeFiles);
-    let output = run_git_bounded(&repository.root, &args, diff_exit_codes(kind), limit)?;
+    let args = diff_args(base, repo_relative_path, untracked, DiffOutput::WholeFiles);
+    let output = run_git_bounded(&repository.root, &args, diff_exit_codes(untracked), limit)?;
     String::from_utf8(output).ok()
 }
 
 /// The two sides `diff` compares for the file.
 pub(crate) fn diff_versions(
     repository: &Repository,
+    base: &DiffBase,
     repo_relative_path: &str,
-    kind: &str,
+    untracked: bool,
 ) -> Option<FileVersions> {
-    let args = diff_args(repo_relative_path, kind, DiffOutput::Versions);
-    let output = run_git_allowing_status(&repository.root, &args, diff_exit_codes(kind))?;
+    let args = diff_args(base, repo_relative_path, untracked, DiffOutput::Versions);
+    let output = run_git_allowing_status(&repository.root, &args, diff_exit_codes(untracked))?;
     Some(parse_file_versions(&output))
+}
+
+/// Where `contents`, the file as read from disk, differs from `base`. Git
+/// reads the file again to compare it, so the answer is kept only when the
+/// file git compared has the id of `contents`; a file that changed between
+/// the two reads has none.
+pub(crate) fn line_changes(
+    repository: &Repository,
+    base: &DiffBase,
+    repo_relative_path: &str,
+    untracked: bool,
+    contents: &[u8],
+) -> Option<LineChanges> {
+    if untracked {
+        return Some(all_lines_added(contents));
+    }
+    let path_attributes = format!("--path={repo_relative_path}");
+    let read_id = run_git_with_stdin_allowing_status(
+        &repository.root,
+        &["hash-object", "--stdin", &path_attributes],
+        contents,
+        &[0],
+    )?;
+    let read_id = String::from_utf8(read_id).ok()?.trim().to_string();
+    let patch = run_git_bytes(
+        &repository.root,
+        &[
+            "diff",
+            "--unified=0",
+            "--full-index",
+            &base.commit,
+            "--",
+            repo_relative_path,
+        ],
+    )?;
+    let patch = String::from_utf8_lossy(&patch);
+    // A file whose contents match its base prints no index line; its id is
+    // then the base's.
+    let compared_id = match new_side_id(&patch) {
+        Some(id) => id.to_string(),
+        None => run_git(
+            &repository.root,
+            &[
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                &format!("{}:{repo_relative_path}", base.commit),
+            ],
+        )?,
+    };
+    (compared_id == read_id).then(|| parse_line_changes(&patch))
 }
 
 /// What a diff prints for its file.
@@ -305,57 +452,64 @@ impl DiffOutput {
     }
 }
 
-fn diff_args<'a>(repo_relative_path: &'a str, kind: &str, output: DiffOutput) -> Vec<&'a str> {
-    let null_path = if cfg!(windows) { "NUL" } else { "/dev/null" };
+fn diff_args<'a>(
+    base: &'a DiffBase,
+    repo_relative_path: &'a str,
+    untracked: bool,
+    output: DiffOutput,
+) -> Vec<&'a str> {
     let mut args = vec!["diff"];
     args.extend(output.args());
-    match kind {
-        "staged" => args.extend(["--cached", "--", repo_relative_path]),
-        "untracked" => args.extend(["--no-index", "--", null_path, repo_relative_path]),
-        _ => args.extend(["--", repo_relative_path]),
+    if untracked {
+        args.extend(["--no-index", "--", NULL_PATH, repo_relative_path]);
+    } else {
+        args.extend([base.commit.as_str(), "--", repo_relative_path]);
     }
     args
 }
 
 /// `git diff --no-index` exits with 1 when the files differ.
-fn diff_exit_codes(kind: &str) -> &'static [i32] {
-    if kind == "untracked" { &[0, 1] } else { &[0] }
+fn diff_exit_codes(untracked: bool) -> &'static [i32] {
+    if untracked { &[0, 1] } else { &[0] }
 }
+
+const NULL_PATH: &str = if cfg!(windows) { "NUL" } else { "/dev/null" };
 
 /// Unified context wide enough to hold any file whole.
 const WHOLE_FILE_CONTEXT: &str = "--unified=2147483647";
 
 pub(crate) fn diff_stats(
     repository: &Repository,
+    base: &DiffBase,
     repo_relative_path: &str,
-    kind: &str,
+    untracked: bool,
 ) -> Option<FileDiffStats> {
-    let null_path = if cfg!(windows) { "NUL" } else { "/dev/null" };
-    let args = match kind {
-        "staged" => vec![
-            "diff",
-            "--cached",
-            "--numstat",
-            "--find-renames",
-            "-z",
-            "--",
-        ],
-        "untracked" => vec![
-            "diff",
-            "--no-index",
-            "--numstat",
-            "-z",
-            "--",
-            null_path,
-            repo_relative_path,
-        ],
-        _ => vec!["diff", "--numstat", "--find-renames", "-z", "--"],
-    };
-
-    let output = if kind == "untracked" {
-        run_git_allowing_status(&repository.root, &args, &[0, 1])?
+    let output = if untracked {
+        run_git_allowing_status(
+            &repository.root,
+            &[
+                "diff",
+                "--no-index",
+                "--numstat",
+                "-z",
+                "--",
+                NULL_PATH,
+                repo_relative_path,
+            ],
+            &[0, 1],
+        )?
     } else {
-        run_git_bytes(&repository.root, &args)?
+        run_git_bytes(
+            &repository.root,
+            &[
+                "diff",
+                "--numstat",
+                "--find-renames",
+                "-z",
+                &base.commit,
+                "--",
+            ],
+        )?
     };
 
     Some(parse_file_diff_stats_for_path(&output, repo_relative_path))
@@ -1097,7 +1251,6 @@ fn parse_status_entries(output: &[u8]) -> Vec<StatusEntry> {
 
         entries.push(StatusEntry {
             repo_relative_path,
-            status: format!("{staged}{unstaged}"),
             staged: staged != ' ' && staged != '?',
             unstaged: unstaged != ' ' && unstaged != '?',
             untracked: staged == '?' && unstaged == '?',
@@ -1308,6 +1461,86 @@ fn parse_commit_file(line: &str) -> Option<CommitFile> {
     })
 }
 
+/// Reads `--name-status -z` records: a status, then its path, or the old and
+/// new paths of a rename or copy.
+fn parse_name_status(output: &[u8]) -> Vec<CommitFile> {
+    let mut records = output.split(|byte| *byte == 0).map(String::from_utf8_lossy);
+    let mut files = Vec::new();
+    while let Some(raw_status) = records.next() {
+        let Some(status) = raw_status.chars().next().map(String::from) else {
+            continue;
+        };
+        let Some(mut path) = records.next() else {
+            break;
+        };
+        if matches!(status.as_str(), "R" | "C") {
+            path = records.next().unwrap_or(path);
+        }
+        files.push(CommitFile {
+            repo_relative_path: path.into_owned(),
+            status,
+        });
+    }
+    files
+}
+
+/// The id of the new side a patch names in its `index <old>..<new>` line.
+fn new_side_id(patch: &str) -> Option<&str> {
+    let ids = patch.lines().find_map(|line| line.strip_prefix("index "))?;
+    let (_, new_side) = ids.split_once("..")?;
+    new_side.split(' ').next()
+}
+
+/// Reads the hunk headers of a patch without context, `@@ -a,b +c,d @@`,
+/// where a count left out is 1.
+fn parse_line_changes(patch: &str) -> LineChanges {
+    let mut changes = LineChanges::default();
+    for header in patch.lines().filter_map(|line| line.strip_prefix("@@ -")) {
+        let mut ranges = header.split(' ');
+        let removed = ranges.next().and_then(hunk_range);
+        let added = ranges
+            .next()
+            .and_then(|range| range.strip_prefix('+'))
+            .and_then(hunk_range);
+        let (Some((_, removed)), Some((first, added))) = (removed, added) else {
+            continue;
+        };
+        if added > 0 {
+            changes.added.push((first, first + added - 1));
+        }
+        // A hunk that adds nothing names the line its removal follows; one
+        // that adds lines names the first of them.
+        if removed > 0 {
+            changes
+                .removed_after
+                .push(if added == 0 { first } else { first - 1 });
+        }
+    }
+    changes
+}
+
+fn hunk_range(range: &str) -> Option<(u64, u64)> {
+    match range.split_once(',') {
+        Some((first, count)) => Some((first.parse().ok()?, count.parse().ok()?)),
+        None => Some((range.parse().ok()?, 1)),
+    }
+}
+
+/// Every line of a file compared with nothing, counted as git counts them: a
+/// last line without a newline is still a line.
+fn all_lines_added(contents: &[u8]) -> LineChanges {
+    let newlines = contents.iter().filter(|byte| **byte == b'\n').count() as u64;
+    let lines = newlines + u64::from(contents.last().is_some_and(|byte| *byte != b'\n'));
+    LineChanges {
+        added: if lines > 0 {
+            vec![(1, lines)]
+        } else {
+            Vec::new()
+        },
+        removed_after: Vec::new(),
+    }
+}
+
 /// Reads the first raw record of a `--raw -z` diff: each side's blob id, where
 /// an id of only zeros names no blob. On the new side that is the working tree
 /// file, unless the file is gone. A diff with no record changed nothing.
@@ -1417,14 +1650,12 @@ mod tests {
             vec![
                 StatusEntry {
                     repo_relative_path: "src/main.rs".to_string(),
-                    status: " M".to_string(),
                     staged: false,
                     unstaged: true,
                     untracked: false,
                 },
                 StatusEntry {
                     repo_relative_path: "notes/todo.md".to_string(),
-                    status: "??".to_string(),
                     staged: false,
                     unstaged: false,
                     untracked: true,
@@ -1480,7 +1711,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_scope_matching_working_tree_file_stats() {
+    fn reads_working_tree_file_stats_from_the_last_commit() {
         if !git_is_available() {
             return;
         }
@@ -1500,33 +1731,28 @@ mod tests {
         git(temp.path(), &["mv", "old-name.txt", "new-name.txt"]);
 
         let repository = repository_for(temp.path()).unwrap();
+        let head = diff_base(&repository, "HEAD").unwrap();
+        // The staged and the unstaged edit count together.
         assert_eq!(
-            diff_stats(&repository, "sample.txt", "staged"),
-            Some(FileDiffStats::Available(DiffStats {
-                additions: 1,
-                deletions: 1,
-            }))
-        );
-        assert_eq!(
-            diff_stats(&repository, "sample.txt", "unstaged"),
+            diff_stats(&repository, &head, "sample.txt", false),
             Some(FileDiffStats::Available(DiffStats {
                 additions: 2,
                 deletions: 1,
             }))
         );
         assert_eq!(
-            diff_stats(&repository, "untracked.txt", "untracked"),
+            diff_stats(&repository, &head, "untracked.txt", true),
             Some(FileDiffStats::Available(DiffStats {
                 additions: 2,
                 deletions: 0,
             }))
         );
         assert_eq!(
-            diff_stats(&repository, "binary.dat", "untracked"),
+            diff_stats(&repository, &head, "binary.dat", true),
             Some(FileDiffStats::Unavailable)
         );
         assert_eq!(
-            diff_stats(&repository, "new-name.txt", "staged"),
+            diff_stats(&repository, &head, "new-name.txt", false),
             Some(FileDiffStats::Available(DiffStats {
                 additions: 0,
                 deletions: 0,
@@ -1592,8 +1818,9 @@ mod tests {
         fs::write(temp.path().join("binary.dat"), b"before\0after\n").unwrap();
 
         let repository = repository_for(temp.path()).unwrap();
-        let entries = status_entries(&repository).unwrap();
-        let stats = working_tree_stats(&repository, &entries).unwrap();
+        let head = diff_base(&repository, "HEAD").unwrap();
+        let untracked = untracked_paths(&repository).unwrap();
+        let stats = changed_stats(&repository, &head, &untracked).unwrap();
 
         assert_eq!(
             stats,
@@ -1602,6 +1829,193 @@ mod tests {
                 deletions: 1,
             }
         );
+    }
+
+    #[test]
+    fn resolves_the_commit_each_scope_compares_with() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        git(root, &["init", "-b", "main"]);
+        let repository = repository_for(root).unwrap();
+        let empty_tree = run_git(root, &["hash-object", "-t", "tree", "/dev/null"]).unwrap();
+        assert_eq!(
+            diff_base(&repository, "HEAD"),
+            Some(DiffBase {
+                name: "HEAD".to_string(),
+                commit: empty_tree,
+            })
+        );
+
+        fs::write(root.join("sample.txt"), "base\n").unwrap();
+        git(root, &["add", "sample.txt"]);
+        commit(root, "Add sample");
+        let first = object_id(root, "HEAD");
+        git(root, &["checkout", "-b", "feature"]);
+        fs::write(root.join("sample.txt"), "feature\n").unwrap();
+        git(root, &["add", "sample.txt"]);
+        commit(root, "Change sample");
+        let second = object_id(root, "HEAD");
+
+        assert_eq!(diff_base(&repository, "HEAD").unwrap().commit, second);
+        assert_eq!(
+            diff_base(&repository, "main"),
+            Some(DiffBase {
+                name: "main".to_string(),
+                commit: first,
+            })
+        );
+        assert_eq!(diff_base(&repository, "missing"), None);
+        assert_eq!(diff_base(&repository, "--output=x"), None);
+    }
+
+    #[test]
+    fn lists_each_changed_file_with_its_letter_since_the_base() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        git(root, &["init"]);
+        for name in ["both.txt", "moved.txt", "staged-then-gone.txt"] {
+            fs::write(root.join(name), format!("{name}\n")).unwrap();
+        }
+        fs::write(root.join(".gitignore"), "ignored.log\n").unwrap();
+        git(root, &["add", "."]);
+        commit(root, "Add files");
+
+        fs::write(root.join("both.txt"), "staged\n").unwrap();
+        git(root, &["add", "both.txt"]);
+        fs::write(root.join("both.txt"), "staged\nunstaged\n").unwrap();
+        fs::write(root.join("added.txt"), "added\n").unwrap();
+        git(root, &["add", "added.txt"]);
+        fs::write(root.join("added.txt"), "added\nedited\n").unwrap();
+        git(root, &["mv", "moved.txt", "renamed.txt"]);
+        fs::write(root.join("renamed.txt"), "moved.txt\nedited\n").unwrap();
+        fs::write(root.join("staged-then-gone.txt"), "changed\n").unwrap();
+        git(root, &["add", "staged-then-gone.txt"]);
+        fs::remove_file(root.join("staged-then-gone.txt")).unwrap();
+        fs::write(root.join("added-then-gone.txt"), "brief\n").unwrap();
+        git(root, &["add", "added-then-gone.txt"]);
+        fs::remove_file(root.join("added-then-gone.txt")).unwrap();
+        fs::write(root.join("untracked.txt"), "new\n").unwrap();
+        fs::write(root.join("ignored.log"), "ignored\n").unwrap();
+
+        let repository = repository_for(root).unwrap();
+        let head = diff_base(&repository, "HEAD").unwrap();
+        let mut letters = changed_files(&repository, &head)
+            .unwrap()
+            .into_iter()
+            .map(|file| (file.repo_relative_path, file.status))
+            .collect::<Vec<_>>();
+        letters.sort();
+
+        // git status names these AM, MM, RM, MD, and AD; a file added and
+        // then removed from disk is no change from the last commit.
+        assert_eq!(
+            letters,
+            [
+                ("added.txt", "A"),
+                ("both.txt", "M"),
+                ("renamed.txt", "R"),
+                ("staged-then-gone.txt", "D"),
+            ]
+            .map(|(path, letter)| (path.to_string(), letter.to_string()))
+        );
+        assert_eq!(
+            untracked_paths(&repository),
+            Some(vec!["untracked.txt".to_string()])
+        );
+        assert_eq!(is_untracked(&repository, "untracked.txt"), Some(true));
+        assert_eq!(is_untracked(&repository, "ignored.log"), Some(false));
+        assert_eq!(is_untracked(&repository, "both.txt"), Some(false));
+    }
+
+    #[test]
+    fn reads_line_changes_for_the_contents_read() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        git(root, &["init"]);
+        fs::write(root.join("sample.txt"), "1\n2\n3\n4\n5\n").unwrap();
+        git(root, &["add", "sample.txt"]);
+        commit(root, "Add sample");
+        let repository = repository_for(root).unwrap();
+        let head = diff_base(&repository, "HEAD").unwrap();
+        let read = |contents: &str| {
+            fs::write(root.join("sample.txt"), contents).unwrap();
+            line_changes(&repository, &head, "sample.txt", false, contents.as_bytes())
+        };
+
+        assert_eq!(read("1\n2\n3\n4\n5\n"), Some(LineChanges::default()));
+        // Line 1 replaced, line 3 removed, and line 6 added.
+        assert_eq!(
+            read("Z\n2\n4\n5\n6\n"),
+            Some(LineChanges {
+                added: vec![(1, 1), (5, 5)],
+                removed_after: vec![0, 2],
+            })
+        );
+
+        // The file git compares is not the one read.
+        fs::write(root.join("sample.txt"), "changed again\n").unwrap();
+        assert_eq!(
+            line_changes(&repository, &head, "sample.txt", false, b"Z\n2\n4\n5\n6\n"),
+            None
+        );
+        assert_eq!(
+            line_changes(&repository, &head, "sample.txt", false, b"1\n2\n3\n4\n5\n"),
+            None
+        );
+
+        assert_eq!(
+            line_changes(&repository, &head, "new.txt", true, b"a\nb"),
+            Some(LineChanges {
+                added: vec![(1, 2)],
+                removed_after: Vec::new(),
+            })
+        );
+        assert_eq!(
+            line_changes(&repository, &head, "empty.txt", true, b""),
+            Some(LineChanges::default())
+        );
+    }
+
+    #[test]
+    fn reads_where_lines_were_added_and_removed_from_hunk_headers() {
+        let patch = "diff --git a/f b/f\n\
+            index 1111111..2222222 100644\n\
+            --- a/f\n\
+            +++ b/f\n\
+            @@ -0,0 +1,2 @@\n\
+            +new first\n\
+            +new second\n\
+            @@ -4,2 +5,0 @@ fn context\n\
+            -gone\n\
+            -gone\n\
+            @@ -9 +8,3 @@\n\
+            -old\n\
+            +new\n\
+            +new\n\
+            +new\n\
+            @@ -20,3 +23,0 @@\n";
+
+        assert_eq!(
+            parse_line_changes(patch),
+            LineChanges {
+                added: vec![(1, 2), (8, 10)],
+                removed_after: vec![5, 7, 23],
+            }
+        );
+        assert_eq!(new_side_id(patch), Some("2222222"));
+        assert_eq!(new_side_id("diff --git a/f b/f\nold mode 100644\n"), None);
     }
 
     #[test]
@@ -1748,34 +2162,41 @@ mod tests {
         let head = run_git(temp.path(), &["rev-parse", "HEAD"]).unwrap();
         let refs = compare_refs(&repository, Some("main"), Some("feature")).unwrap();
 
-        let unstaged_diff = whole_file_diff(&repository, "sample.txt", "unstaged", limit).unwrap();
-        let staged_diff = whole_file_diff(&repository, "sample.txt", "staged", limit).unwrap();
-        let untracked_diff = whole_file_diff(&repository, "new.txt", "untracked", limit).unwrap();
+        let since_head = diff_base(&repository, "HEAD").unwrap();
+        let since_main = diff_base(&repository, "main").unwrap();
+
+        let head_diff =
+            whole_file_diff(&repository, &since_head, "sample.txt", false, limit).unwrap();
+        let branch_diff =
+            whole_file_diff(&repository, &since_main, "sample.txt", false, limit).unwrap();
+        let untracked_diff =
+            whole_file_diff(&repository, &since_head, "new.txt", true, limit).unwrap();
         let commit_diff = commit_whole_file_diff(&repository, &head, "sample.txt", limit).unwrap();
         let compare_diff =
             compare_whole_file_diff(&repository, &refs, "sample.txt", limit).unwrap();
 
         assert_eq!(
-            whole_files(&unstaged_diff),
-            (staged.clone(), unstaged.clone())
+            whole_files(&head_diff),
+            (committed.clone(), unstaged.clone())
         );
-        assert_eq!(whole_files(&staged_diff), (committed.clone(), staged));
+        assert_eq!(whole_files(&branch_diff), (base.clone(), unstaged));
         assert_eq!(whole_files(&untracked_diff), (String::new(), base.clone()));
         assert_eq!(whole_files(&commit_diff), (base.clone(), committed.clone()));
         assert_eq!(whole_files(&compare_diff), (base, committed));
+        // Git's own context stops a few lines from lines 2 and 18.
         assert!(
-            !diff(&repository, "sample.txt", "unstaged")
+            !diff(&repository, &since_head, "sample.txt", false)
                 .unwrap()
-                .contains("line 1\n")
+                .contains("line 9\n")
         );
 
-        let size = unstaged_diff.len() as u64;
+        let size = head_diff.len() as u64;
         assert_eq!(
-            whole_file_diff(&repository, "sample.txt", "unstaged", size).as_deref(),
-            Some(unstaged_diff.as_str())
+            whole_file_diff(&repository, &since_head, "sample.txt", false, size).as_deref(),
+            Some(head_diff.as_str())
         );
         assert_eq!(
-            whole_file_diff(&repository, "sample.txt", "unstaged", size - 1),
+            whole_file_diff(&repository, &since_head, "sample.txt", false, size - 1),
             None
         );
     }
@@ -2193,33 +2614,36 @@ mod tests {
         fs::write(root.join("changed.png"), "new").unwrap();
         fs::remove_file(root.join("gone.png")).unwrap();
         fs::write(root.join("fresh.png"), "fresh").unwrap();
+        let since_head = diff_base(&repository, "HEAD").unwrap();
         assert_eq!(
-            diff_versions(&repository, "changed.png", "unstaged"),
+            diff_versions(&repository, &since_head, "changed.png", false),
             versions(old.clone(), Some(FileVersion::WorkingTree))
         );
         assert_eq!(
-            diff_versions(&repository, "gone.png", "unstaged"),
+            diff_versions(&repository, &since_head, "gone.png", false),
             versions(blob("HEAD:gone.png"), None)
         );
         assert_eq!(
-            diff_versions(&repository, "fresh.png", "untracked"),
+            diff_versions(&repository, &since_head, "fresh.png", true),
             versions(None, Some(FileVersion::WorkingTree))
         );
         assert_eq!(
-            diff_versions(&repository, "kept.png", "unstaged"),
+            diff_versions(&repository, &since_head, "kept.png", false),
             versions(None, None)
         );
 
+        // A staged file the working tree still matches is named by the blob
+        // git keeps for it.
         git(root, &["add", "changed.png"]);
         git(root, &["mv", "moved.png", "renamed.png"]);
         let staged = blob(":changed.png");
         assert_eq!(
-            diff_versions(&repository, "changed.png", "staged"),
+            diff_versions(&repository, &since_head, "changed.png", false),
             versions(old.clone(), staged.clone())
         );
         // The diff names one path, so a renamed file reads as added.
         assert_eq!(
-            diff_versions(&repository, "renamed.png", "staged"),
+            diff_versions(&repository, &since_head, "renamed.png", false),
             versions(None, blob(":renamed.png"))
         );
 
@@ -2235,7 +2659,13 @@ mod tests {
         );
         assert_eq!(
             compare_diff_versions(&repository, &refs, "changed.png"),
-            versions(old, staged)
+            versions(old.clone(), staged)
+        );
+        fs::write(root.join("changed.png"), "newer").unwrap();
+        let since_main = diff_base(&repository, "origin/main").unwrap();
+        assert_eq!(
+            diff_versions(&repository, &since_main, "changed.png", false),
+            versions(old, Some(FileVersion::WorkingTree))
         );
         assert_eq!(
             commit_diff_versions(&repository, "not a sha", "changed.png"),

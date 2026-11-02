@@ -1,6 +1,6 @@
 import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import type { SyntaxSpan } from "#app/api.js";
+import type { LineChanges, SyntaxSpan } from "#app/api.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "../../drawn-refs.js";
@@ -11,6 +11,9 @@ import styles from "./code-viewer.css.js";
 export interface CodeFile {
   content: string;
   syntaxSpans?: Array<SyntaxSpan[] | null | undefined> | null;
+  // Where the file differs from the base Review compares it with, marked
+  // beside the line numbers.
+  lineChanges?: LineChanges | null;
 }
 
 export interface ScrollPosition {
@@ -51,6 +54,7 @@ export class CaffoldCodeViewer extends CaffoldElement {
     }
     const spans = this.file.syntaxSpans;
     const lines = this.file.content.split(/\r?\n/);
+    const marks = lineMarks(this.file.lineChanges, lines.length);
     return html`
       <section class="code-viewer">
         <div
@@ -73,7 +77,12 @@ export class CaffoldCodeViewer extends CaffoldElement {
           >
             ${lines.map(
               (line, index) => html`
-                <div class="code-row" data-line-number=${index + 1}>
+                <div
+                  class="code-row"
+                  data-line-number=${index + 1}
+                  data-line-change=${marks.added.has(index + 1) ? "added" : nothing}
+                  data-line-removed=${marks.removed.get(index + 1) || nothing}
+                >
                   <span class="line-number">${index + 1}</span>
                   <code class="line-code">${
                     line.length === 0
@@ -167,6 +176,36 @@ export class CaffoldCodeViewer extends CaffoldElement {
     this.restoreScroll({ top: 0, left: 0 });
     this.scrollToLine(position?.line);
   }
+}
+
+// The rows a file's changes mark: each added line, and for each place lines
+// were removed, the row below it, or the last row when it is the end.
+function lineMarks(changes: LineChanges | null | undefined, rowCount: number) {
+  const added = new Set<number>();
+  for (const [first, last] of changes?.added ?? []) {
+    for (let line = first; line <= Math.min(last, rowCount); line += 1) {
+      added.add(line);
+    }
+  }
+  const above = new Set<number>();
+  const below = new Set<number>();
+  for (const after of changes?.removedAfter ?? []) {
+    if (after < rowCount) {
+      above.add(after + 1);
+    } else {
+      below.add(rowCount);
+    }
+  }
+  const removed = new Map<number, string>();
+  for (const line of new Set([...above, ...below])) {
+    removed.set(
+      line,
+      [above.has(line) && "above", below.has(line) && "below"]
+        .filter(Boolean)
+        .join(" "),
+    );
+  }
+  return { added, removed };
 }
 
 function normalizeLine(line: number | string | null | undefined) {

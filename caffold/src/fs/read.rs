@@ -6,7 +6,8 @@
 //! the file's version, so a viewer that already shows that version need not
 //! read it again. An image or document can also be read one part at a time.
 //! An image can also come from a blob git keeps, named by its id, which is
-//! also its version.
+//! also its version. A text file can be read against a git base, which adds
+//! where its lines differ from that base.
 
 use std::{
     fs,
@@ -37,6 +38,18 @@ pub struct FileResponse {
     pub language: String,
     pub content: String,
     pub syntax_spans: Option<Vec<LineSpans>>,
+    /// Where the file differs from the base it was opened against, when one
+    /// was asked for and git compared the same contents this read.
+    pub line_changes: Option<FileLineChanges>,
+}
+
+/// The lines a file adds since its base, as first and last line, and each
+/// place it removed lines, as the line they followed (0 before the first).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FileLineChanges {
+    pub added: Vec<(u64, u64)>,
+    pub removed_after: Vec<u64>,
 }
 
 /// A file a viewer shows as bytes, with the Content-Type its extension names.
@@ -46,8 +59,21 @@ pub struct FileBytes {
     pub bytes: Vec<u8>,
 }
 
-/// A text file opened for a viewer and not read yet.
-pub struct OpenedText(Opened);
+/// A text file opened for a viewer and not read yet, and the base it is
+/// compared with, if one was asked for and git can compare the file there.
+pub struct OpenedText {
+    opened: Opened,
+    changes: Option<ChangeBase>,
+}
+
+/// Where git compares a text file from: the file in its repository, the base,
+/// and whether git tracks the file at all.
+struct ChangeBase {
+    repository: git::Repository,
+    repo_relative_path: String,
+    base: git::DiffBase,
+    untracked: bool,
+}
 
 /// An image or document opened for a viewer and not read yet.
 pub struct OpenedBinary {
@@ -75,7 +101,37 @@ impl RootedFs {
 
     pub fn open_text(&self, requested_path: &str) -> Result<OpenedText, FsError> {
         let resolved = self.resolve_existing(requested_path)?;
-        open_bounded(resolved, requested_path, MAX_FILE_BYTES).map(OpenedText)
+        let opened = open_bounded(resolved, requested_path, MAX_FILE_BYTES)?;
+        Ok(OpenedText {
+            opened,
+            changes: None,
+        })
+    }
+
+    /// Opens the file as `open_text` does, to be read with where it differs
+    /// from `base`: `HEAD`, or a ref whose merge base with HEAD is compared.
+    /// A file outside a repository, or a base git cannot resolve, is read
+    /// without that.
+    pub fn open_text_against(
+        &self,
+        requested_path: &str,
+        base: &str,
+    ) -> Result<OpenedText, FsError> {
+        let mut text = self.open_text(requested_path)?;
+        text.changes = self.change_base(requested_path, base);
+        Ok(text)
+    }
+
+    fn change_base(&self, requested_path: &str, base: &str) -> Option<ChangeBase> {
+        let file = self.repository_file(requested_path, requested_path).ok()?;
+        let base = git::diff_base(&file.repository, base)?;
+        let untracked = git::is_untracked(&file.repository, &file.repo_relative_path)?;
+        Some(ChangeBase {
+            repository: file.repository,
+            repo_relative_path: file.repo_relative_path,
+            base,
+            untracked,
+        })
     }
 
     pub fn open_image(&self, requested_path: &str) -> Result<OpenedBinary, FsError> {
@@ -140,12 +196,22 @@ impl RootedFs {
 }
 
 impl OpenedText {
+    /// A file read against a base changes its answer when the base commit
+    /// moves or git starts tracking it, so both join the file's version.
     pub fn version(&self) -> Option<String> {
-        self.0.version()
+        let version = self.opened.version()?;
+        Some(match &self.changes {
+            Some(changes) => format!(
+                "{version}-{}-{}",
+                changes.base.commit,
+                u8::from(changes.untracked)
+            ),
+            None => version,
+        })
     }
 
     pub fn read(self) -> Result<FileResponse, FsError> {
-        let file = self.0.read()?;
+        let file = self.opened.read()?;
         if file.bytes.contains(&0) {
             return Err(FsError::BinaryFile {
                 path: file.requested_path,
@@ -154,6 +220,15 @@ impl OpenedText {
         let content = String::from_utf8(file.bytes).map_err(|_| FsError::InvalidUtf8 {
             path: file.requested_path,
         })?;
+        let line_changes = self.changes.and_then(|changes| {
+            git::line_changes(
+                &changes.repository,
+                &changes.base,
+                &changes.repo_relative_path,
+                changes.untracked,
+                content.as_bytes(),
+            )
+        });
         let syntax = syntax::file_syntax(&file.resolved.logical, &content);
         Ok(FileResponse {
             path: relative_path_string(&file.resolved.logical),
@@ -163,6 +238,10 @@ impl OpenedText {
             language: syntax.language,
             content,
             syntax_spans: syntax.spans,
+            line_changes: line_changes.map(|changes| FileLineChanges {
+                added: changes.added,
+                removed_after: changes.removed_after,
+            }),
         })
     }
 }

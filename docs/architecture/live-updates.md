@@ -261,9 +261,10 @@ the gateway adds no second recovery UI. A physical error is
 reported to every logical consumer, while a `channel-error` affects only its
 named subscription.
 
-Integrated Review uses filesystem invalidation for Files and Source,
-`gitStatusChanged` for Working Tree, and `gitRefsChanged` for current-branch
-comparison. Shared Git listens only for ref-derived Compare and Log
+Integrated Review uses filesystem invalidation for Files and Source, and
+`gitStatusChanged` and `gitRefsChanged` for both Working Tree and Branch, since
+each compares the working tree with a commit.
+Shared Git listens only for ref-derived Compare and Log
 invalidation. GitHub creates no filesystem Watch and performs no polling.
 Switching shared Detail children releases the inactive child's logical Watch
 subscription and invalidates its pending refresh generation.

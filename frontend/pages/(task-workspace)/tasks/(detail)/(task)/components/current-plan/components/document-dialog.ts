@@ -242,7 +242,7 @@ export class CaffoldCurrentPlanDocumentDialog extends CaffoldElement {
       : null;
     this.show(preserveScroll ? "refreshing" : "loading");
     try {
-      const file = await readFile(current.path, controller.signal);
+      const file = await readFile(current.path, { signal: controller.signal });
       if (!this.acceptRequest(requestId, current.path)) {
         return;
       }

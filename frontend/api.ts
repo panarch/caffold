@@ -855,8 +855,13 @@ export async function listDirectory(path = "") {
   );
 }
 
-export async function readFile(path: string, signal?: AbortSignal) {
-  return requestJson<FileContent>("/api/file", { path }, { signal });
+// A text file. With `base`, `HEAD` or a ref, it also says where its lines
+// differ from that base, as Review's Source marks them.
+export async function readFile(
+  path: string,
+  { signal, base }: { signal?: AbortSignal; base?: string } = {},
+) {
+  return requestJson<FileContent>("/api/file", { path, base }, { signal });
 }
 
 export async function getNotes(directoryId: string, signal?: AbortSignal) {
@@ -920,20 +925,31 @@ export async function getGitStatus(path = "") {
   return requestJson<GitStatus>("/api/git/status", { path });
 }
 
-export async function getGitDiff(path = "", file: string, kind = "unstaged") {
-  return requestJson<GitDiff>("/api/git/diff", { path, file, kind });
+// A file's diff from `base` to the working tree: `HEAD` for the last commit,
+// or a ref, for where HEAD left it.
+export async function getGitDiff(path = "", file: string, base = "HEAD") {
+  return requestJson<GitDiff>("/api/git/diff", { path, file, base });
 }
 
 export async function getGitDiffVersions(
   path = "",
   file: string,
-  kind = "unstaged",
+  base = "HEAD",
 ) {
   return requestJson<GitDiffVersions>("/api/git/diff-versions", {
     path,
     file,
-    kind,
+    base,
   });
+}
+
+// What the working tree changes since it left `base`, or the default base,
+// with its untracked files.
+export async function getGitBranchChanges(
+  path = "",
+  base: string | null = null,
+) {
+  return requestJson<GitCompare>("/api/git/branch-changes", { path, base });
 }
 
 export async function getGitLog(path = "", page = 1, perPage = 50) {
@@ -1349,6 +1365,8 @@ export type GitFileVersion =
   | { source: "blob"; oid: string }
   | { source: "workingTree" };
 
+// A file Git status lists, with how it is staged. `status` is its change
+// since the last commit as one letter, empty when it has none.
 export interface GitChangedFile {
   path: string;
   repoRelativePath: string;
@@ -1418,6 +1436,15 @@ export interface FileContent {
   language: string;
   content: string;
   syntaxSpans: Array<SyntaxSpan[] | null> | null;
+  lineChanges?: LineChanges | null;
+}
+
+// Where a file differs from the base it was read against: the first and last
+// line of each added run, and each place lines were removed, as the line they
+// followed (0 before the first line).
+export interface LineChanges {
+  added: Array<[number, number]>;
+  removedAfter: number[];
 }
 
 // The models the agents offer, and the agents that could not be asked.

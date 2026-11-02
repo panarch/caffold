@@ -26,9 +26,9 @@ function diffView(path, readDiff) {
       change: {
         file: { path: `repo/${path}`, status: "M" },
         deleted: false,
-        kind: "unstaged",
       },
-      diffKind: "",
+      base: "HEAD",
+      diffKind: "vs HEAD",
       readDiff,
     },
   };
@@ -43,7 +43,8 @@ test("drops a diff that returns after another file is shown", async () => {
     setLoading() {},
     setNotice() {},
     setError() {},
-    setDiff: (diff) => drawn.push(diff.path),
+    setDiff: (diff, options) =>
+      drawn.push({ path: diff.path, subtitle: options.presentation.subtitle }),
   };
   const owner = {
     isConnected: true,
@@ -68,7 +69,9 @@ test("drops a diff that returns after another file is shown", async () => {
   first.resolve({ path: "repo/a.js", diff: "" });
   await firstLoad;
 
-  assert.deepEqual(drawn, ["repo/b.js"]);
+  assert.deepEqual(drawn, [
+    { path: "repo/b.js", subtitle: "Modified · vs HEAD" },
+  ]);
   assert.equal(owner.shownStateKey, "working:b.js:diff");
 });
 
@@ -95,7 +98,7 @@ test("shows an image's change as Visual, asking again on a background load", asy
   const versions = {
     path: "repo/logo.png",
     repoRelativePath: "logo.png",
-    kind: "unstaged",
+    kind: "HEAD",
     before: { source: "blob", oid: "a".repeat(40) },
     after: { source: "workingTree" },
   };
@@ -128,6 +131,66 @@ test("shows an image's change as Visual, asking again on a background load", asy
   assert.equal(shown[0].presentation.title, "logo.png");
   assert.equal(shown[0].presentation.downloadPath, undefined, "a change offers no Download");
   assert.equal(owner.shownStateKey, "working:logo.png:visual");
+});
+
+test("reads Source against the scope's base and a Markdown preview without one", async (t) => {
+  const previousFetch = globalThis.fetch;
+  const previousWindow = globalThis.window;
+  const requested = [];
+  globalThis.window = { location: { origin: "http://caffold.test" } };
+  globalThis.fetch = async (input) => {
+    const url = new URL(input);
+    requested.push([url.searchParams.get("path"), url.searchParams.get("base")]);
+    return new Response(JSON.stringify({ path: url.searchParams.get("path"), content: "" }));
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  });
+  const shown = [];
+  const owner = {
+    isConnected: true,
+    generation: 0,
+    shownStateKey: "",
+    positions: new Map(),
+    pendingLines: new Map(),
+    rootPath: "repo",
+    worktreeRootPath: "repo",
+    viewer: {
+      state: { status: "empty" },
+      setLoading() {},
+      setFile: (file) => shown.push(["file", file.path]),
+      setMarkdown: (file) => shown.push(["markdown", file.path]),
+    },
+    diffPresentation: selectedFile.diffPresentation,
+    acceptsLoad: selectedFile.acceptsLoad,
+    restorePosition() {},
+  };
+  const fileView = (path, representation, base) => ({
+    ...diffView(path),
+    stateKey: `branch:${path}:${representation}`,
+    representation,
+    changes: { ...diffView(path).changes, base },
+  });
+
+  owner.view = fileView("planner.rs", "source", "origin/main");
+  await selectedFile.load.call(owner);
+  owner.view = fileView("notes.md", "preview", "origin/main");
+  await selectedFile.load.call(owner);
+  owner.view = fileView("plain.rs", "source", "");
+  await selectedFile.load.call(owner);
+
+  assert.deepEqual(requested, [
+    ["repo/planner.rs", "origin/main"],
+    ["repo/notes.md", null],
+    ["repo/plain.rs", null],
+  ]);
+  assert.deepEqual(shown, [
+    ["file", "repo/planner.rs"],
+    ["markdown", "repo/notes.md"],
+    ["file", "repo/plain.rs"],
+  ]);
 });
 
 test("keeps the position of a view it leaves and carries the line to another representation", () => {
