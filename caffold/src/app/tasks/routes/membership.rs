@@ -245,6 +245,7 @@ async fn archive_task(
             return Err(error);
         }
     };
+    state.task_sessions.forget_thread(&thread_id).await;
     notify_task_removed(state, &thread_id, "archived");
     Ok(Json(task.unwrap_or_else(|| {
         ArchivedTaskRecord::unavailable(&archived)

@@ -4744,6 +4744,69 @@ mod claude_tests {
         );
     }
 
+    #[tokio::test]
+    async fn a_prompt_after_the_task_was_archived_and_restored_resumes_it() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (status, started) = call(&app, prompt("Tell me a story.")).await;
+        assert_eq!(status, StatusCode::OK, "{started}");
+        for frame in [
+            running_frame(),
+            init_frame(),
+            json!({ "type": "result", "subtype": "success", "is_error": false, "stop_reason": "end_turn", "session_id": SESSION }),
+            json!({ "type": "system", "subtype": "session_state_changed", "state": "idle", "session_id": SESSION }),
+        ] {
+            runner.say(SESSION, frame).await;
+        }
+        state.task_runtime.claude().write_test_transcript(
+            &root.path().display().to_string(),
+            SESSION,
+            &filed_story(started["turnId"].as_str().unwrap()),
+        );
+        until(&state, "the turn ends and Claude is idle", |snapshot| {
+            snapshot.active_turn_id.is_none()
+                && snapshot
+                    .conversation
+                    .as_ref()
+                    .is_some_and(|thread| !matches!(thread.status, ThreadStatus::Active { .. }))
+        })
+        .await;
+
+        let (status, archived) = call(
+            &app,
+            post(&format!("/api/tasks/{SESSION}/archive"), json!({})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{archived}");
+        let (status, restored) = call(
+            &app,
+            post(&format!("/api/tasks/{SESSION}/restore"), json!({})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{restored}");
+        let (status, prompted) = call(&app, prompt("Are you still there?")).await;
+
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        let spawn = runner.spawned(SESSION).await.expect("a session again");
+        assert!(
+            spawn
+                .argv
+                .windows(2)
+                .any(|pair| pair[0] == "--resume" && pair[1] == SESSION),
+            "the conversation is resumed: {:?}",
+            spawn.argv
+        );
+        assert!(
+            runner
+                .prompts(SESSION)
+                .await
+                .iter()
+                .any(|frame| frame["uuid"] == prompted["turnId"]),
+            "the prompt reaches the resumed session"
+        );
+    }
+
     /// A watched Claude Task the stand-in runner speaks for.
     ///
     /// Watching begins once the runner holds the session, and the Task is
