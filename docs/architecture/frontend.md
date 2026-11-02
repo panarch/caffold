@@ -993,9 +993,9 @@ does not enable restart or update controls until a status read succeeds.
 Codex readiness gates only Codex surfaces and is consumed as derived
 presentation rather than routing state: Codex Settings presents it, and routes
 always open — a Task's conversation stays readable from the store while its
-agent is unready. Section New's Codex fork row asks `GET /api/codex/readiness`
-for the server's remembered answer each time it is shown, under its own request
-generation, and hides while that answer is unknown or Codex is missing.
+agent is unready. Section New's common fork chooser does not consult Codex readiness. The chosen
+provider answers the explicit preview request, and its failure stays local to
+that source selection.
 No surface pre-guesses an operation's fate from the snapshot: a Codex-run
 operation tried while Codex is unready is refused by the server, and the
 refusal is the answer shown. Claude and Grok surfaces never consult Codex
@@ -1805,9 +1805,14 @@ Archived repair failures have no Section presentation or browser state. Restore
 reports failure at its own action boundary when the user requests it.
 
 The Section-owned Existing conversations card is adjacent to, but independent
-of, Task Create. Its external Codex preview and native fork requests do not
+of, Task Create. Its external conversation preview and native fork requests do not
 reuse the Composer submission lifecycle. A fork creates an already inherited
-zero-prompt child, so the handoff carries no pending submission.
+zero-prompt child, so the handoff carries no pending submission. Its closed,
+editing, previewing, ready and forking nodes have one transition authority;
+provider state and request generations are separate. Provider or ID edits
+invalidate preview completions, and deactivation invalidates both request
+owners. A known child is retained across handoff failure instead of creating
+another one on retry.
 
 Reusable RootedFs capabilities remain shared:
 

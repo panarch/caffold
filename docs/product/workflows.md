@@ -15,7 +15,7 @@ Global New
 Managed Section
         -> inspect Working Tree/Branch, Git, or GitHub at its repository root
         -> start an agent Task in the fixed directory or from Issue/PR detail
-        -> preview an existing Codex Thread ID and fork its conversation here
+        -> preview an existing conversation ID and fork its conversation here
 
 GitHub Issue or Pull Request detail
         -> explicitly start a source-derived Task with the chosen agent
@@ -68,14 +68,14 @@ implemented outer lifecycle.
 10. Approvals, completion, interruption, and failures remain visible in the
    agent-owned conversation projected into Caffold.
 
-### Fork a Codex conversation
+### Fork a conversation
 
 Both entry points use the same native conversation-fork lifecycle:
 
-1. From an idle managed Codex Task, choose **Fork task**. Its provider and
-   Thread ID are already known.
-2. From a managed Section, choose **Fork from Codex thread ID**, enter an ID,
-   and explicitly request a preview. Caffold uses read-only app-server APIs for
+1. From an idle managed Codex, Claude, or Grok Task, choose **Fork task**. Its provider and
+   conversation ID are already known.
+2. From a managed Section, choose **Fork conversation**, choose the source agent, enter an ID,
+   and explicitly request a preview. Caffold uses read-only provider APIs or native transcripts for
    metadata and recent history. It does not resume the source or add it to
    managed Tasks.
 3. Review the provider-reported source status and context. An external
@@ -85,18 +85,18 @@ Both entry points use the same native conversation-fork lifecycle:
    cannot be forked.
 4. Choose **Fork task**. The backend resolves the target Section again, reads
    the source again, and requires a managed source to be idle or an external
-   source to be idle or not loaded before asking Codex to fork it.
-5. Only the child ID returned by Codex is claimed as a managed Task. Its initial
+   source to be idle or not loaded before asking its agent to fork it.
+5. Only the verified child ID is claimed as a managed Task. Its initial
    cwd is the selected Section project root, its initial name is `Fork of ...`,
    and the browser opens it immediately.
 
 The source conversation remains unchanged. Caffold neither imports the source
-nor persists a conversation lineage. Conversation history belongs to Codex and
+nor persists a conversation lineage. Conversation history belongs to the agent and
 is inherited by the native child. Files, uncommitted changes, branches, and
 worktrees are not copied or created; the child can later use the ordinary
 explicit worktree-isolation operation. A failure before the managed claim
-creates no Task, and a failure after Codex creates a child deletes that
-unclaimed child.
+creates no Task. Caffold attempts to delete a native child if validation or
+claim fails; cleanup failures retain the child ID in diagnostics.
 
 ### Open an existing Task
 
@@ -353,7 +353,7 @@ independent objects:
 
 | Object | Role and owner |
 | --- | --- |
-| Origin | Global New, managed Section, explicit GitHub Issue/PR Start Task, or a native fork of an existing Codex conversation. |
+| Origin | Global New, managed Section, explicit GitHub Issue/PR Start Task, or a native fork of an existing supported conversation. |
 | Task | Caffold-owned membership, display identity, selected agent, and review entry point. |
 | Agent conversation | Codex app-server thread, Claude session/transcript, Grok leader-held session, or Antigravity native trajectory that owns prompts, turns, and agent activity. |
 | Note | Caffold-owned Markdown record shared by every Task, changed only through agents' Notes tools. |

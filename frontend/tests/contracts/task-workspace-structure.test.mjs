@@ -503,7 +503,7 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(sectionGithubShortcuts, /statusRequestId/);
   assert.match(sectionGithubShortcuts, /caffold:section-detail-intent/);
   assert.match(sectionConversationShortcuts, /<caffold-conversation-fork-dialog\b/);
-  assert.match(sectionConversationShortcuts, /Fork from Codex thread ID/);
+  assert.match(sectionConversationShortcuts, /Fork conversation/);
   assert.match(conversationForkDialog, /previewTaskForkSource/);
   assert.match(conversationForkDialog, /createTaskFork/);
   assert.match(conversationForkDialog, /caffold:task-created/);

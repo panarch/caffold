@@ -351,6 +351,8 @@ pub(super) struct SessionInfoResult {
 #[serde(rename_all = "camelCase")]
 pub(super) struct SessionInfo {
     #[serde(default)]
+    pub(super) session_id: Option<String>,
+    #[serde(default)]
     pub(super) cwd: Option<String>,
     #[serde(default)]
     pub(super) model: Option<String>,
@@ -490,6 +492,8 @@ pub(super) enum UpdatesWindow {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct UpdatesResult {
+    #[serde(default)]
+    pub(super) last_event_id: Option<String>,
     #[serde(default)]
     pub(super) updates: Vec<StoredUpdate>,
     #[serde(default)]

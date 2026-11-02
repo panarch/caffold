@@ -229,3 +229,24 @@ test("a Section opens New Task in its directory", { tag: "@desktop" }, async ({ 
   ).toHaveText(["Issues", "Pull Requests"]);
   await captureReviewScreenshot(page, testInfo, "section-detail");
 });
+
+test("a conversation fork offers Codex Claude and Grok and previews the selected source", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
+  const sourceId = "cc4d185a-ff87-4c2d-9f70-7c2a7ec05963";
+  await page.route(/\/api\/task-forks\/preview$/, route => route.fulfill({json:{
+    provider:"claude",sourceId,displayName:"Settings accessibility review",
+    summary:"Continue the keyboard navigation review.",status:{type:"notLoaded"},
+    cwd:"/Users/avery/Workspace/lumen",lastActivityMs:Date.UTC(2026,9,30,9,15),
+    recentHistory:[{role:"user",text:"Review keyboard navigation in Settings."},{role:"assistant",text:"The focus order is clear. Next, check the theme selector on a narrow screen."}],
+  }}));
+  await page.goto(`/?section=${MANUAL_SECTION_ID}`);
+  await page.getByRole("button", {name:"Fork conversation"}).click();
+  const dialog = page.getByRole("dialog", {name:"Fork a conversation"});
+  await expect(dialog.getByLabel("Agent").locator("option")).toHaveText(["Codex","Claude","Grok"]);
+  await dialog.getByLabel("Agent").selectOption("claude");
+  await dialog.getByLabel("Session ID").fill(sourceId);
+  await dialog.getByRole("button", {name:"Preview conversation"}).click();
+  await expect(dialog.locator("[data-fork-preview=provider]")).toHaveText("Claude");
+  await expect(dialog.locator("[data-fork-preview=status]")).toHaveText("Live status unavailable");
+  await expect(dialog.getByRole("button", {name:"Fork task"})).toBeEnabled();
+  await captureReviewScreenshot(page, testInfo, "conversation-fork");
+});

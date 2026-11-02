@@ -5,13 +5,6 @@ import {
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
-import { getCodexReadiness } from "#app/api.js";
-import {
-  type CodexStatusSnapshot,
-  codexBlocksTaskOperations,
-  codexState,
-  createCodexStatusSnapshot,
-} from "#app/pages/(task-workspace)/codex-status.js";
 import {
   type TaskStoreStatusSnapshot,
   taskStoreBlocksTaskOperations,
@@ -33,10 +26,8 @@ export interface ConversationShortcutsContext {
 
 /**
  * The row beside a Section's New Task that starts a Task from a conversation
- * that already exists elsewhere: today, a Codex thread.
- *
- * It shows only while active and once Codex is known to be installed, and
- * asks Codex each time it is shown.
+ * that already exists elsewhere. Each provider answers its own preview;
+ * availability of one provider does not hide the other choices.
  */
 @customElement("caffold-section-conversation-shortcuts")
 export class CaffoldSectionConversationShortcuts extends CaffoldElement {
@@ -49,9 +40,6 @@ export class CaffoldSectionConversationShortcuts extends CaffoldElement {
   @state()
   private accessor transportAvailable = true;
   @state()
-  private accessor codexReadiness: CodexStatusSnapshot =
-    createCodexStatusSnapshot();
-  @state()
   private accessor taskStoreStatusSnapshot: TaskStoreStatusSnapshot | null =
     null;
 
@@ -59,9 +47,6 @@ export class CaffoldSectionConversationShortcuts extends CaffoldElement {
 
   @state()
   private accessor active = false;
-  // Asked for whenever the row is shown: whether Codex is installed, and why
-  // it is blocked. The previous answer stays on show while the next is asked.
-  private codexReadinessRequest = 0;
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
@@ -91,20 +76,11 @@ export class CaffoldSectionConversationShortcuts extends CaffoldElement {
     };
     if (previousKey && previousKey !== this.context.key) {
       this.forkDialog()?.deactivate();
-      if (this.active) {
-        void this.askCodexReadiness();
-      }
     }
   }
 
   setTransportAvailable(available: boolean) {
-    const regained = Boolean(available) && !this.transportAvailable;
     this.transportAvailable = Boolean(available);
-    // A question that failed while Caffold was out of reach is asked again
-    // once it is back; an answer already in hand stays.
-    if (regained && this.active && this.codexReadiness.phase === "failed") {
-      void this.askCodexReadiness();
-    }
   }
 
   setTaskStoreStatusSnapshot(snapshot: TaskStoreStatusSnapshot | null) {
@@ -112,16 +88,11 @@ export class CaffoldSectionConversationShortcuts extends CaffoldElement {
   }
 
   activate() {
-    const shown = !this.active;
     this.active = true;
-    if (shown) {
-      void this.askCodexReadiness();
-    }
   }
 
   deactivate() {
     this.active = false;
-    this.codexReadinessRequest += 1;
     this.forkDialog()?.deactivate();
   }
 
@@ -136,10 +107,7 @@ export class CaffoldSectionConversationShortcuts extends CaffoldElement {
   }
 
   protected override updated() {
-    const state = codexState(this.codexReadiness);
-    const installed =
-      this.codexReadiness.status?.readiness?.state !== "missing";
-    const hidden = !this.active || state === "pending" || !installed;
+    const hidden = !this.active;
     if (this.hidden !== hidden) {
       this.hidden = hidden;
     }
@@ -155,22 +123,22 @@ export class CaffoldSectionConversationShortcuts extends CaffoldElement {
       <button
         ${this.hints.button({
           id: "fork-conversation",
-          label: "Fork from Codex thread ID",
+          label: "Fork conversation",
           action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
         })}
         type="button"
         class="section-conversations-action"
-        data-section-conversation-action="fork-codex"
-        aria-describedby="section-conversations-codex-reason"
+        data-section-conversation-action="fork-conversation"
+        aria-describedby="section-conversations-reason"
         title=${reason}
         ?disabled=${Boolean(reason)}
         @click=${this.openForkDialog}
       >
         <span class="section-conversations-action-label"
-          >Fork from Codex thread ID</span
+          >Fork conversation</span
         >
         <span
-          id="section-conversations-codex-reason"
+          id="section-conversations-reason"
           class="section-conversations-action-reason"
           ?hidden=${!reason}
         >${reason}</span>
@@ -179,28 +147,6 @@ export class CaffoldSectionConversationShortcuts extends CaffoldElement {
         ${drawn(this.dialog)}
       ></caffold-conversation-fork-dialog>
     `;
-  }
-
-  private async askCodexReadiness() {
-    const request = ++this.codexReadinessRequest;
-    let answer: CodexStatusSnapshot;
-    try {
-      const { readiness } = await getCodexReadiness();
-      answer = createCodexStatusSnapshot({
-        phase: "loaded",
-        status: readiness ? { readiness } : null,
-      });
-    } catch (error) {
-      answer = createCodexStatusSnapshot({
-        phase: "failed",
-        error:
-          error instanceof Error ? error.message : "Codex could not be asked.",
-      });
-    }
-    if (request !== this.codexReadinessRequest) {
-      return;
-    }
-    this.codexReadiness = answer;
   }
 
   private disabledReason() {
@@ -217,21 +163,11 @@ export class CaffoldSectionConversationShortcuts extends CaffoldElement {
         "Tasks are temporarily unavailable."
       );
     }
-    const status = this.codexReadiness.status;
-    if (
-      codexState(this.codexReadiness) !== "available" ||
-      codexBlocksTaskOperations(status)
-    ) {
-      return (
-        status?.readiness?.diagnosticMessage ||
-        this.codexReadiness.error ||
-        "Codex is temporarily unavailable."
-      );
-    }
     return "";
   }
 
   private openForkDialog(event: Event) {
+    if (this.disabledReason()) return;
     this.forkDialog()?.open({
       sectionId: this.context.sectionId,
       sectionPath: this.context.path,

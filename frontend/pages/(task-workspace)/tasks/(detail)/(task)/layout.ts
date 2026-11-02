@@ -8,6 +8,7 @@ import {
 } from "#app/action-hints.js";
 import {
   archiveTask,
+  type CreatedTask,
   discardTaskUploads,
   forceArchiveTask,
   forkTask,
@@ -158,6 +159,7 @@ interface TaskRoute {
 interface ActionState {
   loading: boolean;
   error: Error | null;
+  openCreated?: boolean;
 }
 
 // What the Task screen tells its owner about the open Task: the Task once
@@ -294,6 +296,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
   private interruptStateValue: ActionState = { loading: false, error: null };
   private archiveActionToken = 0;
   private forkActionToken = 0;
+  private forkCreated: { sourceId: string; created: CreatedTask } | null = null;
   private approvalActionToken = 0;
   private promptSubmissionSequence = 0;
   private archiveStateValue: ActionState = { loading: false, error: null };
@@ -401,6 +404,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       this.interruptStateValue = { loading: false, error: null };
       this.archiveActionToken += 1;
       this.forkActionToken += 1;
+      this.forkCreated = null;
       this.approvalActionToken += 1;
       this.archiveStateValue = { loading: false, error: null };
       this.forkStateValue = { loading: false, error: null };
@@ -529,6 +533,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
     this.interruptStateValue = { loading: false, error: null };
     this.archiveActionToken += 1;
     this.forkActionToken += 1;
+    this.forkCreated = null;
     this.approvalActionToken += 1;
     this.archiveStateValue = { loading: false, error: null };
     this.forkStateValue = { loading: false, error: null };
@@ -1743,8 +1748,9 @@ export class CaffoldTaskDetail extends CaffoldElement {
     if (
       !this.selectedThreadId ||
       this.forkStateValue.loading ||
+      (this.forkStateValue.error as TaskResponseError | null)?.createdTaskId ||
       this.archiveStateValue.loading ||
-      `${this.taskDetail?.provider ?? ""}` !== "codex" ||
+      !["codex", "claude", "grok"].includes(this.taskDetail?.provider ?? "") ||
       taskThreadStatusType(task) !== "idle" ||
       isTaskTransportStale(this.detailSession.state)
     ) {
@@ -1755,7 +1761,10 @@ export class CaffoldTaskDetail extends CaffoldElement {
     this.forkStateValue = { loading: true, error: null };
     this.emitSubjectSnapshot();
     try {
-      const created = await forkTask(threadId);
+      const created =
+        this.forkCreated?.sourceId === threadId
+          ? this.forkCreated.created
+          : await forkTask(threadId);
       if (
         actionToken !== this.forkActionToken ||
         threadId !== this.selectedThreadId
@@ -1768,8 +1777,9 @@ export class CaffoldTaskDetail extends CaffoldElement {
         childThreadId === threadId ||
         !created.detail.task
       ) {
-        throw new Error("Codex did not return a distinct forked Task.");
+        throw new Error("The agent did not return a distinct forked Task.");
       }
+      this.forkCreated = { sourceId: threadId, created };
       this.forkStateValue = { loading: false, error: null };
       const handoff = { created, submission: null, adopted: false };
       this.dispatchEvent(
@@ -1780,7 +1790,9 @@ export class CaffoldTaskDetail extends CaffoldElement {
         }),
       );
       if (!handoff.adopted) {
-        throw new Error("The forked Task could not be opened.");
+        throw new Error(
+          "The forked Task was created but could not be opened. Retry to open the same Task.",
+        );
       }
     } catch (error) {
       if (
@@ -1789,7 +1801,11 @@ export class CaffoldTaskDetail extends CaffoldElement {
       ) {
         return;
       }
-      this.forkStateValue = { loading: false, error: error as Error };
+      this.forkStateValue = {
+        loading: false,
+        error: error as Error,
+        openCreated: this.forkCreated?.sourceId === threadId,
+      };
       if (this.reportTaskAbsence(threadId, error)) {
         return;
       }

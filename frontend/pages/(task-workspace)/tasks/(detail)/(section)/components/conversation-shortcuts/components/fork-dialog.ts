@@ -3,6 +3,7 @@ import { customElement, state } from "lit/decorators.js";
 import { live } from "lit/directives/live.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import {
+  type CreatedTask,
   createTaskFork,
   previewTaskForkSource,
   type TaskForkSourcePreview,
@@ -20,14 +21,56 @@ import { formatDate } from "#tasks/task-format.js";
 
 import styles from "./fork-dialog.css.js";
 
+const PROVIDERS = { codex: "Codex", claude: "Claude", grok: "Grok" } as const;
+type ForkProvider = keyof typeof PROVIDERS;
+type ForkNode = "closed" | "editing" | "previewing" | "ready" | "forking";
+type ForkEvent =
+  | "open"
+  | "edit"
+  | "preview"
+  | "previewed"
+  | "fork"
+  | "failed"
+  | "closed"
+  | "deactivate";
+// See PLAN's control graph. There is no edit, dismiss or duplicate submit
+// edge while creation is in flight; deactivation invalidates its completion.
+const FORK_EDGES: Record<ForkNode, Partial<Record<ForkEvent, ForkNode>>> = {
+  closed: { open: "editing", closed: "closed", deactivate: "closed" },
+  editing: {
+    open: "editing",
+    edit: "editing",
+    preview: "previewing",
+    closed: "closed",
+    deactivate: "closed",
+  },
+  previewing: {
+    open: "editing",
+    edit: "editing",
+    previewed: "ready",
+    failed: "editing",
+    closed: "closed",
+    deactivate: "closed",
+  },
+  ready: {
+    open: "editing",
+    edit: "editing",
+    preview: "previewing",
+    fork: "forking",
+    closed: "closed",
+    deactivate: "closed",
+  },
+  forking: { failed: "ready", closed: "closed", deactivate: "closed" },
+};
+
 const CODEX_THREAD_URI_PREFIX = "codex://threads/";
 const DESCRIPTION =
   "Preview the source, then create a Task with its conversation history.";
-const NO_HISTORY = "No recent user or Codex messages were available.";
+const NO_HISTORY = "No recent conversation messages were available.";
 const HISTORY_ROLES = new Set(["user", "assistant", "failure"]);
 const HISTORY_HEADINGS: Record<string, string> = {
   user: "You",
-  assistant: "Codex",
+  assistant: "Agent",
   failure: "Failed",
 };
 // A fork the server refused because the source moved on: its preview no
@@ -39,8 +82,8 @@ const STALE_SOURCE_CODES = [
 ];
 
 /**
- * Starts a Task in a Section from a Codex thread: the person names the
- * thread, previews it, and forks it.
+ * Starts a Task in a Section from a native conversation. Provider selection
+ * identifies the source; it never converts history to another provider.
  */
 @customElement("caffold-conversation-fork-dialog")
 export class CaffoldConversationForkDialog extends CaffoldElement {
@@ -54,13 +97,48 @@ export class CaffoldConversationForkDialog extends CaffoldElement {
   @state()
   private accessor preview: TaskForkSourcePreview | null = null;
   @state()
-  private accessor previewPending = false;
+  private accessor node: ForkNode = "closed";
   @state()
-  private accessor forkPending = false;
+  private accessor provider: ForkProvider = "codex";
+  @state()
+  private accessor created: CreatedTask | null = null;
+  @state()
+  private accessor createdTaskId = "";
   @state()
   private accessor error: TaskResponseError | null = null;
 
   static override styles = styles;
+
+  private get previewPending() {
+    return this.node === "previewing";
+  }
+  private get forkPending() {
+    return this.node === "forking";
+  }
+  private get sourceId() {
+    return this.provider === "codex"
+      ? normalizeCodexThreadId(this.threadIdText)
+      : this.threadIdText.trim();
+  }
+  private get idLabel() {
+    return this.provider === "codex" ? "Thread ID" : "Session ID";
+  }
+  private get forkLabel() {
+    return this.forkPending
+      ? "Forking…"
+      : this.created
+        ? "Open forked task"
+        : "Fork task";
+  }
+
+  // The sole writer of control state; request identities and provider status
+  // remain separate data. Callers carry the effects of accepted edges.
+  private move(event: ForkEvent) {
+    const next = FORK_EDGES[this.node][event];
+    if (!next) return false;
+    this.node = next;
+    return true;
+  }
 
   private opener: HTMLElement | null = null;
   private previewRequestId = 0;
@@ -114,7 +192,9 @@ export class CaffoldConversationForkDialog extends CaffoldElement {
     };
     this.opener = opener instanceof HTMLElement ? opener : null;
     this.preview = null;
-    this.previewPending = false;
+    this.move("open");
+    this.created = null;
+    this.createdTaskId = "";
     this.error = null;
     this.restoreFocus = true;
     this.threadIdText = "";
@@ -134,7 +214,9 @@ export class CaffoldConversationForkDialog extends CaffoldElement {
     this.restoreFocus = false;
     this.abortPreview();
     this.forkRequestId += 1;
-    this.forkPending = false;
+    this.move("deactivate");
+    this.created = null;
+    this.createdTaskId = "";
     this.error = null;
     if (this.dialog?.open) {
       this.dialog.close("cancel");
@@ -167,7 +249,7 @@ export class CaffoldConversationForkDialog extends CaffoldElement {
       >
         <form class="conversation-fork-card" @submit=${this.handleSubmit}>
           <header>
-            <h2 id="conversation-fork-title">Fork a Codex thread</h2>
+            <h2 id="conversation-fork-title">Fork a conversation</h2>
             <p id="conversation-fork-description">${DESCRIPTION}</p>
           </header>
           <div
@@ -186,13 +268,23 @@ export class CaffoldConversationForkDialog extends CaffoldElement {
               </div>
             </dl>
             <div class="conversation-fork-source-control">
-              <label for="conversation-fork-thread-id">Thread ID</label>
+              <label for="conversation-fork-provider">Agent</label>
+              <select
+                ${this.hints.select({ id: "provider", label: "Choose source agent", action: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN, clipRoots: () => [this.body.value] })}
+                id="conversation-fork-provider"
+                .value=${live(this.provider)}
+                ?disabled=${this.forkPending || Boolean(this.created || this.createdTaskId)}
+                @change=${this.providerChanged}
+              >${Object.entries(PROVIDERS).map(([id, label]) => html`<option value=${id}>${label}</option>`)}</select>
+            </div>
+            <div class="conversation-fork-source-control">
+              <label for="conversation-fork-thread-id">${this.idLabel}</label>
               <div>
                 <input
                   ${drawn(this.threadIdInput)}
                   ${this.hints.textbox({
                     id: "thread-id",
-                    label: "Focus Thread ID",
+                    label: `Focus ${this.idLabel}`,
                     action: ACTION_HINT_ACTION.DIALOG_TEXTBOX_FOCUS,
                     clipRoots: () => [this.body.value],
                   })}
@@ -203,38 +295,39 @@ export class CaffoldConversationForkDialog extends CaffoldElement {
                   spellcheck="false"
                   autofocus
                   .value=${live(this.threadIdText)}
-                  ?disabled=${this.forkPending}
+                  ?disabled=${this.forkPending || Boolean(this.created || this.createdTaskId)}
+                  placeholder=${this.provider === "codex" ? "Thread ID or codex://threads/…" : "Session UUID"}
                   @input=${this.threadIdChanged}
                 >
                 <button
                   ${this.hints.button({
                     id: "preview",
-                    label: this.previewPending ? "Loading…" : "Preview thread",
+                    label: this.previewPending
+                      ? "Loading…"
+                      : "Preview conversation",
                     action: ACTION_HINT_ACTION.DIALOG_BUTTON,
                     clipRoots: () => [this.body.value],
                   })}
                   type="submit"
                   class="conversation-fork-button"
                   data-fork-dialog-action="preview"
-                  ?disabled=${
-                    busy || !normalizeCodexThreadId(this.threadIdText)
-                  }
-                >${this.previewPending ? "Loading…" : "Preview thread"}</button>
+                  ?disabled=${busy || Boolean(this.created || this.createdTaskId) || !this.sourceId}
+                >${this.previewPending ? "Loading…" : "Preview conversation"}</button>
               </div>
             </div>
             <caffold-loading-text
               class="conversation-fork-loading"
               ?hidden=${!this.previewPending}
-            >Loading the Codex thread…</caffold-loading-text>
+            >Loading the conversation…</caffold-loading-text>
             <section
               class="conversation-fork-preview"
-              aria-label="Thread preview"
+              aria-label="Conversation preview"
               ?hidden=${!preview}
             >
               <dl class="conversation-fork-metadata">
                 <div>
                   <dt>Provider</dt>
-                  <dd data-fork-preview="provider">Codex</dd>
+                  <dd data-fork-preview="provider">${PROVIDERS[this.provider]}</dd>
                 </div>
                 <div>
                   <dt>Name</dt>
@@ -269,7 +362,10 @@ export class CaffoldConversationForkDialog extends CaffoldElement {
                     ? history.map(
                         (message) => html`<article data-role=${message.role}
                           ><h4>${
-                            HISTORY_HEADINGS[message.role] ?? "Conversation"
+                            message.role === "assistant"
+                              ? PROVIDERS[this.provider]
+                              : (HISTORY_HEADINGS[message.role] ??
+                                "Conversation")
                           }</h4
                           ><p>${message.text}</p></article
                         >`,
@@ -286,7 +382,15 @@ export class CaffoldConversationForkDialog extends CaffoldElement {
             </section>
             <div class="conversation-fork-error" aria-live="assertive">${
               this.error
-                ? html`<p role="alert">${this.error.message}</p>`
+                ? html`<p role="alert">${this.error.message}</p>
+                    ${
+                      this.error.createdTaskId
+                        ? html`<a
+                      ${this.hints.link({ id: "open-created", label: "Open forked task", action: ACTION_HINT_ACTION.LINK_OPEN })}
+                      href=${`/tasks/${encodeURIComponent(this.error.createdTaskId)}`}
+                    >Open forked task</a>`
+                        : nothing
+                    }`
                 : nothing
             }</div>
           </div>
@@ -307,7 +411,7 @@ export class CaffoldConversationForkDialog extends CaffoldElement {
             <button
               ${this.hints.button({
                 id: "fork",
-                label: this.forkPending ? "Forking…" : "Fork task",
+                label: this.forkLabel,
                 action: ACTION_HINT_ACTION.DIALOG_BUTTON,
               })}
               type="button"
@@ -315,7 +419,7 @@ export class CaffoldConversationForkDialog extends CaffoldElement {
               data-fork-dialog-action="fork"
               ?disabled=${this.forkPending || !this.canFork()}
               @click=${this.forkTask}
-            >${this.forkPending ? "Forking…" : "Fork task"}</button>
+            >${this.forkLabel}</button>
           </footer>
         </form>
         <caffold-keyboard-navigation-presentation
@@ -326,13 +430,21 @@ export class CaffoldConversationForkDialog extends CaffoldElement {
   }
 
   private async previewThread() {
-    const sourceId = normalizeCodexThreadId(this.threadIdText);
-    if (this.previewPending || this.forkPending) {
+    const sourceId = this.sourceId;
+    const provider = this.provider;
+    if (
+      this.created ||
+      this.createdTaskId ||
+      this.previewPending ||
+      this.forkPending
+    ) {
       return;
     }
     if (!sourceId) {
       this.preview = null;
-      this.error = new Error("Enter a Codex Thread ID.");
+      this.error = new Error(
+        `Enter a ${PROVIDERS[this.provider]} ${this.idLabel}.`,
+      );
       this.threadIdInput.value?.focus();
       return;
     }
@@ -342,24 +454,24 @@ export class CaffoldConversationForkDialog extends CaffoldElement {
     const controller = new AbortController();
     this.previewController = controller;
     this.preview = null;
-    this.previewPending = true;
+    if (!this.move("preview")) return;
     this.error = null;
     try {
       const preview = await previewTaskForkSource(
-        { provider: "codex", sourceId },
+        { provider, sourceId },
         controller.signal,
       );
       if (requestId !== this.previewRequestId) {
         return;
       }
-      this.preview = normalizePreview(preview, sourceId);
-      this.previewPending = false;
+      this.preview = normalizePreview(preview, provider, sourceId);
+      this.move("previewed");
       this.previewController = null;
     } catch (error) {
       if (requestId !== this.previewRequestId) {
         return;
       }
-      this.previewPending = false;
+      this.move("failed");
       this.previewController = null;
       if ((error as Error | null)?.name !== "AbortError") {
         this.error = error instanceof Error ? error : new Error(`${error}`);
@@ -376,14 +488,16 @@ export class CaffoldConversationForkDialog extends CaffoldElement {
     const sectionId = this.context.sectionId;
     const requestId = ++this.forkRequestId;
     this.abortPreview();
-    this.forkPending = true;
+    if (!this.move("fork")) return;
     this.error = null;
     try {
-      const created = await createTaskFork({
-        provider: "codex",
-        sourceId,
-        sectionId,
-      });
+      const created =
+        this.created ??
+        (await createTaskFork({
+          provider: this.provider,
+          sourceId,
+          sectionId,
+        }));
       if (requestId !== this.forkRequestId) {
         return;
       }
@@ -397,6 +511,7 @@ export class CaffoldConversationForkDialog extends CaffoldElement {
           "The forked Task did not match the requested conversation and Section.",
         );
       }
+      this.created = created;
       const handoff = { created, submission: null, adopted: false };
       this.dispatchEvent(
         new CustomEvent<TaskCreatedHandoff>("caffold:task-created", {
@@ -406,28 +521,50 @@ export class CaffoldConversationForkDialog extends CaffoldElement {
         }),
       );
       if (!handoff.adopted) {
-        throw new Error("The forked Task could not be opened.");
+        throw new Error(
+          "The forked Task was created but could not be opened. Retry to open the same Task.",
+        );
       }
       if (requestId !== this.forkRequestId) {
         return;
       }
-      this.forkPending = false;
+      this.move("closed");
       this.dialog?.close("forked");
     } catch (error) {
       if (requestId !== this.forkRequestId) {
         return;
       }
-      this.forkPending = false;
+      this.move("failed");
       const failure: TaskResponseError =
         error instanceof Error ? error : new Error(`${error}`);
       this.error = failure;
-      if (STALE_SOURCE_CODES.includes(`${failure.code}`)) {
+      this.createdTaskId = failure.createdTaskId ?? this.createdTaskId;
+      if (
+        !this.created &&
+        (!failure.status || STALE_SOURCE_CODES.includes(`${failure.code}`))
+      ) {
+        this.move("edit");
         this.preview = null;
+        if (!failure.status)
+          this.error = new Error(
+            "The fork result could not be confirmed. Check the Task list before trying again.",
+          );
       }
     }
   }
 
+  private providerChanged(event: Event) {
+    if (this.created || this.createdTaskId || !this.move("edit")) return;
+    const provider = (event.currentTarget as HTMLSelectElement).value;
+    if (!(provider in PROVIDERS)) return;
+    this.provider = provider as ForkProvider;
+    this.abortPreview();
+    this.preview = null;
+    this.error = null;
+  }
+
   private threadIdChanged(event: Event) {
+    if (this.created || this.createdTaskId || !this.move("edit")) return;
     this.threadIdText = (event.currentTarget as HTMLInputElement).value;
     this.abortPreview();
     this.preview = null;
@@ -458,13 +595,15 @@ export class CaffoldConversationForkDialog extends CaffoldElement {
     this.previewRequestId += 1;
     this.previewController?.abort();
     this.previewController = null;
-    this.previewPending = false;
   }
 
   private canFork() {
     return Boolean(
-      this.preview &&
-        this.preview.sourceId === normalizeCodexThreadId(this.threadIdText) &&
+      this.node === "ready" &&
+        !this.createdTaskId &&
+        this.preview &&
+        this.preview.provider === this.provider &&
+        this.preview.sourceId === this.sourceId &&
         canForkThreadStatus(this.preview.status),
     );
   }
@@ -473,6 +612,7 @@ export class CaffoldConversationForkDialog extends CaffoldElement {
     if (this.forkPending) {
       return;
     }
+    this.move("closed");
     this.abortPreview();
     const opener = this.opener;
     const restoreFocus = this.restoreFocus;
@@ -499,17 +639,18 @@ function normalizeCodexThreadId(value: string | null | undefined) {
 // thread it asked about.
 function normalizePreview(
   preview: TaskForkSourcePreview | null | undefined,
+  requestedProvider: ForkProvider,
   requestedSourceId: string,
 ): TaskForkSourcePreview {
   if (
-    preview?.provider !== "codex" ||
+    preview?.provider !== requestedProvider ||
     `${preview?.sourceId ?? ""}` !== requestedSourceId ||
     !preview?.status?.type
   ) {
-    throw new Error("Codex returned an invalid thread preview.");
+    throw new Error("The agent returned an invalid conversation preview.");
   }
   return {
-    provider: "codex",
+    provider: requestedProvider,
     sourceId: requestedSourceId,
     displayName: `${preview.displayName ?? ""}`,
     summary: preview.summary == null ? null : `${preview.summary}`,
@@ -560,12 +701,12 @@ function forkUnavailableReason(status: TaskThreadStatus) {
     return "";
   }
   if (status?.type === "active") {
-    return "Forking is unavailable while the Codex thread is active.";
+    return "Forking is unavailable while the conversation is active.";
   }
   if (status?.type === "systemError") {
-    return "Codex reported a system error for this thread.";
+    return "The agent reported a system error for this conversation.";
   }
-  return "Codex reported a thread status that Caffold cannot fork.";
+  return "The agent reported a conversation status that Caffold cannot fork.";
 }
 
 function canForkThreadStatus(status: TaskThreadStatus) {

@@ -1,45 +1,54 @@
-//! Native Codex fork lifecycle.
+//! Native conversation fork lifecycle.
 //!
 //! The provider remains the source of conversation history. This owner holds
 //! the source mutation boundary, validates the source and target around the
 //! native fork, and claims only a child that survives every validation step.
 
 use crate::{
-    agent::{
-        Conversation, ThreadStatus, TurnPage,
-        codex::{CodexConnection, CodexThreadClient, codex_mode_id},
-    },
+    agent::{Conversation, ThreadStatus, driver::REVIEWED_PERMISSION_MODE},
     app::error::ApiError,
-    task_store::{ManagedSection, ManagedThread, RunBy, TaskProvider},
+    task_store::{ManagedSection, ManagedThread},
 };
 
 use super::super::{
-    TaskRecord,
-    active_list::ActiveTask,
-    projection::conversation_display_name,
-    sessions::{ConversationSettings, INITIAL_TURNS_PAGE_SIZE},
+    TaskAgent, TaskRecord, active_list::ActiveTask, projection::conversation_display_name,
+    sessions::ConversationSettings,
 };
 use super::{
     ActiveTaskTopPlacement, CreatedTask, LocalPlacementMutation, TaskLifecycle,
     managed_thread_from_task_record, task_store_worker_error,
 };
 
-pub(in crate::app::tasks) struct ForkCodexTask {
-    pub(in crate::app::tasks) source: ForkCodexSource,
+pub(in crate::app::tasks) struct ForkTask {
+    pub(in crate::app::tasks) source: ForkTaskSource,
     pub(in crate::app::tasks) section: ManagedSection,
     pub(in crate::app::tasks) cwd: String,
 }
 
-pub(in crate::app::tasks) enum ForkCodexSource {
+pub(in crate::app::tasks) enum ForkTaskSource {
     Managed(Box<ManagedThread>),
-    External { thread_id: String },
+    External {
+        thread_id: String,
+        owner: Option<Box<ManagedThread>>,
+    },
 }
 
-impl ForkCodexSource {
+impl ForkTaskSource {
+    fn owner(&self) -> Option<&ManagedThread> {
+        match self {
+            Self::Managed(source) => Some(source),
+            Self::External { owner, .. } => owner.as_deref(),
+        }
+    }
+
+    fn is_external(&self) -> bool {
+        matches!(self, Self::External { .. })
+    }
+
     fn thread_id(&self) -> &str {
         match self {
             Self::Managed(source) => &source.thread_id,
-            Self::External { thread_id } => thread_id,
+            Self::External { thread_id, .. } => thread_id,
         }
     }
 
@@ -53,15 +62,16 @@ impl ForkCodexSource {
     fn can_fork(&self, status: &ThreadStatus) -> bool {
         match self {
             Self::Managed(_) => matches!(status, ThreadStatus::Idle),
-            Self::External { .. } => {
-                matches!(status, ThreadStatus::Idle | ThreadStatus::NotLoaded)
-            }
+            Self::External {
+                owner: Some(owner), ..
+            } if owner.archived_at_ms.is_none() => matches!(status, ThreadStatus::Idle),
+            Self::External { .. } => matches!(status, ThreadStatus::Idle | ThreadStatus::NotLoaded),
         }
     }
 }
 
 impl TaskLifecycle {
-    /// Fork one eligible Codex conversation and claim only the returned child.
+    /// Fork one eligible conversation and claim only the returned child.
     ///
     /// The source read is deliberately native and read-only. A managed source
     /// retains its per-Task mutation lease and must be idle so Caffold prompts
@@ -70,131 +80,130 @@ impl TaskLifecycle {
     /// history natively. The second provider read rejects any source change
     /// Caffold can observe while the provider is forking. Until the local claim
     /// commits, every failure deletes the otherwise unreachable child.
-    pub(in crate::app::tasks) async fn fork_codex_task(
+    pub(in crate::app::tasks) async fn fork_task(
         &self,
-        connection: &CodexConnection,
-        request: ForkCodexTask,
+        agent: &TaskAgent,
+        request: ForkTask,
     ) -> Result<CreatedTask, ApiError> {
-        let ForkCodexTask {
+        let ForkTask {
             source,
             section,
             cwd,
         } = request;
         let source_thread_id = source.thread_id().to_string();
         let _mutation = match &source {
-            ForkCodexSource::Managed(source) => {
+            ForkTaskSource::Managed(source) => {
                 Some(self.sessions.reserve_mutation(&source.thread_id).await)
             }
-            ForkCodexSource::External { .. } => None,
+            ForkTaskSource::External {
+                owner: Some(owner), ..
+            } => Some(self.sessions.reserve_mutation(&owner.thread_id).await),
+            ForkTaskSource::External { owner: None, .. } => None,
         };
         self.ensure_fork_target_is_current(&section).await?;
-        if let ForkCodexSource::Managed(source) = &source {
-            self.ensure_managed_fork_source_is_current(source).await?;
+        if let Some(owner) = source.owner() {
+            self.ensure_managed_fork_source_is_current(owner).await?;
         }
-        let source_before = connection.client.read_thread(&source_thread_id).await?;
-        if source_before.id != source_thread_id {
+        let driver = agent.driver();
+        let external = source.is_external();
+        let mut source_before = driver
+            .read_fork_source(&source_thread_id, external, false)
+            .await?;
+        if !matches!(agent, TaskAgent::Grok { .. })
+            && source_before.conversation.id != source_thread_id
+        {
             return Err(ApiError::BadRequest {
                 code: "task_fork_source_mismatch",
-                message: "Codex returned a different source thread".to_string(),
+                message: "The agent returned a different source conversation".into(),
             });
         }
-        let source_conversation = Conversation::from(&source_before);
-        if !source.can_fork(&source_conversation.status) {
+        if !source.can_fork(&source_before.conversation.status)
+            || source_before.conversation.background_work
+        {
             return Err(task_fork_source_not_idle());
         }
-
-        let mut forked = connection
-            .client
-            .fork_thread(&source_thread_id, &cwd)
-            .await?;
-        let child_thread_id = forked.thread_id.clone();
-        let request = self.sessions.reserve_request(&child_thread_id).await;
-        let source_after = match connection.client.read_thread(&source_thread_id).await {
-            Ok(source_after) => source_after,
-            Err(error) => {
-                self.rollback_unclaimed_codex_fork(&connection.client, &child_thread_id)
-                    .await;
-                return Err(error.into());
+        if let ForkTaskSource::Managed(managed) = &source {
+            source_before.settings.model = source_before.settings.model.or(managed.model.clone());
+            source_before.settings.effort = source_before
+                .settings
+                .effort
+                .or(managed.reasoning_effort.clone());
+            source_before.settings.permission_mode = source_before
+                .settings
+                .permission_mode
+                .or(managed.permission_mode.clone());
+            // This is a Caffold-owned preference; native ask/default is the
+            // provider posture used by the reviewer, not a replacement for it.
+            if managed.permission_mode.as_deref() == Some(REVIEWED_PERMISSION_MODE) {
+                source_before.settings.permission_mode = managed.permission_mode.clone();
             }
-        };
-        let source_after_conversation = Conversation::from(&source_after);
-        if source_after.id != source_thread_id
-            || !source.can_fork(&source_after_conversation.status)
-            || source_after.updated_at != source_before.updated_at
-        {
-            self.rollback_unclaimed_codex_fork(&connection.client, &child_thread_id)
-                .await;
-            return Err(task_fork_source_changed());
+            source_before.settings.fast_mode = managed.fast_mode;
         }
-
-        let child_turns = match connection
-            .client
-            .list_thread_turns(&child_thread_id, None, INITIAL_TURNS_PAGE_SIZE)
-            .await
-        {
-            Ok(page) => TurnPage::from(&page),
-            Err(error) => {
-                self.rollback_unclaimed_codex_fork(&connection.client, &child_thread_id)
-                    .await;
-                return Err(error.into());
-            }
-        };
-
-        let title = format!("Fork of {}", source.display_name(&source_conversation));
-        if let Err(error) = connection
-            .client
-            .set_thread_name(&child_thread_id, &title)
-            .await
-        {
-            self.rollback_unclaimed_codex_fork(&connection.client, &child_thread_id)
-                .await;
-            return Err(error.into());
-        }
-        forked.thread.name = Some(title.clone());
-        let conversation = Conversation::from(&forked.thread);
-        let task = match self.record_from_conversation(&conversation) {
-            Ok(task) => task,
-            Err(error) => {
-                self.rollback_unclaimed_codex_fork(&connection.client, &child_thread_id)
-                    .await;
-                return Err(error);
-            }
-        };
-        let managed = managed_thread_from_task_record(
-            &task,
-            RunBy::Codex,
-            forked.model.clone(),
-            forked.reasoning_effort.clone(),
-            forked.fast_mode,
-            forked.permission_mode.map(codex_mode_id),
+        let title = format!(
+            "Fork of {}",
+            source.display_name(&source_before.conversation)
         );
-        let placement = match self
-            .claim_in_section_at_top(managed, &title, &task, &section)
-            .await
-        {
-            Ok(placement) => placement,
+        let mut forked = driver
+            .create_fork(&source_before, &cwd, &title, &source_before.settings)
+            .await?;
+        if source_before.settings.permission_mode.as_deref() == Some(REVIEWED_PERMISSION_MODE) {
+            forked.settings.permission_mode = Some(REVIEWED_PERMISSION_MODE.to_string());
+        }
+        let child_thread_id = forked.conversation.id.clone();
+        let request = self.sessions.reserve_request(&child_thread_id).await;
+        let validated = async {
+            let source_after = driver
+                .read_fork_source(&source_thread_id, external, false)
+                .await?;
+            if !source_before.same_revision(&source_after)
+                || !source.can_fork(&source_after.conversation.status)
+                || source_after.conversation.background_work
+            {
+                return Err(task_fork_source_changed());
+            }
+            driver.finish_fork(&mut forked, &title).await?;
+            self.ensure_fork_target_is_current(&section).await?;
+            if let Some(owner) = source.owner() {
+                self.ensure_managed_fork_source_is_current(owner).await?;
+            }
+            let task = self.record_from_conversation(&forked.conversation)?;
+            let managed = managed_thread_from_task_record(
+                &task,
+                agent.run_by(&cwd),
+                forked.settings.model.clone(),
+                forked.settings.effort.clone(),
+                forked.settings.fast_mode,
+                forked.settings.permission_mode.clone(),
+            );
+            let placement = self
+                .claim_in_section_at_top(managed, &title, &task, &section)
+                .await?;
+            Ok::<_, ApiError>((task, placement))
+        }
+        .await;
+        let (task, placement) = match validated {
+            Ok(claimed) => claimed,
             Err(error) => {
-                self.rollback_unclaimed_codex_fork(&connection.client, &child_thread_id)
-                    .await;
+                if let Err(cleanup) = driver.delete_conversation(&child_thread_id).await {
+                    eprintln!("failed to delete unclaimed fork {child_thread_id}: {cleanup}");
+                }
                 return Err(error);
             }
         };
-
         self.sessions
             .register_created_thread(
-                &connection.driver(),
-                connection.generation,
-                conversation,
-                Some(child_turns),
+                &driver,
+                agent.generation(),
+                forked.conversation,
+                Some(forked.turns_page),
                 ConversationSettings {
-                    permission_mode: forked.permission_mode.map(codex_mode_id),
-                    model: forked.model,
-                    reasoning_effort: forked.reasoning_effort,
-                    fast_mode: forked.fast_mode,
+                    permission_mode: forked.settings.permission_mode,
+                    model: forked.settings.model,
+                    reasoning_effort: forked.settings.effort,
+                    fast_mode: forked.settings.fast_mode,
                 },
             )
             .await;
-        // A child forked a moment ago has no managed worktree record of its own.
         let active_task = ActiveTask::of(&task, false);
         self.list_events
             .place(active_task.clone(), placement.clone());
@@ -232,14 +241,16 @@ impl TaskLifecycle {
         let store = self.store.clone();
         let source_thread_id = source.thread_id.clone();
         let section_id = source.section_id.clone();
+        let provider = source.run_by.provider();
+        let archived_at_ms = source.archived_at_ms;
         let current = tokio::task::spawn_blocking(move || store.get(&source_thread_id))
             .await
             .map_err(task_store_worker_error)?
             .map_err(|error| ApiError::Internal(error.to_string()))?;
         if current.is_none_or(|current| {
-            current.archived_at_ms.is_some()
+            current.archived_at_ms != archived_at_ms
                 || current.section_id != section_id
-                || current.run_by.provider() != TaskProvider::Codex
+                || current.run_by.provider() != provider
         }) {
             return Err(task_fork_source_changed());
         }
@@ -268,25 +279,19 @@ impl TaskLifecycle {
         }
         Ok(())
     }
-
-    async fn rollback_unclaimed_codex_fork(&self, client: &CodexThreadClient, thread_id: &str) {
-        if let Err(error) = client.delete_thread(thread_id).await {
-            eprintln!("failed to delete an unclaimed Codex fork: {error}");
-        }
-    }
 }
 
 fn task_fork_source_not_idle() -> ApiError {
     ApiError::Conflict {
         code: "task_fork_source_not_idle",
-        message: "the Codex conversation cannot be forked in its current state".to_string(),
+        message: "the conversation cannot be forked in its current state".to_string(),
     }
 }
 
 fn task_fork_source_changed() -> ApiError {
     ApiError::Conflict {
         code: "task_fork_source_changed",
-        message: "the source conversation changed while Codex was forking it".to_string(),
+        message: "the source conversation changed while it was being forked".to_string(),
     }
 }
 
@@ -381,10 +386,10 @@ mod tests {
         let connection = state.detail.connection().await.expect("Codex connection");
         state
             .lifecycle
-            .fork_codex_task(
-                &connection,
-                ForkCodexTask {
-                    source: ForkCodexSource::Managed(Box::new(source)),
+            .fork_task(
+                &TaskAgent::Codex(connection),
+                ForkTask {
+                    source: ForkTaskSource::Managed(Box::new(source)),
                     section,
                     cwd: cwd.display().to_string(),
                 },

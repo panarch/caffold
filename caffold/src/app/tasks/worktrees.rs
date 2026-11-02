@@ -28,7 +28,7 @@ use crate::{
 #[derive(Debug, Error)]
 pub(in crate::app::tasks) enum ManagedWorktreeError {
     #[error("{}", .0.message)]
-    Unavailable(ErrorBody),
+    Unavailable(Box<ErrorBody>),
     #[error(transparent)]
     Store(#[from] TaskStoreError),
     #[error(transparent)]
@@ -310,11 +310,13 @@ impl ManagedWorktrees {
             ));
         }
         let Some(body) = self.availability_error_blocking(thread_id)? else {
-            return Err(ManagedWorktreeError::Unavailable(unavailable_diagnostic(
-                &record,
-                "managed_worktree_not_broken",
-                "the worktree is usable; broken Task deletion is not allowed".to_string(),
-                vec![],
+            return Err(ManagedWorktreeError::Unavailable(Box::new(
+                unavailable_diagnostic(
+                    &record,
+                    "managed_worktree_not_broken",
+                    "the worktree is usable; broken Task deletion is not allowed".to_string(),
+                    vec![],
+                ),
             )));
         };
         if !body
@@ -322,7 +324,7 @@ impl ManagedWorktrees {
             .as_ref()
             .is_some_and(|actions| actions.contains(&"deleteTask"))
         {
-            return Err(ManagedWorktreeError::Unavailable(body));
+            return Err(ManagedWorktreeError::Unavailable(Box::new(body)));
         }
         Ok(record)
     }
@@ -469,7 +471,7 @@ impl ManagedWorktrees {
         remove: impl FnOnce(&Path, &Path, &str) -> Result<WorktreeCheckout, WorktreeError>,
     ) -> Result<ArchiveOutcome, ManagedWorktreeError> {
         if let Some(error) = self.availability_error_blocking(thread_id)? {
-            return Err(ManagedWorktreeError::Unavailable(error));
+            return Err(ManagedWorktreeError::Unavailable(Box::new(error)));
         }
         let Some(record) = self.store.worktree_for_thread(thread_id)? else {
             return Ok(ArchiveOutcome::NotManaged);
@@ -498,9 +500,9 @@ impl ManagedWorktrees {
                     Ok(ArchiveOutcome::Archived(record))
                 }
                 Ok(_) => Err(error.into()),
-                Err(error) => Err(ManagedWorktreeError::Unavailable(
+                Err(error) => Err(ManagedWorktreeError::Unavailable(Box::new(
                     self.diagnostic(&removing, error),
-                )),
+                ))),
             };
         }
         let archived = self.store.transition_worktree(
@@ -515,7 +517,7 @@ impl ManagedWorktrees {
 
     fn preflight_archive_blocking(&self, thread_id: &str) -> Result<(), ManagedWorktreeError> {
         if let Some(error) = self.availability_error_blocking(thread_id)? {
-            return Err(ManagedWorktreeError::Unavailable(error));
+            return Err(ManagedWorktreeError::Unavailable(Box::new(error)));
         }
         let Some(record) = self.store.worktree_for_thread(thread_id)? else {
             return Ok(());
@@ -579,12 +581,12 @@ impl ManagedWorktrees {
         let path = self.owned_path(&record)?;
         let common_dir = PathBuf::from(&record.repository_git_dir);
         let anchor = record.checkout_anchor.clone().ok_or_else(|| {
-            ManagedWorktreeError::Unavailable(unavailable_diagnostic(
+            ManagedWorktreeError::Unavailable(Box::new(unavailable_diagnostic(
                 &record,
                 "managed_worktree_restore_unavailable",
                 "the checkout could not be identified when this Task was archived".to_string(),
                 vec![],
-            ))
+            )))
         })?;
         self.store.transition_worktree(
             &record.worktree_id,

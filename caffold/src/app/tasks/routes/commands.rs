@@ -535,7 +535,7 @@ pub(super) async fn require_codex_thread_connection(
 /// the choice comes from the model that was picked: the list a person chose
 /// from said which agent each model belongs to, and that choice is carried back
 /// here rather than guessed at from the model's name.
-async fn new_task_agent(
+pub(super) async fn new_task_agent(
     state: &TaskState,
     provider: Option<&str>,
     cwd: &str,

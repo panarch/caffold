@@ -19,8 +19,8 @@ Select a Section's name to open it. An open Section offers, for its directory:
   [Review changes](../review/changes.md).
 - A [terminal](terminal.md) in the Section's directory, from the last button
   in the header.
-- **Existing conversations**, which forks a Codex conversation into the
-  Section. See [Fork a Codex conversation](fork.md).
+- **Existing conversations**, which forks a Codex, Claude, or Grok conversation into the
+  Section. See [Fork a conversation](fork.md).
 
 ![A Section opened: New Task in its directory, existing conversations, and its GitHub repository](../assets/screenshots/section-detail-desktop.png)
 

@@ -6,11 +6,10 @@
 
 use axum::extract::Path as AxumPath;
 
-use crate::agent::codex::CodexThreadError;
-use crate::agent::{Conversation, ItemKind, ThreadStatus, TurnPage};
+use crate::agent::{ItemKind, ThreadStatus, TurnPage};
 use crate::app::error::ApiError;
-use crate::app::tasks::lifecycle::{ForkCodexSource, ForkCodexTask};
-use crate::app::tasks::{TaskAgent, TaskState};
+use crate::app::tasks::TaskState;
+use crate::app::tasks::lifecycle::{ForkTask, ForkTaskSource};
 use crate::task_store::{ManagedSection, ManagedThread, RunBy, TaskProvider};
 use axum::extract::State;
 use axum::routing::post;
@@ -18,13 +17,12 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
 use super::CreatedTaskResponse;
-use super::commands::{require_codex_thread_client, require_codex_thread_connection};
+use super::commands::new_task_agent;
 use super::membership::task_store_join_error;
 use super::store::{task_store_api_error, task_store_get};
 use crate::app::tasks::presence::moved_refusal;
 use crate::app::tasks::projection;
 
-const TASK_FORK_PREVIEW_TURNS: usize = 4;
 const TASK_FORK_PREVIEW_MESSAGES: usize = 12;
 const CODEX_THREAD_URI_PREFIX: &str = "codex://threads/";
 
@@ -74,11 +72,20 @@ async fn fork_task(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<CreatedTaskResponse>, ApiError> {
+    tokio::spawn(fork_task_owned(state, thread_id))
+        .await
+        .map_err(|error| ApiError::Internal(format!("Task fork failed: {error}")))?
+}
+
+async fn fork_task_owned(
+    state: TaskState,
+    thread_id: String,
+) -> Result<Json<CreatedTaskResponse>, ApiError> {
     let (source, section) = fork_source_context(&state, &thread_id).await?;
-    if !matches!(source.run_by, RunBy::Codex) {
+    if matches!(source.run_by, RunBy::Antigravity { .. }) {
         return Err(ApiError::BadRequest {
             code: "task_fork_unsupported_provider",
-            message: "forking is currently available only for Codex Tasks".to_string(),
+            message: "Antigravity conversation fork is not supported".to_string(),
         });
     }
     let cwd = state
@@ -90,23 +97,23 @@ async fn fork_task(
         })?
         .display()
         .to_string();
-    let connection = require_codex_thread_connection(&state).await?;
+    let agent = new_task_agent(&state, Some(provider_name(source.run_by.provider())), &cwd).await?;
     let created = state
         .lifecycle
-        .fork_codex_task(
-            &connection,
-            ForkCodexTask {
-                source: ForkCodexSource::Managed(Box::new(source)),
+        .fork_task(
+            &agent,
+            ForkTask {
+                source: ForkTaskSource::Managed(Box::new(source)),
                 section,
                 cwd,
             },
         )
         .await?;
-    let agent = TaskAgent::Codex(connection);
     let detail = state
         .detail
         .read(&agent, &created.task.thread_id, None)
-        .await?;
+        .await
+        .map_err(|error| fork_created_but_unreadable(&created.task.thread_id, error))?;
     Ok(Json(CreatedTaskResponse {
         detail,
         active_task: created.active_task,
@@ -119,24 +126,24 @@ async fn preview_task_fork_source(
     Json(request): Json<TaskForkSourceRequest>,
 ) -> Result<Json<TaskForkSourcePreview>, ApiError> {
     let source_id = task_fork_source_id(&request.provider, &request.source_id)?;
-    ensure_task_fork_source_provider(&state, &source_id).await?;
-    let client = require_codex_thread_client(&state).await?;
-    let source = client
-        .read_thread(&source_id)
+    ensure_task_fork_source_provider(&state, &source_id, &request.provider).await?;
+    let agent = new_task_agent(&state, Some(request.provider.trim()), "").await?;
+    let source = agent
+        .driver()
+        .read_fork_source(&source_id, true, true)
         .await
         .map_err(task_fork_source_read_error)?;
-    if source.id != source_id {
-        return Err(task_fork_source_mismatch());
+    if source.conversation.id != source_id {
+        return Err(ApiError::BadRequest {
+            code: "task_fork_source_mismatch",
+            message: "The agent returned a different source conversation".into(),
+        });
     }
-    let conversation = Conversation::from(&source);
-    let history = client
-        .list_thread_turns(&source_id, None, TASK_FORK_PREVIEW_TURNS)
-        .await
-        .map_err(task_fork_source_read_error)?;
-    let history = TurnPage::from(&history);
+    let conversation = source.conversation;
+    let history = source.turns_page.unwrap_or_default();
 
     Ok(Json(TaskForkSourcePreview {
-        provider: "codex",
+        provider: provider_name(agent.run_by("").provider()),
         source_id,
         display_name: projection::conversation_display_name(&conversation),
         summary: non_empty_fork_metadata(&conversation.preview),
@@ -154,36 +161,66 @@ async fn create_task_fork(
     State(state): State<TaskState>,
     Json(request): Json<CreateTaskForkRequest>,
 ) -> Result<Json<CreatedTaskResponse>, ApiError> {
+    tokio::spawn(create_task_fork_owned(state, request))
+        .await
+        .map_err(|error| ApiError::Internal(format!("Task fork failed: {error}")))?
+}
+
+async fn create_task_fork_owned(
+    state: TaskState,
+    request: CreateTaskForkRequest,
+) -> Result<Json<CreatedTaskResponse>, ApiError> {
     let source_id = task_fork_source_id(&request.provider, &request.source_id)?;
     let (section, cwd) = task_fork_target_context(&state, &request.section_id).await?;
-    let source = match task_store_get(&state, &source_id).await? {
-        Some(source) if source.run_by.provider() != TaskProvider::Codex => {
-            return Err(task_fork_source_provider_mismatch());
+    ensure_task_fork_source_provider(&state, &source_id, &request.provider).await?;
+    let mut owner = task_store_get(&state, &source_id).await?;
+    if request.provider.trim() == "grok" {
+        // A Task may have moved onto a different native ID. Lock its deletion
+        // owner even when this request names an older session it owns.
+        let store = state.task_store.clone();
+        let managed = tokio::task::spawn_blocking(move || {
+            store.read(|tables| tables.active_managed_threads())
+        })
+        .await
+        .map_err(task_store_join_error)?
+        .map_err(task_store_api_error)?;
+        for task in managed
+            .into_iter()
+            .filter(|task| task.run_by.provider() == TaskProvider::Grok)
+        {
+            if state
+                .task_runtime
+                .grok()
+                .owns_fork_source(&task.thread_id, &source_id)
+                .await
+                .map_err(crate::agent::AgentError::from)?
+            {
+                owner = Some(task);
+                break;
+            }
         }
-        Some(source) if source.archived_at_ms.is_none() => {
-            ForkCodexSource::Managed(Box::new(source))
-        }
-        Some(_) | None => ForkCodexSource::External {
-            thread_id: source_id,
-        },
+    }
+    let source = ForkTaskSource::External {
+        thread_id: source_id,
+        owner: owner.map(Box::new),
     };
-    let connection = require_codex_thread_connection(&state).await?;
+    let agent = new_task_agent(&state, Some(request.provider.trim()), &cwd).await?;
     let created = state
         .lifecycle
-        .fork_codex_task(
-            &connection,
-            ForkCodexTask {
+        .fork_task(
+            &agent,
+            ForkTask {
                 source,
                 section,
                 cwd,
             },
         )
         .await?;
-    let agent = TaskAgent::Codex(connection);
     let detail = state
         .detail
         .read(&agent, &created.task.thread_id, None)
-        .await?;
+        .await
+        .map_err(|error| fork_created_but_unreadable(&created.task.thread_id, error))?;
     Ok(Json(CreatedTaskResponse {
         detail,
         active_task: created.active_task,
@@ -191,38 +228,51 @@ async fn create_task_fork(
     }))
 }
 
+fn fork_created_but_unreadable(thread_id: &str, error: ApiError) -> ApiError {
+    let mut body = crate::app::error::ErrorBody::new(
+        "task_fork_created",
+        format!("The fork was created, but its details could not be opened: {error}"),
+    );
+    body.created_task_id = Some(thread_id.to_string());
+    ApiError::Diagnostic(Box::new(body))
+}
+
 fn task_fork_source_id(provider: &str, source_id: &str) -> Result<String, ApiError> {
     match provider.trim() {
-        "codex" => {}
-        "claude" => {
+        "codex" | "claude" | "grok" => {}
+        "antigravity" | "agy" => {
             return Err(ApiError::BadRequest {
                 code: "task_fork_unsupported_provider",
-                message: "forking from a Claude session is not supported yet".to_string(),
-            });
-        }
-        "grok" => {
-            return Err(ApiError::BadRequest {
-                code: "task_fork_unsupported_provider",
-                message: "forking from a Grok session is not supported yet".to_string(),
+                message: "Antigravity conversation fork is not supported".into(),
             });
         }
         _ => {
             return Err(ApiError::BadRequest {
                 code: "task_fork_provider_invalid",
-                message: "provider must be codex".to_string(),
+                message: "provider must be codex, claude or grok".into(),
             });
         }
     }
 
     let source_id = source_id.trim();
-    let source_id = source_id
-        .strip_prefix(CODEX_THREAD_URI_PREFIX)
-        .unwrap_or(source_id)
-        .trim();
-    if source_id.is_empty() || source_id.len() > 256 {
+    let source_id = if provider.trim() == "codex" {
+        source_id
+            .strip_prefix(CODEX_THREAD_URI_PREFIX)
+            .unwrap_or(source_id)
+            .trim()
+    } else {
+        source_id
+    };
+    if source_id.is_empty()
+        || source_id.len() > 256
+        || !source_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        || (provider.trim() != "codex" && uuid::Uuid::parse_str(source_id).is_err())
+    {
         return Err(ApiError::BadRequest {
             code: "task_fork_source_id_invalid",
-            message: "sourceId must be a non-empty Codex Thread ID".to_string(),
+            message: "sourceId must be a valid native conversation ID".to_string(),
         });
     }
     Ok(source_id.to_string())
@@ -231,10 +281,11 @@ fn task_fork_source_id(provider: &str, source_id: &str) -> Result<String, ApiErr
 async fn ensure_task_fork_source_provider(
     state: &TaskState,
     source_id: &str,
+    provider: &str,
 ) -> Result<(), ApiError> {
     if task_store_get(state, source_id)
         .await?
-        .is_some_and(|source| source.run_by.provider() != TaskProvider::Codex)
+        .is_some_and(|source| provider_name(source.run_by.provider()) != provider.trim())
     {
         return Err(task_fork_source_provider_mismatch());
     }
@@ -317,24 +368,22 @@ fn non_empty_fork_metadata(value: &str) -> Option<String> {
     (!value.trim().is_empty()).then(|| value.to_string())
 }
 
-fn task_fork_source_read_error(error: CodexThreadError) -> ApiError {
+fn task_fork_source_read_error(error: crate::agent::AgentError) -> ApiError {
     match error {
-        CodexThreadError::ThreadUnavailable(_) => ApiError::NotFound {
+        crate::agent::AgentError::ConversationGone(message) => ApiError::NotFound {
             code: "task_fork_source_unresolved",
-            message: "Codex could not resolve that Thread ID".to_string(),
-        },
-        CodexThreadError::InvalidParams(_) => ApiError::BadRequest {
-            code: "task_fork_source_id_invalid",
-            message: "sourceId is not a valid Codex Thread ID".to_string(),
+            message,
         },
         error => error.into(),
     }
 }
 
-fn task_fork_source_mismatch() -> ApiError {
-    ApiError::BadRequest {
-        code: "task_fork_source_mismatch",
-        message: "Codex returned a different source thread".to_string(),
+fn provider_name(provider: TaskProvider) -> &'static str {
+    match provider {
+        TaskProvider::Codex => "codex",
+        TaskProvider::Claude => "claude",
+        TaskProvider::Grok => "grok",
+        TaskProvider::Antigravity => "antigravity",
     }
 }
 
@@ -387,8 +436,8 @@ async fn fork_source_context(
 #[cfg(test)]
 mod tests {
     use super::super::router;
-    use crate::agent::codex::CodexThreadClient;
     use crate::agent::codex::MockCodexResponse;
+    use crate::agent::codex::{CodexThreadClient, CodexThreadError};
     use axum::body::Body;
     use serde_json::{Value as JsonValue, json};
     use tower::ServiceExt;
@@ -451,7 +500,7 @@ mod tests {
             "thread-source"
         );
         assert!(matches!(
-            task_fork_source_id("claude", "session-source"),
+            task_fork_source_id("antigravity", "session-source"),
             Err(ApiError::BadRequest {
                 code: "task_fork_unsupported_provider",
                 ..
@@ -1169,9 +1218,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fork_rejects_a_claude_task_without_contacting_codex() {
+    async fn fork_rejects_an_antigravity_task_without_contacting_codex() {
         let root = tempfile::tempdir().unwrap();
-        let source_thread_id = "claude-fork-source";
+        let source_thread_id = "agy-fork-source";
         let client = CodexThreadClient::mock(Vec::new());
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -1182,14 +1231,14 @@ mod tests {
                 tables.claim_managed_thread_at_top(
                     ManagedThread::new(
                         source_thread_id,
-                        RunBy::Claude {
+                        RunBy::Antigravity {
                             cwd: root.path().display().to_string(),
                         },
                         Some(2_000),
                         None,
                         None,
                     ),
-                    "Claude source",
+                    "Antigravity source",
                     "section-root",
                     2_000,
                 )
@@ -1198,7 +1247,7 @@ mod tests {
 
         let error = fork_task(State(state), AxumPath(source_thread_id.to_string()))
             .await
-            .expect_err("Claude fork is not part of phase one");
+            .expect_err("Antigravity is excluded");
 
         assert!(matches!(
             error,
@@ -1210,8 +1259,8 @@ mod tests {
         assert!(client.mock_requests().await.is_empty());
     }
     #[test]
-    fn a_grok_source_is_refused_as_unsupported_rather_than_invalid() {
-        let error = task_fork_source_id("grok", "session-source").unwrap_err();
+    fn an_antigravity_source_is_refused_as_unsupported_rather_than_invalid() {
+        let error = task_fork_source_id("antigravity", "session-source").unwrap_err();
         assert!(
             matches!(
                 error,
@@ -1222,5 +1271,124 @@ mod tests {
             ),
             "{error:?}"
         );
+    }
+    #[tokio::test]
+    async fn grok_forks_through_both_http_entry_points_with_child_mcp_and_separate_ownership() {
+        for managed_source in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let codex = CodexThreadClient::mock(Vec::new());
+            let (state, leader, memory, _host) =
+                task_state_with_grok(RootedFs::new(root.path()).unwrap(), codex.clone()).await;
+            seed_section(&state, "section-root", "");
+            let cwd = root.path().canonicalize().unwrap().display().to_string();
+            let source = state
+                .task_runtime
+                .grok()
+                .start_conversation(&cwd, &crate::agent::grok::GrokTurnOptions::default())
+                .await
+                .unwrap();
+            if managed_source {
+                state
+                    .task_store
+                    .transaction(|tables| {
+                        let mut managed = ManagedThread::new(
+                            &source.id,
+                            RunBy::Grok { cwd: cwd.clone() },
+                            Some(2_000),
+                            None,
+                            None,
+                        );
+                        managed.permission_mode =
+                            Some(crate::agent::driver::REVIEWED_PERMISSION_MODE.into());
+                        tables.claim_managed_thread_at_top(
+                            managed,
+                            "Grok source",
+                            "section-root",
+                            2_000,
+                        )
+                    })
+                    .unwrap();
+            }
+            let app = router(state.clone());
+            let preview = app
+                .clone()
+                .oneshot(
+                    axum::http::Request::builder()
+                        .method("POST")
+                        .uri("/api/task-forks/preview")
+                        .header("content-type", "application/json")
+                        .body(Body::from(
+                            json!({"provider":"grok","sourceId":source.id}).to_string(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(preview.status(), axum::http::StatusCode::OK);
+            assert!(leader.requests("session/load").is_empty());
+            assert_eq!(
+                state.task_store.get(&source.id).unwrap().is_some(),
+                managed_source
+            );
+            let (uri, body) = if managed_source {
+                (format!("/api/tasks/{}/fork", source.id), json!({}))
+            } else {
+                (
+                    "/api/task-forks".into(),
+                    json!({"provider":"grok","sourceId":source.id,"sectionId":"section-root"}),
+                )
+            };
+            let response = app
+                .oneshot(
+                    axum::http::Request::builder()
+                        .method("POST")
+                        .uri(uri)
+                        .header("content-type", "application/json")
+                        .body(Body::from(body.to_string()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let status = response.status();
+            let body: JsonValue = serde_json::from_slice(
+                &axum::body::to_bytes(response.into_body(), 1_000_000)
+                    .await
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(status, axum::http::StatusCode::OK, "{body}");
+            let child = body["detail"]["threadId"].as_str().unwrap();
+            assert_ne!(child, source.id);
+            assert_eq!(body["detail"]["provider"], "grok");
+            assert_eq!(body["activeTopPlacement"]["section"]["id"], "section-root");
+            let saved = state.task_store.get(child).unwrap().unwrap();
+            if managed_source {
+                assert_eq!(
+                    saved.permission_mode.as_deref(),
+                    Some(crate::agent::driver::REVIEWED_PERMISSION_MODE)
+                );
+            }
+            assert!(leader.requests("session/close").is_empty());
+            let loaded = leader.requests("session/load");
+            assert!(loaded.iter().all(|request| request["sessionId"] == child));
+            assert_ne!(
+                loaded[0]["mcpServers"][0]["headers"],
+                leader.requests("session/new")[0]["mcpServers"][0]["headers"]
+            );
+            state.task_runtime.grok().erase(child).await.unwrap();
+            assert!(memory.lock().unwrap().cwds.contains_key(&source.id));
+            assert!(codex.mock_requests().await.is_empty());
+        }
+    }
+
+    #[test]
+    fn a_claimed_child_survives_a_detail_failure_as_an_openable_identity() {
+        let error = fork_created_but_unreadable(
+            "known-child",
+            ApiError::Internal("detail read failed".into()),
+        );
+        let body = error.into_error_body();
+        assert_eq!(body.code, "task_fork_created");
+        assert_eq!(body.created_task_id.as_deref(), Some("known-child"));
     }
 }
