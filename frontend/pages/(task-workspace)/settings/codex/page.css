@@ -486,3 +486,10 @@
 .settings-codex-command[hidden] {
   display: none;
 }
+
+.settings-codex-reference-description {
+  margin-block: var(--interface-space-2) 0;
+  color: var(--muted);
+  font-size: var(--settings-page-description-size);
+  line-height: var(--interface-line-height);
+}

@@ -584,7 +584,7 @@ Settings includes:
   available while the canonical runtime is ready or requires restart (the
   ready-state action is neutral, while a required restart retains attention
   styling), Updates with the newest Codex release, whether Codex's own
-  automatic updates are on, and an explicit confirmed **Update Codex…**
+  automatic updates are on, and an explicit confirmed **Update Codex**
   action, and diagnostics, with a **Refresh** action;
 - Claude installation status, shown and never gated on: the plan's usage
   windows as the agent itself reports them, the binary's version and path, the
@@ -665,7 +665,7 @@ expose a compact control when both surfaces use the same server state and
 action.
 
 Codex Settings checks for a newer Codex only when the page opens, on Refresh,
-and after a restart or update. **Update Codex…** runs Codex's own updater once.
+and after a restart or update. **Update Codex** runs Codex's own updater once.
 It is available under the same readiness as restart unless the check found
 Codex current, asks for its own confirmation, and reports what Codex says it
 did, including whether the runtime restarted. A restart and an update never run

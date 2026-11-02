@@ -6,6 +6,10 @@ if [ "$1 $2" != "app-server daemon" ]; then
 fi
 
 case "$3" in
+  version)
+    printf '%s' '{"status":"running","managedCodexPath":"/Users/example/.codex/packages/app-server-daemon/current/bin/codex","managedCodexVersion":"0.166.0","cliVersion":"0.162.1","appServerVersion":"0.166.0"}'
+    exit 0
+    ;;
   start)
     status=started
     ;;

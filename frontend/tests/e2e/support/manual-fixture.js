@@ -1,6 +1,6 @@
 import { crc32, deflateSync } from "node:zlib";
 import { AGENT_CATALOG, agentPermissionModes } from "./agent-catalog-fixture.js";
-import { mockCaffoldUpdate, mockCodexStatus } from "./browser-defaults.js";
+import { mockCaffoldUpdate, mockCodexStatus, mockCodexUpdates } from "./browser-defaults.js";
 import {
   activeListTask,
   canonicalTaskState,
@@ -164,6 +164,11 @@ export async function installManualDefaults(page) {
   });
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({ json: manualCodexStatus() }),
+  );
+  await page.route(/\/api\/codex\/updates(?:\?|$)/, (route) =>
+    route.fulfill({ json: mockCodexUpdates({
+      installedVersion: "0.166.0", runningVersion: "0.166.0", latestVersion: "0.166.0",
+    }) }),
   );
   // The manual shows a Caffold with nothing newer to install.
   await page.route(/\/api\/caffold\/update(?:\?|$)/, (route) =>
@@ -654,20 +659,20 @@ function manualCodexStatus() {
     readiness: {
       ...status.readiness,
       minimumSupportedVersion: "0.155.1",
-      detectedExecutable: { path: "/Users/sam/.local/bin/codex", version: "0.158.0" },
+      detectedExecutable: { path: "/Users/sam/.local/bin/codex", version: "0.162.1" },
       managedExecutable: {
-        path: "/Users/sam/.codex/packages/standalone/current/codex",
-        version: "0.158.0",
+        path: "/Users/sam/.codex/packages/app-server-daemon/current/bin/codex",
+        version: "0.166.0",
       },
-      runningAppServerVersion: "0.158.0",
+      runningAppServerVersion: "0.166.0",
     },
     daemon: {
       ...status.daemon,
-      managedCodexPath: "/Users/sam/.codex/packages/standalone/current/codex",
-      managedCodexVersion: "0.158.0",
+      managedCodexPath: "/Users/sam/.codex/packages/app-server-daemon/current/bin/codex",
+      managedCodexVersion: "0.166.0",
       socketPath: "/Users/sam/.codex/app-server-control/app-server-control.sock",
-      cliVersion: "0.158.0",
-      appServerVersion: "0.158.0",
+      cliVersion: "0.162.1",
+      appServerVersion: "0.166.0",
     },
     account: { accountType: "chatgpt", email: "sam@example.com", planType: "pro" },
     rateLimits: {

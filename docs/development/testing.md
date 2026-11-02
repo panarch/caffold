@@ -278,6 +278,16 @@ edge cases and layout stress data belong in the owning behavioral fixtures.
 
 ## Codex compatibility and live tests
 
+To verify status against an already running daemon without starting, restarting,
+or updating it, run:
+
+```sh
+cargo test -p caffold --lib agent::codex::tests::live_status_reads_the_current_daemon_versions -- --ignored --exact
+```
+
+This opens a temporary proxy connection and reads status and version facts. It
+creates no thread or turn and consumes no model usage.
+
 The installed CLI compatibility check does not authenticate or start a Codex
 session and does not consume model usage:
 

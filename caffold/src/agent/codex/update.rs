@@ -11,13 +11,15 @@ use serde::{Deserialize, Serialize};
 use super::{
     daemon_settings::{self, AutomaticUpdates},
     readiness::inspect_codex_installation,
+    status::CodexDaemonInfo,
+    transport,
 };
 
 /// What Settings shows about keeping Codex current.
 ///
 /// Four facts, each from its own source and each allowed to be missing, with
-/// why under `problems`: the installed CLI, the app-server Caffold last saw
-/// running, the newest release on the channel Codex's own installer reads, and
+/// why under `problems`: the installed and running app-server, the newest
+/// release on the channel Codex's own installer reads, and
 /// whether Codex's updater is on.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,7 +41,7 @@ pub(crate) struct CodexUpdateReport {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 enum UpdateAvailability {
-    /// A newer release is out, or the runtime is not the installed version.
+    /// A newer release or a newer installed app-server can be applied.
     Available,
     UpToDate,
     /// The newest release, or the version to compare it with, is unknown.
@@ -66,57 +68,69 @@ enum CodexUpdateStatus {
     Unsupported,
 }
 
-/// `running_version` is what Caffold's latest readiness check saw.
-pub(super) async fn update_report(running_version: Option<String>) -> CodexUpdateReport {
-    let (installation, latest_version, automatic_updates) = tokio::join!(
-        inspect_codex_installation(),
+/// Each request reads Codex's current daemon report; no readiness cache or
+/// CLI version substitutes for an app-server version.
+pub(super) async fn update_report() -> CodexUpdateReport {
+    let (daemon, latest_version, automatic_updates) = tokio::join!(
+        async {
+            let installation = inspect_codex_installation()
+                .await
+                .map_err(|readiness| readiness.diagnostic_message)?;
+            transport::daemon_versions(&installation.path)
+                .await
+                .map_err(|error| error.to_string())
+        },
         latest_release::fetch(),
         async {
             let codex_home = daemon_settings::codex_home()?;
             daemon_settings::automatic_updates(&codex_home).await
         },
     );
-    let (installed_version, installation_problem) = match installation {
-        Ok(installation) => (installation.executable.version, None),
-        Err(readiness) => (
-            readiness
-                .detected_executable
-                .and_then(|executable| executable.version),
-            Some(readiness.diagnostic_message),
-        ),
-    };
     report(Observations {
-        installed_version,
-        installation_problem,
-        running_version,
+        daemon,
         latest_version,
         automatic_updates,
     })
 }
 
 struct Observations {
-    installed_version: Option<String>,
-    installation_problem: Option<String>,
-    running_version: Option<String>,
+    daemon: Result<CodexDaemonInfo, String>,
     latest_version: Result<Version, String>,
     automatic_updates: Result<AutomaticUpdates, String>,
 }
 
 fn report(observations: Observations) -> CodexUpdateReport {
     let mut problems = BTreeMap::new();
-    if let Some(problem) = observations.installation_problem {
-        problems.insert("installation", problem);
+    let daemon = answered("installation", observations.daemon, &mut problems);
+    let installed_version = daemon
+        .as_ref()
+        .and_then(CodexDaemonInfo::managed_executable)
+        .and_then(|executable| executable.version);
+    let running_version = daemon
+        .as_ref()
+        .and_then(|daemon| daemon.app_server_version.clone());
+    if daemon.is_some() && installed_version.is_none() {
+        problems.insert(
+            "installation",
+            "Codex did not report the installed app-server version.".to_string(),
+        );
+    }
+    if daemon.is_some() && running_version.is_none() {
+        problems.insert(
+            "runtime",
+            "Codex did not report a running app-server version.".to_string(),
+        );
     }
     let latest_version = answered("latestVersion", observations.latest_version, &mut problems);
     let automatic_updates = answered("settings", observations.automatic_updates, &mut problems);
     let update = availability(
-        observations.installed_version.as_deref(),
-        observations.running_version.as_deref(),
+        installed_version.as_deref(),
+        running_version.as_deref(),
         latest_version.as_ref(),
     );
     CodexUpdateReport {
-        installed_version: observations.installed_version,
-        running_version: observations.running_version,
+        installed_version,
+        running_version,
         latest_version: latest_version.map(|version| version.to_string()),
         automatic_updates,
         update,
@@ -138,7 +152,7 @@ fn answered<T>(
     }
 }
 
-/// A runtime that is not the installed version needs an update to apply it,
+/// A runtime older than the installed app-server can apply that installation,
 /// whatever the newest release is. Otherwise the newest release is compared
 /// with what runs, or with what is installed when nothing runs.
 fn availability(
@@ -149,7 +163,7 @@ fn availability(
     let installed = installed.and_then(|version| Version::parse(version).ok());
     let running = running.and_then(|version| Version::parse(version).ok());
     if let (Some(installed), Some(running)) = (&installed, &running)
-        && installed != running
+        && installed > running
     {
         return UpdateAvailability::Available;
     }
@@ -237,9 +251,11 @@ mod tests {
     #[test]
     fn reports_every_fact_that_answered_in_camel_case() {
         let report = report(Observations {
-            installed_version: Some("0.155.1".to_string()),
-            installation_problem: None,
-            running_version: Some("0.155.1".to_string()),
+            daemon: Ok(serde_json::from_value(json!({
+                "status": "running", "cliVersion": "0.162.1",
+                "managedCodexVersion": "0.155.1", "appServerVersion": "0.155.1"
+            }))
+            .unwrap()),
             latest_version: Ok(Version::parse("0.156.0").unwrap()),
             automatic_updates: Ok(AutomaticUpdates::Disabled),
         });
@@ -259,9 +275,7 @@ mod tests {
     #[test]
     fn a_source_that_could_not_answer_leaves_its_reason_and_no_value() {
         let report = report(Observations {
-            installed_version: Some("0.150.0".to_string()),
-            installation_problem: Some("Codex CLI 0.150.0 is older than the minimum.".to_string()),
-            running_version: None,
+            daemon: Err("Codex CLI 0.150.0 is older than the minimum.".to_string()),
             latest_version: Err("The Codex release channel answered HTTP 503.".to_string()),
             automatic_updates: Err("settings.json does not hold a JSON object.".to_string()),
         });
@@ -269,7 +283,6 @@ mod tests {
         assert_eq!(
             serde_json::to_value(report).unwrap(),
             json!({
-                "installedVersion": "0.150.0",
                 "update": "unknown",
                 "problems": {
                     "installation": "Codex CLI 0.150.0 is older than the minimum.",
@@ -278,6 +291,47 @@ mod tests {
                 }
             })
         );
+    }
+
+    #[test]
+    fn cli_difference_is_reference_information_only() {
+        for cli in ["0.162.1", "0.170.0"] {
+            let report = report(Observations {
+                daemon: Ok(serde_json::from_value(json!({ "status": "running",
+                    "cliVersion": cli, "managedCodexVersion": "0.166.0",
+                    "appServerVersion": "0.166.0" }))
+                .unwrap()),
+                latest_version: Ok(Version::parse("0.166.0").unwrap()),
+                automatic_updates: Ok(AutomaticUpdates::Disabled),
+            });
+            assert_eq!(report.update, UpdateAvailability::UpToDate);
+            assert_eq!(report.installed_version.as_deref(), Some("0.166.0"));
+        }
+        assert_eq!(
+            availability(
+                Some("0.165.0"),
+                Some("0.166.0"),
+                Some(&Version::parse("0.166.0").unwrap())
+            ),
+            UpdateAvailability::UpToDate
+        );
+    }
+
+    #[test]
+    fn missing_daemon_versions_are_not_filled_from_cli() {
+        let report = report(Observations {
+            daemon: Ok(serde_json::from_value(
+                json!({"status": "running", "cliVersion": "0.162.1"}),
+            )
+            .unwrap()),
+            latest_version: Ok(Version::parse("0.166.0").unwrap()),
+            automatic_updates: Ok(AutomaticUpdates::Disabled),
+        });
+        assert_eq!(report.update, UpdateAvailability::Unknown);
+        assert!(report.installed_version.is_none());
+        assert!(report.running_version.is_none());
+        assert!(report.problems.contains_key("installation"));
+        assert!(report.problems.contains_key("runtime"));
     }
 
     #[test]

@@ -10,5 +10,10 @@ if [ "$1 $2 $3" = "app-server daemon --help" ] ||
   exit 0
 fi
 
+if [ "$1 $2 $3" = "app-server daemon version" ]; then
+  printf '%s' '{"status":"running","cliVersion":"0.155.1","managedCodexVersion":"0.166.0","appServerVersion":"0.166.0"}'
+  exit 0
+fi
+
 echo "fake Codex does not start an app-server" >&2
 exit 1

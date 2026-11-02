@@ -53,7 +53,7 @@ export interface RequestCodexResetCreditDetail {
 const CODEX_INSTALL_COMMAND =
   "curl -fsSL https://chatgpt.com/codex/install.sh | sh";
 const CODEX_SERVICE_STATUS_URL = "https://status.openai.com";
-const CODEX_SETUP_GUIDE = "https://learn.chatgpt.com/docs/codex/cli";
+const CODEX_SETUP_GUIDE = "https://learn.chatgpt.com/docs/cli";
 const CONNECTION_PRESENTATION = Object.freeze({
   pending: Object.freeze({ label: "Checking", state: "" }),
   available: Object.freeze({ label: "Connected", state: "positive" }),
@@ -211,16 +211,16 @@ export class CaffoldSettingsCodexPage extends CaffoldElement {
     const restarting = ["restarting", "refreshing"].includes(this.restartState);
     const readinessLabel = formatCodexReadiness(snapshot);
     const runtimeSummary = restartRequired
-      ? `Codex ${readiness.managedExecutable?.version ?? "target"} is installed while runtime ${readiness.runningAppServerVersion ?? "another version"} is still running.`
+      ? `App-server ${readiness.managedExecutable?.version ?? "target"} is installed while runtime ${readiness.runningAppServerVersion ?? "another version"} is still running.`
       : readiness?.state === "ready"
         ? "The shared Codex runtime is ready.\nYou can restart it manually after confirmation."
         : "Caffold enables an explicit runtime restart only when the backend reports a supported restart target.";
     const restartLabel =
       this.restartState === "refreshing"
-        ? "Checking…"
+        ? "Checking"
         : restarting
-          ? "Restarting…"
-          : "Restart runtime…";
+          ? "Restarting"
+          : "Restart runtime";
     const restartDisabled =
       snapshot?.phase !== "loaded" ||
       !codexRuntimeRestartAvailable(status) ||
@@ -311,6 +311,14 @@ export class CaffoldSettingsCodexPage extends CaffoldElement {
             data-state=${this.updateState}
             ?hidden=${!this.updateMessage}
           >${this.updateMessage}</p>
+          <section aria-labelledby="settings-codex-cli-title">
+            <h3 id="settings-codex-cli-title">CLI and diagnostics</h3>
+            <p class="settings-codex-reference-description">The CLI connects to and manages the App-server. Its version can differ from the App-server version.</p>
+            <caffold-settings-detail-list
+              data-codex-cli
+              .rows=${cliRows(snapshot)}
+            ></caffold-settings-detail-list>
+          </section>
           <section
             class="settings-codex-diagnostic"
             aria-labelledby="settings-codex-diagnostic-title"
@@ -554,10 +562,10 @@ export class CaffoldSettingsCodexPage extends CaffoldElement {
     const checking = !report && !unavailable;
     const label =
       this.updateState === "refreshing"
-        ? "Checking…"
+        ? "Checking"
         : updating
-          ? "Updating…"
-          : "Update Codex…";
+          ? "Updating"
+          : "Update Codex";
     const summary = updatesText(this.updatesSummary(), checking);
     const latest = updatesText(
       report
@@ -629,17 +637,19 @@ export class CaffoldSettingsCodexPage extends CaffoldElement {
         runningVersion &&
         installedVersion !== runningVersion
       ) {
-        return `Codex ${installedVersion} is installed while the runtime is on ${runningVersion}.`;
+        return `App-server ${installedVersion} is installed while the runtime is on ${runningVersion}.`;
       }
       return runningVersion
-        ? `Codex ${latestVersion} is available. The runtime is on ${runningVersion}.`
-        : `Codex ${latestVersion} is available. Codex ${installedVersion} is installed.`;
+        ? `App-server ${latestVersion} is available. The runtime is on ${runningVersion}.`
+        : `App-server ${latestVersion} is available. App-server ${installedVersion} is installed.`;
     }
     if (report.update === "upToDate") {
-      return "Codex is up to date.";
+      return "App-server is up to date.";
     }
     const reason =
-      report.problems?.latestVersion ?? report.problems?.installation;
+      report.problems?.latestVersion ??
+      report.problems?.installation ??
+      report.problems?.runtime;
     return reason
       ? `Caffold could not check for a Codex update.\n${reason}`
       : "Caffold could not check for a Codex update.";
@@ -731,34 +741,51 @@ function agentRows(
     },
     { key: "plan", label: "Plan", value: answered(formatCodexPlan(status)) },
     {
-      key: "minimum",
-      label: "Minimum supported",
-      value: answered(readiness?.minimumSupportedVersion ?? "Unknown"),
+      key: "runtime-version",
+      label: "App-server version",
+      value: answered(readiness?.runningAppServerVersion ?? "Unknown"),
     },
     {
-      key: "detected-version",
-      label: "Detected version",
+      key: "minimum",
+      label: "Minimum App-server version",
+      value: answered(readiness?.minimumSupportedVersion ?? "Unknown"),
+    },
+    ...(readiness?.runningAppServerVersion &&
+    readiness.managedExecutable?.version === readiness.runningAppServerVersion
+      ? []
+      : [
+          {
+            key: "managed-version",
+            label: "Installed App-server version",
+            value: answered(readiness?.managedExecutable?.version ?? "Unknown"),
+          },
+        ]),
+  ];
+}
+
+function cliRows(snapshot: CodexStatusSnapshot | null): SettingsDetailRow[] {
+  const readiness = snapshot?.status?.readiness;
+  const answered = (value: string) => (readiness ? value : undefined);
+  return [
+    {
+      key: "cli-version",
+      label: "CLI version",
       value: answered(readiness?.detectedExecutable?.version ?? "Not detected"),
     },
     {
-      key: "detected-path",
-      label: "Detected path",
+      key: "cli-path",
+      label: "CLI path",
       value: answered(readiness?.detectedExecutable?.path ?? "Not detected"),
     },
     {
-      key: "managed-version",
-      label: "Managed version",
-      value: answered(readiness?.managedExecutable?.version ?? "Not available"),
+      key: "cli-minimum",
+      label: "Minimum CLI version",
+      value: answered(readiness?.minimumSupportedVersion ?? "Unknown"),
     },
     {
       key: "managed-path",
-      label: "Managed path",
-      value: answered(readiness?.managedExecutable?.path ?? "Not available"),
-    },
-    {
-      key: "runtime-version",
-      label: "App-server runtime",
-      value: answered(readiness?.runningAppServerVersion ?? "Not running"),
+      label: "App-server path",
+      value: answered(readiness?.managedExecutable?.path ?? "Unknown"),
     },
   ];
 }

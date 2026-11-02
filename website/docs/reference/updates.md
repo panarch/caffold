@@ -43,12 +43,14 @@ An update restarts the Caffold server, not the agents:
 ## Codex
 
 Caffold does not update Codex in the background. **Settings → Codex** shows the
-installed version, the running version, the newest release, and whether
-Codex's own automatic updates are on.
+running App-server version, a different installed App-server version, the
+newest release, and whether Codex's own automatic updates are on. The CLI
+version is reference information; it can differ without requiring an
+App-server update.
 
-**Update Codex…** asks for confirmation, runs Codex's own updater once, and
+**Update Codex** asks for confirmation, runs Codex's own App-server updater once, and
 reports what Codex did, including whether its runtime restarted.
-**Restart runtime…** restarts that runtime without updating it. Every Codex
+**Restart runtime** restarts that runtime without updating it. Every Codex
 Task, and any other app connected to Codex, shares that runtime, so both can
 interrupt running work and neither runs without your confirmation.
 

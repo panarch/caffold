@@ -178,13 +178,13 @@ test("a failed manual Codex refresh cannot authorize runtime actions from retain
   });
   await page.goto("/settings/codex");
   const settings = page.locator("caffold-settings-codex-page");
-  const restart = settings.getByRole("button", { name: "Restart runtime…", exact: true });
+  const restart = settings.getByRole("button", { name: "Restart runtime", exact: true });
   await expect(restart).toBeEnabled();
   await expect(settings.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
   await settings.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(settings).toContainText("Status unavailable");
   await expect(restart).toBeDisabled();
-  await expect(settings.getByRole("button", { name: "Update Codex…", exact: true })).toBeDisabled();
+  await expect(settings.getByRole("button", { name: "Update Codex", exact: true })).toBeDisabled();
   await settings.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(restart).toBeEnabled();
   expect(reads).toBe(3);
@@ -209,7 +209,7 @@ test("a Codex restart completed while hidden requires a fresh report on immediat
   await page.goto("/settings/codex");
   const settings = page.locator("caffold-settings-codex-page");
   await expect(page.locator("caffold-app-shell")).toHaveAttribute("data-foreground-recovery-trigger", "bootstrap");
-  await settings.getByRole("button", { name: "Restart runtime…", exact: true }).click();
+  await settings.getByRole("button", { name: "Restart runtime", exact: true }).click();
   await page.getByRole("dialog", { name: "Restart Codex runtime?" }).getByRole("button", { name: "Restart Codex", exact: true }).click();
   await expect.poll(() => settings.evaluate(element => element.runtimeAction)).toBe("restarting");
   await page.evaluate(() => {
@@ -225,7 +225,7 @@ test("a Codex restart completed while hidden requires a fresh report on immediat
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await expect.poll(() => reads).toBe(2);
-  await expect(settings.getByRole("button", { name: "Restart runtime…", exact: true })).toBeEnabled();
+  await expect(settings.getByRole("button", { name: "Restart runtime", exact: true })).toBeEnabled();
 });
 
 test("Claude rejects a response superseded by re-entry and retries a failure on manual Refresh", { tag: "@server-changes" }, async ({ page }) => {

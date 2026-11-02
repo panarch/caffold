@@ -163,6 +163,29 @@ pub(super) async fn update_daemon(
     .await
 }
 
+/// Reads the current installation and running daemon without starting either.
+pub(super) async fn daemon_versions(
+    codex_executable: &Path,
+) -> Result<CodexDaemonInfo, CodexThreadError> {
+    let daemon: CodexDaemonInfo = daemon_command_with_timeout(
+        codex_executable,
+        DaemonCommand::Version,
+        DAEMON_COMMAND_TIMEOUT,
+    )
+    .await?;
+    for version in [&daemon.managed_codex_version, &daemon.app_server_version]
+        .into_iter()
+        .flatten()
+    {
+        if semver::Version::parse(version).is_err() {
+            return Err(CodexThreadError::Protocol(format!(
+                "invalid Codex app-server daemon version: {version}"
+            )));
+        }
+    }
+    Ok(daemon)
+}
+
 async fn daemon_command_with_timeout<Response: DeserializeOwned>(
     codex_executable: &Path,
     daemon_command: DaemonCommand,
@@ -204,6 +227,7 @@ enum DaemonCommand {
     Start,
     Restart,
     Update,
+    Version,
 }
 
 impl DaemonCommand {
@@ -212,6 +236,7 @@ impl DaemonCommand {
             Self::Start => "start",
             Self::Restart => "restart",
             Self::Update => "update",
+            Self::Version => "version",
         }
     }
 
@@ -220,6 +245,7 @@ impl DaemonCommand {
             Self::Start => "daemon start",
             Self::Restart => "daemon restart",
             Self::Update => "daemon update",
+            Self::Version => "daemon version",
         }
     }
 
@@ -228,6 +254,9 @@ impl DaemonCommand {
     fn failure(self, message: String) -> CodexThreadError {
         match self {
             Self::Start | Self::Restart => CodexThreadError::StartFailed(message),
+            Self::Version => CodexThreadError::Protocol(format!(
+                "Codex app-server version query failed: {message}"
+            )),
             Self::Update => CodexThreadError::UpdateFailed(message),
         }
     }
@@ -263,6 +292,67 @@ mod tests {
             assert_eq!(daemon.status, status);
             assert_eq!(daemon.pid, Some(32723));
             assert_eq!(daemon.app_server_version.as_deref(), Some("0.146.1"));
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn reads_daemon_versions_without_starting_or_updating_it() {
+        let daemon = daemon_versions(&checked_in_codex_fixture("fake-codex-daemon"))
+            .await
+            .unwrap();
+        assert_eq!(daemon.status, "running");
+        assert_eq!(daemon.cli_version.as_deref(), Some("0.162.1"));
+        assert_eq!(daemon.managed_codex_version.as_deref(), Some("0.166.0"));
+        assert_eq!(daemon.app_server_version.as_deref(), Some("0.166.0"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn version_query_reports_process_and_response_failures() {
+        for (fixture, expected) in [
+            ("fake-codex-daemon-failure", "version query failed"),
+            ("fake-codex-invalid-response", "daemon version response"),
+        ] {
+            let error = daemon_versions(&checked_in_codex_fixture(fixture))
+                .await
+                .unwrap_err();
+            assert!(error.to_string().contains(expected), "{error}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn version_query_preserves_missing_fields_and_rejects_malformed_versions() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        let executable = directory.path().join("codex");
+        for (response, valid) in [
+            (r#"{"status":"running","cliVersion":"0.162.1"}"#, true),
+            (
+                r#"{"status":"running","managedCodexPath":"/home/example/.codex/packages/standalone/current/bin/codex","managedCodexVersion":"0.162.1","cliVersion":"0.155.1","appServerVersion":"0.166.0"}"#,
+                true,
+            ),
+            (
+                r#"{"status":"running","managedCodexVersion":"invalid"}"#,
+                false,
+            ),
+            (r#"{"status":"running","appServerVersion":17}"#, false),
+            (r#"{}"#, false),
+        ] {
+            std::fs::write(
+                &executable,
+                format!("#!/bin/sh\nprintf '%s' '{response}'\n"),
+            )
+            .unwrap();
+            std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let result = daemon_versions(&executable).await;
+            if valid {
+                let daemon = result.unwrap();
+                assert!(daemon.managed_executable().is_none());
+            } else {
+                assert!(result.is_err(), "{response}");
+            }
         }
     }
 
@@ -359,6 +449,7 @@ mod tests {
         for (command, expected_phase) in [
             (DaemonCommand::Restart, "daemon restart"),
             (DaemonCommand::Update, "daemon update"),
+            (DaemonCommand::Version, "daemon version"),
         ] {
             let error = daemon_command_with_timeout::<serde_json::Value>(
                 &codex,
