@@ -80,6 +80,12 @@ impl TaskRuntime {
                             runtime.answer_claude_tool_ask(&conversation_id, ask).await;
                         });
                     }
+                    Ok(ClaudeRuntimeEvent::Closed { conversation_id }) => {
+                        runtime
+                            .sessions
+                            .session_needs_opening_again(&conversation_id)
+                            .await;
+                    }
                     Ok(ClaudeRuntimeEvent::Unreachable {
                         conversation_id,
                         message,

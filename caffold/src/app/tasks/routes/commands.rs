@@ -4060,7 +4060,7 @@ mod claude_tests {
     use crate::agent::codex::CodexThreadClient;
     use crate::app::tasks::TaskState;
     use crate::app::tasks::routes::router;
-    use crate::app::tasks::sessions::SessionSnapshot;
+    use crate::app::tasks::sessions::{SessionLifecycle, SessionSnapshot};
     use crate::app::tasks::test_support::task_state_with_agents;
     use crate::fs::RootedFs;
     use crate::task_store::{ManagedThread, RunBy};
@@ -4702,6 +4702,46 @@ mod claude_tests {
             );
             sleep(Duration::from_millis(20)).await;
         }
+    }
+
+    #[tokio::test]
+    async fn a_prompt_after_the_claude_runtime_restarted_resumes_the_task() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (status, started) = call(&app, prompt("Say hello.")).await;
+        assert_eq!(status, StatusCode::OK, "{started}");
+
+        state
+            .task_runtime
+            .claude()
+            .restart_runtime()
+            .await
+            .expect("the runtime restarts");
+        until(&state, "the restart lets go of the Task", |snapshot| {
+            snapshot.lifecycle != SessionLifecycle::Subscribed
+        })
+        .await;
+        let (status, prompted) = call(&app, prompt("Are you still there?")).await;
+
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        let spawn = runner.spawned(SESSION).await.expect("a session again");
+        assert!(
+            spawn
+                .argv
+                .windows(2)
+                .any(|pair| pair[0] == "--resume" && pair[1] == SESSION),
+            "the conversation is resumed: {:?}",
+            spawn.argv
+        );
+        assert!(
+            runner
+                .prompts(SESSION)
+                .await
+                .iter()
+                .any(|frame| frame["uuid"] == prompted["turnId"]),
+            "the prompt reaches the resumed session"
+        );
     }
 
     /// A watched Claude Task the stand-in runner speaks for.
