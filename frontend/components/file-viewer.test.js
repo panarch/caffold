@@ -26,6 +26,8 @@ function viewerWith(state, children = {}) {
     diffViewer: { value: children.diffViewer },
     preview: { value: children.preview },
     documentViewer: { value: children.documentViewer },
+    visualDiff: { value: children.visualDiff },
+    changeControl: { value: children.changeControl },
   });
   return owner;
 }
@@ -150,6 +152,7 @@ function retainingViewer(state) {
     retainedContent: null,
     renders: [],
     detailsPopover: { value: null },
+    previewFiles: {},
   };
   // Each state the viewer shows is one it draws.
   owner.show = () => {
@@ -163,6 +166,7 @@ function retainingViewer(state) {
     "deactivate",
     "closeDetailsPopover",
     "releasePreviewFile",
+    "releasePreviewFiles",
     "setNotice",
     "setEmpty",
   ]) {
@@ -292,7 +296,9 @@ function fileServer(files) {
   };
   const previous = globalThis.fetch;
   globalThis.fetch = async (url) => {
-    const path = new URL(url).searchParams.get("path");
+    // A blob is named by its id; any other file by its path.
+    const query = new URL(url).searchParams;
+    const path = query.get("oid") ?? query.get("path");
     requests.push(path);
     if (server.holding) {
       await new Promise((resume) => waiting.push(resume));
@@ -324,7 +330,7 @@ function previewHost(status = "document") {
     state: status === "image"
       ? { status, image: { path: "picture.png", name: "picture.png" } }
       : { status, document: { kind: "pdf", path: "document.pdf" } },
-    previewFile: null,
+    previewFiles: {},
     imageSource: "",
     detailsPopover: { value: null },
     setError: (presentation, error) => errors.push(error.message),
@@ -358,14 +364,14 @@ test("fetches a preview once, hands a document viewer that fetch, and keeps the 
   const server = fileServer({ "a1.pdf": { text: "first", version: "v1" } });
   const { host, handed } = previewHost();
 
-  host.showPreviewFile(previewAddress("a1.pdf"));
-  assert.equal(host.previewFile.phase, "reading");
+  host.showPreviewFile("file", previewAddress("a1.pdf"));
+  assert.equal(host.previewFiles.file.phase, "reading");
   assert.equal(handed.length, 1, "the viewer is handed the fetch itself");
-  await until(() => host.previewFile.phase === "shown");
+  await until(() => host.previewFiles.file.phase === "shown");
 
   assert.equal(await blobText(handed[0].file), "first");
-  assert.equal(host.previewFile.version, "v1");
-  host.showPreviewFile(previewAddress("a1.pdf"));
+  assert.equal(host.previewFiles.file.version, "v1");
+  host.showPreviewFile("file", previewAddress("a1.pdf"));
   assert.deepEqual(server.requests, ["a1.pdf"], "showing the same file again fetches nothing");
   assert.equal(handed.length, 1);
 });
@@ -373,12 +379,12 @@ test("fetches a preview once, hands a document viewer that fetch, and keeps the 
 test("a recheck keeps a file the server answers with the same version", async () => {
   const server = fileServer({ "a2.pdf": { text: "first", version: "v1" } });
   const { host, handed } = previewHost();
-  host.showPreviewFile(previewAddress("a2.pdf"));
-  await until(() => host.previewFile.phase === "shown");
+  host.showPreviewFile("file", previewAddress("a2.pdf"));
+  await until(() => host.previewFiles.file.phase === "shown");
 
-  host.recheckPreviewFile();
-  assert.equal(host.previewFile.phase, "rechecking");
-  await until(() => host.previewFile.phase === "shown");
+  host.recheckPreviewFile("file");
+  assert.equal(host.previewFiles.file.phase, "rechecking");
+  await until(() => host.previewFiles.file.phase === "shown");
 
   assert.deepEqual(server.requests, ["a2.pdf", "a2.pdf"]);
   assert.equal(handed.length, 1, "nothing is drawn again");
@@ -388,16 +394,16 @@ test("a recheck hands over a newer version as a newer copy", async () => {
   const files = { "a3.pdf": { text: "first", version: "v1" } };
   fileServer(files);
   const { host, handed } = previewHost();
-  host.showPreviewFile(previewAddress("a3.pdf"));
-  await until(() => host.previewFile.phase === "shown");
+  host.showPreviewFile("file", previewAddress("a3.pdf"));
+  await until(() => host.previewFiles.file.phase === "shown");
 
   files["a3.pdf"] = { text: "second", version: "v2" };
-  host.recheckPreviewFile();
-  await until(() => host.previewFile.phase === "shown" && handed.length === 2);
+  host.recheckPreviewFile("file");
+  await until(() => host.previewFiles.file.phase === "shown" && handed.length === 2);
 
   assert.equal(await blobText(handed[1].file), "second");
   assert.equal(handed[1].newerCopy, true);
-  assert.equal(host.previewFile.version, "v2");
+  assert.equal(host.previewFiles.file.version, "v2");
 });
 
 test("a recheck asked for during a fetch asks once more after it", async () => {
@@ -405,24 +411,24 @@ test("a recheck asked for during a fetch asks once more after it", async () => {
   const server = fileServer(files);
   const { host, handed } = previewHost();
   server.holding = true;
-  host.showPreviewFile(previewAddress("a4.pdf"));
-  host.recheckPreviewFile();
-  host.recheckPreviewFile();
-  assert.equal(host.previewFile.phase, "reading", "a fetch on its way is not doubled");
+  host.showPreviewFile("file", previewAddress("a4.pdf"));
+  host.recheckPreviewFile("file");
+  host.recheckPreviewFile("file");
+  assert.equal(host.previewFiles.file.phase, "reading", "a fetch on its way is not doubled");
 
   files["a4.pdf"] = { text: "second", version: "v2" };
   server.letThrough();
-  await until(() => server.requests.length === 2 && host.previewFile.phase === "shown");
+  await until(() => server.requests.length === 2 && host.previewFiles.file.phase === "shown");
 
-  assert.equal(host.previewFile.version, "v2");
+  assert.equal(host.previewFiles.file.version, "v2");
   assert.equal(await blobText(handed.at(-1).file), "second");
 
   server.holding = true;
-  host.recheckPreviewFile();
-  host.recheckPreviewFile();
-  assert.equal(host.previewFile.phase, "rechecking");
+  host.recheckPreviewFile("file");
+  host.recheckPreviewFile("file");
+  assert.equal(host.previewFiles.file.phase, "rechecking");
   server.letThrough();
-  await until(() => server.requests.length === 4 && host.previewFile.phase === "shown");
+  await until(() => server.requests.length === 4 && host.previewFiles.file.phase === "shown");
   assert.equal(server.requests.length, 4, "one recheck while rechecking asks once more");
 });
 
@@ -431,15 +437,15 @@ test("a failed first fetch shows its failure and the next showing fetches again"
   const server = fileServer(files);
   const { host, errors } = previewHost("image");
 
-  host.showPreviewFile(previewAddress("a5.png"));
-  await until(() => host.previewFile.phase === "failed");
+  host.showPreviewFile("file", previewAddress("a5.png"));
+  await until(() => host.previewFiles.file.phase === "failed");
   assert.deepEqual(errors, ["Image preview failed to load."]);
 
-  host.recheckPreviewFile();
-  assert.equal(host.previewFile.phase, "failed", "a recheck of a failed file does nothing");
+  host.recheckPreviewFile("file");
+  assert.equal(host.previewFiles.file.phase, "failed", "a recheck of a failed file does nothing");
   files["a5.png"].failing = false;
-  host.showPreviewFile(previewAddress("a5.png"));
-  await until(() => host.previewFile.phase === "shown");
+  host.showPreviewFile("file", previewAddress("a5.png"));
+  await until(() => host.previewFiles.file.phase === "shown");
   assert.deepEqual(server.requests, ["a5.png", "a5.png"]);
 });
 
@@ -447,14 +453,14 @@ test("a failed recheck keeps the copy already drawn", async () => {
   const files = { "a6.pdf": { text: "first", version: "v1" } };
   fileServer(files);
   const { host, handed } = previewHost();
-  host.showPreviewFile(previewAddress("a6.pdf"));
-  await until(() => host.previewFile.phase === "shown");
+  host.showPreviewFile("file", previewAddress("a6.pdf"));
+  await until(() => host.previewFiles.file.phase === "shown");
 
   files["a6.pdf"].failing = true;
-  host.recheckPreviewFile();
-  await until(() => host.previewFile.phase === "shown" && host.previewFile.fetching === null);
+  host.recheckPreviewFile("file");
+  await until(() => host.previewFiles.file.phase === "shown" && host.previewFiles.file.fetching === null);
 
-  assert.equal(host.previewFile.version, "v1");
+  assert.equal(host.previewFiles.file.version, "v1");
   assert.equal(handed.length, 1);
 });
 
@@ -462,7 +468,7 @@ test("an image is drawn from its copy, again only for a newer version", async ()
   const files = { "a7.png": { text: "png", version: "v1", type: "image/png" } };
   fileServer(files);
   const { host } = previewHost("image");
-  host.showPreviewFile(previewAddress("a7.png"));
+  host.showPreviewFile("file", previewAddress("a7.png"));
   await until(() => host.imageSource !== "");
   const first = host.imageSource;
   assert.match(first, /^blob:/);
@@ -471,13 +477,13 @@ test("an image is drawn from its copy, again only for a newer version", async ()
   host.drawPreviewImage();
   assert.equal(host.imageSource, first, "a picture shown anew takes the same copy");
 
-  host.recheckPreviewFile();
-  await until(() => host.previewFile.phase === "shown");
+  host.recheckPreviewFile("file");
+  await until(() => host.previewFiles.file.phase === "shown");
   assert.equal(host.imageSource, first, "the same version is not drawn again");
 
   files["a7.png"] = { text: "png2", version: "v2", type: "image/png" };
-  host.recheckPreviewFile();
-  await until(() => host.previewFile.version === "v2");
+  host.recheckPreviewFile("file");
+  await until(() => host.previewFiles.file.version === "v2");
   assert.notEqual(host.imageSource, first);
   assert.match(host.imageSource, /^blob:/);
 });
@@ -489,12 +495,12 @@ test("deactivation lets go of the preview file and its fetch", () => {
   host.closeDetailsPopover = () => {};
   server.holding = true;
 
-  host.showPreviewFile(previewAddress("a8.pdf"));
-  const fetching = host.previewFile.fetching;
+  host.showPreviewFile("file", previewAddress("a8.pdf"));
+  const fetching = host.previewFiles.file.fetching;
   host.deactivate();
 
   assert.equal(fetching.signal.aborted, true);
-  assert.equal(host.previewFile, null);
+  assert.equal(host.previewFiles.file, undefined);
   server.letThrough();
 });
 
@@ -503,16 +509,16 @@ test("another file, or letting go, ends the fetch of the one before", () => {
   const { host } = previewHost();
   server.holding = true;
 
-  host.showPreviewFile(previewAddress("a9.pdf"));
-  const first = host.previewFile.fetching;
-  host.showPreviewFile(previewAddress("b9.pdf"));
+  host.showPreviewFile("file", previewAddress("a9.pdf"));
+  const first = host.previewFiles.file.fetching;
+  host.showPreviewFile("file", previewAddress("b9.pdf"));
   assert.equal(first.signal.aborted, true);
-  assert.equal(host.previewFile.url, previewAddress("b9.pdf"));
+  assert.equal(host.previewFiles.file.url, previewAddress("b9.pdf"));
 
-  const second = host.previewFile.fetching;
-  host.releasePreviewFile();
+  const second = host.previewFiles.file.fetching;
+  host.releasePreviewFile("file");
   assert.equal(second.signal.aborted, true);
-  assert.equal(host.previewFile, null);
+  assert.equal(host.previewFiles.file, undefined);
   server.letThrough();
 });
 
@@ -522,11 +528,144 @@ test("a recheck applies only to a preview held before the new state", async () =
   globalThis.window = { location: new URL(ORIGIN) };
 
   host.setDocument({ kind: "pdf", path: "a10.pdf" }, { recheck: true });
-  await until(() => host.previewFile.phase === "shown");
+  await until(() => host.previewFiles.file.phase === "shown");
   assert.deepEqual(server.requests, ["a10.pdf"], "a file shown for the first time is fetched once");
 
   host.setDocument({ kind: "pdf", path: "a10.pdf" }, { recheck: true });
-  await until(() => server.requests.length === 2 && host.previewFile.phase === "shown");
+  await until(() => server.requests.length === 2 && host.previewFiles.file.phase === "shown");
   host.setDocument({ kind: "pdf", path: "a10.pdf" });
   assert.equal(server.requests.length, 2, "a load without recheck shows the file held");
+});
+
+test("Visual fetches each side once and asks again only for the working tree side", async () => {
+  const kept = "b".repeat(40);
+  const gone = "c".repeat(40);
+  const server = fileServer({
+    [kept]: { text: "before", version: kept, type: "image/png" },
+    "repo/v1.png": { text: "after", version: "v1", type: "image/png" },
+  });
+  const { host, errors } = previewHost("image");
+  globalThis.window = { location: new URL(ORIGIN) };
+  const handed = [];
+  Object.defineProperty(host, "visualDiffElement", {
+    get: () => ({ setComparison: ({ sides }) => handed.push(sides) }),
+  });
+  const presentation = { title: "v1.png" };
+  const versions = {
+    path: "repo/v1.png",
+    repository: { rootPath: "repo" },
+    before: { source: "blob", oid: kept },
+    after: { source: "workingTree" },
+  };
+  const fetched = () =>
+    handed.at(-1)?.before?.status === "fetched" &&
+    handed.at(-1)?.after?.status === "fetched";
+
+  host.setVisual(versions, { presentation });
+  assert.deepEqual(handed.at(-1), {
+    before: { status: "loading" },
+    after: { status: "loading" },
+  });
+  await until(fetched);
+  assert.deepEqual([...server.requests].sort(), [kept, "repo/v1.png"]);
+  assert.equal(handed.at(-1).before.bytes, 6);
+
+  host.setVisual(versions, { recheck: true, presentation });
+  await until(() => server.requests.length === 3 && host.previewFiles.after.phase === "shown");
+  assert.equal(server.requests.at(-1), "repo/v1.png", "a blob is never asked again");
+
+  host.setVisual({ ...versions, before: { source: "blob", oid: gone } }, { presentation });
+  await until(() => handed.at(-1)?.before?.status === "failed");
+  assert.equal(handed.at(-1).after.status, "fetched", "the other side stays");
+  assert.deepEqual(errors, [], "one side failing is not the viewer's error");
+
+  host.setVisual({ ...versions, before: null }, { presentation });
+  assert.equal(handed.at(-1).before, null);
+  assert.equal(host.previewFiles.before, undefined, "a side the change lacks is let go");
+});
+
+test("offers the change choices its owner names and hands a choice back", () => {
+  const owner = viewerWith({ status: "visual" });
+  const intents = [];
+  owner.dispatchEvent = (event) => intents.push([event.type, event.detail]);
+  let stopped = false;
+
+  owner.setChangeChoices({
+    choices: [
+      { value: "diff", label: "Diff" },
+      { value: "visual", label: "Visual" },
+    ],
+    selected: "diff",
+  });
+  owner.chooseChange({
+    detail: { value: "visual" },
+    stopPropagation: () => {
+      stopped = true;
+    },
+  });
+
+  assert.equal(owner.changeChoices.selected, "diff");
+  assert.equal(owner.changeChoices.choices.length, 2);
+  assert.equal(stopped, true);
+  assert.deepEqual(intents, [
+    ["caffold:file-viewer-change-intent", { representation: "visual" }],
+  ]);
+});
+
+test("merges the Action Hints and scrolling of Visual and the change choices", () => {
+  const pulls = {};
+  const visualDiff = {
+    actionHintScope(pull) {
+      pulls.visual = pull;
+      return { targets: [{ id: "mode" }] };
+    },
+    scrollSurfaceScope(pull) {
+      pulls.scroll = pull;
+      return { surfaces: [{ id: "visual" }] };
+    },
+  };
+  const changeControl = {
+    actionHintScope(pull) {
+      pulls.change = pull;
+      return { targets: [{ id: "change" }] };
+    },
+  };
+  const owner = viewerWith(
+    { status: "visual", presentation: { title: "logo.svg" } },
+    { visualDiff, changeControl },
+  );
+  const actions = { axis: "review.axis", button: "button.activate" };
+
+  assert.deepEqual(
+    owner.actionHintScope({ scopeId: "git:viewer", actions }).targets.map(({ id }) => id),
+    ["own", "change", "mode"],
+  );
+  assert.equal(pulls.change.actionId, "review.axis");
+  assert.equal(pulls.visual.scopeId, "git:viewer:visual");
+  assert.deepEqual(
+    owner.scrollSurfaceScope({ scopeId: "git:viewer" }).surfaces.map(({ id }) => id),
+    ["own", "visual"],
+  );
+  assert.equal(pulls.scroll.label, "logo.svg visual");
+});
+
+test("keeps the way Visual compares while files change", () => {
+  const handed = [];
+  const owner = viewerWith({
+    status: "visual",
+    versions: { before: null, after: null },
+  });
+  owner.previewFiles = {};
+  Object.defineProperty(owner, "visualDiffElement", {
+    get: () => ({ setComparison: (comparison) => handed.push(comparison) }),
+  });
+
+  owner.chooseVisualMode({ detail: { mode: "difference" } });
+  owner.drawVisualSides();
+
+  assert.equal(owner.visualMode, "difference");
+  assert.deepEqual(
+    handed.map(({ mode }) => mode),
+    ["difference", "difference"],
+  );
 });

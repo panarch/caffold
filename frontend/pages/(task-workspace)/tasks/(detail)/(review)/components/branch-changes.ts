@@ -6,6 +6,7 @@ import {
   type GitRefs,
   getGitCompare,
   getGitCompareDiff,
+  getGitCompareDiffVersions,
   getGitRefs,
 } from "#app/api.js";
 import type { ScrollSurfacePull } from "#app/scroll-scope.js";
@@ -200,6 +201,15 @@ export class CaffoldReviewBranchChanges extends CaffoldElement {
 
   readDiff(path: string) {
     return getGitCompareDiff(this.rootPath, this.baseRef, this.headRef(), path);
+  }
+
+  readVersions(path: string) {
+    return getGitCompareDiffVersions(
+      this.rootPath,
+      this.baseRef,
+      this.headRef(),
+      path,
+    );
   }
 
   diffKind() {

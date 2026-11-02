@@ -1446,14 +1446,20 @@ that only draws:
   from the viewer as `caffold:file-viewer-notice-action`, which it turns into
   a representation intent.
 
-Both changes components answer the selected file's change and diff for the
-viewer, and raise intents for the route changes they ask for.
+Both changes components answer the selected file's change, its diff, and the
+versions its diff compares for the viewer, and raise intents for the route
+changes they ask for.
 
 The Integrated Review owner resolves file-open intents to a path and supported
-representation together. Text files support Source, Markdown adds Preview,
+representation together. A change is shown as Diff, its text, or as Visual,
+the pictures on each side; a file is shown as Source, its text, or as Preview.
+Text files support Source, Markdown adds Preview,
 raster images use Preview, PDFs, Word documents (`.docx`), PowerPoint
 decks (`.pptx`), and Excel workbooks (`.xlsx`, `.xlsm`) use Preview alone, and
-SVG supports both its source text and image Preview. The
+SVG supports both its source text and image Preview. Every image the viewer can
+preview has Visual, and only raster images lack Diff. A representation the
+file lacks gives way to the other one of its pair, so opening a PNG from Diff
+shows Visual and opening code from Visual shows Diff. The
 file viewer owns representation chrome and image rendering, and delegates
 Markdown rendering, sanitization, fallback, and local scroll to the shared
 `caffold-markdown-preview` component also used by the current-plan dialog.
@@ -1472,8 +1478,21 @@ description.
 Source and Preview show the file on disk, so their File details offer Download,
 a link to `/api/download`. That route streams the file's bytes as an attachment
 without the viewers' size limits or text checks, so a file no viewer can show
-can still be saved. A diff shows a change rather than a file on disk and offers
-no Download.
+can still be saved. A diff or Visual shows a change rather than a file on disk
+and offers no Download.
+
+Visual reads the two sides of the change from `/api/git/diff-versions`,
+`/api/git/commit-diff-versions`, or `/api/git/compare-diff-versions`, which run
+the same git diff as Diff with `--raw` and name each side by its blob id, by
+the working tree file, or as absent. The file viewer fetches each side as it
+fetches a preview, a blob from `/api/git/blob` and the working tree file from
+`/api/image`, and hands both to `caffold-visual-diff`. Side by side draws them
+at one scale; Difference compares them pixel by pixel in a canvas and paints
+the pixels that changed. A side the viewer cannot fetch or draw reads as
+missing beside the other. The file viewer keeps which way Visual compares
+while files change. Commit and Compare have no representation axis of their
+own: they open each file in Diff or Visual by the same pairs and, for SVG,
+offer both in the viewer's header.
 
 The routes that read a file for a viewer, `/api/file`, `/api/image`,
 `/api/document`, and the conversation's `/api/task-image`, send
@@ -1486,11 +1505,14 @@ server again only when Review reloads the preview because the file may have
 changed: the watch reports a change to it or recovers, or Review reads the
 scope's Git data again while the preview is on screen. An answer that names the
 same version, the `ETag`, leaves the drawn copy in place; another version is
-drawn instead.
+drawn instead. Visual asks again in the same way for its working tree side; a
+blob's version is its id, so a side read from git is never asked for again.
 
 Images and documents also answer one `Range: bytes=` range with 206 and
 `Content-Range`, reading only that part of the file, and a range that starts
-past the end with 416. `If-None-Match` is answered before the range, and an
+past the end with 416. `/api/git/blob` answers the same way; git cannot start
+a blob in the middle, so it streams past the bytes before the range and keeps
+only the range. `If-None-Match` is answered before the range, and an
 `If-Range` that does not name the current version gets the whole file. Their
 viewers fetch them through `fetchInChunks` (`frontend/chunked-fetch.ts`) in
 64 KB cells cut at the same places every time, so the bytes of a large file

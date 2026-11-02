@@ -940,7 +940,7 @@ function tasksRoute(options: Partial<ParsedRoute> = {}): ParsedRoute {
           ),
           reviewViewer: enumValue(
             options.reviewViewer,
-            ["diff", "source", "preview"],
+            ["diff", "visual", "source", "preview"],
             "diff",
           ),
           path: reviewPath,
@@ -1001,7 +1001,7 @@ export function sectionDetailRoute(
     ),
     reviewViewer: enumValue(
       options.reviewViewer,
-      ["diff", "source", "preview"],
+      ["diff", "visual", "source", "preview"],
       "diff",
     ),
     path,

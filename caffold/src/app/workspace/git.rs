@@ -9,8 +9,8 @@ use super::{PathQuery, WorkspaceState};
 use crate::{
     app::error::ApiError,
     fs::{
-        FsError, GitCommitResponse, GitCompareResponse, GitDiffResponse, GitFetchResponse,
-        GitLogResponse, GitRefsResponse, GitStatusResponse,
+        FsError, GitCommitResponse, GitCompareResponse, GitDiffResponse, GitDiffVersionsResponse,
+        GitFetchResponse, GitLogResponse, GitRefsResponse, GitStatusResponse,
     },
 };
 
@@ -81,12 +81,21 @@ pub(super) fn router() -> Router<WorkspaceState> {
     Router::new()
         .route("/api/git/status", get(git_status))
         .route("/api/git/diff", get(git_diff))
+        .route("/api/git/diff-versions", get(git_diff_versions))
         .route("/api/git/log", get(git_log))
         .route("/api/git/fetch", post(git_fetch))
         .route("/api/git/commit", get(git_commit))
         .route("/api/git/commit-diff", get(git_commit_diff))
+        .route(
+            "/api/git/commit-diff-versions",
+            get(git_commit_diff_versions),
+        )
         .route("/api/git/compare", get(git_compare))
         .route("/api/git/compare-diff", get(git_compare_diff))
+        .route(
+            "/api/git/compare-diff-versions",
+            get(git_compare_diff_versions),
+        )
         .route("/api/git/refs", get(git_refs))
 }
 
@@ -119,6 +128,14 @@ async fn git_diff(
 ) -> Result<Json<GitDiffResponse>, ApiError> {
     let fs = state.fs.clone();
     read_diff(move || fs.git_diff(&query.path, &query.file, &query.kind)).await
+}
+
+async fn git_diff_versions(
+    State(state): State<WorkspaceState>,
+    Query(query): Query<GitDiffQuery>,
+) -> Result<Json<GitDiffVersionsResponse>, ApiError> {
+    let fs = state.fs.clone();
+    read_diff(move || fs.git_diff_versions(&query.path, &query.file, &query.kind)).await
 }
 
 async fn git_log(
@@ -167,6 +184,14 @@ async fn git_commit_diff(
     read_diff(move || fs.git_commit_diff(&query.path, &query.sha, &query.file)).await
 }
 
+async fn git_commit_diff_versions(
+    State(state): State<WorkspaceState>,
+    Query(query): Query<GitCommitDiffQuery>,
+) -> Result<Json<GitDiffVersionsResponse>, ApiError> {
+    let fs = state.fs.clone();
+    read_diff(move || fs.git_commit_diff_versions(&query.path, &query.sha, &query.file)).await
+}
+
 async fn git_compare(
     State(state): State<WorkspaceState>,
     Query(query): Query<GitCompareQuery>,
@@ -194,11 +219,27 @@ async fn git_compare_diff(
     .await
 }
 
-/// A diff is read on the blocking pool: besides running git, coloring a
-/// large file takes a noticeable share of a second.
-async fn read_diff(
-    read: impl FnOnce() -> Result<GitDiffResponse, FsError> + Send + 'static,
-) -> Result<Json<GitDiffResponse>, ApiError> {
+async fn git_compare_diff_versions(
+    State(state): State<WorkspaceState>,
+    Query(query): Query<GitCompareDiffQuery>,
+) -> Result<Json<GitDiffVersionsResponse>, ApiError> {
+    let fs = state.fs.clone();
+    read_diff(move || {
+        fs.git_compare_diff_versions(
+            &query.path,
+            query.base.as_deref(),
+            query.head.as_deref(),
+            &query.file,
+        )
+    })
+    .await
+}
+
+/// A diff, or the versions it compares, is read on the blocking pool: besides
+/// running git, coloring a large file takes a noticeable share of a second.
+async fn read_diff<T: Send + 'static>(
+    read: impl FnOnce() -> Result<T, FsError> + Send + 'static,
+) -> Result<Json<T>, ApiError> {
     tokio::task::spawn_blocking(read)
         .await
         .map_err(|error| ApiError::Internal(format!("Git diff task failed: {error}")))?
@@ -311,6 +352,54 @@ mod tests {
                 .unwrap();
             assert_eq!(spans[added][0], json!([0, 2, 1]), "{uri}");
             assert_eq!(spans[0], JsonValue::Null, "{uri}");
+        }
+    }
+
+    #[tokio::test]
+    async fn versions_routes_name_the_sides_each_diff_compares() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().join("repo");
+        create_committed_repository(&repo);
+        std::fs::write(repo.join("picture.png"), "old").unwrap();
+        git(&repo, &["add", "picture.png"]);
+        commit(&repo, "Add picture");
+        let old_id = git_output(&repo, &["rev-parse", "HEAD:picture.png"]);
+        git(&repo, &["checkout", "-b", "feature"]);
+        std::fs::write(repo.join("picture.png"), "new").unwrap();
+        git(&repo, &["add", "picture.png"]);
+        commit(&repo, "Change picture");
+        let new_id = git_output(&repo, &["rev-parse", "HEAD:picture.png"]);
+        let sha = git_output(&repo, &["rev-parse", "HEAD"]);
+        std::fs::write(repo.join("picture.png"), "newer").unwrap();
+        let blob = |oid: &str| json!({ "source": "blob", "oid": oid });
+
+        for (uri, before, after) in [
+            (
+                "/api/git/diff-versions?path=repo&file=repo/picture.png&kind=unstaged".to_string(),
+                blob(&new_id),
+                json!({ "source": "workingTree" }),
+            ),
+            (
+                format!("/api/git/commit-diff-versions?path=repo&sha={sha}&file=repo/picture.png"),
+                blob(&old_id),
+                blob(&new_id),
+            ),
+            (
+                "/api/git/compare-diff-versions?path=repo&base=main&head=feature&file=repo/picture.png"
+                    .to_string(),
+                blob(&old_id),
+                blob(&new_id),
+            ),
+        ] {
+            let response = app(root.path())
+                .oneshot(Request::get(&uri).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{uri}");
+            let response = response_json(response).await;
+            assert_eq!(response["repoRelativePath"], "picture.png", "{uri}");
+            assert_eq!(response["before"], before, "{uri}");
+            assert_eq!(response["after"], after, "{uri}");
         }
     }
 

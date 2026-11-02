@@ -91,7 +91,7 @@ function heldResponse() {
 async function expectPreviewSettled(taskReview) {
   await expect.poll(() =>
     taskReview.locator("caffold-review-file-viewer").evaluate((viewer) =>
-      viewer.previewFile?.phase === "shown" && viewer.previewFile.fetching === null))
+      viewer.previewFiles?.file?.phase === "shown" && viewer.previewFiles.file.fetching === null))
     .toBe(true);
 }
 

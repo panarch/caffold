@@ -450,6 +450,36 @@ pub struct GitDiffResponse {
     pub syntax_spans: Option<Vec<Option<syntax::LineSpans>>>,
 }
 
+/// The two sides a file's diff compares, for a viewer that draws each side
+/// itself. A side is absent where the file does not exist.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitDiffVersionsResponse {
+    pub repository: DirectoryGitInfo,
+    pub path: String,
+    pub repo_relative_path: String,
+    pub kind: String,
+    pub before: Option<GitFileVersion>,
+    pub after: Option<GitFileVersion>,
+}
+
+/// A blob git keeps, read through `/api/git/blob`, or the file on disk.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(tag = "source", rename_all = "camelCase")]
+pub enum GitFileVersion {
+    Blob { oid: String },
+    WorkingTree,
+}
+
+impl From<git::FileVersion> for GitFileVersion {
+    fn from(version: git::FileVersion) -> Self {
+        match version {
+            git::FileVersion::Blob(oid) => Self::Blob { oid },
+            git::FileVersion::WorkingTree => Self::WorkingTree,
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum FsError {
     #[error("root path is not accessible: {path}")]
@@ -880,6 +910,25 @@ impl RootedFs {
         })
     }
 
+    pub fn git_commit_diff_versions(
+        &self,
+        requested_path: &str,
+        commit_sha: &str,
+        file_path: &str,
+    ) -> Result<GitDiffVersionsResponse, FsError> {
+        let file = self.repository_file(requested_path, file_path)?;
+        let versions =
+            git::commit_diff_versions(&file.repository, commit_sha, &file.repo_relative_path)
+                .ok_or_else(|| FsError::GitCommandFailed {
+                    action: "read commit diff versions",
+                    path: file_path.to_string(),
+                })?;
+        Ok(file.versions(
+            format!("commit {}", short_commit_label(commit_sha)),
+            versions,
+        ))
+    }
+
     pub fn git_compare(
         &self,
         requested_path: &str,
@@ -972,6 +1021,29 @@ impl RootedFs {
             diff,
             syntax_spans,
         })
+    }
+
+    pub fn git_compare_diff_versions(
+        &self,
+        requested_path: &str,
+        base_ref: Option<&str>,
+        head_ref: Option<&str>,
+        file_path: &str,
+    ) -> Result<GitDiffVersionsResponse, FsError> {
+        let file = self.repository_file(requested_path, file_path)?;
+        let refs = git::compare_refs(&file.repository, base_ref, head_ref).ok_or_else(|| {
+            FsError::GitCommandFailed {
+                action: "resolve compare refs",
+                path: requested_path.to_string(),
+            }
+        })?;
+        let versions =
+            git::compare_diff_versions(&file.repository, &refs, &file.repo_relative_path)
+                .ok_or_else(|| FsError::GitCommandFailed {
+                    action: "read compare diff versions",
+                    path: file_path.to_string(),
+                })?;
+        Ok(file.versions(format!("{}...{}", refs.base, refs.head), versions))
     }
 
     pub fn git_refs(&self, requested_path: &str) -> Result<GitRefsResponse, FsError> {
@@ -1378,6 +1450,48 @@ impl RootedFs {
         })
     }
 
+    pub fn git_diff_versions(
+        &self,
+        requested_path: &str,
+        file_path: &str,
+        kind: &str,
+    ) -> Result<GitDiffVersionsResponse, FsError> {
+        let file = self.repository_file(requested_path, file_path)?;
+        let kind = normalize_diff_kind(kind);
+        if let Ok(canonical) = self.root.join(&file.path).canonicalize()
+            && !canonical.starts_with(&file.repository.root)
+        {
+            return Err(FsError::PathEscapesRoot);
+        }
+        let versions = git::diff_versions(&file.repository, &file.repo_relative_path, kind)
+            .ok_or_else(|| FsError::GitCommandFailed {
+                action: "read diff versions",
+                path: file_path.to_string(),
+            })?;
+        Ok(file.versions(kind.to_string(), versions))
+    }
+
+    /// The repository `requested_path` belongs to and the file `file_path`
+    /// names inside it.
+    fn repository_file(
+        &self,
+        requested_path: &str,
+        file_path: &str,
+    ) -> Result<RepositoryFile, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let info = self.git_info_for_repository(&repository)?;
+        let path = relative_path_string(&normalize_relative_path(file_path)?);
+        let repo_relative_path = strip_repo_root(&info.root_path, &path)
+            .ok_or(FsError::PathEscapesRoot)?
+            .to_string();
+        Ok(RepositoryFile {
+            repository,
+            info,
+            path,
+            repo_relative_path,
+        })
+    }
+
     fn resolve_existing(&self, requested_path: &str) -> Result<ResolvedPath, FsError> {
         let logical = normalize_relative_path(requested_path)?;
         let candidate = self.root.join(&logical);
@@ -1569,6 +1683,27 @@ impl RootedFs {
 struct ResolvedPath {
     logical: PathBuf,
     absolute: PathBuf,
+}
+
+/// A file named inside the repository a request belongs to.
+struct RepositoryFile {
+    repository: git::Repository,
+    info: DirectoryGitInfo,
+    path: String,
+    repo_relative_path: String,
+}
+
+impl RepositoryFile {
+    fn versions(self, kind: String, versions: git::FileVersions) -> GitDiffVersionsResponse {
+        GitDiffVersionsResponse {
+            repository: self.info,
+            path: self.path,
+            repo_relative_path: self.repo_relative_path,
+            kind,
+            before: versions.before.map(GitFileVersion::from),
+            after: versions.after.map(GitFileVersion::from),
+        }
+    }
 }
 
 fn normalize_relative_path(requested_path: &str) -> Result<PathBuf, FsError> {
@@ -1899,6 +2034,8 @@ fn relative_path_string(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use std::io::Read;
+
+    use serde_json::json;
 
     use super::*;
 
@@ -2472,6 +2609,152 @@ mod tests {
             rooted.open_download("link.txt"),
             Err(FsError::PathEscapesRoot)
         ));
+    }
+
+    #[test]
+    fn reads_the_versions_a_file_diff_compares() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let repo_path = temp.path().join("repo");
+        fs::create_dir(&repo_path).unwrap();
+        git(&repo_path, &["init"]);
+        fs::write(repo_path.join("picture.png"), "old").unwrap();
+        git(&repo_path, &["add", "picture.png"]);
+        commit(&repo_path, "Add picture");
+        git(
+            &repo_path,
+            &["update-ref", "refs/remotes/origin/main", "HEAD"],
+        );
+        let old_id = git_output(&repo_path, &["rev-parse", "HEAD:picture.png"]);
+        fs::write(repo_path.join("picture.png"), "new").unwrap();
+        let rooted = RootedFs::new(temp.path()).unwrap();
+        let sides = |response: &GitDiffVersionsResponse| {
+            let response = serde_json::to_value(response).unwrap();
+            (response["before"].clone(), response["after"].clone())
+        };
+
+        let working = rooted
+            .git_diff_versions("repo", "repo/picture.png", "unstaged")
+            .unwrap();
+        assert_eq!(working.path, "repo/picture.png");
+        assert_eq!(working.repo_relative_path, "picture.png");
+        assert_eq!(working.kind, "unstaged");
+        assert_eq!(
+            sides(&working),
+            (
+                json!({ "source": "blob", "oid": old_id }),
+                json!({ "source": "workingTree" })
+            )
+        );
+
+        git(&repo_path, &["add", "picture.png"]);
+        commit(&repo_path, "Change picture");
+        let sha = git_output(&repo_path, &["rev-parse", "HEAD"]);
+        let new_id = git_output(&repo_path, &["rev-parse", "HEAD:picture.png"]);
+        let committed = (
+            json!({ "source": "blob", "oid": old_id }),
+            json!({ "source": "blob", "oid": new_id }),
+        );
+        let commit_versions = rooted
+            .git_commit_diff_versions("repo", &sha, "repo/picture.png")
+            .unwrap();
+        assert_eq!(commit_versions.kind, format!("commit {}", &sha[..7]));
+        assert_eq!(sides(&commit_versions), committed);
+        let compare_versions = rooted
+            .git_compare_diff_versions("repo", Some("origin/main"), None, "repo/picture.png")
+            .unwrap();
+        assert!(compare_versions.kind.starts_with("origin/main..."));
+        assert_eq!(sides(&compare_versions), committed);
+
+        assert!(matches!(
+            rooted.git_diff_versions("repo", "picture.png", "unstaged"),
+            Err(FsError::PathEscapesRoot)
+        ));
+    }
+
+    #[test]
+    fn opens_an_image_blob_by_its_id() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let repo_path = temp.path().join("repo");
+        fs::create_dir(&repo_path).unwrap();
+        git(&repo_path, &["init"]);
+        fs::write(repo_path.join("picture.png"), "picture").unwrap();
+        fs::write(repo_path.join("notes.txt"), "notes\n").unwrap();
+        git(&repo_path, &["add", "."]);
+        commit(&repo_path, "Add files");
+        let picture_id = git_output(&repo_path, &["rev-parse", "HEAD:picture.png"]);
+        let notes_id = git_output(&repo_path, &["rev-parse", "HEAD:notes.txt"]);
+        let tree_id = git_output(&repo_path, &["rev-parse", "HEAD^{tree}"]);
+        let large = repo_path.join("large.png");
+        fs::File::create(&large)
+            .unwrap()
+            .set_len(MAX_IMAGE_BYTES + 1)
+            .unwrap();
+        let large_id = git_output(&repo_path, &["hash-object", "-w", "large.png"]);
+        let rooted = RootedFs::new(temp.path()).unwrap();
+
+        let image = rooted
+            .open_git_image("repo", "repo/picture.png", &picture_id)
+            .unwrap();
+        assert_eq!(image.version(), Some(picture_id.clone()));
+        assert_eq!(image.size(), 7);
+        let whole = image.read().unwrap();
+        assert_eq!(whole.content_type, "image/png");
+        assert_eq!(whole.bytes, b"picture");
+        let part = rooted
+            .open_git_image("repo", "repo/picture.png", &picture_id)
+            .unwrap()
+            .read_part(2, 4)
+            .unwrap();
+        assert_eq!(part.bytes, b"ctu");
+
+        assert!(matches!(
+            rooted.open_git_image("repo", "repo/notes.txt", &notes_id),
+            Err(FsError::UnsupportedImage { .. })
+        ));
+        for missing in [
+            tree_id.as_str(),
+            "HEAD",
+            "0000000000000000000000000000000000000000",
+        ] {
+            assert!(
+                matches!(
+                    rooted.open_git_image("repo", "repo/picture.png", missing),
+                    Err(FsError::NotFound { .. })
+                ),
+                "{missing}"
+            );
+        }
+        assert!(matches!(
+            rooted.open_git_image("repo", "repo/large.png", &large_id),
+            Err(FsError::FileTooLarge { .. })
+        ));
+        assert!(matches!(
+            rooted.open_git_image("repo", "picture.png", &picture_id),
+            Err(FsError::PathEscapesRoot)
+        ));
+    }
+
+    fn git_output(path: &Path, args: &[&str]) -> String {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap().trim().to_string()
     }
 
     fn git_is_available() -> bool {

@@ -230,6 +230,20 @@ test("preserves Markdown Preview as reloadable Integrated Review state", () => {
   }
 });
 
+test("preserves Visual as reloadable Integrated Review state", () => {
+  const urls = [
+    "/tasks/thread/review?view=visual&file=assets%2Flogo.png",
+    "/?section=repo-1&surface=review&view=visual&file=assets%2Flogo.png",
+  ];
+
+  for (const url of urls) {
+    const route = parseRoute(url);
+    assert.equal(route.reviewViewer, "visual");
+    assert.equal(route.path, "assets/logo.png");
+    assert.equal(routeUrl(route), url);
+  }
+});
+
 test("derives deterministic Task child parents", () => {
   const cases = [
     ["/notes", null],

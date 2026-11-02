@@ -413,7 +413,9 @@ Branch review. It combines:
 
 - Working Tree or Branch scope;
 - Changes or Files navigator;
-- Diff plus file-capability-aware Source or Preview representations;
+- Diff or Visual for the change, and Source or Preview for the file, each as
+  the file allows: Visual shows an image's two sides side by side or paints the
+  pixels that changed, and a raster image has no Diff;
 - one selected task-root-relative path.
 
 This is also the product path for general file/source inspection through the
@@ -421,7 +423,7 @@ reusable file navigator, source viewer, text viewer, supported image viewer, PDF
 viewer, Word document viewer, PowerPoint viewer, and Excel viewer. In Source
 and Preview, the file's details
 offer Download, which saves the file itself, including a large or binary file
-that no viewer can show. A diff's details offer no Download.
+that no viewer can show. The details of a diff or Visual offer no Download.
 
 ### Git
 
@@ -431,6 +433,9 @@ Review:
 - arbitrary-ref Compare, where both base and head may differ from the Task's
   current branch;
 - bounded Log, commit detail, changed files, diff, and source inspection.
+
+Compare and a commit show an image's change as Visual and other changes as
+Diff; an SVG offers both in the file's header.
 
 Git is non-authoring. Log exposes an explicit Fetch action that updates the
 selected repository's remote-tracking default branch and reports its

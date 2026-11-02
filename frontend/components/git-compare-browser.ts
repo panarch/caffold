@@ -4,19 +4,29 @@ import { type ActionHintPull, mergeActionHintScopes } from "../action-hints.js";
 import {
   type GitCompare,
   type GitDiff,
+  type GitDiffVersions,
   type GitRef,
   type GitRefs,
   type GitRepository,
   getGitCompare,
   getGitCompareDiff,
+  getGitCompareDiffVersions,
   getGitRefs,
 } from "../api.js";
 import {
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
 } from "../scroll-scope.js";
+import {
+  type ChangeRepresentation,
+  changeRepresentationChoices,
+  changeRepresentationFor,
+} from "./dom.js";
 import "./file-viewer.js";
-import type { CaffoldReviewFileViewer } from "./file-viewer.js";
+import type {
+  CaffoldReviewFileViewer,
+  FileViewerChangeIntentDetail,
+} from "./file-viewer.js";
 import { diffViewerPresentation } from "./file-viewer-presentation.js";
 import "./git-compare-tree.js";
 import type { CaffoldGitCompareTree } from "./git-compare-tree.js";
@@ -52,6 +62,9 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
   headRef: string | null = null;
   detailView: DetailView = "list";
   private currentPath = "";
+  // How the last file's change was shown; the next file opens the same way
+  // when it can.
+  private changeView: ChangeRepresentation = "diff";
   private pendingCompare: {
     key: string;
     promise: Promise<GitCompare | null>;
@@ -82,6 +95,7 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
       <caffold-review-file-viewer
         ${drawn(this.fileViewer)}
         refresh-action="refresh-git-review"
+        @caffold:file-viewer-change-intent=${this.chooseChange}
       ></caffold-review-file-viewer>
     `;
   }
@@ -177,21 +191,12 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
     }, LOADING_DELAY_MS);
 
     try {
-      const diff = await getGitCompareDiff(
-        this.currentPath,
-        this.compare.baseRef,
-        this.compare.headRef,
+      return await this.loadChange(
+        this.compare,
         path,
+        status,
+        () => requestId === this.diffRequestId,
       );
-      if (requestId !== this.diffRequestId) {
-        return null;
-      }
-
-      this.viewer.setDiff(
-        { ...diff, status },
-        { presentation: this.diffPresentation(path, status, diff) },
-      );
-      return diff;
     } catch (error) {
       if (requestId !== this.diffRequestId) {
         return null;
@@ -552,24 +557,15 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
 
     const requestId = ++this.diffRequestId;
     try {
-      const diff = await getGitCompareDiff(
-        this.currentPath,
-        this.compare.baseRef,
-        this.compare.headRef,
+      return await this.loadChange(
+        this.compare,
         path,
+        file.status ?? "",
+        () =>
+          requestId === this.diffRequestId &&
+          path === this.compareTree.selectedPath,
+        { preserveScroll: true },
       );
-      if (
-        requestId !== this.diffRequestId ||
-        path !== this.compareTree.selectedPath
-      ) {
-        return null;
-      }
-      const presentation = this.diffPresentation(path, file.status ?? "", diff);
-      this.viewer.setDiff(
-        { ...diff, status: file.status ?? "" },
-        { preserveScroll: true, presentation },
-      );
-      return diff;
     } catch (error) {
       if (requestId === this.diffRequestId) {
         this.viewer.setError(
@@ -578,6 +574,64 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
         );
       }
       return null;
+    }
+  }
+
+  // Reads the file's change in the representation it opens in and shows it,
+  // unless `current` says a newer request took over meanwhile.
+  private async loadChange(
+    compare: GitCompare,
+    path: string,
+    status: string,
+    current: () => boolean,
+    { preserveScroll = false }: { preserveScroll?: boolean } = {},
+  ) {
+    this.changeView = changeRepresentationFor(path, this.changeView);
+    this.viewer.setChangeChoices(
+      changeRepresentationChoices(path, this.changeView),
+    );
+    if (this.changeView === "visual") {
+      const versions = await getGitCompareDiffVersions(
+        this.currentPath,
+        compare.baseRef,
+        compare.headRef,
+        path,
+      );
+      if (!current()) {
+        return null;
+      }
+      this.viewer.setVisual(versions, {
+        presentation: this.diffPresentation(path, status, versions),
+      });
+      return versions;
+    }
+    const diff = await getGitCompareDiff(
+      this.currentPath,
+      compare.baseRef,
+      compare.headRef,
+      path,
+    );
+    if (!current()) {
+      return null;
+    }
+    this.viewer.setDiff(
+      { ...diff, status },
+      {
+        preserveScroll,
+        presentation: this.diffPresentation(path, status, diff),
+      },
+    );
+    return diff;
+  }
+
+  private chooseChange(event: CustomEvent<FileViewerChangeIntentDetail>) {
+    const representation = event.detail?.representation;
+    if (
+      (representation === "diff" || representation === "visual") &&
+      representation !== this.changeView
+    ) {
+      this.changeView = representation;
+      void this.refreshSelectedDiff();
     }
   }
 
@@ -595,7 +649,11 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
     return this.detailView === "viewer" && this.panelResizer.collapsed;
   }
 
-  private diffPresentation(path: string, status = "", diff: GitDiff = {}) {
+  private diffPresentation(
+    path: string,
+    status = "",
+    diff: GitDiff | GitDiffVersions = {},
+  ) {
     const file = this.fileForPath(path);
     return diffViewerPresentation({
       ...diff,

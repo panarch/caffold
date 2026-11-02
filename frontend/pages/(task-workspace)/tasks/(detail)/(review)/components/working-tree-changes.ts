@@ -5,7 +5,12 @@ import {
   ActionHints,
   mergeActionHintScopes,
 } from "#app/action-hints.js";
-import { type GitStatus, getGitDiff, getGitStatus } from "#app/api.js";
+import {
+  type GitStatus,
+  getGitDiff,
+  getGitDiffVersions,
+  getGitStatus,
+} from "#app/api.js";
 import type { ScrollSurfacePull } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { ChangesReading } from "../changes-reading.js";
@@ -174,6 +179,10 @@ export class CaffoldReviewWorkingTreeChanges extends CaffoldElement {
 
   readDiff(path: string) {
     return getGitDiff(this.rootPath, path, this.change(path)?.kind);
+  }
+
+  readVersions(path: string) {
+    return getGitDiffVersions(this.rootPath, path, this.change(path)?.kind);
   }
 
   diffKind() {

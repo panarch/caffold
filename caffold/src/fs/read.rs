@@ -5,6 +5,8 @@
 //! Opening a file runs every check that does not need its contents and names
 //! the file's version, so a viewer that already shows that version need not
 //! read it again. An image or document can also be read one part at a time.
+//! An image can also come from a blob git keeps, named by its id, which is
+//! also its version.
 
 use std::{
     fs,
@@ -19,6 +21,7 @@ use super::{
     FsError, ResolvedPath, RootedFs, modified_ms, relative_path_string,
     syntax::{self, LineSpans},
 };
+use crate::git;
 
 pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
 pub const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
@@ -48,8 +51,21 @@ pub struct OpenedText(Opened);
 
 /// An image or document opened for a viewer and not read yet.
 pub struct OpenedBinary {
-    opened: Opened,
+    source: BinarySource,
     content_type: &'static str,
+}
+
+enum BinarySource {
+    File(Opened),
+    Blob(OpenedBlob),
+}
+
+/// A blob git keeps that passed every check but those on its contents.
+struct OpenedBlob {
+    repository: git::Repository,
+    id: String,
+    size: u64,
+    requested_path: String,
 }
 
 impl RootedFs {
@@ -69,7 +85,42 @@ impl RootedFs {
                 path: requested_path.to_string(),
             })?;
         Ok(OpenedBinary {
-            opened: open_bounded(resolved, requested_path, MAX_IMAGE_BYTES)?,
+            source: BinarySource::File(open_bounded(resolved, requested_path, MAX_IMAGE_BYTES)?),
+            content_type,
+        })
+    }
+
+    /// The image `file_path` as blob `blob_id` of the repository
+    /// `requested_path` belongs to.
+    pub fn open_git_image(
+        &self,
+        requested_path: &str,
+        file_path: &str,
+        blob_id: &str,
+    ) -> Result<OpenedBinary, FsError> {
+        let file = self.repository_file(requested_path, file_path)?;
+        let content_type =
+            image_content_type(Path::new(&file.path)).ok_or_else(|| FsError::UnsupportedImage {
+                path: file_path.to_string(),
+            })?;
+        let requested_path = format!("{file_path} at {blob_id}");
+        let size = git::blob_size(&file.repository, blob_id).ok_or_else(|| FsError::NotFound {
+            path: requested_path.clone(),
+        })?;
+        if size > MAX_IMAGE_BYTES {
+            return Err(FsError::FileTooLarge {
+                path: requested_path,
+                size,
+                limit: MAX_IMAGE_BYTES,
+            });
+        }
+        Ok(OpenedBinary {
+            source: BinarySource::Blob(OpenedBlob {
+                repository: file.repository,
+                id: blob_id.to_string(),
+                size,
+                requested_path,
+            }),
             content_type,
         })
     }
@@ -82,7 +133,7 @@ impl RootedFs {
             }
         })?;
         Ok(OpenedBinary {
-            opened: open_bounded(resolved, requested_path, MAX_DOCUMENT_BYTES)?,
+            source: BinarySource::File(open_bounded(resolved, requested_path, MAX_DOCUMENT_BYTES)?),
             content_type,
         })
     }
@@ -117,29 +168,58 @@ impl OpenedText {
 }
 
 impl OpenedBinary {
+    /// A blob is named by its id, which changes whenever its contents do.
     pub fn version(&self) -> Option<String> {
-        self.opened.version()
+        match &self.source {
+            BinarySource::File(opened) => opened.version(),
+            BinarySource::Blob(blob) => Some(blob.id.clone()),
+        }
     }
 
     pub fn read(self) -> Result<FileBytes, FsError> {
+        let bytes = match self.source {
+            BinarySource::File(opened) => opened.read()?.bytes,
+            BinarySource::Blob(blob) => git::read_blob(&blob.repository, &blob.id, MAX_IMAGE_BYTES)
+                .ok_or_else(|| blob.read_failed())?,
+        };
         Ok(FileBytes {
             content_type: self.content_type,
-            bytes: self.opened.read()?.bytes,
+            bytes,
         })
     }
 
     /// The size the file had when it was checked.
     pub fn size(&self) -> u64 {
-        self.opened.metadata.len()
+        match &self.source {
+            BinarySource::File(opened) => opened.metadata.len(),
+            BinarySource::Blob(blob) => blob.size,
+        }
     }
 
     /// Reads bytes `first` through `last`, both within the checked size, and
-    /// nothing else of the file.
+    /// keeps nothing else: a file is read from `first`, while a blob streams
+    /// past the bytes before it.
     pub fn read_part(self, first: u64, last: u64) -> Result<FileBytes, FsError> {
+        let bytes = match self.source {
+            BinarySource::File(opened) => opened.read_part(first, last)?,
+            BinarySource::Blob(blob) => {
+                git::read_blob_part(&blob.repository, &blob.id, first, last)
+                    .ok_or_else(|| blob.read_failed())?
+            }
+        };
         Ok(FileBytes {
             content_type: self.content_type,
-            bytes: self.opened.read_part(first, last)?,
+            bytes,
         })
+    }
+}
+
+impl OpenedBlob {
+    fn read_failed(&self) -> FsError {
+        FsError::GitCommandFailed {
+            action: "read blob",
+            path: self.requested_path.clone(),
+        }
     }
 }
 

@@ -111,6 +111,8 @@ export class CaffoldGitComparePage extends CaffoldElement {
         refresh: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
         link: ACTION_HINT_ACTION.LINK_OPEN,
         separator: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
+        axis: ACTION_HINT_ACTION.REVIEW_AXIS,
+        button: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
       },
       clipRoots: [this, ...clipRoots],
     });

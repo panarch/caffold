@@ -105,3 +105,50 @@ test("hands the resizer its separator action", () => {
     clipRoots: [owner],
   });
 });
+
+test("opens each file's change the way it can be shown, and offers both only for SVG", async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  window.location = new URL("http://caffold.test");
+  globalThis.fetch = async (url) => {
+    requests.push(new URL(url).pathname);
+    return Response.json({ path: "repo/file", before: null, after: null, diff: "" });
+  };
+  after(() => {
+    globalThis.fetch = previousFetch;
+    delete window.location;
+  });
+  const shown = [];
+  const offered = [];
+  const owner = {
+    currentPath: "repo",
+    changeView: "diff",
+    viewer: {
+      setChangeChoices: ({ choices }) => offered.push(choices.map(({ value }) => value)),
+      setVisual: () => shown.push("visual"),
+      setDiff: () => shown.push("diff"),
+    },
+    diffPresentation: () => ({ title: "file" }),
+  };
+  const compare = { baseRef: "main", headRef: "feature" };
+  const open = (path) => browser.loadChange.call(owner, compare, path, "M", () => true);
+
+  await open("src/main.rs");
+  await open("assets/logo.png");
+  await open("assets/icon.svg");
+  owner.refreshSelectedDiff = async () => {
+    shown.push("reloaded");
+  };
+  browser.chooseChange.call(owner, {
+    detail: { representation: "diff" },
+  });
+
+  assert.deepEqual(shown, ["diff", "visual", "visual", "reloaded"]);
+  assert.deepEqual(offered, [[], [], ["diff", "visual"]]);
+  assert.deepEqual(requests, [
+    "/api/git/compare-diff",
+    "/api/git/compare-diff-versions",
+    "/api/git/compare-diff-versions",
+  ]);
+  assert.equal(owner.changeView, "diff", "a choice shows the file again that way");
+});

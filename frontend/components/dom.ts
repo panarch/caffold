@@ -84,6 +84,49 @@ export function isPreviewableImagePath(path: string) {
   return Boolean(imageExtension(path));
 }
 
+// How a file's change can be shown: Diff as text, Visual as the pictures on
+// each side. A picture other than SVG has no text worth a diff.
+export function changeRepresentations(path: string) {
+  const extension = imageExtension(path);
+  return {
+    diff: !extension || extension === "svg",
+    visual: Boolean(extension),
+  };
+}
+
+export type ChangeRepresentation = "diff" | "visual";
+
+// The representation a file's change opens in: the one shown last when the
+// file has it, else the other.
+export function changeRepresentationFor(
+  path: string,
+  shown: ChangeRepresentation,
+): ChangeRepresentation {
+  if (changeRepresentations(path)[shown]) {
+    return shown;
+  }
+  return shown === "diff" ? "visual" : "diff";
+}
+
+// The change representations a viewer offers to choose between: both when
+// the file has both, none when there is nothing to choose.
+export function changeRepresentationChoices(
+  path: string,
+  selected: ChangeRepresentation,
+) {
+  const { diff, visual } = changeRepresentations(path);
+  return {
+    choices:
+      diff && visual
+        ? [
+            { value: "diff", label: "Diff" },
+            { value: "visual", label: "Visual" },
+          ]
+        : [],
+    selected,
+  };
+}
+
 // The kind of document a library-backed viewer draws, or null for any other
 // file.
 export function documentPreviewKind(path: string) {

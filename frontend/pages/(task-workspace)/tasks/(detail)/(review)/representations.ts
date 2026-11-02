@@ -1,29 +1,50 @@
 import {
+  changeRepresentations,
   documentPreviewKind,
   isPreviewableImagePath,
 } from "#components/dom.js";
 
-export type ReviewViewer = "diff" | "source" | "preview";
+export type ReviewViewer = "diff" | "visual" | "source" | "preview";
+
+// Each representation has a partner that shows the same thing another way:
+// the change as text or as pictures, the file as text or as a preview. Every
+// file has at least one of each pair.
+const PARTNERS: Readonly<Record<ReviewViewer, ReviewViewer>> = {
+  diff: "visual",
+  visual: "diff",
+  source: "preview",
+  preview: "source",
+};
+
+export function isReviewViewer(value: unknown): value is ReviewViewer {
+  return typeof value === "string" && Object.hasOwn(PARTNERS, value);
+}
 
 export function isFileRepresentation(viewer: ReviewViewer) {
   return viewer === "source" || viewer === "preview";
 }
 
+// A representation the file lacks gives way to its partner.
 export function representationForFile(
   viewer: ReviewViewer,
   path: string,
 ): ReviewViewer {
-  if (!path || viewer === "diff") {
+  if (!path || fileHasRepresentation(path, viewer)) {
     return viewer;
   }
-  const representations = fileRepresentationCapabilities(path);
-  if (
-    (viewer === "source" && representations.source) ||
-    (viewer === "preview" && representations.previewKind)
-  ) {
-    return viewer;
+  return PARTNERS[viewer];
+}
+
+export function fileHasRepresentation(path: string, viewer: ReviewViewer) {
+  switch (viewer) {
+    case "diff":
+    case "visual":
+      return changeRepresentations(path)[viewer];
+    case "source":
+      return fileRepresentationCapabilities(path).source;
+    case "preview":
+      return Boolean(fileRepresentationCapabilities(path).previewKind);
   }
-  return representations.source ? "source" : "preview";
 }
 
 export function fileRepresentationCapabilities(path: string) {

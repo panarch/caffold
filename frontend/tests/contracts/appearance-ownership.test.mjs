@@ -1224,6 +1224,18 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
     /--review-viewer-control-inline-size: calc\([\s\S]*var\(--review-viewer-axis-inline-size\)\s+\/\s+2/,
   );
   assert.doesNotMatch(reviewLayout, /4\.125rem/);
+  // Commit and Compare offer Diff and Visual in the file viewer's header with
+  // the width per choice the review viewer axis gives.
+  const fileViewer = readFrontend("components/file-viewer.css");
+  assert.match(fileViewer, /--viewer-change-axis-inline-size: 7\.5rem;/);
+  assert.match(
+    fileViewer,
+    /\.viewer-change-control \{[\s\S]*width: calc\([\s\S]*var\(--viewer-change-axis-inline-size\)\s+\/\s+2/,
+  );
+  assert.match(
+    fileViewer,
+    /\.viewer-change-control \{[\s\S]*--segmented-control-label-padding-inline: var\(--interface-space-1\);/,
+  );
   assert.match(
     reviewLayout,
     /--segmented-control-choice-min-inline-size: 0;/,

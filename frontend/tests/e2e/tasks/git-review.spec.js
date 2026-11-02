@@ -13,6 +13,7 @@ import {
   waitForActionHintTarget,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { pngBytes } from "../support/png-fixture.js";
 import { focusLook, pointerHovers } from "../support/focus-look.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
 import { elementHandles } from "../support/element-handles.js";
@@ -1781,4 +1782,111 @@ function gitCommit(path, message) {
 
 function gitOutput(path, args) {
   return execFileSync("git", ["-C", path, ...args], { encoding: "utf8" }).trim();
+}
+
+test("opens a picture's change as Visual in Commit and Compare, and offers Diff or Visual for SVG", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await installTaskGitFixture(page);
+  const repository = { rootPath: ROOT_PATH, branch: "feature/review", dirty: false };
+  const files = [
+    { path: "src/example.rs", repoRelativePath: "example.rs", status: "M" },
+    { path: "src/picture.png", repoRelativePath: "picture.png", status: "M" },
+    { path: "src/logo.svg", repoRelativePath: "logo.svg", status: "M" },
+  ];
+  const blobs = {
+    ["1".repeat(40)]: ["image/png", pngBytes(24, 16, () => [37, 99, 235, 255])],
+    ["2".repeat(40)]: ["image/png", pngBytes(24, 16, () => [22, 163, 74, 255])],
+    ["3".repeat(40)]: [
+      "image/svg+xml",
+      '<svg xmlns="http://www.w3.org/2000/svg" width="30" height="10"><rect width="30" height="10"/></svg>',
+    ],
+  };
+  const versions = (file) => ({
+    repository,
+    path: file,
+    repoRelativePath: file.replace(/^src\//, ""),
+    before: { source: "blob", oid: (file.endsWith(".svg") ? "3" : "1").repeat(40) },
+    after: { source: "blob", oid: (file.endsWith(".svg") ? "3" : "2").repeat(40) },
+  });
+  const requested = [];
+  await page.route(/\/api\/git\/commit(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: { repository, commit: COMMIT, additions: 1, deletions: 1, files },
+    }),
+  );
+  await page.route(/\/api\/git\/compare(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        repository,
+        baseRef: "origin/main",
+        headRef: "feature/review",
+        files,
+        additions: 1,
+        deletions: 1,
+      },
+    }),
+  );
+  await page.route(/\/api\/git\/commit-diff(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        repository,
+        path: new URL(route.request().url()).searchParams.get("file"),
+        kind: `commit ${COMMIT.shortSha}`,
+        additions: 1,
+        deletions: 1,
+        diff: "@@ -1 +1 @@\n-<rect width=\"20\"/>\n+<rect width=\"30\"/>",
+      },
+    }),
+  );
+  await page.route(/\/api\/git\/(commit|compare)-diff-versions(?:\?|$)/, (route) => {
+    const address = new URL(route.request().url());
+    requested.push(`${address.pathname} ${address.searchParams.get("file")}`);
+    return route.fulfill({ json: versions(address.searchParams.get("file")) });
+  });
+  await page.route(/\/api\/git\/blob(?:\?|$)/, (route) => {
+    const [contentType, body] = blobs[new URL(route.request().url()).searchParams.get("oid")];
+    return route.fulfill({ contentType, body });
+  });
+
+  await page.goto(`/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}&file=picture.png`);
+  const commitViewer = page.locator("caffold-git-log-commit-page caffold-review-file-viewer");
+  await expectDrawnPicture(commitViewer.locator('caffold-visual-diff figure[data-side="before"] img'));
+  await expectDrawnPicture(commitViewer.locator('caffold-visual-diff figure[data-side="after"] img'));
+  await expect(commitViewer.locator(".viewer-change-control")).toHaveCount(0);
+
+  await page
+    .locator('caffold-commit-changes-tree button[data-file-tree-path="src/logo.svg"]')
+    .click();
+  // SVG has both, so it opens the way the picture before it was shown.
+  const change = commitViewer.locator(".viewer-change-control");
+  await expect(change.getByRole("button")).toHaveText(["Diff", "Visual"]);
+  await expect(change.getByRole("button", { name: "Visual" })).toHaveAttribute("aria-pressed", "true");
+  await expectDrawnPicture(commitViewer.locator('caffold-visual-diff figure[data-side="after"] img'));
+  await change.getByRole("button", { name: "Diff" }).click();
+  await expect(change.getByRole("button", { name: "Diff" })).toHaveAttribute("aria-pressed", "true");
+  await expect(commitViewer.locator("caffold-diff-viewer")).toContainText('<rect width="30"/>');
+
+  await page
+    .locator('caffold-commit-changes-tree button[data-file-tree-path="src/example.rs"]')
+    .click();
+  await expect(commitViewer.locator("caffold-diff-viewer")).toBeVisible();
+  await expect(commitViewer.locator(".viewer-change-control")).toHaveCount(0);
+
+  await page.goto(
+    `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview&file=picture.png`,
+  );
+  const compareViewer = page.locator("caffold-git-compare-page caffold-review-file-viewer");
+  await expectDrawnPicture(compareViewer.locator('caffold-visual-diff figure[data-side="after"] img'));
+  await expect(compareViewer.locator(".viewer-change-control")).toHaveCount(0);
+  expect(requested).toEqual([
+    "/api/git/commit-diff-versions src/picture.png",
+    "/api/git/commit-diff-versions src/logo.svg",
+    "/api/git/compare-diff-versions src/picture.png",
+  ]);
+});
+
+async function expectDrawnPicture(image) {
+  await expect(image).toHaveAttribute("src", /^blob:/);
+  await expect.poll(() => image.evaluate((element) => element.complete && element.naturalWidth)).toBeGreaterThan(0);
 }

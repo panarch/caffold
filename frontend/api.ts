@@ -877,6 +877,16 @@ export function imageUrl(path: string) {
   return url.toString();
 }
 
+// A blob git keeps, as an image a viewer fetches. `path` names the
+// repository the way the Git routes do; `file` names the image, for its type.
+export function gitBlobUrl(path: string, file: string, oid: string) {
+  const url = new URL("/api/git/blob", window.location.origin);
+  url.searchParams.set("path", path);
+  url.searchParams.set("file", file);
+  url.searchParams.set("oid", oid);
+  return url.toString();
+}
+
 export function documentUrl(path: string) {
   const url = new URL("/api/document", window.location.origin);
   url.searchParams.set("path", path);
@@ -895,6 +905,18 @@ export async function getGitStatus(path = "") {
 
 export async function getGitDiff(path = "", file: string, kind = "unstaged") {
   return requestJson<GitDiff>("/api/git/diff", { path, file, kind });
+}
+
+export async function getGitDiffVersions(
+  path = "",
+  file: string,
+  kind = "unstaged",
+) {
+  return requestJson<GitDiffVersions>("/api/git/diff-versions", {
+    path,
+    file,
+    kind,
+  });
 }
 
 export async function getGitLog(path = "", page = 1, perPage = 50) {
@@ -920,6 +942,18 @@ export async function getGitCommitDiff(path = "", sha: string, file: string) {
   return requestJson<GitDiff>("/api/git/commit-diff", { path, sha, file });
 }
 
+export async function getGitCommitDiffVersions(
+  path = "",
+  sha: string,
+  file: string,
+) {
+  return requestJson<GitDiffVersions>("/api/git/commit-diff-versions", {
+    path,
+    sha,
+    file,
+  });
+}
+
 export async function getGitCompare(
   path = "",
   base: string | null = null,
@@ -939,6 +973,20 @@ export async function getGitCompareDiff(
   file: string,
 ) {
   return requestJson<GitDiff>("/api/git/compare-diff", {
+    path,
+    base,
+    head,
+    file,
+  });
+}
+
+export async function getGitCompareDiffVersions(
+  path = "",
+  base: string | null = null,
+  head: string | null = null,
+  file: string,
+) {
+  return requestJson<GitDiffVersions>("/api/git/compare-diff-versions", {
     path,
     base,
     head,
@@ -1267,6 +1315,22 @@ export interface GitDiff {
   additions?: number;
   deletions?: number;
 }
+
+// The two sides a file's diff compares, each absent where the file does not
+// exist on that side.
+export interface GitDiffVersions {
+  path?: string;
+  repoRelativePath?: string;
+  repository?: GitRepository | null;
+  kind?: string;
+  before: GitFileVersion | null;
+  after: GitFileVersion | null;
+}
+
+// A blob git keeps, or the file on disk.
+export type GitFileVersion =
+  | { source: "blob"; oid: string }
+  | { source: "workingTree" };
 
 export interface GitChangedFile {
   path: string;
