@@ -10,13 +10,15 @@ read-only.
 
 **Compare** shows the files that differ between any two refs, a **Base** and a
 **Head**, and the diff of each file. Neither ref has to be the Task's current
-branch.
+branch. An image's change shows as **Visual**, as in
+[Changes](changes.md#read-a-file); for an SVG, the top of the file switches
+between **Diff** and **Visual**.
 
 ## Log
 
 **Log** lists the commits of the current branch, a page at a time. Open a
-commit to see its changed files and their diffs; **Back to log** returns to
-the list.
+commit to see its changed files and their diffs, images as **Visual** as in
+Compare; **Back to log** returns to the list.
 
 The refresh button in **Log**, **Fetch remote**, updates the remote-tracking
 copy of the default branch, so you can see how far your branch is ahead of or

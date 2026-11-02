@@ -72,6 +72,64 @@ test("drops a diff that returns after another file is shown", async () => {
   assert.equal(owner.shownStateKey, "working:b.js:diff");
 });
 
+function visualView(path, readVersions) {
+  const view = diffView(path, null);
+  return {
+    ...view,
+    stateKey: `working:${path}:visual`,
+    representation: "visual",
+    changes: { ...view.changes, readVersions },
+  };
+}
+
+test("shows an image's change as Visual, asking again on a background load", async () => {
+  const shown = [];
+  const loading = [];
+  const viewer = {
+    state: { status: "empty" },
+    setLoading: (presentation) => loading.push(presentation.title),
+    setNotice() {},
+    setError() {},
+    setVisual: (versions, options) => shown.push({ path: versions.path, ...options }),
+  };
+  const versions = {
+    path: "repo/logo.png",
+    repoRelativePath: "logo.png",
+    kind: "unstaged",
+    before: { source: "blob", oid: "a".repeat(40) },
+    after: { source: "workingTree" },
+  };
+  const owner = {
+    isConnected: true,
+    generation: 0,
+    shownStateKey: "",
+    positions: new Map(),
+    pendingLines: new Map(),
+    rootPath: "repo",
+    worktreeRootPath: "repo",
+    view: visualView("logo.png", async () => versions),
+    viewer,
+    diffPresentation: selectedFile.diffPresentation,
+    acceptsLoad: selectedFile.acceptsLoad,
+    loadVisual: selectedFile.loadVisual,
+  };
+
+  await selectedFile.load.call(owner);
+  await selectedFile.load.call(owner, { background: true });
+
+  assert.deepEqual(loading, ["logo.png"], "a background load keeps what is shown");
+  assert.deepEqual(
+    shown.map(({ path, recheck }) => ({ path, recheck })),
+    [
+      { path: "repo/logo.png", recheck: false },
+      { path: "repo/logo.png", recheck: true },
+    ],
+  );
+  assert.equal(shown[0].presentation.title, "logo.png");
+  assert.equal(shown[0].presentation.downloadPath, undefined, "a change offers no Download");
+  assert.equal(owner.shownStateKey, "working:logo.png:visual");
+});
+
 test("keeps the position of a view it leaves and carries the line to another representation", () => {
   const owner = {
     view: diffView("a.js"),

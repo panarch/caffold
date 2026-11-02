@@ -35,6 +35,9 @@ The right side shows the selected file in one of these ways, as the file
 allows:
 
 - **Diff**, the unified diff of the change, with line numbers on both sides;
+- **Visual**, for images, the picture before and after the change: **Side by
+  side** shows both with their size, and **Difference** paints the pixels that
+  changed in red;
 - **Source**, the whole file as text;
 - **Preview**, for Markdown, images, PDF files, Word documents (`.docx`),
   PowerPoint decks (`.pptx`), and Excel workbooks (`.xlsx`, `.xlsm`).

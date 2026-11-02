@@ -21,6 +21,7 @@ const shadowRootStyles = new Map([
   ["components/file-viewer.css", "caffold-review-file-viewer"],
   ["components/file-viewer/components/code-viewer.css", "caffold-code-viewer"],
   ["components/file-viewer/components/diff-viewer.css", "caffold-diff-viewer"],
+  ["components/file-viewer/components/visual-diff.css", "caffold-visual-diff"],
   ["components/git-compare-browser.css", "caffold-git-compare-browser"],
   ["components/git-compare-tree.css", "caffold-git-compare-tree"],
   ["components/loading-text.css", "caffold-loading-text"],

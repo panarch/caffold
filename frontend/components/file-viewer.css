@@ -171,6 +171,29 @@ h2 {
   color: var(--control-fg);
 }
 
+/* Visual's comparison choice ends where the representation choice above it
+   ends, the Integrated Review axis or the header's own right edge, in a row as
+   tall as the header. */
+caffold-visual-diff {
+  --visual-bar-block-size: var(--review-header-height, 2.625rem);
+  --visual-bar-inline-end: var(--review-viewer-action-inline-end, 0.5rem);
+}
+
+/* Commit and Compare offer Diff and Visual here. Each choice takes the width
+   a choice takes in the Integrated Review viewer axis, so the two read alike. */
+.viewer-change-control {
+  --segmented-control-column-size: auto;
+  --segmented-control-choice-min-inline-size: 0;
+  --segmented-control-label-padding-inline: var(--interface-space-1);
+  --viewer-change-axis-inline-size: 7.5rem;
+
+  width: calc(
+    var(--viewer-change-choice-count, 1) *
+    var(--viewer-change-axis-inline-size) /
+    2
+  );
+}
+
 .viewer-info-button::after {
   position: absolute;
   inset: var(--interface-compact-hit-outset);

@@ -1,5 +1,7 @@
 import { taskThreadId } from "#tasks/task-list-model.js";
 import {
+  isFileRepresentation,
+  isReviewViewer,
   type ReviewViewer,
   representationForFile,
 } from "../representations.js";
@@ -43,10 +45,7 @@ export function normalizeReviewRoute(
   return {
     scope: route?.reviewScope === "branch" ? "branch" : "working",
     navigator: route?.reviewNavigator === "files" ? "files" : "changes",
-    viewer:
-      route?.reviewViewer === "source" || route?.reviewViewer === "preview"
-        ? route.reviewViewer
-        : "diff",
+    viewer: isReviewViewer(route?.reviewViewer) ? route.reviewViewer : "diff",
     path,
     line: path ? positiveLine(route?.line) : null,
     baseRef: `${route?.baseRef ?? ""}`,
@@ -78,7 +77,11 @@ export function normalizeForTask(
         ...route,
         scope: "working",
         navigator: "files",
-        viewer: route.viewer === "preview" ? "preview" : "source",
+        viewer: isFileRepresentation(route.viewer)
+          ? route.viewer
+          : route.viewer === "visual"
+            ? "preview"
+            : "source",
         baseRef: "",
       };
   const viewer = representationForFile(taskRoute.viewer, taskRoute.path);

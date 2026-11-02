@@ -2,7 +2,7 @@ use std::{
     collections::HashSet,
     ffi::OsStr,
     fs::File,
-    io::{Read, Write},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
@@ -68,6 +68,21 @@ pub(crate) struct LogEntry {
 pub(crate) struct CommitFile {
     pub repo_relative_path: String,
     pub status: String,
+}
+
+/// The two sides of one file's change, each absent where the file does not
+/// exist on that side.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FileVersions {
+    pub before: Option<FileVersion>,
+    pub after: Option<FileVersion>,
+}
+
+/// One side of a file's change: a blob git keeps, or the file on disk.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum FileVersion {
+    Blob(String),
+    WorkingTree,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -237,7 +252,7 @@ pub(crate) fn diff(
     repo_relative_path: &str,
     kind: &str,
 ) -> Option<String> {
-    let args = diff_args(repo_relative_path, kind, false);
+    let args = diff_args(repo_relative_path, kind, DiffOutput::Patch);
     let output = run_git_allowing_status(&repository.root, &args, diff_exit_codes(kind))?;
 
     String::from_utf8(output)
@@ -253,17 +268,47 @@ pub(crate) fn whole_file_diff(
     kind: &str,
     limit: u64,
 ) -> Option<String> {
-    let args = diff_args(repo_relative_path, kind, true);
+    let args = diff_args(repo_relative_path, kind, DiffOutput::WholeFiles);
     let output = run_git_bounded(&repository.root, &args, diff_exit_codes(kind), limit)?;
     String::from_utf8(output).ok()
 }
 
-fn diff_args<'a>(repo_relative_path: &'a str, kind: &str, whole_file: bool) -> Vec<&'a str> {
+/// The two sides `diff` compares for the file.
+pub(crate) fn diff_versions(
+    repository: &Repository,
+    repo_relative_path: &str,
+    kind: &str,
+) -> Option<FileVersions> {
+    let args = diff_args(repo_relative_path, kind, DiffOutput::Versions);
+    let output = run_git_allowing_status(&repository.root, &args, diff_exit_codes(kind))?;
+    Some(parse_file_versions(&output))
+}
+
+/// What a diff prints for its file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiffOutput {
+    /// The patch, with git's own context.
+    Patch,
+    /// The patch, with both files whole as its context.
+    WholeFiles,
+    /// One raw record naming the blob on each side instead of the patch.
+    Versions,
+}
+
+impl DiffOutput {
+    fn args(self) -> &'static [&'static str] {
+        match self {
+            Self::Patch => &[],
+            Self::WholeFiles => &[WHOLE_FILE_CONTEXT],
+            Self::Versions => &["--raw", "--no-abbrev", "-z"],
+        }
+    }
+}
+
+fn diff_args<'a>(repo_relative_path: &'a str, kind: &str, output: DiffOutput) -> Vec<&'a str> {
     let null_path = if cfg!(windows) { "NUL" } else { "/dev/null" };
     let mut args = vec!["diff"];
-    if whole_file {
-        args.push(WHOLE_FILE_CONTEXT);
-    }
+    args.extend(output.args());
     match kind {
         "staged" => args.extend(["--cached", "--", repo_relative_path]),
         "untracked" => args.extend(["--no-index", "--", null_path, repo_relative_path]),
@@ -408,7 +453,11 @@ pub(crate) fn commit_diff(
         return None;
     }
 
-    let args = commit_diff_args(normalize_commit_sha(commit_sha)?, repo_relative_path, false);
+    let args = commit_diff_args(
+        normalize_commit_sha(commit_sha)?,
+        repo_relative_path,
+        DiffOutput::Patch,
+    );
 
     String::from_utf8(run_git_owned(&repository.root, &args)?)
         .ok()
@@ -427,20 +476,43 @@ pub(crate) fn commit_whole_file_diff(
         return None;
     }
 
-    let args = commit_diff_args(normalize_commit_sha(commit_sha)?, repo_relative_path, true);
+    let args = commit_diff_args(
+        normalize_commit_sha(commit_sha)?,
+        repo_relative_path,
+        DiffOutput::WholeFiles,
+    );
     String::from_utf8(run_git_bounded(&repository.root, &args, &[0], limit)?).ok()
 }
 
-fn commit_diff_args(commit_sha: &str, repo_relative_path: &str, whole_file: bool) -> Vec<String> {
+/// The two sides `commit_diff` compares for the file.
+pub(crate) fn commit_diff_versions(
+    repository: &Repository,
+    commit_sha: &str,
+    repo_relative_path: &str,
+) -> Option<FileVersions> {
+    if repo_relative_path.is_empty() {
+        return None;
+    }
+
+    let args = commit_diff_args(
+        normalize_commit_sha(commit_sha)?,
+        repo_relative_path,
+        DiffOutput::Versions,
+    );
+    Some(parse_file_versions(&run_git_owned(
+        &repository.root,
+        &args,
+    )?))
+}
+
+fn commit_diff_args(commit_sha: &str, repo_relative_path: &str, output: DiffOutput) -> Vec<String> {
     let mut args = vec![
         "show".to_string(),
         "--format=".to_string(),
         "--first-parent".to_string(),
         "--find-renames".to_string(),
     ];
-    if whole_file {
-        args.push(WHOLE_FILE_CONTEXT.to_string());
-    }
+    args.extend(output.args().iter().map(|arg| arg.to_string()));
     args.extend([
         commit_sha.to_string(),
         "--".to_string(),
@@ -556,7 +628,7 @@ pub(crate) fn compare_diff(
         return None;
     }
 
-    let args = compare_diff_args(refs, repo_relative_path, false);
+    let args = compare_diff_args(refs, repo_relative_path, DiffOutput::Patch);
 
     String::from_utf8(run_git_owned(&repository.root, &args)?)
         .ok()
@@ -575,19 +647,34 @@ pub(crate) fn compare_whole_file_diff(
         return None;
     }
 
-    let args = compare_diff_args(refs, repo_relative_path, true);
+    let args = compare_diff_args(refs, repo_relative_path, DiffOutput::WholeFiles);
     String::from_utf8(run_git_bounded(&repository.root, &args, &[0], limit)?).ok()
+}
+
+/// The two sides `compare_diff` compares for the file.
+pub(crate) fn compare_diff_versions(
+    repository: &Repository,
+    refs: &CompareRefs,
+    repo_relative_path: &str,
+) -> Option<FileVersions> {
+    if repo_relative_path.is_empty() {
+        return None;
+    }
+
+    let args = compare_diff_args(refs, repo_relative_path, DiffOutput::Versions);
+    Some(parse_file_versions(&run_git_owned(
+        &repository.root,
+        &args,
+    )?))
 }
 
 fn compare_diff_args(
     refs: &CompareRefs,
     repo_relative_path: &str,
-    whole_file: bool,
+    output: DiffOutput,
 ) -> Vec<String> {
     let mut args = vec!["diff".to_string(), "--find-renames".to_string()];
-    if whole_file {
-        args.push(WHOLE_FILE_CONTEXT.to_string());
-    }
+    args.extend(output.args().iter().map(|arg| arg.to_string()));
     args.extend([
         compare_range(refs),
         "--".to_string(),
@@ -618,6 +705,64 @@ pub(crate) fn compare_diff_stats(
         &run_git_owned(&repository.root, &args)?,
         repo_relative_path,
     ))
+}
+
+/// The size of blob `blob_id`, or None when the repository holds no blob by
+/// that id.
+pub(crate) fn blob_size(repository: &Repository, blob_id: &str) -> Option<u64> {
+    let blob_id = normalize_object_id(blob_id)?;
+    let output = run_git_with_stdin_allowing_status(
+        &repository.root,
+        &["cat-file", "--batch-check=%(objecttype) %(objectsize)"],
+        format!("{blob_id}\n").as_bytes(),
+        &[0],
+    )?;
+    let output = String::from_utf8(output).ok()?;
+    let (object_type, size) = output.trim_end().split_once(' ')?;
+    if object_type != "blob" {
+        return None;
+    }
+    size.parse().ok()
+}
+
+/// Bytes `first` through `last` of blob `blob_id`. git cannot start a blob in
+/// the middle, so the bytes before `first` stream past and only the asked part
+/// is kept.
+pub(crate) fn read_blob_part(
+    repository: &Repository,
+    blob_id: &str,
+    first: u64,
+    last: u64,
+) -> Option<Vec<u8>> {
+    let blob_id = normalize_object_id(blob_id)?;
+    let length = last.checked_sub(first)?.checked_add(1)?;
+    let mut child = Command::new("git")
+        .arg("-C")
+        .arg(&repository.root)
+        .args(["cat-file", "blob", blob_id])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let mut stdout = child.stdout.take()?;
+    let skipped = io::copy(&mut (&mut stdout).take(first), &mut io::sink());
+    let mut part = Vec::new();
+    let read = stdout.take(length).read_to_end(&mut part);
+    let _ = child.kill();
+    let _ = child.wait();
+    (skipped.ok()? == first && read.is_ok() && part.len() as u64 == length).then_some(part)
+}
+
+/// Blob `blob_id` whole, unless it holds more than `limit` bytes.
+pub(crate) fn read_blob(repository: &Repository, blob_id: &str, limit: u64) -> Option<Vec<u8>> {
+    let blob_id = normalize_object_id(blob_id)?;
+    run_git_bounded(
+        &repository.root,
+        &["cat-file", "blob", blob_id],
+        &[0],
+        limit,
+    )
 }
 
 fn current_branch(path: &Path) -> Option<String> {
@@ -1161,6 +1306,42 @@ fn parse_commit_file(line: &str) -> Option<CommitFile> {
         repo_relative_path: repo_relative_path.to_string(),
         status,
     })
+}
+
+/// Reads the first raw record of a `--raw -z` diff: each side's blob id, where
+/// an id of only zeros names no blob. On the new side that is the working tree
+/// file, unless the file is gone. A diff with no record changed nothing.
+fn parse_file_versions(output: &[u8]) -> FileVersions {
+    let header = output
+        .split(|byte| *byte == 0)
+        .next()
+        .map(String::from_utf8_lossy)
+        .unwrap_or_default();
+    let fields = header
+        .strip_prefix(':')
+        .map(|header| header.split(' ').collect::<Vec<_>>())
+        .unwrap_or_default();
+    let [_, _, old_id, new_id, status] = fields[..] else {
+        return FileVersions {
+            before: None,
+            after: None,
+        };
+    };
+    let blob = |id: &str| {
+        (!id.bytes().all(|byte| byte == b'0')).then(|| FileVersion::Blob(id.to_string()))
+    };
+    FileVersions {
+        before: blob(old_id),
+        after: blob(new_id)
+            .or_else(|| (!status.starts_with('D')).then_some(FileVersion::WorkingTree)),
+    }
+}
+
+/// A full object id: SHA-1 or SHA-256 in hexadecimal.
+fn normalize_object_id(object_id: &str) -> Option<&str> {
+    let valid_length = matches!(object_id.len(), 40 | 64);
+    let valid_chars = object_id.bytes().all(|byte| byte.is_ascii_hexdigit());
+    (valid_length && valid_chars).then_some(object_id)
 }
 
 fn normalize_commit_sha(commit_sha: &str) -> Option<&str> {
@@ -1982,6 +2163,147 @@ mod tests {
             run_git(&local, &["rev-parse", "refs/remotes/-company/main"]),
             run_git(&seed, &["rev-parse", "main"])
         );
+    }
+
+    #[test]
+    fn reads_the_versions_each_diff_compares() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        git(root, &["init"]);
+        for (name, contents) in [
+            ("kept.png", "kept"),
+            ("changed.png", "old"),
+            ("gone.png", "gone"),
+            ("moved.png", "moved"),
+        ] {
+            fs::write(root.join(name), contents).unwrap();
+        }
+        git(root, &["add", "."]);
+        commit(root, "Add pictures");
+        git(root, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        let repository = repository_for(root).unwrap();
+        let blob = |object: &str| Some(FileVersion::Blob(object_id(root, object)));
+        let versions = |before, after| Some(FileVersions { before, after });
+        let old = blob("HEAD:changed.png");
+
+        fs::write(root.join("changed.png"), "new").unwrap();
+        fs::remove_file(root.join("gone.png")).unwrap();
+        fs::write(root.join("fresh.png"), "fresh").unwrap();
+        assert_eq!(
+            diff_versions(&repository, "changed.png", "unstaged"),
+            versions(old.clone(), Some(FileVersion::WorkingTree))
+        );
+        assert_eq!(
+            diff_versions(&repository, "gone.png", "unstaged"),
+            versions(blob("HEAD:gone.png"), None)
+        );
+        assert_eq!(
+            diff_versions(&repository, "fresh.png", "untracked"),
+            versions(None, Some(FileVersion::WorkingTree))
+        );
+        assert_eq!(
+            diff_versions(&repository, "kept.png", "unstaged"),
+            versions(None, None)
+        );
+
+        git(root, &["add", "changed.png"]);
+        git(root, &["mv", "moved.png", "renamed.png"]);
+        let staged = blob(":changed.png");
+        assert_eq!(
+            diff_versions(&repository, "changed.png", "staged"),
+            versions(old.clone(), staged.clone())
+        );
+        // The diff names one path, so a renamed file reads as added.
+        assert_eq!(
+            diff_versions(&repository, "renamed.png", "staged"),
+            versions(None, blob(":renamed.png"))
+        );
+
+        commit(root, "Change pictures");
+        let sha = object_id(root, "HEAD");
+        let refs = CompareRefs {
+            base: "origin/main".to_string(),
+            head: "HEAD".to_string(),
+        };
+        assert_eq!(
+            commit_diff_versions(&repository, &sha, "changed.png"),
+            versions(old.clone(), staged.clone())
+        );
+        assert_eq!(
+            compare_diff_versions(&repository, &refs, "changed.png"),
+            versions(old, staged)
+        );
+        assert_eq!(
+            commit_diff_versions(&repository, "not a sha", "changed.png"),
+            None
+        );
+    }
+
+    #[test]
+    fn reads_a_blob_whole_or_in_part() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        git(root, &["init"]);
+        fs::write(root.join("digits.png"), "0123456789").unwrap();
+        git(root, &["add", "digits.png"]);
+        commit(root, "Add digits");
+        let repository = repository_for(root).unwrap();
+        let id = object_id(root, "HEAD:digits.png");
+
+        assert_eq!(blob_size(&repository, &id), Some(10));
+        assert_eq!(
+            read_blob(&repository, &id, 10).as_deref(),
+            Some(&b"0123456789"[..])
+        );
+        assert_eq!(read_blob(&repository, &id, 9), None);
+        for (first, last, part) in [(0, 3, &b"0123"[..]), (4, 6, b"456"), (7, 9, b"789")] {
+            assert_eq!(
+                read_blob_part(&repository, &id, first, last).as_deref(),
+                Some(part)
+            );
+        }
+        assert_eq!(read_blob_part(&repository, &id, 8, 10), None);
+        assert_eq!(read_blob_part(&repository, &id, 5, 4), None);
+
+        for not_a_blob in [
+            object_id(root, "HEAD^{tree}"),
+            "0".repeat(40),
+            "HEAD".to_string(),
+            "--batch".to_string(),
+        ] {
+            assert_eq!(blob_size(&repository, &not_a_blob), None, "{not_a_blob}");
+        }
+        assert_eq!(read_blob_part(&repository, "--batch", 0, 1), None);
+    }
+
+    #[test]
+    fn a_raw_diff_without_a_record_changed_nothing() {
+        assert_eq!(
+            parse_file_versions(b""),
+            FileVersions {
+                before: None,
+                after: None
+            }
+        );
+    }
+
+    fn object_id(path: &Path, object: &str) -> String {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(["rev-parse", object])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{object}");
+        String::from_utf8(output.stdout).unwrap().trim().to_string()
     }
 
     fn git_is_available() -> bool {

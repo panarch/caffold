@@ -62,11 +62,15 @@ import {
   viewerStateKey,
 } from "./layout/route.js";
 import {
-  fileRepresentationCapabilities,
+  fileHasRepresentation,
   isFileRepresentation,
+  isReviewViewer,
+  type ReviewViewer,
 } from "./representations.js";
 
 import styles from "./layout.css.js";
+
+export { isReviewViewer } from "./representations.js";
 
 export interface TaskReviewRouteIntentDetail {
   route: ParsedRoute;
@@ -774,7 +778,7 @@ export class CaffoldTaskReview extends CaffoldElement {
     if (
       changes !== this.shownChanges ||
       !this.route.path ||
-      this.route.viewer !== "diff"
+      isFileRepresentation(this.route.viewer)
     ) {
       return;
     }
@@ -811,6 +815,7 @@ export class CaffoldTaskReview extends CaffoldElement {
         change: null,
         diffKind: "",
         readDiff: null,
+        readVersions: null,
       };
     }
     const changes = this.shownChanges;
@@ -823,6 +828,7 @@ export class CaffoldTaskReview extends CaffoldElement {
       change: logicalPath ? changes.change(logicalPath) : null,
       diffKind: changes.diffKind(),
       readDiff: () => changes.readDiff(logicalPath),
+      readVersions: () => changes.readVersions(logicalPath),
     };
   }
 
@@ -861,15 +867,22 @@ export class CaffoldTaskReview extends CaffoldElement {
       selected: this.route.navigator,
       choices: navigatorChoices,
     });
-    const representations = fileRepresentationCapabilities(this.route.path);
-    const preserveUnboundPreview =
-      !this.route.path && this.route.viewer === "preview";
+    // With no file selected, the chosen representation stays on offer.
+    const offered = (viewer: ReviewViewer) =>
+      this.route.path
+        ? fileHasRepresentation(this.route.path, viewer)
+        : viewer === "diff" ||
+          viewer === "source" ||
+          viewer === this.route.viewer;
     const viewerChoices = [
-      ...(gitAvailable ? [{ value: "diff", label: "Diff" }] : []),
-      ...(representations.source ? [{ value: "source", label: "Source" }] : []),
-      ...(representations.previewKind || preserveUnboundPreview
-        ? [{ value: "preview", label: "Preview" }]
+      ...(gitAvailable && offered("diff")
+        ? [{ value: "diff", label: "Diff" }]
         : []),
+      ...(gitAvailable && offered("visual")
+        ? [{ value: "visual", label: "Visual" }]
+        : []),
+      ...(offered("source") ? [{ value: "source", label: "Source" }] : []),
+      ...(offered("preview") ? [{ value: "preview", label: "Preview" }] : []),
     ];
     this.dataset.reviewViewerChoiceCount = `${viewerChoices.length}`;
     this.axisControl("viewer").setSnapshot({
@@ -907,7 +920,7 @@ export class CaffoldTaskReview extends CaffoldElement {
   }
 
   private chooseViewer(value: string) {
-    if (value === "diff" || value === "source" || value === "preview") {
+    if (isReviewViewer(value)) {
       this.updateRoute({ viewer: value });
     }
   }

@@ -32,6 +32,17 @@ struct BinaryQuery {
     version: Option<String>,
 }
 
+/// A viewer's request for an image as a blob git keeps, named by its id. The
+/// id is also the image's version.
+#[derive(Debug, Deserialize)]
+struct GitBlobQuery {
+    #[serde(default)]
+    path: String,
+    file: String,
+    oid: String,
+    version: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct TaskImageQuery {
     path: String,
@@ -43,6 +54,7 @@ pub(super) fn router() -> Router<WorkspaceState> {
         .route("/api/list", get(list))
         .route("/api/file", get(file))
         .route("/api/image", get(image))
+        .route("/api/git/blob", get(git_blob))
         .route("/api/document", get(document))
         .route("/api/download", get(download))
         .route("/api/task-image", get(task_image))
@@ -93,6 +105,22 @@ async fn image(
 ) -> Result<Response, ApiError> {
     let image = state.fs.open_image(&query.path)?;
     binary_viewer_response(&request, query.version.as_deref(), image)
+}
+
+// git runs to check the blob and to read it, so both happen on the blocking
+// pool.
+async fn git_blob(
+    State(state): State<WorkspaceState>,
+    Query(query): Query<GitBlobQuery>,
+    request: HeaderMap,
+) -> Result<Response, ApiError> {
+    let fs = state.fs.clone();
+    tokio::task::spawn_blocking(move || {
+        let image = fs.open_git_image(&query.path, &query.file, &query.oid)?;
+        binary_viewer_response(&request, query.version.as_deref(), image)
+    })
+    .await
+    .map_err(|error| ApiError::Internal(format!("Git blob read task failed: {error}")))?
 }
 
 async fn document(
@@ -293,6 +321,22 @@ mod tests {
             .unwrap()
             .set_modified(std::time::UNIX_EPOCH + Duration::from_secs(seconds))
             .unwrap();
+    }
+
+    // Runs git in `path` and returns what it printed.
+    fn git(path: &Path, args: &[&str]) -> String {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap().trim().to_string()
     }
 
     #[tokio::test]
@@ -541,6 +585,78 @@ mod tests {
             );
             let body: Value = serde_json::from_slice(&body(response).await).unwrap();
             assert_eq!(body["error"]["code"], "file_changed", "{versioned}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_git_blob_is_an_image_named_by_its_id() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        git(&repo, &["init"]);
+        std::fs::write(repo.join("digits.png"), b"0123456789").unwrap();
+        std::fs::write(repo.join("notes.txt"), b"notes\n").unwrap();
+        git(&repo, &["add", "."]);
+        git(
+            &repo,
+            &[
+                "-c",
+                "user.name=Caffold Test",
+                "-c",
+                "user.email=caffold@example.test",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-m",
+                "Add files",
+            ],
+        );
+        let id = git(&repo, &["rev-parse", "HEAD:digits.png"]);
+        let uri = format!("/api/git/blob?path=repo&file=repo/digits.png&oid={id}");
+
+        let whole = request(app(root.path()), &uri).await;
+        assert_eq!(whole.status(), StatusCode::OK);
+        assert_eq!(whole.headers()[header::CONTENT_TYPE], "image/png");
+        assert_eq!(whole.headers()[header::CACHE_CONTROL], "no-cache");
+        assert_eq!(tag_of(&whole), id);
+        assert_eq!(body(whole).await, b"0123456789");
+
+        let part = request_with(
+            app(root.path()),
+            &format!("{uri}&version={id}&cell=1"),
+            &[(header::RANGE, "bytes=6-9")],
+        )
+        .await;
+        assert_eq!(part.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(part.headers()[header::CONTENT_RANGE], "bytes 6-9/10");
+        assert_eq!(
+            part.headers()[header::CACHE_CONTROL],
+            "private, max-age=31536000, immutable"
+        );
+        assert_eq!(body(part).await, b"6789");
+
+        let past_end = request_with(app(root.path()), &uri, &[(header::RANGE, "bytes=10-")]).await;
+        assert_eq!(past_end.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+        let stale = request(app(root.path()), &format!("{uri}&version=stale")).await;
+        assert_eq!(stale.status(), StatusCode::PRECONDITION_FAILED);
+
+        let notes_id = git(&repo, &["rev-parse", "HEAD:notes.txt"]);
+        for (refused, status) in [
+            (
+                format!("/api/git/blob?path=repo&file=repo/notes.txt&oid={notes_id}"),
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            ),
+            (
+                format!(
+                    "/api/git/blob?path=repo&file=repo/digits.png&oid={}",
+                    "0".repeat(40)
+                ),
+                StatusCode::NOT_FOUND,
+            ),
+        ] {
+            let response = request(app(root.path()), &refused).await;
+            assert_eq!(response.status(), status, "{refused}");
+            assert!(!response.headers().contains_key(header::ETAG), "{refused}");
         }
     }
 

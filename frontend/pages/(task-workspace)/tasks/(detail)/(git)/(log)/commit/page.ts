@@ -10,9 +10,11 @@ import {
 import {
   type GitCommit,
   type GitDiff,
+  type GitDiffVersions,
   type GitRepository,
   getGitCommit,
   getGitCommitDiff,
+  getGitCommitDiffVersions,
 } from "#app/api.js";
 import {
   emptyScrollSurfaceScope,
@@ -20,9 +22,17 @@ import {
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
 } from "#app/scroll-scope.js";
+import {
+  type ChangeRepresentation,
+  changeRepresentationChoices,
+  changeRepresentationFor,
+} from "#components/dom.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/file-viewer.js";
-import type { CaffoldReviewFileViewer } from "#components/file-viewer.js";
+import type {
+  CaffoldReviewFileViewer,
+  FileViewerChangeIntentDetail,
+} from "#components/file-viewer.js";
 import {
   diffViewerPresentation,
   type ViewerPresentation,
@@ -67,6 +77,9 @@ export class CaffoldGitLogCommitPage extends CaffoldElement {
   private commitRequestId = 0;
   private fileRequestId = 0;
   private treeScrollTop = 0;
+  // How the last file's change was shown; the next file opens the same way
+  // when it can.
+  private changeView: ChangeRepresentation = "diff";
   private readonly filesList = new DrawnRef<CaffoldCommitChangesTree>(this);
   private readonly paneResizer = new DrawnRef<CaffoldPaneResizer>(this);
   private readonly viewer = new DrawnRef<CaffoldReviewFileViewer>(this);
@@ -86,6 +99,7 @@ export class CaffoldGitLogCommitPage extends CaffoldElement {
       <caffold-review-file-viewer
         ${drawn(this.viewer)}
         refresh-action="refresh-git-review"
+        @caffold:file-viewer-change-intent=${this.chooseChange}
       ></caffold-review-file-viewer>
     `;
   }
@@ -264,22 +278,12 @@ export class CaffoldGitLogCommitPage extends CaffoldElement {
     }, LOADING_DELAY_MS);
 
     try {
-      const diff = await getGitCommitDiff(this.currentPath, sha, path);
-      if (requestId !== this.fileRequestId) {
-        return null;
-      }
-      const loadedPresentation = this.diffPresentation(
+      return await this.loadChange(
         path,
         sha,
-        options.status,
-        diff,
+        options.status ?? "",
+        () => requestId === this.fileRequestId,
       );
-      this.viewerPresentation = loadedPresentation;
-      this.fileViewer.setDiff(
-        { ...diff, status: options.status ?? "" },
-        { presentation: loadedPresentation },
-      );
-      return diff;
     } catch (error) {
       if (requestId !== this.fileRequestId) {
         return null;
@@ -385,6 +389,8 @@ export class CaffoldGitLogCommitPage extends CaffoldElement {
               details: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
               refresh: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
               link: ACTION_HINT_ACTION.LINK_OPEN,
+              axis: ACTION_HINT_ACTION.REVIEW_AXIS,
+              button: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
             },
             clipRoots: [this, ...clipRoots],
           })
@@ -480,30 +486,71 @@ export class CaffoldGitLogCommitPage extends CaffoldElement {
     const presentation = this.diffPresentation(path, sha, file.status);
     this.viewerPresentation = presentation;
     try {
-      const diff = await getGitCommitDiff(this.currentPath, sha, path);
-      if (
-        requestId !== this.fileRequestId ||
-        path !== this.commitTree.selectedPath
-      ) {
-        return null;
-      }
-      const loadedPresentation = this.diffPresentation(
+      return await this.loadChange(
         path,
         sha,
         file.status,
-        diff,
+        () =>
+          requestId === this.fileRequestId &&
+          path === this.commitTree.selectedPath,
+        { preserveScroll: true },
       );
-      this.viewerPresentation = loadedPresentation;
-      this.fileViewer.setDiff(
-        { ...diff, status: file.status },
-        { preserveScroll: true, presentation: loadedPresentation },
-      );
-      return diff;
     } catch (error) {
       if (requestId === this.fileRequestId) {
         this.fileViewer.setError(presentation, error as Error);
       }
       return null;
+    }
+  }
+
+  // Reads the file's change in the representation it opens in and shows it,
+  // unless `current` says a newer request took over meanwhile.
+  private async loadChange(
+    path: string,
+    sha: string,
+    status: string,
+    current: () => boolean,
+    { preserveScroll = false }: { preserveScroll?: boolean } = {},
+  ) {
+    this.changeView = changeRepresentationFor(path, this.changeView);
+    this.fileViewer.setChangeChoices(
+      changeRepresentationChoices(path, this.changeView),
+    );
+    if (this.changeView === "visual") {
+      const versions = await getGitCommitDiffVersions(
+        this.currentPath,
+        sha,
+        path,
+      );
+      if (!current()) {
+        return null;
+      }
+      const presentation = this.diffPresentation(path, sha, status, versions);
+      this.viewerPresentation = presentation;
+      this.fileViewer.setVisual(versions, { presentation });
+      return versions;
+    }
+    const diff = await getGitCommitDiff(this.currentPath, sha, path);
+    if (!current()) {
+      return null;
+    }
+    const presentation = this.diffPresentation(path, sha, status, diff);
+    this.viewerPresentation = presentation;
+    this.fileViewer.setDiff(
+      { ...diff, status },
+      { preserveScroll, presentation },
+    );
+    return diff;
+  }
+
+  private chooseChange(event: CustomEvent<FileViewerChangeIntentDetail>) {
+    const representation = event.detail?.representation;
+    if (
+      (representation === "diff" || representation === "visual") &&
+      representation !== this.changeView
+    ) {
+      this.changeView = representation;
+      void this.refreshSelectedDiff();
     }
   }
 
@@ -535,7 +582,7 @@ export class CaffoldGitLogCommitPage extends CaffoldElement {
     path: string,
     sha = this.currentCommitSha(),
     status = "",
-    diff: GitDiff = {},
+    diff: GitDiff | GitDiffVersions = {},
   ) {
     const file = this.findFile(path);
     return diffViewerPresentation({

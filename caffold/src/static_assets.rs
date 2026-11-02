@@ -2230,6 +2230,20 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/components/file-viewer/components/diff-viewer.js"
         )))),
+        "components/file-viewer/components/visual-diff.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/file-viewer/components/visual-diff.css.js"
+        )))),
+        "components/file-viewer/components/visual-diff.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/file-viewer/components/visual-diff.js"
+        )))),
+        "components/file-viewer/components/visual-diff/difference.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/components/file-viewer/components/visual-diff/difference.js"
+            ))))
+        }
         "components/file-viewer/syntax-spans.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/components/file-viewer/syntax-spans.js"
@@ -2608,6 +2622,7 @@ mod tests {
             "components/file-viewer.css",
             "components/file-viewer/components/code-viewer.css",
             "components/file-viewer/components/diff-viewer.css",
+            "components/file-viewer/components/visual-diff.css",
             "components/git-compare-browser.css",
             "components/git-compare-tree.css",
             "components/loading-text.css",
@@ -2929,6 +2944,7 @@ mod tests {
             "chunked-fetch/in-flight-limit.js",
             "chunked-fetch/transfer.js",
             "components/file-viewer/syntax-spans.js",
+            "components/file-viewer/components/visual-diff/difference.js",
             "action-hints.js",
             "action-hints/control.js",
             "action-hints/declarations.js",
@@ -3392,6 +3408,10 @@ mod tests {
             (
                 "components/segmented-control.js",
                 b"caffold-segmented-control".as_slice(),
+            ),
+            (
+                "components/file-viewer/components/visual-diff.js",
+                b"caffold-visual-diff".as_slice(),
             ),
             (
                 "components/loading-text.js",

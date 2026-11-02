@@ -1,0 +1,169 @@
+:host {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface);
+}
+
+/* The comparison choice sits at the right, on the line its owner names, so
+   it stays under the representation choice above it, in a row as tall as the
+   header above. */
+.visual-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  box-sizing: border-box;
+  height: var(--visual-bar-block-size, 2.625rem);
+  padding-inline: var(--interface-space-3)
+    var(--visual-bar-inline-end, var(--interface-space-3));
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.visual-bar > caffold-segmented-control {
+  flex: none;
+}
+
+/* The stage is the size every picture is scaled against: a picture shrinks
+   to fit it and never grows past its own size, and both sides share one
+   scale, so a picture that changed size shows the change. */
+.visual-stage {
+  container: visual-stage / size;
+  grid-row: 2;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 1rem;
+}
+
+.visual-stage > caffold-loading-text {
+  display: block;
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+  text-align: center;
+}
+
+.caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: var(--interface-space-3);
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+  white-space: nowrap;
+}
+
+.caption strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+img {
+  display: block;
+  width: calc(var(--natural-width) * var(--scale));
+  height: calc(var(--natural-height) * var(--scale));
+}
+
+.side-by-side {
+  --caption-room: calc(
+    var(--interface-meta-font-size) *
+    var(--interface-line-height) +
+    var(--interface-space-3)
+  );
+  --column: calc(
+    (100cqi - (var(--sides) - 1) * var(--side-gap)) /
+    var(--sides)
+  );
+  --scale: min(
+    1px,
+    var(--column) /
+    var(--max-natural-width),
+    (100cqb - var(--caption-room)) /
+    var(--max-natural-height)
+  );
+  --side-gap: 1rem;
+  --sides: 1;
+
+  display: grid;
+  grid-template-columns: repeat(var(--sides), minmax(0, 1fr));
+  gap: var(--side-gap);
+  align-items: start;
+}
+
+.side-by-side[data-sides="2"] {
+  --sides: 2;
+}
+
+figure {
+  display: grid;
+  gap: var(--interface-space-3);
+  justify-items: center;
+  min-width: 0;
+  margin: 0;
+}
+
+figure > .caption {
+  justify-self: stretch;
+}
+
+.side-message {
+  text-align: center;
+}
+
+/* On a phone-narrow stage the two sides stack, each as wide as the stage, and
+   the stage scrolls to the second; a foldable keeps them side by side. */
+@container visual-stage (max-width: 30rem) {
+  .side-by-side[data-sides="2"] {
+    --scale: min(1px, 100cqi / var(--max-natural-width));
+
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.difference {
+  --scale: min(
+    1px,
+    100cqi /
+    var(--max-natural-width),
+    (100cqb - 2 * var(--interface-meta-font-size)) /
+    var(--max-natural-height)
+  );
+
+  display: grid;
+  gap: var(--interface-space-3);
+  justify-items: center;
+}
+
+.difference-captions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--interface-space-6);
+  width: max(calc(var(--max-natural-width) * var(--scale)), min(100%, 30rem));
+  max-width: 100%;
+}
+
+.swatch {
+  display: inline-block;
+  align-self: center;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 2px;
+  background: var(--changed-color);
+}
+
+.difference-message {
+  display: grid;
+  gap: var(--interface-space-3);
+  max-width: 28rem;
+  margin-inline: auto;
+  text-align: center;
+}
+
+.difference-message p {
+  margin: 0;
+}

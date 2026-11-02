@@ -7,7 +7,14 @@ import {
   ActionHints,
   mergeActionHintScopes,
 } from "../action-hints.js";
-import { documentUrl, downloadUrl, imageUrl } from "../api.js";
+import {
+  documentUrl,
+  downloadUrl,
+  type GitDiffVersions,
+  type GitFileVersion,
+  gitBlobUrl,
+  imageUrl,
+} from "../api.js";
 import { type FetchedFile, fetchInChunks } from "../chunked-fetch.js";
 import { KeyboardContexts } from "../keyboard-navigation.js";
 import "../keyboard-navigation/components/presentation.js";
@@ -38,6 +45,14 @@ import type {
   CaffoldDiffViewer,
   FileDiff,
 } from "./file-viewer/components/diff-viewer.js";
+import "./file-viewer/components/visual-diff.js";
+import type {
+  CaffoldVisualDiff,
+  VisualMode,
+  VisualModeIntentDetail,
+  VisualSide,
+  VisualSides,
+} from "./file-viewer/components/visual-diff.js";
 import {
   diffViewerPresentation,
   sourceViewerPresentation,
@@ -51,6 +66,11 @@ import "./markdown-preview.js";
 import type { CaffoldMarkdownPreview } from "./markdown-preview.js";
 import "./pdf-viewer.js";
 import "./pptx-viewer.js";
+import "./segmented-control.js";
+import type {
+  CaffoldSegmentedControl,
+  SegmentedControlIntentDetail,
+} from "./segmented-control.js";
 import "./xlsx-viewer.js";
 import { returnPopoverFocus } from "#app/popover-focus.js";
 import { scopedStyle } from "#app/scoped-style.js";
@@ -98,8 +118,9 @@ const DOCUMENT_VIEWERS: Record<
 // An image or document preview is fetched here, once for its file, and drawn
 // from that copy. Review asks for it again only when the file may have
 // changed, and it is drawn again only when the server answers with another
-// version. One preview file at a time moves through these phases; with none,
-// nothing is fetched or drawn.
+// version. Each preview file moves through these phases on its own: a preview
+// holds one, Visual one for each side of a change; with none, nothing is
+// fetched or drawn.
 const PREVIEW_PHASE = Object.freeze({
   // Fetched for the first time; nothing of it is drawn yet.
   READING: "reading",
@@ -150,7 +171,14 @@ const PREVIEW_EDGES: Readonly<
   [PREVIEW_PHASE.FAILED]: Object.freeze({}),
 });
 
+// Where a preview file is drawn: the previewed file, or one side of a change.
+type PreviewSlot = "file" | keyof VisualSides;
+
+const VISUAL_SLOTS: ReadonlyArray<keyof VisualSides> = ["before", "after"];
+const PREVIEW_SLOTS: readonly PreviewSlot[] = ["file", ...VISUAL_SLOTS];
+
 interface PreviewFile {
+  slot: PreviewSlot;
   url: string;
   phase: PreviewPhase;
   fetching: AbortController | null;
@@ -218,7 +246,23 @@ type ViewerState =
       presentation: ViewerPresentation;
       diff: FileDiff;
       position: ViewerPosition;
+    }
+  | {
+      status: "visual";
+      presentation: ViewerPresentation;
+      versions: GitDiffVersions;
     };
+
+// The change representations an owner without its own control offers in the
+// viewer's header, as Commit and Compare do for a file with both.
+export interface FileViewerChangeChoices {
+  choices: Array<{ value: string; label: string }>;
+  selected: string;
+}
+
+export interface FileViewerChangeIntentDetail {
+  representation: string;
+}
 
 interface RetainedContent {
   presentation: ViewerPresentation | null;
@@ -244,6 +288,14 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   private accessor imageSource = "";
   @state()
   private accessor documentFile: DocumentPreviewFile | null = null;
+  // How Visual compares the two sides; it stays while files change.
+  @state()
+  private accessor visualMode: VisualMode = "side";
+  @state()
+  private accessor changeChoices: FileViewerChangeChoices = {
+    choices: [],
+    selected: "",
+  };
 
   static override styles = [
     scopedStyle(compactIconButton, ".viewer-refresh-button"),
@@ -253,7 +305,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   ];
 
   private readonly detailsPopoverId: string;
-  private previewFile: PreviewFile | null = null;
+  private previewFiles: Partial<Record<PreviewSlot, PreviewFile>> = {};
   private retainedContent: RetainedContent | null = null;
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
@@ -264,6 +316,8 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   private readonly noticeContent = new DrawnRef<HTMLDivElement>(this);
   private readonly codeViewer = new DrawnRef<CaffoldCodeViewer>(this);
   private readonly diffViewer = new DrawnRef<CaffoldDiffViewer>(this);
+  private readonly visualDiff = new DrawnRef<CaffoldVisualDiff>(this);
+  private readonly changeControl = new DrawnRef<CaffoldSegmentedControl>(this);
   private readonly preview = new DrawnRef<CaffoldMarkdownPreview>(this);
   private readonly documentViewer = new DrawnRef<DocumentViewer>(this);
 
@@ -355,6 +409,16 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
             }
           </div>
           <div class="viewer-actions">
+            ${
+              this.changeChoices.choices.length > 0
+                ? html`<caffold-segmented-control
+                    ${drawn(this.changeControl)}
+                    class="viewer-change-control"
+                    style="--viewer-change-choice-count: ${this.changeChoices.choices.length};"
+                    @caffold:segmented-control-intent=${this.chooseChange}
+                  ></caffold-segmented-control>`
+                : nothing
+            }
             ${
               this.refreshEventName()
                 ? html`<button
@@ -521,6 +585,16 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
             ></caffold-diff-viewer>
           </section>
         `;
+      case "visual":
+        return html`
+          <section class="viewer-panel file-panel visual-panel">
+            ${header}
+            <caffold-visual-diff
+              ${drawn(this.visualDiff)}
+              @caffold:visual-diff-mode-intent=${this.chooseVisualMode}
+            ></caffold-visual-diff>
+          </section>
+        `;
       case "image": {
         const imageLoading = this.imageDrawn
           ? nothing
@@ -584,6 +658,15 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     }
   }
 
+  override updated() {
+    this.changeControl.value?.setSnapshot({
+      label: "Change view",
+      actionVerb: "Show",
+      selected: this.changeChoices.selected,
+      choices: this.changeChoices.choices,
+    });
+  }
+
   get status() {
     return this.state.status;
   }
@@ -591,7 +674,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   deactivate() {
     this.cancelRetainedContent();
     this.closeDetailsPopover();
-    this.releasePreviewFile();
+    this.releasePreviewFiles([]);
   }
 
   setEmpty() {
@@ -667,7 +750,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     { recheck = false }: { recheck?: boolean } = {},
   ) {
     this.cancelRetainedContent();
-    const held = this.previewFile;
+    const held = this.previewFiles.file;
     if (this.state.status !== "image" || this.state.image.path !== image.path) {
       this.imageDrawn = false;
     }
@@ -691,10 +774,10 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
       presentation: { title: image.name, metadata, downloadPath: image.path },
     };
     this.show();
-    this.showPreviewFile(imageUrl(image.path));
+    this.showPreviewFile("file", imageUrl(image.path));
     this.drawPreviewImage();
-    if (recheck && held && this.previewFile === held) {
-      this.recheckPreviewFile();
+    if (recheck && held && this.previewFiles.file === held) {
+      this.recheckPreviewFile("file");
     }
   }
 
@@ -704,7 +787,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     { recheck = false }: { recheck?: boolean } = {},
   ) {
     this.cancelRetainedContent();
-    const held = this.previewFile;
+    const held = this.previewFiles.file;
     const previous = this.state;
     this.state = {
       status: "document",
@@ -717,12 +800,54 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
       previous.document.kind !== previewDocument.kind
     ) {
       // A new viewer holds nothing yet, so the file is fetched for it.
-      this.releasePreviewFile();
+      this.releasePreviewFile("file");
     }
-    this.showPreviewFile(documentUrl(previewDocument.path));
-    if (recheck && held && this.previewFile === held) {
-      this.recheckPreviewFile();
+    this.showPreviewFile("file", documentUrl(previewDocument.path));
+    if (recheck && held && this.previewFiles.file === held) {
+      this.recheckPreviewFile("file");
     }
+  }
+
+  // Shows the two sides of a change as pictures. A side git keeps is fetched
+  // once for its blob id; the working tree side is asked for again on
+  // `recheck`, as a preview is, since the file may have changed.
+  setVisual(
+    versions: GitDiffVersions,
+    {
+      recheck = false,
+      presentation,
+    }: { recheck?: boolean; presentation: ViewerPresentation },
+  ) {
+    this.cancelRetainedContent();
+    this.state = { status: "visual", presentation, versions };
+    this.show();
+    for (const slot of VISUAL_SLOTS) {
+      const version = versions[slot];
+      if (!version) {
+        this.releasePreviewFile(slot);
+        continue;
+      }
+      const held = this.previewFiles[slot];
+      this.showPreviewFile(slot, visualVersionUrl(versions, version));
+      if (
+        recheck &&
+        version.source === "workingTree" &&
+        held &&
+        this.previewFiles[slot] === held
+      ) {
+        this.recheckPreviewFile(slot);
+      }
+    }
+    this.drawVisualSides();
+  }
+
+  // An owner without its own representation control names the change
+  // representations the shown file offers; none hides the control.
+  setChangeChoices(snapshot: FileViewerChangeChoices) {
+    this.changeChoices = {
+      choices: [...snapshot.choices],
+      selected: snapshot.selected,
+    };
   }
 
   setDiff(
@@ -796,6 +921,16 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     const clipRoots = [this, ...(pull.clipRoots ?? [])];
     return mergeActionHintScopes(
       own,
+      this.changeControl.value?.actionHintScope({
+        scopeId: `${pull.scopeId}:change`,
+        actionId: pull.actions?.axis,
+        clipRoots,
+      }),
+      this.visualDiff.value?.actionHintScope({
+        ...pull,
+        scopeId: `${pull.scopeId}:visual`,
+        clipRoots,
+      }),
       this.documentViewer.value?.actionHintScope?.({
         ...pull,
         scopeId: `${pull.scopeId}:document`,
@@ -826,6 +961,9 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
         child("source", `${title} source`),
       ),
       this.diffViewer.value?.scrollSurfaceScope(child("diff", `${title} diff`)),
+      this.visualDiff.value?.scrollSurfaceScope(
+        child("visual", `${title} visual`),
+      ),
       this.preview.value?.scrollSurfaceScope(
         child("preview", `${title} preview`),
       ),
@@ -844,13 +982,18 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     });
   }
 
-  // Every new state closes the details popover, and only a preview keeps the
-  // file it fetched.
+  // Every new state closes the details popover, and only a preview or Visual
+  // keeps the files it fetched.
   private show() {
     this.closeDetailsPopover();
-    if (this.state.status !== "image" && this.state.status !== "document") {
-      this.releasePreviewFile();
-    }
+    const status = this.state.status;
+    this.releasePreviewFiles(
+      status === "image" || status === "document"
+        ? ["file"]
+        : status === "visual"
+          ? VISUAL_SLOTS
+          : [],
+    );
   }
 
   // A file kept in place keeps where it is read; any other opens at its line
@@ -916,6 +1059,22 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     );
   }
 
+  private chooseVisualMode(event: CustomEvent<VisualModeIntentDetail>) {
+    this.visualMode = event.detail.mode;
+    this.drawVisualSides();
+  }
+
+  private chooseChange(event: CustomEvent<SegmentedControlIntentDetail>) {
+    // The owner, not a review surface above, carries the choice out.
+    event.stopPropagation();
+    this.dispatchEvent(
+      new CustomEvent<FileViewerChangeIntentDetail>(
+        "caffold:file-viewer-change-intent",
+        { detail: { representation: `${event.detail?.value ?? ""}` } },
+      ),
+    );
+  }
+
   private requestRefresh() {
     const eventName = this.refreshEventName();
     if (eventName) {
@@ -933,7 +1092,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   // A picture let go of for another file's may still finish loading.
   private showDrawnImage(event: Event) {
     const image = event.currentTarget as HTMLImageElement;
-    if (image.src === this.previewFile?.objectUrl) {
+    if (image.src === this.previewFiles.file?.objectUrl) {
       this.imageDrawn = true;
     }
   }
@@ -948,15 +1107,16 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     );
   }
 
-  // Fetches the preview's file unless it is the one already drawn or
-  // arriving; a file whose first fetch failed is fetched again.
-  private showPreviewFile(url: string) {
-    const shown = this.previewFile;
+  // Fetches the slot's file unless it is the one already drawn or arriving;
+  // a file whose first fetch failed is fetched again.
+  private showPreviewFile(slot: PreviewSlot, url: string) {
+    const shown = this.previewFiles[slot];
     if (shown?.url === url && shown.phase !== PREVIEW_PHASE.FAILED) {
       return;
     }
-    this.releasePreviewFile();
+    this.releasePreviewFile(slot);
     const preview: PreviewFile = {
+      slot,
       url,
       phase: PREVIEW_PHASE.READING,
       fetching: null,
@@ -965,24 +1125,35 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
       objectUrl: "",
       recheckAfter: false,
     };
-    this.previewFile = preview;
+    this.previewFiles[slot] = preview;
     this.fetchPreviewFile(preview);
   }
 
-  private recheckPreviewFile() {
-    if (this.previewFile) {
-      this.movePreviewFile(this.previewFile, { event: PREVIEW_EVENT.RECHECK });
+  private recheckPreviewFile(slot: PreviewSlot) {
+    const preview = this.previewFiles[slot];
+    if (preview) {
+      this.movePreviewFile(preview, { event: PREVIEW_EVENT.RECHECK });
     }
   }
 
-  private releasePreviewFile() {
-    const preview = this.previewFile;
+  private releasePreviewFiles(kept: readonly PreviewSlot[]) {
+    for (const slot of PREVIEW_SLOTS) {
+      if (!kept.includes(slot)) {
+        this.releasePreviewFile(slot);
+      }
+    }
+  }
+
+  private releasePreviewFile(slot: PreviewSlot) {
+    const preview = this.previewFiles[slot];
     if (!preview) {
       return;
     }
-    this.previewFile = null;
-    this.imageSource = "";
-    this.documentFile = null;
+    delete this.previewFiles[slot];
+    if (slot === "file") {
+      this.imageSource = "";
+      this.documentFile = null;
+    }
     preview.fetching?.abort();
     if (preview.objectUrl) {
       URL.revokeObjectURL(preview.objectUrl);
@@ -1024,8 +1195,15 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
       case PREVIEW_EVENT.FAILED:
         preview.fetching = null;
         preview.recheckAfter = false;
-        if (previous === PREVIEW_PHASE.READING) {
+        if (previous !== PREVIEW_PHASE.READING) {
+          return;
+        }
+        // Visual shows the side it could not fetch as missing and keeps the
+        // other; a preview of one file has nothing else to show.
+        if (preview.slot === "file") {
           this.showImageFailure();
+        } else {
+          this.drawVisualSides();
         }
         return;
     }
@@ -1039,6 +1217,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     preview.fetching = fetching;
     const reading = fetchInChunks(preview.url, { signal: fetching.signal });
     if (
+      preview.slot === "file" &&
       preview.phase === PREVIEW_PHASE.READING &&
       this.state.status === "document"
     ) {
@@ -1048,7 +1227,8 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
       };
     }
     const current = () =>
-      this.previewFile === preview && preview.fetching === fetching;
+      this.previewFiles[preview.slot] === preview &&
+      preview.fetching === fetching;
     reading.then(
       (answer) => {
         if (current()) {
@@ -1074,7 +1254,9 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
       URL.revokeObjectURL(preview.objectUrl);
       preview.objectUrl = "";
     }
-    if (this.state.status === "image") {
+    if (preview.slot !== "file") {
+      this.drawVisualSides();
+    } else if (this.state.status === "image") {
       this.drawPreviewImage();
     } else if (newerCopy && this.state.status === "document") {
       this.documentFile = { file, newerCopy: true };
@@ -1083,12 +1265,44 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
 
   // A picture shown anew takes the copy already fetched.
   private drawPreviewImage() {
-    const preview = this.previewFile;
+    const preview = this.previewFiles.file;
     if (!preview?.file) {
       return;
     }
     preview.objectUrl ||= URL.createObjectURL(preview.file);
     this.imageSource = preview.objectUrl;
+  }
+
+  // Hands each side of the shown change to Visual as its file stands: on its
+  // way, fetched, or failed, with the way they are compared. A side the
+  // change does not have is absent.
+  private drawVisualSides() {
+    const state = this.state;
+    if (state.status !== "visual") {
+      return;
+    }
+    const side = (slot: keyof VisualSides): VisualSide | null => {
+      if (!state.versions[slot]) {
+        return null;
+      }
+      const preview = this.previewFiles[slot];
+      if (preview?.phase === PREVIEW_PHASE.FAILED) {
+        return { status: "failed" };
+      }
+      if (!preview?.file) {
+        return { status: "loading" };
+      }
+      preview.objectUrl ||= URL.createObjectURL(preview.file);
+      return {
+        status: "fetched",
+        url: preview.objectUrl,
+        bytes: preview.file.size,
+      };
+    };
+    this.visualDiffElement?.setComparison({
+      sides: { before: side("before"), after: side("after") },
+      mode: this.visualMode,
+    });
   }
 
   // The preview is drawn the first time it is needed, which is right after
@@ -1097,6 +1311,22 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     this.performUpdate();
     return this.preview.value;
   }
+
+  // Visual is drawn the first time it is needed, which is right after the
+  // viewer switches to it.
+  private get visualDiffElement() {
+    this.performUpdate();
+    return this.visualDiff.value;
+  }
+}
+
+// Where a side of a change is fetched from: its blob, read through the
+// repository the change belongs to, or the file on disk.
+function visualVersionUrl(versions: GitDiffVersions, version: GitFileVersion) {
+  const path = versions.path ?? "";
+  return version.source === "blob"
+    ? gitBlobUrl(versions.repository?.rootPath ?? "", path, version.oid)
+    : imageUrl(path);
 }
 
 declare global {
@@ -1106,5 +1336,6 @@ declare global {
 
   interface HTMLElementEventMap {
     "caffold:file-viewer-notice-action": CustomEvent<FileViewerNoticeActionDetail>;
+    "caffold:file-viewer-change-intent": CustomEvent<FileViewerChangeIntentDetail>;
   }
 }

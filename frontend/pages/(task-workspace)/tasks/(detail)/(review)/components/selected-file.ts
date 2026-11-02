@@ -1,7 +1,7 @@
 import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import type { ActionHintPull } from "#app/action-hints.js";
-import { type GitDiff, readFile } from "#app/api.js";
+import { type GitDiff, type GitDiffVersions, readFile } from "#app/api.js";
 import { fileStatusPresentation } from "#app/file-status.js";
 import type { ScrollSurfacePull } from "#app/scroll-scope.js";
 import { fileNameFromPath, imageTypeLabel } from "#components/dom.js";
@@ -215,6 +215,10 @@ export class CaffoldReviewSelectedFile extends CaffoldElement {
       this.shownStateKey = stateKey;
       return;
     }
+    if (content.kind === "visual") {
+      await this.loadVisual(view, content.change, generation, background);
+      return;
+    }
     const sourceLine = content.kind === "file" ? line : null;
     const saved = this.positions.get(stateKey);
     const presentation =
@@ -265,10 +269,42 @@ export class CaffoldReviewSelectedFile extends CaffoldElement {
     }
   }
 
+  // Visual reads which sides the change compares, then the viewer fetches
+  // each side. A background load asks again whether the working tree side
+  // changed.
+  private async loadVisual(
+    view: ReviewView,
+    change: ReviewChange | null,
+    generation: number,
+    background: boolean,
+  ) {
+    const viewer = this.viewer;
+    const presentation = this.diffPresentation(view, change);
+    if (!background) {
+      viewer.setLoading(presentation);
+    }
+    try {
+      const versions = await view.changes.readVersions?.();
+      if (!versions || !this.acceptsLoad(generation, view.logicalPath)) {
+        return;
+      }
+      viewer.setVisual(versions, {
+        recheck: background,
+        presentation: this.diffPresentation(view, change, versions),
+      });
+      this.shownStateKey = view.stateKey;
+    } catch (error) {
+      if (this.acceptsLoad(generation, view.logicalPath)) {
+        this.shownStateKey = "";
+        viewer.setError(presentation, error as Error);
+      }
+    }
+  }
+
   private diffPresentation(
     view: ReviewView,
     change: ReviewChange | null,
-    diff: GitDiff = {},
+    diff: GitDiff | GitDiffVersions = {},
   ) {
     return diffViewerPresentation({
       ...diff,

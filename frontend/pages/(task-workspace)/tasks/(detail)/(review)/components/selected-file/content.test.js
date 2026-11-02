@@ -49,6 +49,37 @@ test("hands images and documents to the viewer", () => {
   );
 });
 
+test("shows an image's change as Visual, and a missing change as for Diff", () => {
+  assert.deepEqual(
+    contentFor(view("logo.png", "visual", { change: modified })),
+    { kind: "visual", change: modified },
+  );
+  assert.deepEqual(contentFor(view("logo.png", "visual")), {
+    kind: "notice",
+    message: "No changes in this scope.",
+    options: { actionLabel: "View source", action: "view-source", title: "logo.png" },
+  });
+  assert.deepEqual(
+    contentFor(view("logo.png", "visual", { ready: false })),
+    { kind: "unchanged" },
+  );
+});
+
+test("a deleted file names the change views it still has", () => {
+  const deleted = { ...modified, deleted: true };
+  for (const [path, remaining] of [
+    ["logo.png", "Visual remains available."],
+    ["logo.svg", "Diff and Visual remain available."],
+    ["src/a.js", "Diff remains available."],
+  ]) {
+    assert.equal(
+      contentFor(view(path, "source", { change: deleted })).message,
+      `This file was deleted in the selected scope. ${remaining}`,
+      path,
+    );
+  }
+});
+
 test("explains files the scope or representation cannot show", () => {
   assert.deepEqual(
     contentFor(view("src/a.js", "source", { change: { ...modified, deleted: true } })),

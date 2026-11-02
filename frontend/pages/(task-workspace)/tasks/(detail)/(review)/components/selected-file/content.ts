@@ -3,8 +3,13 @@ import type {
   GitChangedFile,
   GitCompareFile,
   GitDiff,
+  GitDiffVersions,
 } from "#app/api.js";
-import { type DocumentPreviewKind, fileNameFromPath } from "#components/dom.js";
+import {
+  changeRepresentations,
+  type DocumentPreviewKind,
+  fileNameFromPath,
+} from "#components/dom.js";
 import {
   fileRepresentationCapabilities,
   type ReviewViewer,
@@ -25,6 +30,7 @@ export interface ReviewChanges {
   change: ReviewChange | null;
   diffKind: string;
   readDiff: (() => Promise<GitDiff>) | null;
+  readVersions: (() => Promise<GitDiffVersions>) | null;
 }
 
 // The selected file in its representation, with what the shown changes say
@@ -53,7 +59,8 @@ export type ReviewContent =
   | { kind: "image" }
   | { kind: "markdown" }
   | { kind: "file" }
-  | { kind: "diff"; change: ReviewChange | null };
+  | { kind: "diff"; change: ReviewChange | null }
+  | { kind: "visual"; change: ReviewChange | null };
 
 // What the viewer shows for the selected file in its representation, from what
 // the shown Working Tree or Branch changes say about that file. "unchanged"
@@ -76,7 +83,7 @@ export function contentFor({
   const change = changes.change;
   if (fileMode && change?.deleted) {
     return notice(
-      "This file was deleted in the selected scope. Diff remains available.",
+      `This file was deleted in the selected scope. ${remainingChangeViews(logicalPath)}`,
       { title },
     );
   }
@@ -119,7 +126,18 @@ export function contentFor({
   if (sourceMode) {
     return { kind: "file" };
   }
-  return { kind: "diff", change };
+  return representation === "visual"
+    ? { kind: "visual", change }
+    : { kind: "diff", change };
+}
+
+// Names the ways a deleted file's change can still be shown.
+function remainingChangeViews(path: string) {
+  const { diff, visual } = changeRepresentations(path);
+  if (diff && visual) {
+    return "Diff and Visual remain available.";
+  }
+  return visual ? "Visual remains available." : "Diff remains available.";
 }
 
 function notice(

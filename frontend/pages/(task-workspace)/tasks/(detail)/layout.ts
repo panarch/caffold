@@ -68,7 +68,10 @@ import type { SegmentedControlIntentDetail } from "#components/segmented-control
 import type { ChangeCompareRefsDetail } from "./(git)/components/controls.js";
 import type { RequestGitRouteDetail } from "./(git)/layout.js";
 import type { RequestGithubRouteDetail } from "./(github)/layout.js";
-import type { TaskReviewRouteIntentDetail } from "./(review)/layout.js";
+import {
+  isReviewViewer,
+  type TaskReviewRouteIntentDetail,
+} from "./(review)/layout.js";
 import type { GitHubShortcutIntent } from "./(section)/components/github-shortcuts.js";
 import type { TaskDetailTerminalIntentDetail } from "./components/terminal-button.js";
 import type { TaskDetailIntent } from "./task-detail-intent-event.js";
@@ -1701,7 +1704,7 @@ function reviewFields(route: Partial<TaskRoute> | null | undefined) {
   return {
     reviewScope: route?.reviewScope === "branch" ? "branch" : "working",
     reviewNavigator: route?.reviewNavigator === "files" ? "files" : "changes",
-    reviewViewer: viewer === "source" || viewer === "preview" ? viewer : "diff",
+    reviewViewer: isReviewViewer(viewer) ? viewer : "diff",
     path: `${route?.path ?? ""}`,
     line: route?.line ?? null,
     baseRef: `${route?.baseRef ?? ""}`,
