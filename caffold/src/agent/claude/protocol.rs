@@ -37,6 +37,11 @@ pub(crate) const MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION: &str = "2.1.259";
 /// it acts: without it `can_use_tool` is never sent, and a Caffold with no
 /// approval cards would look like an agent that never needed permission.
 ///
+/// `--allow-dangerously-skip-permissions` lets a session be switched into
+/// `bypassPermissions` between turns without starting it in that mode. Without
+/// it the agent refuses the switch for every session not started in that
+/// mode, including one resumed after its runner restarted.
+///
 /// `--allowedTools` grants the tools Caffold itself serves: the agent calling
 /// one is already the user asking, so they take no approval — exactly as
 /// Codex's Caffold-served tools answer without one.
@@ -49,6 +54,7 @@ pub(crate) const BASE_ARGUMENTS: &[&str] = &[
     "--verbose",
     "--permission-prompt-tool",
     "stdio",
+    "--allow-dangerously-skip-permissions",
     "--allowedTools",
     RENAME_CURRENT_TASK_QUALIFIED_NAME,
     "--allowedTools",

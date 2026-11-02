@@ -868,6 +868,41 @@ async fn declining_and_stopping_ends_the_turn_instead_of_letting_it_argue() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn full_access_chosen_between_turns_runs_a_command_without_asking() {
+    // The agent refuses to switch a session into `bypassPermissions` unless it
+    // was started able to enter it, and a Task asking permission is started
+    // in another mode.
+    let backend = Backend::start().await;
+    let task = backend
+        .start_task_asking_permission("Reply with the single word: ok.", MODEL)
+        .await;
+    task.wait_for(TurnState::Idle, Duration::from_secs(120))
+        .await;
+
+    task.say_with_options(NEEDS_APPROVAL, MODEL, "bypassPermissions")
+        .await;
+    task.wait_for(TurnState::Idle, Duration::from_secs(120))
+        .await;
+
+    let detail = task.detail().await;
+    let text = detail.to_string();
+    let events = detail["events"].as_array().expect("events");
+    assert!(
+        events.iter().any(|event| {
+            event["type"] == "command_execution" && event["summary"] == "Command completed"
+        }),
+        "the command ran: {text}"
+    );
+    assert!(
+        !events
+            .iter()
+            .any(|event| event["type"] == "approval_requested"),
+        "nobody was asked: {text}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
 async fn the_installation_reports_itself_without_spending_anything() {
     // The Settings page's data: the binary by running it, the account and the
     // plan's usage windows in the agent's own name over `get_usage`. No model

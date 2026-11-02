@@ -324,6 +324,30 @@ mod mock {
             if holds_stop {
                 existing.held_stop = frame["request_id"].as_str().map(str::to_string);
             }
+            // Measured against CLI 2.1.316: only a session started in
+            // `bypassPermissions`, or allowed to enter it, can be switched in.
+            let argv = &existing.spawn.argv;
+            if frame["type"] == "control_request"
+                && frame["request"]["subtype"] == "set_permission_mode"
+                && frame["request"]["mode"] == "bypassPermissions"
+                && !argv
+                    .iter()
+                    .any(|argument| argument == "--allow-dangerously-skip-permissions")
+                && !argv
+                    .windows(2)
+                    .any(|pair| pair[0] == "--permission-mode" && pair[1] == "bypassPermissions")
+                && let Some(request_id) = frame["request_id"].as_str()
+            {
+                let refusal = serde_json::json!({ "type": "control_response", "response": {
+                    "subtype": "error",
+                    "request_id": request_id,
+                    "error": "Cannot set permission mode to bypassPermissions because the session was not launched with --dangerously-skip-permissions",
+                    "error_code": "bypass_not_launched",
+                } });
+                let _ = existing.agent.send(RunnerEvent::Frame(refusal.to_string()));
+                existing.heard.push(frame);
+                return Ok(());
+            }
             // The agent answers what it is asked. A stand-in that stayed silent
             // would not stand in for it: every caller waiting on a control request
             // would wait out its whole timeout.
