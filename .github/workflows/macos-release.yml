@@ -35,7 +35,7 @@ permissions:
 jobs:
   macos:
     name: Build and verify macOS arm64 release
-    runs-on: macos-14
+    runs-on: macos-26
     timeout-minutes: 45
     outputs:
       release_sha: ${{ steps.source.outputs.release_sha }}
@@ -78,10 +78,10 @@ jobs:
           # Packaging requires a clean main worktree on this runner.
           git checkout -B main "${REQUESTED_SHA}"
 
-      - name: Install Node.js 24
+      - name: Install Node.js 26
         uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
           package-manager-cache: false
 
       # The server embeds Lit and tslib from frontend/node_modules and

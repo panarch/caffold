@@ -9,7 +9,7 @@ permissions:
 jobs:
   documentation:
     name: Documentation Contracts
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
 
     steps:
@@ -19,10 +19,10 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - name: Install Node.js 24
+      - name: Install Node.js 26
         uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
 
       - name: Test documentation contracts
         run: node --test docs/tests/*.test.mjs

@@ -9,7 +9,7 @@ the changed boundary, and record what was and was not verified.
 The supported contributor baseline is:
 
 - the Rust toolchain pinned by `rust-toolchain.toml`;
-- Node.js 24 or newer and npm;
+- Node.js 26 LTS and npm;
 - Git;
 - CMake and the Xcode Command Line Tools on macOS;
 - the authenticated standalone Codex CLI for Codex live work;

@@ -61,7 +61,7 @@ validate_source_versions() {
 }
 
 build_release() {
-  (cd "${REPO_DIR}" && cargo build --release --locked)
+  (cd "${REPO_DIR}" && MACOSX_DEPLOYMENT_TARGET="${MINIMUM_MACOS_VERSION}" cargo build --release --locked)
 }
 
 prepare_bundle() {
@@ -79,6 +79,7 @@ prepare_bundle() {
 
   xcrun swiftc \
     -O \
+    -target "${ARCH}-apple-macosx${MINIMUM_MACOS_VERSION}" \
     -warnings-as-errors \
     -module-cache-path "${DIST_DIR}/swift-module-cache" \
     -framework AppKit \
@@ -156,6 +157,9 @@ verify_bundle() {
   verify_binary_architecture "${macos_dir}/CaffoldServer"
   verify_binary_architecture "${resources_dir}/caffold"
   verify_binary_architecture "${resources_dir}/caffold-runner"
+  verify_binary_deployment_target "${macos_dir}/CaffoldServer"
+  verify_binary_deployment_target "${resources_dir}/caffold"
+  verify_binary_deployment_target "${resources_dir}/caffold-runner"
   verify_portable_dependencies "${macos_dir}/CaffoldServer"
   verify_portable_dependencies "${resources_dir}/caffold"
   verify_portable_dependencies "${resources_dir}/caffold-runner"
@@ -210,6 +214,26 @@ verify_binary_architecture() {
   architectures="$(lipo -archs "${binary}")"
   if [[ " ${architectures} " != *" ${ARCH} "* ]]; then
     echo "${binary} does not contain the expected ${ARCH} architecture." >&2
+    return 1
+  fi
+}
+
+verify_binary_deployment_target() {
+  local binary="$1"
+  local minimum_version
+  minimum_version="$(otool -l "${binary}" | awk '
+    $1 == "cmd" { command = $2 }
+    command == "LC_BUILD_VERSION" && $1 == "minos" { print $2 }
+  ')"
+  if [[ ! "${minimum_version}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] ||
+    ! awk -v actual="${minimum_version}" -v supported="${MINIMUM_MACOS_VERSION}" 'BEGIN {
+      split(actual, a, "."); split(supported, s, ".")
+      for (i = 1; i <= 3; i++) {
+        if (a[i] + 0 < s[i] + 0) exit 0
+        if (a[i] + 0 > s[i] + 0) exit 1
+      }
+    }'; then
+    echo "${binary} requires macOS ${minimum_version:-unknown}; expected ${MINIMUM_MACOS_VERSION} or earlier." >&2
     return 1
   fi
 }
