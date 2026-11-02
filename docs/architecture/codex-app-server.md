@@ -819,8 +819,17 @@ version gate.
 
 The remaining `diagnostics` object reports the proxy generation and connection
 state plus aggregate thread-session counts. Daemon state, PID, socket path, and
-managed versions returned by `codex app-server daemon start` remain available
-as transport diagnostics.
+managed versions remain available as transport diagnostics. Each status check
+reads `codex app-server daemon version` for the current daemon installation and
+running version instead of reusing the connection's startup report. A failed
+query reports unavailable readiness, retaining the detected CLI for diagnosis.
+Missing managed versions are never filled from `cliVersion` or the detected
+CLI. Older CLIs that report a `packages/standalone` managed path identify the
+standalone CLI installation, not the separate daemon package; that target is
+omitted from App-server installation facts. The running version may also be
+identified by initialization on the live proxy connection. A newer installed
+daemon is a restart target; a newer CLI or a running daemon newer than the
+installation is not.
 Only sessions with viewer, request, or runtime leases, subscription transitions, or errors
 are included in the detailed active-session list. Each entry exposes its lease
 counts, lifecycle, revision, last provider sync time, and last protocol error.
@@ -883,8 +892,9 @@ Refresh, and after a restart or update finishes. Caffold does not check for a
 newer Codex in the background or keep a copy of the answer. The report names
 four facts, each from its own source:
 
-- the installed Codex CLI version;
-- the app-server version Caffold's latest readiness check saw running;
+- the installed App-server package version;
+- the running App-server version, both read through the non-mutating
+  `codex app-server daemon version` command for this request;
 - the newest release on the `latest` channel at
   `https://releases.openai.com/codex/channels/latest`, which Codex's installer
   also resolves; and
@@ -892,12 +902,16 @@ four facts, each from its own source:
 
 A source that cannot answer leaves its value out and puts its reason under
 `problems`; the response is still `200`. The report's `update` is `available`
-when the running app-server is not the installed version, or when the newest
-release is newer than the running version, or than the installed version when
-no running version is known. It is `upToDate` when both versions in that
-comparison are known and neither holds, and `unknown` otherwise.
+when the installed App-server is newer than the running version, or when the
+newest release is newer than the running version, or than the installed
+App-server when no running version is known. CLI version differences do not
+participate. The minimum supported CLI (`0.155.1`) supports this query; it
+fails when no daemon is available, leaving versions unknown rather than
+starting a daemon or substituting the CLI version. It is `upToDate` when both
+versions in that comparison are known and neither holds, and `unknown`
+otherwise.
 
-**Update Codex…** asks for its own confirmation, then calls
+**Update Codex** asks for its own confirmation, then calls
 `POST /api/codex/update`. Caffold releases its proxy and marks subscribed
 sessions unavailable as a restart does, with `Codex runtime is updating.`, and
 runs `codex app-server daemon update` once. Codex installs the newest release

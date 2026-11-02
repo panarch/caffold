@@ -1,3 +1,6 @@
+use std::path::Path;
+
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -44,6 +47,22 @@ pub(super) fn status_from_results(
     usage: Option<Value>,
 ) -> CodexStatusResponse {
     let runtime_facts = readiness_runtime_facts(installation, app_server.as_ref(), daemon.as_ref());
+    if runtime_facts.running_app_server_version.is_none() {
+        return CodexStatusResponse {
+            readiness: readiness_with_runtime(
+                runtime_facts,
+                CodexReadinessState::Error,
+                true,
+                CodexReadinessReason::ReadyRuntimeUnavailable,
+                "The running App-server version could not be verified.",
+            ),
+            account: None,
+            rate_limits: rate_limits.as_ref().map(compact_rate_limits),
+            usage: usage.as_ref().map(compact_usage),
+            app_server,
+            daemon,
+        };
+    }
     if let Some(running) = runtime_facts
         .running_app_server_version
         .as_deref()
@@ -53,7 +72,6 @@ pub(super) fn status_from_results(
             .managed_executable
             .as_ref()
             .and_then(|value| value.version.as_deref())
-            .or(installation.executable.version.as_deref())
             .unwrap_or("unknown");
         return CodexStatusResponse {
             readiness: readiness_with_runtime(
@@ -62,7 +80,7 @@ pub(super) fn status_from_results(
                 true,
                 CodexReadinessReason::RuntimeVersionMismatch,
                 format!(
-                    "Codex {installed} is installed while app-server runtime {running} is below the minimum supported version {MINIMUM_SUPPORTED_CODEX_CLI_VERSION}."
+                    "App-server {installed} is installed while app-server runtime {running} is below the minimum supported version {MINIMUM_SUPPORTED_CODEX_CLI_VERSION}."
                 ),
             ),
             account: None,
@@ -121,7 +139,7 @@ pub(super) fn status_from_results(
         };
     };
 
-    let readiness = if runtime_facts.versions_differ {
+    let readiness = if runtime_facts.newer_installation {
         let blocks_task_operations = !runtime_facts
             .running_app_server_version
             .as_deref()
@@ -130,7 +148,6 @@ pub(super) fn status_from_results(
             .managed_executable
             .as_ref()
             .and_then(|value| value.version.as_deref())
-            .or(installation.executable.version.as_deref())
             .unwrap_or("unknown")
             .to_string();
         let running = runtime_facts
@@ -144,7 +161,7 @@ pub(super) fn status_from_results(
             blocks_task_operations,
             CodexReadinessReason::RuntimeVersionMismatch,
             format!(
-                "Codex {installed} is installed while app-server runtime {running} is running."
+                "App-server {installed} is installed while app-server runtime {running} is running."
             ),
         )
     } else {
@@ -164,6 +181,24 @@ pub(super) fn status_from_results(
         usage: usage.as_ref().map(compact_usage),
         app_server,
         daemon,
+    }
+}
+
+impl CodexDaemonInfo {
+    /// Older CLIs call their standalone installation the managed target, even
+    /// when a separately installed, newer daemon is running. That target does
+    /// not establish the current app-server package installation.
+    pub(super) fn managed_executable(&self) -> Option<CodexExecutableInfo> {
+        if self.managed_codex_path.as_deref().is_some_and(|path| {
+            Path::new(path)
+                .ancestors()
+                .any(|ancestor| ancestor.ends_with("packages/standalone"))
+        }) {
+            return None;
+        }
+        let path = self.managed_codex_path.clone();
+        let version = self.managed_codex_version.clone();
+        (path.is_some() || version.is_some()).then_some(CodexExecutableInfo { path, version })
     }
 }
 
@@ -204,7 +239,7 @@ struct ReadinessRuntimeFacts {
     detected_executable: CodexExecutableInfo,
     managed_executable: Option<CodexExecutableInfo>,
     running_app_server_version: Option<String>,
-    versions_differ: bool,
+    newer_installation: bool,
 }
 
 fn readiness_runtime_facts(
@@ -212,14 +247,7 @@ fn readiness_runtime_facts(
     app_server: Option<&CodexAppServerInfo>,
     daemon: Option<&CodexDaemonInfo>,
 ) -> ReadinessRuntimeFacts {
-    let managed_executable = daemon.and_then(|daemon| {
-        let path = daemon.managed_codex_path.clone();
-        let version = daemon
-            .managed_codex_version
-            .clone()
-            .or_else(|| daemon.cli_version.clone());
-        (path.is_some() || version.is_some()).then_some(CodexExecutableInfo { path, version })
-    });
+    let managed_executable = daemon.and_then(CodexDaemonInfo::managed_executable);
     let running_app_server_version = daemon
         .and_then(|daemon| daemon.app_server_version.clone())
         .or_else(|| {
@@ -229,17 +257,19 @@ fn readiness_runtime_facts(
         });
     let target_version = managed_executable
         .as_ref()
-        .and_then(|executable| executable.version.as_deref())
-        .or(installation.executable.version.as_deref());
-    let versions_differ = target_version
+        .and_then(|executable| executable.version.as_deref());
+    let newer_installation = target_version
         .zip(running_app_server_version.as_deref())
-        .is_some_and(|(target, running)| target != running);
+        .and_then(|(target, running)| {
+            Some((Version::parse(target).ok()?, Version::parse(running).ok()?))
+        })
+        .is_some_and(|(target, running)| target > running);
 
     ReadinessRuntimeFacts {
         detected_executable: installation.executable.clone(),
         managed_executable,
         running_app_server_version,
-        versions_differ,
+        newer_installation,
     }
 }
 
@@ -276,7 +306,7 @@ pub(super) fn unavailable_status(
                 .running_app_server_version
                 .as_deref()
                 .is_some_and(|version| !version_meets_minimum(version));
-            if facts.versions_differ || running_is_outdated {
+            if facts.newer_installation || running_is_outdated {
                 let diagnostic_message = if running_is_outdated {
                     format!(
                         "The running Codex app-server is below the minimum supported version {MINIMUM_SUPPORTED_CODEX_CLI_VERSION} and could not initialize: {message}"
@@ -356,7 +386,7 @@ mod tests {
             backend: Some("pid".to_string()),
             pid: Some(4271),
             managed_codex_path: Some(
-                "/Users/example/.codex/packages/standalone/current/codex".to_string(),
+                "/Users/example/.codex/packages/app-server-daemon/current/bin/codex".to_string(),
             ),
             managed_codex_version: Some(target.to_string()),
             socket_path: Some("/Users/example/.codex/app-server-control.sock".to_string()),
@@ -461,6 +491,73 @@ mod tests {
                 .as_ref()
                 .and_then(|value| value.get("dailyUsageBuckets"))
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn cli_version_does_not_choose_a_daemon_restart_target() {
+        for cli in ["0.162.1", "0.170.0"] {
+            let status = status_from_results(
+                &eligible_installation(cli),
+                None,
+                Some(daemon_versions("0.166.0", "0.166.0")),
+                Ok(account()),
+                None,
+                None,
+            );
+            assert_eq!(status.readiness.state, CodexReadinessState::Ready);
+        }
+        let mut daemon = daemon_versions("0.166.0", "0.166.0");
+        daemon.managed_codex_version = None;
+        daemon.cli_version = Some("0.170.0".to_string());
+        let status = status_from_results(
+            &eligible_installation("0.170.0"),
+            None,
+            Some(daemon),
+            Ok(account()),
+            None,
+            None,
+        );
+        assert_eq!(status.readiness.state, CodexReadinessState::Ready);
+        assert!(
+            status
+                .readiness
+                .managed_executable
+                .unwrap()
+                .version
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn newer_running_daemon_does_not_request_a_downgrade() {
+        let status = status_from_results(
+            &eligible_installation("0.162.1"),
+            None,
+            Some(daemon_versions("0.165.0", "0.166.0")),
+            Ok(account()),
+            None,
+            None,
+        );
+        assert_eq!(status.readiness.state, CodexReadinessState::Ready);
+    }
+
+    #[test]
+    fn missing_runtime_version_is_unverified_not_ready() {
+        let mut daemon = daemon_versions("0.166.0", "0.166.0");
+        daemon.app_server_version = None;
+        let status = status_from_results(
+            &eligible_installation("0.162.1"),
+            None,
+            Some(daemon),
+            Ok(account()),
+            None,
+            None,
+        );
+        assert_eq!(status.readiness.state, CodexReadinessState::Error);
+        assert_eq!(
+            status.readiness.reason_code,
+            CodexReadinessReason::ReadyRuntimeUnavailable
         );
     }
 
@@ -664,5 +761,25 @@ mod tests {
                 "legacy field {legacy} must be removed"
             );
         }
+    }
+
+    #[test]
+    fn failed_version_query_retains_cli_diagnostics_without_runtime_facts() {
+        let installation = eligible_installation("0.162.1");
+        let error = CodexThreadError::Protocol("Codex app-server version query failed".to_string());
+        let status = unavailable_status(Some(&installation), &error);
+        assert_eq!(status.readiness.state, CodexReadinessState::Error);
+        assert!(status.readiness.blocks_task_operations);
+        assert_eq!(
+            status.readiness.reason_code,
+            CodexReadinessReason::AppServerUnavailable
+        );
+        assert_eq!(
+            status.readiness.detected_executable,
+            Some(installation.executable)
+        );
+        assert!(status.readiness.managed_executable.is_none());
+        assert!(status.readiness.running_app_server_version.is_none());
+        assert!(status.daemon.is_none());
     }
 }

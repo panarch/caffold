@@ -133,7 +133,7 @@ function outcomeMessage(outcome: CodexUpdateOutcome | null) {
     return detail;
   }
   const headline = outcome.installedVersion
-    ? `Codex updated to ${outcome.installedVersion}.`
-    : "Codex updated.";
+    ? `App-server updated to ${outcome.installedVersion}.`
+    : "App-server updated.";
   return detail ? `${headline} ${detail}` : headline;
 }

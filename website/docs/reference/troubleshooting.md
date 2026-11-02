@@ -23,7 +23,7 @@ outage.
 ## A Task stops responding
 
 - **Codex:** if **Settings → Codex** asks for a restart, choose
-  **Restart runtime…**.
+  **Restart runtime**.
 - **Claude Code:** choose **Restart runtime** in **Settings → Claude**; see
   [Updates](updates.md#claude-code-and-grok).
 - A Task shows a warning instead of its conversation when its agent cannot be

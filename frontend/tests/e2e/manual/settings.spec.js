@@ -24,6 +24,9 @@ test("Codex Settings shows usage and reset credits", { tag: "@desktop" }, async 
   await page.goto("/settings/codex");
 
   const codex = page.locator("caffold-settings-codex-page");
+  await expect(codex.locator('[data-key="runtime-version"] dt')).toHaveText("App-server version");
+  await expect(codex.locator('[data-key="cli-version"] dt')).toHaveText("CLI version");
+  await expect(codex.getByRole("heading", { name: "CLI and diagnostics" })).toBeVisible();
   await expect(codex.locator("[data-codex-usage] dt")).toHaveText(["5 hours", "1 week"]);
   const credits = codex.locator(".settings-codex-reset-credits");
   await expect(credits.locator("[data-reset-credit-count]")).toHaveText("2 available");

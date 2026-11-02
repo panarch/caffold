@@ -419,11 +419,6 @@ impl TaskRuntime {
             .await;
     }
 
-    #[cfg(test)]
-    pub(super) async fn codex_update_running_version(&self) -> Option<String> {
-        self.codex.running_version().await
-    }
-
     /// Begin carrying what Claude sessions say into the Task application.
     ///
     /// Claude has no connection to wait for — sessions are started one at a
@@ -987,30 +982,6 @@ mod tests {
             Ok(TaskRuntimeSignal::SessionUnavailable { thread_id, message })
                 if thread_id == "thread_update" && message == "Codex runtime is updating."
         ));
-    }
-
-    #[tokio::test]
-    async fn the_update_report_reads_the_running_version_the_last_readiness_saw() {
-        let runtime = test_runtime(TaskStore::memory().expect("in-memory task store"));
-        runtime
-            .set_test_readiness(CodexReadiness {
-                state: CodexReadinessState::RestartRequired,
-                blocks_task_operations: false,
-                reason_code: CodexReadinessReason::RuntimeVersionMismatch,
-                diagnostic_message:
-                    "Codex 0.156.0 is installed while app-server runtime 0.155.1 is running."
-                        .to_string(),
-                minimum_supported_version: "0.155.1".to_string(),
-                detected_executable: None,
-                managed_executable: None,
-                running_app_server_version: Some("0.155.1".to_string()),
-            })
-            .await;
-
-        assert_eq!(
-            runtime.codex_update_running_version().await.as_deref(),
-            Some("0.155.1")
-        );
     }
 
     fn update_outcome() -> CodexUpdateOutcome {

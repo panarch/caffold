@@ -336,19 +336,7 @@ impl CodexClient {
     /// What Settings shows about keeping Codex current. Asking starts no
     /// Codex connection.
     pub(crate) async fn update_report(&self) -> CodexUpdateReport {
-        CodexThreadClient::update_report(self.running_version().await).await
-    }
-
-    /// The app-server version the latest readiness check saw. Asking the
-    /// daemon itself fails whenever it is not running.
-    pub(crate) async fn running_version(&self) -> Option<String> {
-        self.process
-            .state
-            .lock()
-            .await
-            .readiness
-            .as_ref()
-            .and_then(|readiness| readiness.running_app_server_version.clone())
+        CodexThreadClient::update_report().await
     }
 
     pub(crate) async fn shutdown(&self) {

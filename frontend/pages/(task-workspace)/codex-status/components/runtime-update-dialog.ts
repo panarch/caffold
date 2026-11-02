@@ -33,7 +33,7 @@ export class CaffoldCodexRuntimeUpdateDialog extends CaffoldElement {
           <h2 id="codex-update-dialog-title">Update Codex?</h2>
           <p id="codex-update-dialog-description">
             Wait for running Tasks and tests to finish. Caffold runs the
-            official Codex updater. When the installed version changes, Codex
+            official Codex App-server updater. When the installed App-server version changes, Codex
             restarts the shared runtime Caffold is connected to, and work still
             running after its shutdown grace period (60 seconds by default)
             stops here and in other connected Codex clients.

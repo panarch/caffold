@@ -555,8 +555,8 @@ impl CodexThreadClient {
         daemon_update(&installation.path, daemon_settings::codex_home()).await
     }
 
-    pub(crate) async fn update_report(running_version: Option<String>) -> CodexUpdateReport {
-        update::update_report(running_version).await
+    pub(crate) async fn update_report() -> CodexUpdateReport {
+        update::update_report().await
     }
 
     fn inner(&self) -> &Arc<CodexThreadClientInner> {
@@ -1560,7 +1560,10 @@ impl CodexThreadClient {
 
     pub(crate) async fn status(&self, installation: &CodexInstallation) -> CodexStatusResponse {
         let app_server = self.inner().app_server.lock().await.clone();
-        let daemon = Some(self.inner().daemon.clone());
+        let daemon = match transport::daemon_versions(&installation.path).await {
+            Ok(daemon) => Some(daemon),
+            Err(error) => return unavailable_status(Some(installation), &error),
+        };
         let (account, rate_limits, usage) = tokio::join!(
             self.request_typed::<AccountReadResponse, _>(ACCOUNT_READ, account_read_params()),
             self.request_typed::<Value, _>(ACCOUNT_RATE_LIMITS_READ, EmptyResponse::default()),
@@ -2143,6 +2146,34 @@ esac
         assert_ne!(started_request_id, steered_request_id);
         assert_eq!(started_request_id, started_turn.user_message_id);
         assert_eq!(steered_request_id, steered_turn.user_message_id);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires an installed Codex CLI and running daemon; no model usage"]
+    async fn live_status_reads_the_current_daemon_versions() {
+        let installation = inspect_codex_installation().await.expect("supported CLI");
+        let daemon = transport::daemon_versions(&installation.path)
+            .await
+            .expect("running daemon");
+        let client =
+            CodexThreadClient::start_with_proxy(&installation.path, None, daemon.clone(), None)
+                .await
+                .expect("connect proxy without starting or changing the daemon");
+        let status = client.status(&installation).await;
+        client.shutdown().await;
+        assert_eq!(
+            status.readiness.detected_executable,
+            Some(installation.executable)
+        );
+        assert_eq!(
+            status.readiness.managed_executable,
+            daemon.managed_executable()
+        );
+        assert_eq!(
+            status.readiness.running_app_server_version,
+            daemon.app_server_version
+        );
+        assert!(status.readiness.running_app_server_version.is_some());
     }
 
     #[tokio::test]

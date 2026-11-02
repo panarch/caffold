@@ -50,8 +50,13 @@ refresh periodically while you leave the page open; use **Refresh** to read it
 again. Codex's newest release is checked on entry, return, Refresh, and after a
 runtime restart or update.
 
-- **Codex** also says how to fix an installation that is not ready, and offers
-  **Restart runtime…** and **Update Codex…**. See
+- **Codex** identifies the running **App-server version** and shows the
+  **Installed App-server version** when it differs or the running version is
+  unknown. **CLI and diagnostics** lists the CLI version and path, its minimum
+  supported version, and the App-server path. The CLI connects to and manages
+  the App-server; their versions can differ. Codex also says how to fix an
+  installation that is not ready, and offers **Restart runtime** and
+  **Update Codex**. See
   [Updates](updates.md#codex).
 - **Claude** offers **Restart runtime**. See
   [Updates](updates.md#claude-code-and-grok).

@@ -2018,11 +2018,16 @@ export interface CodexMcpDiagnostics {
 
 export interface CodexUpdates {
   update: "available" | "upToDate" | "unknown";
+  // The daemon package, independently installed from the CLI.
   installedVersion?: string | null;
   runningVersion?: string | null;
   latestVersion?: string | null;
   automaticUpdates?: string | null;
-  problems?: { latestVersion?: string; installation?: string } | null;
+  problems?: {
+    latestVersion?: string;
+    installation?: string;
+    runtime?: string;
+  } | null;
 }
 
 // Each source answers for itself; one that could not answer names its problem

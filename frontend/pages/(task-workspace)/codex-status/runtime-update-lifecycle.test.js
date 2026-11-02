@@ -44,7 +44,7 @@ test("an update that installed a release names it before Codex's account", async
   );
   assert.equal(
     states.at(-1).message,
-    `Codex updated to 0.156.0. ${RESTARTED}`,
+    `App-server updated to 0.156.0. ${RESTARTED}`,
   );
 });
 

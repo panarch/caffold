@@ -20,11 +20,14 @@ curl -fsSL https://chatgpt.com/codex/install.sh | sh
 codex
 ```
 
+Caffold uses the CLI to start and connect to the App-server. The App-server
+package is managed separately and can have a different version from the CLI.
+
 **Settings → Codex** reports whether Codex is installed, signed in, and ready,
 and says how to fix it when it is not. A Codex problem blocks only Codex: your
 existing Tasks stay readable, and other agents keep working.
 
-![Settings → Codex: Codex is ready, with the version and path Caffold found](../assets/screenshots/settings-codex-desktop.png)
+![Settings → Codex: Codex is ready, with its App-server version and CLI reference information](../assets/screenshots/settings-codex-desktop.png)
 
 Codex's own automatic updates restart it in the middle of running work, so
 Caffold turns them off unless you have set them yourself in Codex's settings.
