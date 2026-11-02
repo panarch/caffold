@@ -4745,13 +4745,16 @@ mod claude_tests {
     }
 
     /// A watched Claude Task the stand-in runner speaks for.
+    ///
+    /// Watching begins once the runner holds the session, and the Task is
+    /// handed over after that take-up has subscribed it: a take-up still on
+    /// its way would subscribe it again behind whatever the test does next.
     async fn claude_task(root: &Path) -> (TaskState, MockRunnerHandle) {
         let (state, runner) = task_state_with_agents(
             RootedFs::new(root).unwrap(),
             CodexThreadClient::mock(Vec::new()),
         )
         .await;
-        state.task_runtime.watch_claude();
         let cwd = root.display().to_string();
         state
             .task_store
@@ -4769,6 +4772,11 @@ mod claude_tests {
             .open_conversation(SESSION, &cwd, &ClaudeTurnOptions::default())
             .await
             .expect("the conversation opens");
+        state.task_runtime.watch_claude();
+        until(&state, "watching takes up the Task", |snapshot| {
+            snapshot.lifecycle == SessionLifecycle::Subscribed
+        })
+        .await;
         (state, runner)
     }
 
