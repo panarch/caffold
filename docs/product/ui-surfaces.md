@@ -425,11 +425,14 @@ without a dedicated resolved-plan surface.
 Integrated Review is the product surface for Working Tree and current Task
 Branch review. It combines:
 
-- Working Tree or Branch scope;
+- Working Tree or Branch scope, comparing the working tree, uncommitted and
+  untracked changes included, with the last commit or with where the branch
+  left its base;
 - Changes or Files navigator;
 - Diff or Visual for the change, and Source or Preview for the file, each as
   the file allows: Visual shows an image's two sides side by side or paints the
-  pixels that changed, and a raster image has no Diff;
+  pixels that changed, a raster image has no Diff, and Source marks the lines
+  the scope changed beside their numbers;
 - one selected task-root-relative path.
 
 This is also the product path for general file/source inspection through the

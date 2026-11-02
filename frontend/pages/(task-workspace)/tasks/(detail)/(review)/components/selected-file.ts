@@ -244,7 +244,13 @@ export class CaffoldReviewSelectedFile extends CaffoldElement {
           presentation: this.diffPresentation(view, content.change, diff),
         });
       } else {
-        const file = await readFile(logicalPath);
+        // Source marks the lines the scope changed; a Markdown preview reads
+        // the file alone.
+        const base =
+          content.kind === "file" && view.changes.base
+            ? view.changes.base
+            : undefined;
+        const file = await readFile(logicalPath, { base });
         if (!this.acceptsLoad(generation, logicalPath)) {
           return;
         }
@@ -311,13 +317,9 @@ export class CaffoldReviewSelectedFile extends CaffoldElement {
       repository: diff.repository ?? { rootPath: this.worktreeRootPath },
       path: diff.path ?? view.logicalPath,
       repoRelativePath: diff.repoRelativePath ?? view.path,
-      kind: diff.kind || view.changes.diffKind || change?.kind || "",
-      status: change
-        ? fileStatusPresentation(
-            change.file.status,
-            "category" in change.file ? change.file : null,
-          ).code
-        : "",
+      // The scope names what its diffs compare with, such as "vs HEAD".
+      kind: view.changes.diffKind,
+      status: change ? fileStatusPresentation(change.file.status).code : "",
     });
   }
 

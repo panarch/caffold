@@ -15,19 +15,6 @@ export interface FileStatusPresentation {
   tone: FileStatusTone;
 }
 
-// The section a status was listed under, or flags naming it, decide which
-// side of a two-character porcelain status counts.
-export type FileStatusContext =
-  | string
-  | {
-      category?: string;
-      untracked?: boolean;
-      staged?: boolean;
-      unstaged?: boolean;
-    }
-  | null
-  | undefined;
-
 const EMPTY_PRESENTATION: FileStatusPresentation = Object.freeze({
   code: "",
   label: "",
@@ -68,29 +55,19 @@ const PROVIDER_CODES: Readonly<Record<string, string>> = Object.freeze({
   unmerged: "U",
 });
 
-const UNMERGED_PAIRS = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
-
+// A status is one of git's change letters, or a word a provider such as
+// GitHub uses for it.
 export function fileStatusPresentation(
   status: string | null | undefined,
-  context: FileStatusContext = {},
 ): FileStatusPresentation {
-  const code = normalizeFileStatusCode(status, context);
+  const code = normalizeFileStatusCode(status);
   if (!code) {
     return EMPTY_PRESENTATION;
   }
   return PRESENTATIONS[code] ?? UNKNOWN_PRESENTATION;
 }
 
-function normalizeFileStatusCode(
-  status: string | null | undefined,
-  context: FileStatusContext,
-) {
-  const category = statusCategory(context);
-  const flags = typeof context === "object" ? context : null;
-  if (category === "untracked" || flags?.untracked === true) {
-    return "A";
-  }
-
+function normalizeFileStatusCode(status: string | null | undefined) {
   if (status === null || status === undefined || status === "") {
     return "";
   }
@@ -102,39 +79,7 @@ function normalizeFileStatusCode(
   }
 
   const characters = Array.from(raw.toUpperCase());
-  const pair = characters.slice(0, 2).join("");
-  if (pair === "??") {
-    return "A";
-  }
-  if (characters.length === 2 && UNMERGED_PAIRS.has(pair)) {
-    return "U";
-  }
-
-  if (characters.length === 1) {
-    return knownCode(characters[0]);
-  }
-  if (characters.length !== 2) {
-    return "?";
-  }
-
-  if (category === "unstaged" || flags?.unstaged === true) {
-    return knownCode(characters[1]);
-  }
-  if (category === "staged" || flags?.staged === true) {
-    return knownCode(characters[0]);
-  }
-
-  const meaningful = [
-    ...new Set(characters.filter((character) => character !== " ")),
-  ];
-  return meaningful.length === 1 ? knownCode(meaningful[0]) : "?";
-}
-
-function statusCategory(context: FileStatusContext) {
-  if (typeof context === "string") {
-    return context.toLowerCase();
-  }
-  return `${context?.category ?? ""}`.toLowerCase();
+  return characters.length === 1 ? knownCode(characters[0]) : "?";
 }
 
 function knownCode(code: string | undefined) {

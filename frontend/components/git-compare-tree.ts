@@ -342,7 +342,9 @@ function comparedFile(node: FileTreeNode) {
   return node.source as GitCompareFile | undefined;
 }
 
-function compareRefLabel(ref: string) {
+// A ref as the list names it: a remote branch without its remote, so
+// `origin/main` reads as `main`.
+export function compareRefLabel(ref: string) {
   return ref.replace(/^origin\//, "");
 }
 

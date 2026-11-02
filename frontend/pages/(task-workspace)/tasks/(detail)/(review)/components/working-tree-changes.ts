@@ -173,20 +173,25 @@ export class CaffoldReviewWorkingTreeChanges extends CaffoldElement {
     return {
       file,
       deleted: file.status.includes("D"),
-      kind: file.untracked ? "untracked" : file.category || "unstaged",
     };
   }
 
+  // Working Tree compares the working tree with the last commit, whichever
+  // way its files are staged.
+  base() {
+    return "HEAD";
+  }
+
   readDiff(path: string) {
-    return getGitDiff(this.rootPath, path, this.change(path)?.kind);
+    return getGitDiff(this.rootPath, path, this.base());
   }
 
   readVersions(path: string) {
-    return getGitDiffVersions(this.rootPath, path, this.change(path)?.kind);
+    return getGitDiffVersions(this.rootPath, path, this.base());
   }
 
   diffKind() {
-    return "";
+    return "vs HEAD";
   }
 
   setSelectedPath(path: string | null | undefined) {

@@ -4,18 +4,19 @@ import type { ActionHintPull } from "#app/action-hints.js";
 import {
   type GitCompare,
   type GitRefs,
-  getGitCompare,
-  getGitCompareDiff,
-  getGitCompareDiffVersions,
+  getGitBranchChanges,
+  getGitDiff,
+  getGitDiffVersions,
   getGitRefs,
 } from "#app/api.js";
 import type { ScrollSurfacePull } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/git-compare-tree.js";
 import { CaffoldElement } from "#app/caffold-element.js";
-import type {
-  CaffoldGitCompareTree,
-  SelectCompareBaseDetail,
+import {
+  type CaffoldGitCompareTree,
+  compareRefLabel,
+  type SelectCompareBaseDetail,
 } from "#components/git-compare-tree.js";
 import { ChangesReading } from "../changes-reading.js";
 import type { ChangesRead } from "../layout.js";
@@ -103,7 +104,15 @@ export class CaffoldReviewBranchChanges extends CaffoldElement {
     this.refs = null;
   }
 
-  async read({ force = false }: { force?: boolean } = {}) {
+  // A `background` read follows a change the watch reported, so the viewer
+  // reloads only when that change concerns what it shows.
+  async read({
+    force = false,
+    background = false,
+  }: {
+    force?: boolean;
+    background?: boolean;
+  } = {}) {
     const rootPath = this.rootPath;
     if (!rootPath) {
       return null;
@@ -130,11 +139,7 @@ export class CaffoldReviewBranchChanges extends CaffoldElement {
         });
         this.listShows = "loading";
       }
-      const compare = await getGitCompare(
-        rootPath,
-        baseRef,
-        this.headRef(refs),
-      );
+      const compare = await getGitBranchChanges(rootPath, baseRef);
       if (!this.acceptsRead(generation, rootPath)) {
         return null;
       }
@@ -158,6 +163,7 @@ export class CaffoldReviewBranchChanges extends CaffoldElement {
         ok: true,
         hadData: previous.hasData,
         wasOutdated: previous.fromBeforeReturn,
+        background,
       });
       return compare;
     } catch (error) {
@@ -169,7 +175,7 @@ export class CaffoldReviewBranchChanges extends CaffoldElement {
       }
       this.error = error as Error;
       this.showReadingState();
-      this.announceRead({ ok: false, error });
+      this.announceRead({ ok: false, error, background });
       return null;
     }
   }
@@ -195,25 +201,24 @@ export class CaffoldReviewBranchChanges extends CaffoldElement {
     return {
       file,
       deleted: Boolean(file.status?.includes("D")),
-      kind: "unstaged",
     };
   }
 
+  // Branch compares the working tree with where it left the chosen base.
+  base() {
+    return this.baseRef;
+  }
+
   readDiff(path: string) {
-    return getGitCompareDiff(this.rootPath, this.baseRef, this.headRef(), path);
+    return getGitDiff(this.rootPath, path, this.baseRef);
   }
 
   readVersions(path: string) {
-    return getGitCompareDiffVersions(
-      this.rootPath,
-      this.baseRef,
-      this.headRef(),
-      path,
-    );
+    return getGitDiffVersions(this.rootPath, path, this.baseRef);
   }
 
   diffKind() {
-    return `${this.baseRef}...${this.headRef()}`;
+    return `vs ${compareRefLabel(this.baseRef)}`;
   }
 
   setSelectedPath(path: string | null | undefined) {

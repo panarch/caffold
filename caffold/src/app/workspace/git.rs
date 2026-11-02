@@ -25,8 +25,20 @@ struct GitDiffQuery {
     #[serde(default)]
     path: String,
     file: String,
-    #[serde(default = "default_diff_kind")]
-    kind: String,
+    /// `HEAD` compares the working tree with the last commit, another ref
+    /// with where HEAD left it.
+    #[serde(default = "default_diff_base")]
+    base: String,
+}
+
+/// Review's Branch: the working tree since it left `base`, or the default
+/// base.
+#[derive(Debug, Deserialize)]
+struct GitBranchChangesQuery {
+    #[serde(default)]
+    path: String,
+    #[serde(default)]
+    base: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -80,6 +92,7 @@ struct GitCompareDiffQuery {
 pub(super) fn router() -> Router<WorkspaceState> {
     Router::new()
         .route("/api/git/status", get(git_status))
+        .route("/api/git/branch-changes", get(git_branch_changes))
         .route("/api/git/diff", get(git_diff))
         .route("/api/git/diff-versions", get(git_diff_versions))
         .route("/api/git/log", get(git_log))
@@ -99,8 +112,8 @@ pub(super) fn router() -> Router<WorkspaceState> {
         .route("/api/git/refs", get(git_refs))
 }
 
-fn default_diff_kind() -> String {
-    "unstaged".to_string()
+fn default_diff_base() -> String {
+    "HEAD".to_string()
 }
 
 fn default_git_log_page() -> usize {
@@ -122,12 +135,23 @@ async fn git_status(
         .map_err(ApiError::from)
 }
 
+async fn git_branch_changes(
+    State(state): State<WorkspaceState>,
+    Query(query): Query<GitBranchChangesQuery>,
+) -> Result<Json<GitCompareResponse>, ApiError> {
+    state
+        .fs
+        .git_branch_changes(&query.path, query.base.as_deref())
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
 async fn git_diff(
     State(state): State<WorkspaceState>,
     Query(query): Query<GitDiffQuery>,
 ) -> Result<Json<GitDiffResponse>, ApiError> {
     let fs = state.fs.clone();
-    read_diff(move || fs.git_diff(&query.path, &query.file, &query.kind)).await
+    read_diff(move || fs.git_diff(&query.path, &query.file, &query.base)).await
 }
 
 async fn git_diff_versions(
@@ -135,7 +159,7 @@ async fn git_diff_versions(
     Query(query): Query<GitDiffQuery>,
 ) -> Result<Json<GitDiffVersionsResponse>, ApiError> {
     let fs = state.fs.clone();
-    read_diff(move || fs.git_diff_versions(&query.path, &query.file, &query.kind)).await
+    read_diff(move || fs.git_diff_versions(&query.path, &query.file, &query.base)).await
 }
 
 async fn git_log(
@@ -332,7 +356,8 @@ mod tests {
         let sha = git_output(&repo, &["rev-parse", "HEAD"]);
 
         for uri in [
-            "/api/git/diff?path=repo&file=repo/sample.rs&kind=unstaged".to_string(),
+            "/api/git/diff?path=repo&file=repo/sample.rs&base=HEAD".to_string(),
+            "/api/git/diff?path=repo&file=repo/sample.rs&base=main".to_string(),
             format!("/api/git/commit-diff?path=repo&sha={sha}&file=repo/sample.rs"),
             "/api/git/compare-diff?path=repo&base=main&head=feature&file=repo/sample.rs"
                 .to_string(),
@@ -375,8 +400,13 @@ mod tests {
 
         for (uri, before, after) in [
             (
-                "/api/git/diff-versions?path=repo&file=repo/picture.png&kind=unstaged".to_string(),
+                "/api/git/diff-versions?path=repo&file=repo/picture.png&base=HEAD".to_string(),
                 blob(&new_id),
+                json!({ "source": "workingTree" }),
+            ),
+            (
+                "/api/git/diff-versions?path=repo&file=repo/picture.png&base=main".to_string(),
+                blob(&old_id),
                 json!({ "source": "workingTree" }),
             ),
             (
@@ -401,6 +431,42 @@ mod tests {
             assert_eq!(response["before"], before, "{uri}");
             assert_eq!(response["after"], after, "{uri}");
         }
+    }
+
+    #[tokio::test]
+    async fn branch_changes_route_lists_the_working_tree_since_the_base() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().join("repo");
+        create_committed_repository(&repo);
+        git(&repo, &["checkout", "-b", "feature"]);
+        std::fs::write(repo.join("committed.txt"), "committed\n").unwrap();
+        git(&repo, &["add", "committed.txt"]);
+        commit(&repo, "Add committed");
+        std::fs::write(repo.join("untracked.txt"), "untracked\n").unwrap();
+
+        let response = app(root.path())
+            .oneshot(
+                Request::get("/api/git/branch-changes?path=repo&base=main")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let response = response_json(response).await;
+        assert_eq!(response["baseRef"], "main");
+        assert_eq!(response["headRef"], "feature");
+        assert_eq!(
+            response["files"],
+            json!([
+                { "path": "repo/committed.txt", "repoRelativePath": "committed.txt", "status": "A" },
+                { "path": "repo/untracked.txt", "repoRelativePath": "untracked.txt", "status": "A" },
+            ])
+        );
+        assert_eq!(
+            (response["additions"].clone(), response["deletions"].clone()),
+            (json!(2), json!(0))
+        );
     }
 
     #[tokio::test]

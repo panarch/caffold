@@ -45,14 +45,15 @@ export const VISUAL_PICTURES = {
 const blob = (digit) => ({ source: "blob", oid: oid(digit) });
 const WORKING_TREE = { source: "workingTree" };
 
-// Each changed file with its status and the sides its diff compares.
+// Each changed file with its status since the last commit, how it is
+// staged, and the sides its diff compares.
 const CHANGES = [
-  ["src/release-card.png", " M", "unstaged", blob("1"), WORKING_TREE],
-  ["src/app-icon.png", " M", "unstaged", blob("2"), WORKING_TREE],
-  ["src/beta-badge.png", "??", "untracked", null, WORKING_TREE],
-  ["src/spring-banner.png", " D", "unstaged", blob("3"), null],
-  ["src/logo.svg", " M", "unstaged", blob("4"), WORKING_TREE],
-  ["src/planner.rs", " M", "unstaged", null, null],
+  ["src/release-card.png", "M", "unstaged", blob("1"), WORKING_TREE],
+  ["src/app-icon.png", "M", "unstaged", blob("2"), WORKING_TREE],
+  ["src/beta-badge.png", "A", "untracked", null, WORKING_TREE],
+  ["src/spring-banner.png", "D", "unstaged", blob("3"), null],
+  ["src/logo.svg", "M", "unstaged", blob("4"), WORKING_TREE],
+  ["src/planner.rs", "M", "unstaged", null, null],
 ];
 
 // Opens Integrated Review on a Task whose Working Tree changes these
@@ -116,7 +117,7 @@ async function installVisualChanges(page, failing) {
         repository: { rootPath: "src", branch: "main", dirty: true },
         path: file,
         repoRelativePath: file.replace(/^src\//, ""),
-        kind: address.searchParams.get("kind"),
+        kind: address.searchParams.get("base"),
         before,
         after,
       }),

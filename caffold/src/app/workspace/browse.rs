@@ -23,6 +23,16 @@ use crate::{
 
 const LIST_DIRECTORY_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// A viewer's request for a text file, compared with `base` when one is
+/// named: `HEAD`, or a ref whose merge base with HEAD is compared.
+#[derive(Debug, Deserialize)]
+struct FileQuery {
+    #[serde(default)]
+    path: String,
+    #[serde(default)]
+    base: Option<String>,
+}
+
 /// A viewer's request for an image or document. A part fetched after the
 /// first names the version it belongs to.
 #[derive(Debug, Deserialize)]
@@ -84,14 +94,17 @@ async fn list(
 
 async fn file(
     State(state): State<WorkspaceState>,
-    Query(query): Query<PathQuery>,
+    Query(query): Query<FileQuery>,
     request: HeaderMap,
 ) -> Result<Response, ApiError> {
     // Reading colors the file, which takes a noticeable share of a second for
     // a large one, so it runs on the blocking pool.
     let fs = state.fs.clone();
     tokio::task::spawn_blocking(move || {
-        let file = fs.open_text(&query.path)?;
+        let file = match &query.base {
+            Some(base) => fs.open_text_against(&query.path, base)?,
+            None => fs.open_text(&query.path)?,
+        };
         viewer_response(&request, file.version(), || file.read().map(Json))
     })
     .await
@@ -389,6 +402,60 @@ mod tests {
             serde_json::from_slice(&to_bytes(unknown.into_body(), 4096).await.unwrap()).unwrap();
         assert_eq!(unknown["language"], "Plain Text");
         assert_eq!(unknown["syntaxSpans"], serde_json::Value::Null);
+    }
+
+    #[tokio::test]
+    async fn a_text_file_read_against_a_base_names_its_changed_lines() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        git(&repo, &["init"]);
+        std::fs::write(repo.join("sample.txt"), "1\n2\n3\n").unwrap();
+        std::fs::write(root.path().join("outside.txt"), "outside\n").unwrap();
+        let commit = |message: &str| {
+            git(
+                &repo,
+                &[
+                    "-c",
+                    "user.name=Caffold Test",
+                    "-c",
+                    "user.email=caffold@example.test",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "commit",
+                    "-am",
+                    message,
+                ],
+            )
+        };
+        git(&repo, &["add", "sample.txt"]);
+        commit("Add sample");
+        std::fs::write(repo.join("sample.txt"), "1\nnew\n3\n").unwrap();
+        let uri = "/api/file?path=repo/sample.txt&base=HEAD";
+        let line_changes =
+            |json: &[u8]| serde_json::from_slice::<Value>(json).unwrap()["lineChanges"].clone();
+
+        let first = request(app(root.path()), uri).await;
+        assert_eq!(first.status(), StatusCode::OK);
+        let tag = first.headers()[header::ETAG].to_str().unwrap().to_string();
+        assert_eq!(
+            line_changes(&body(first).await),
+            serde_json::json!({ "added": [[2, 2]], "removedAfter": [1] })
+        );
+        let plain = request(app(root.path()), "/api/file?path=repo/sample.txt").await;
+        assert_eq!(line_changes(&body(plain).await), Value::Null);
+        let outside = request(app(root.path()), "/api/file?path=outside.txt&base=HEAD").await;
+        assert_eq!(outside.status(), StatusCode::OK);
+        assert_eq!(line_changes(&body(outside).await), Value::Null);
+
+        // A commit moves the base while the file stays as it is.
+        commit("Change sample");
+        let committed = request_holding(app(root.path()), uri, &tag).await;
+        assert_eq!(committed.status(), StatusCode::OK);
+        assert_eq!(
+            line_changes(&body(committed).await),
+            serde_json::json!({ "added": [], "removedAfter": [] })
+        );
     }
 
     #[tokio::test]

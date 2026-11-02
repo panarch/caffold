@@ -1435,11 +1435,11 @@ Three Review components below it own one part each, and each wraps a component
 that only draws:
 
 - `caffold-review-working-tree-changes` reads Git status and lists the
-  uncommitted changes in `caffold-git-diff-changes-tree`, with the
-  Review branch changes action when there are none;
-- `caffold-review-branch-changes` reads the branch refs and the comparison,
-  checks the chosen base, and lists the Task branch's changes in the shared
-  `caffold-git-compare-tree`;
+  uncommitted changes in `caffold-git-diff-changes-tree`, grouped by how they
+  are staged, with the Review branch changes action when there are none;
+- `caffold-review-branch-changes` reads the branch refs, checks the chosen
+  base, and lists what the working tree changes since it left that base,
+  untracked files included, in the shared `caffold-git-compare-tree`;
 - `caffold-review-selected-file` decides what `caffold-review-file-viewer`
   shows for the selected file and representation, loads it, and keeps each
   view's reading position. A notice's action, such as View source, comes back
@@ -1449,6 +1449,27 @@ that only draws:
 Both changes components answer the selected file's change, its diff, and the
 versions its diff compares for the viewer, and raise intents for the route
 changes they ask for.
+
+Both scopes compare the working tree with a commit, their base: Working Tree
+with HEAD, or the empty tree before the first commit, and Branch with the merge
+base of the chosen base and HEAD. A file's diff holds its staged and unstaged
+changes together, and in Branch its committed ones too. Each scope names its
+base to the Git routes, `HEAD` or the base ref, and the server resolves it,
+decides whether git tracks the file, and compares an untracked file with
+nothing. A file's status letter is its change from the base; how a Working Tree
+file is staged shows only in its group. The viewer names a diff's base after its
+status, as `vs HEAD` or `vs <base>`, with the base written as the Branch list
+writes it. Git Compare alone compares two refs.
+
+Source reads the file against the same base, and `caffold-code-viewer`
+colors the number of each line added since it and draws a red rule across the
+number column where lines were removed; a Markdown preview reads the file
+alone. `/api/file` marks every line of an untracked file as added, and answers
+a tracked file's `lineChanges` only when the file git compared has the git id
+of the bytes it read; a file that changed between the two reads comes without
+them until the watch reads it again. Since the base is a commit,
+a moved ref reloads the shown file in either scope, as a change to the file
+does; staging changes only the Working Tree groups.
 
 The Integrated Review owner resolves file-open intents to a path and supported
 representation together. A change is shown as Diff, its text, or as Visual,
@@ -1499,7 +1520,10 @@ The routes that read a file for a viewer, `/api/file`, `/api/image`,
 `Cache-Control: no-cache` with an `ETag` made from the file's size and
 modification time, and answer a browser that already holds that version with
 304 without reading the file. A file without a modification time is sent with
-`no-store`. Review's file viewer fetches the image or document it previews
+`no-store`. A file read against a base adds the base commit and whether git
+tracks the file to its `ETag`, so a commit that leaves the file as it was
+still answers with the file's new line changes.
+Review's file viewer fetches the image or document it previews
 itself, once for the selected file, and draws it from that copy. It asks the
 server again only when Review reloads the preview because the file may have
 changed: the watch reports a change to it or recovers, or Review reads the

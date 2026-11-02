@@ -77,6 +77,39 @@
   text-align: right;
 }
 
+/* A changed line marks only its number: an added line is tinted, and a red
+   rule lies across the boundary where lines were removed, 1px into the row on
+   each side. The rule is taken out of the flow, so no row changes height;
+   above the first row there is no row to reach into, so it stays inside. The
+   code keeps its own colors. */
+.code-row[data-line-change="added"] .line-number {
+  background: var(--diff-added-bg);
+  color: var(--diff-added-text);
+}
+
+.code-row[data-line-removed~="above"] .line-number::before,
+.code-row[data-line-removed~="below"] .line-number::after {
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: var(--diff-removed-rule);
+  content: "";
+  pointer-events: none;
+}
+
+.code-row[data-line-removed~="above"] .line-number::before {
+  top: -1px;
+}
+
+.code-row:first-child[data-line-removed~="above"] .line-number::before {
+  top: 0;
+}
+
+.code-row[data-line-removed~="below"] .line-number::after {
+  bottom: -1px;
+}
+
 .line-code {
   min-width: 0;
   white-space: pre;

@@ -582,18 +582,17 @@ export class CaffoldTaskReview extends CaffoldElement {
       this.followRereadInViewer(changes);
       return;
     }
-    if (changes === this.branchChanges) {
-      if (this.route.path && this.route.scope === "branch") {
-        this.selectedFile.reload(this.currentView(), { reread: hadData });
-      }
+    // Working Tree is read in the background while Branch is shown; only the
+    // shown scope's read concerns the viewer.
+    if (changes !== this.shownChanges) {
       return;
     }
-    const canRefreshViewer =
-      Boolean(this.route.path) && this.route.scope === "working";
+    const canRefreshViewer = Boolean(this.route.path);
     const pendingWatchViewerRefresh = this.pendingWatchViewerRefresh;
     this.pendingWatchViewerRefresh = false;
-    // A watch change reloads the viewer only for its own file, unless the
-    // status it replaces was read before the page came back.
+    // A watch change reloads the viewer only for its own file or a moved
+    // ref, unless the changes it replaces were read before the page came
+    // back.
     const refreshViewer = background
       ? canRefreshViewer && (pendingWatchViewerRefresh || wasOutdated)
       : canRefreshViewer;
@@ -813,6 +812,7 @@ export class CaffoldTaskReview extends CaffoldElement {
         failed: false,
         error: null,
         change: null,
+        base: "",
         diffKind: "",
         readDiff: null,
         readVersions: null,
@@ -826,6 +826,7 @@ export class CaffoldTaskReview extends CaffoldElement {
       failed,
       error,
       change: logicalPath ? changes.change(logicalPath) : null,
+      base: changes.base(),
       diffKind: changes.diffKind(),
       readDiff: () => changes.readDiff(logicalPath),
       readVersions: () => changes.readVersions(logicalPath),
@@ -1003,20 +1004,31 @@ export class CaffoldTaskReview extends CaffoldElement {
           ),
           revision: change.revision,
         });
-        if (this.task?.worktree && change.gitStatusChanged) {
-          this.pendingWatchViewerRefresh ||=
-            this.route.scope === "working" &&
-            watchChangeAffectsPath(change, this.logicalSelectedPath());
+        if (!this.task?.worktree) {
+          return;
+        }
+        // Both scopes compare the working tree with a commit, so a moved ref
+        // can change the shown file's diff and Source marks even when the
+        // file itself did not change.
+        this.pendingWatchViewerRefresh ||= Boolean(
+          change.gitRefsChanged ||
+            (change.gitStatusChanged &&
+              watchChangeAffectsPath(change, this.logicalSelectedPath())),
+        );
+        // Working Tree compares with HEAD, so a moved ref changes it too.
+        if (change.gitStatusChanged || change.gitRefsChanged) {
           void this.readChanges(this.workingTreeChanges, {
             background: true,
           });
         }
-        if (this.task?.worktree && change.gitRefsChanged) {
+        if (change.gitRefsChanged) {
           if (this.route.scope === "branch") {
             void this.readChanges(this.branchChanges, { force: true });
           } else {
             this.branchChanges.forgetRefs();
           }
+        } else if (change.gitStatusChanged && this.route.scope === "branch") {
+          void this.readChanges(this.branchChanges, { background: true });
         }
       },
     });

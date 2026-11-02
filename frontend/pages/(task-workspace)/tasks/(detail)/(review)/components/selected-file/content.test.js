@@ -6,7 +6,6 @@ import { contentFor } from "./content.js";
 const modified = {
   file: { path: "repo/src/a.js", status: "M" },
   deleted: false,
-  kind: "unstaged",
 };
 
 function view(path, representation, changes = {}) {

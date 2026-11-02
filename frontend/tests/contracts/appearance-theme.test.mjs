@@ -75,6 +75,12 @@ test("representative text, feedback, syntax, and diff roles meet contrast target
         `${theme} ${foreground} on ${background} contrast was ${ratio.toFixed(2)}`,
       );
     }
+    // Source's removal rule is a 2px line, not text, beside the line numbers.
+    const rule = contrastRatio(
+      hexToken(block, "diff-removed-rule"),
+      hexToken(block, "code-gutter"),
+    );
+    assert.ok(rule >= 3, `${theme} diff-removed-rule on code-gutter contrast was ${rule.toFixed(2)}`);
   }
 });
 

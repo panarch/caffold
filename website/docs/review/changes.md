@@ -11,10 +11,11 @@ In a Task, choose **Working Tree** or **Branch** next to **Conversation**. A
 [Section](../tasks/sections.md) of a repository offers the same view without a
 Task.
 
-- **Working Tree** shows the changes that are not committed yet: staged,
-  unstaged, and untracked.
-- **Branch** shows everything the current branch changes compared with a base
-  branch you choose.
+- **Working Tree** shows the changes since the last commit: staged, unstaged,
+  and untracked. A file's diff shows them together; the **Staged** and
+  **Unstaged** groups say how the file is staged.
+- **Branch** shows everything the current branch changes since it left a base
+  branch you choose, including changes not committed yet and new files.
 
 The view follows the files as they change, so you can keep it open while the
 agent works.
@@ -38,7 +39,9 @@ allows:
 - **Visual**, for images, the picture before and after the change: **Side by
   side** shows both with their size, and **Difference** paints the pixels that
   changed in red;
-- **Source**, the whole file as text;
+- **Source**, the whole file as text, with what Working Tree or Branch changed
+  marked beside the line numbers: a green number for an added line and a red
+  line where lines were removed;
 - **Preview**, for Markdown, images, PDF files, Word documents (`.docx`),
   PowerPoint decks (`.pptx`), and Excel workbooks (`.xlsx`, `.xlsm`).
 

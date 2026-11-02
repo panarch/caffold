@@ -52,7 +52,7 @@ export async function installTaskReviewFixture(page) {
           {
             path: "src/planner.rs",
             repoRelativePath: "planner.rs",
-            status: " M",
+            status: "M",
             category: "unstaged",
             staged: false,
             unstaged: true,
@@ -61,7 +61,7 @@ export async function installTaskReviewFixture(page) {
           {
             path: "src/tests/planner.rs",
             repoRelativePath: "tests/planner.rs",
-            status: " M",
+            status: "M",
             category: "unstaged",
             staged: false,
             unstaged: true,
@@ -70,7 +70,7 @@ export async function installTaskReviewFixture(page) {
           {
             path: "src/lib.rs",
             repoRelativePath: "lib.rs",
-            status: " M",
+            status: "M",
             category: "unstaged",
             staged: false,
             unstaged: true,
@@ -79,7 +79,7 @@ export async function installTaskReviewFixture(page) {
           {
             path: "src/unrelated.rs",
             repoRelativePath: "unrelated.rs",
-            status: " M",
+            status: "M",
             category: "unstaged",
             staged: false,
             unstaged: true,
@@ -90,7 +90,7 @@ export async function installTaskReviewFixture(page) {
                 {
                   path: "src/live-update.rs",
                   repoRelativePath: "live-update.rs",
-                  status: "??",
+                  status: "A",
                   category: "untracked",
                   staged: false,
                   unstaged: false,
@@ -103,7 +103,7 @@ export async function installTaskReviewFixture(page) {
                 {
                   path: "src/deleted.rs",
                   repoRelativePath: "deleted.rs",
-                  status: " D",
+                  status: "D",
                   category: "unstaged",
                   staged: false,
                   unstaged: true,
@@ -112,7 +112,7 @@ export async function installTaskReviewFixture(page) {
                 {
                   path: "src/untracked.rs",
                   repoRelativePath: "untracked.rs",
-                  status: "??",
+                  status: "A",
                   category: "untracked",
                   staged: false,
                   unstaged: false,
@@ -121,7 +121,7 @@ export async function installTaskReviewFixture(page) {
                 {
                   path: "src/staged.rs",
                   repoRelativePath: "staged.rs",
-                  status: "M ",
+                  status: "M",
                   category: "staged",
                   staged: true,
                   unstaged: false,
@@ -130,7 +130,7 @@ export async function installTaskReviewFixture(page) {
                 {
                   path: "src/mixed-modified.rs",
                   repoRelativePath: "mixed-modified.rs",
-                  status: "MM",
+                  status: "M",
                   category: "unstaged",
                   staged: true,
                   unstaged: true,
@@ -139,7 +139,7 @@ export async function installTaskReviewFixture(page) {
                 {
                   path: "src/added-modified.rs",
                   repoRelativePath: "added-modified.rs",
-                  status: "AM",
+                  status: "A",
                   category: "unstaged",
                   staged: true,
                   unstaged: true,
@@ -148,7 +148,7 @@ export async function installTaskReviewFixture(page) {
                 {
                   path: "src/renamed.rs",
                   repoRelativePath: "renamed.rs",
-                  status: "R ",
+                  status: "R",
                   category: "staged",
                   staged: true,
                   unstaged: false,
@@ -157,7 +157,7 @@ export async function installTaskReviewFixture(page) {
                 {
                   path: "src/conflicted.rs",
                   repoRelativePath: "conflicted.rs",
-                  status: "UU",
+                  status: "U",
                   category: "unstaged",
                   staged: true,
                   unstaged: true,
@@ -166,7 +166,7 @@ export async function installTaskReviewFixture(page) {
                 {
                   path: "src/unknown.rs",
                   repoRelativePath: "unknown.rs",
-                  status: "XZ",
+                  status: "X",
                   category: "unstaged",
                   staged: true,
                   unstaged: true,
@@ -180,7 +180,7 @@ export async function installTaskReviewFixture(page) {
                 repoRelativePath: `${
                   "intrinsically-wide-file-tree-segment-".repeat(12)
                 }.rs`,
-                status: " M",
+                status: "M",
                 category: "unstaged",
                 staged: false,
                 unstaged: true,
@@ -191,7 +191,7 @@ export async function installTaskReviewFixture(page) {
             ? Array.from({ length: 180 }, (_, index) => ({
                 path: `src/generated/deep/review/file-${`${index + 1}`.padStart(3, "0")}-with-a-long-review-name.rs`,
                 repoRelativePath: `generated/deep/review/file-${`${index + 1}`.padStart(3, "0")}-with-a-long-review-name.rs`,
-                status: " M",
+                status: "M",
                 category: "unstaged",
                 staged: false,
                 unstaged: true,
@@ -202,19 +202,44 @@ export async function installTaskReviewFixture(page) {
       }),
     });
   });
+  // Working Tree asks for its diffs from HEAD, Branch from its base.
   await page.route(/\/api\/git\/diff(?:\?|$)/, async (route) => {
-    gitDiffRequests += 1;
-    await diffGate?.promise;
     const url = new URL(route.request().url());
+    const base = url.searchParams.get("base");
     const file = url.searchParams.get("file");
     const relativePath = file.replace(/^src\//, "");
+    if (base !== "HEAD") {
+      gitCompareDiffRequests += 1;
+      expect(url.searchParams.get("path")).toBe("src");
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          repository: { rootPath: "src", branch: "main", dirty: true },
+          path: file,
+          repoRelativePath: relativePath,
+          kind: base,
+          additions: 4,
+          deletions: 2,
+          diff: [
+            `diff --git a/${relativePath} b/${relativePath}`,
+            `--- a/${relativePath}`,
+            `+++ b/${relativePath}`,
+            "@@ -60 +60 @@",
+            "-old branch behavior",
+            `+${branchDiffText}`,
+          ].join("\n"),
+        }),
+      });
+    }
+    gitDiffRequests += 1;
+    await diffGate?.promise;
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         repository: { rootPath: "src", branch: "main", dirty: true },
         path: file,
         repoRelativePath: relativePath,
-        kind: url.searchParams.get("kind"),
+        kind: base,
         additions: 2,
         deletions: 1,
         diff: [
@@ -244,11 +269,10 @@ export async function installTaskReviewFixture(page) {
       }),
     });
   });
-  await page.route(/\/api\/git\/compare(?:\?|$)/, async (route) => {
+  await page.route(/\/api\/git\/branch-changes(?:\?|$)/, async (route) => {
     gitCompareRequests += 1;
     const url = new URL(route.request().url());
     expect(url.searchParams.get("path")).toBe("src");
-    expect(url.searchParams.get("head")).toBe("main");
     compareDiffBaseRefs.push(url.searchParams.get("base"));
     const baseRef = url.searchParams.get("base");
     const delay = compareDelays.get(baseRef) ?? 0;
@@ -283,34 +307,6 @@ export async function installTaskReviewFixture(page) {
       }),
     });
   });
-  await page.route(/\/api\/git\/compare-diff(?:\?|$)/, (route) => {
-    gitCompareDiffRequests += 1;
-    const url = new URL(route.request().url());
-    expect(url.searchParams.get("path")).toBe("src");
-    expect(url.searchParams.get("head")).toBe("main");
-    const file = url.searchParams.get("file");
-    const relativePath = file.replace(/^src\//, "");
-    return route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        repository: { rootPath: "src", branch: "main", dirty: true },
-        path: file,
-        repoRelativePath: relativePath,
-        kind: `${url.searchParams.get("base")}...main`,
-        additions: 4,
-        deletions: 2,
-        diff: [
-          `diff --git a/${relativePath} b/${relativePath}`,
-          `--- a/${relativePath}`,
-          `+++ b/${relativePath}`,
-          "@@ -60 +60 @@",
-          "-old branch behavior",
-          `+${branchDiffText}`,
-        ].join("\n"),
-      }),
-    });
-  });
-
   return {
     get gitStatusRequests() {
       return gitStatusRequests;

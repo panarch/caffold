@@ -19,7 +19,6 @@ import {
 export interface ReviewChange {
   file: GitChangedFile | GitCompareFile;
   deleted: boolean;
-  kind: string;
 }
 
 export interface ReviewChanges {
@@ -28,6 +27,9 @@ export interface ReviewChanges {
   failed: boolean;
   error: Error | null;
   change: ReviewChange | null;
+  // The ref the scope compares the working tree with, and how its diffs name
+  // it.
+  base: string;
   diffKind: string;
   readDiff: (() => Promise<GitDiff>) | null;
   readVersions: (() => Promise<GitDiffVersions>) | null;
