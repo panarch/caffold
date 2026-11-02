@@ -9,6 +9,7 @@ import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeListTask,
   activeTaskProjection,
+  archivedListTask,
   canonicalTaskState,
   emitTaskDetailBootstrap,
   installEventSourceMock,
@@ -252,7 +253,7 @@ test("offers a recovery Task's row as the Action Hint that opens its recovery", 
   ).toBeVisible();
 });
 
-test("moves an already-Codex-archived recovery Task into Caffold Archived", { tag: "@server-steady" }, async ({
+test("moves an already-Codex-archived recovery Task into Caffold Archived", { tag: "@server-changes" }, async ({
   page,
 }) => {
   const threadId = "thread_recovery_archive";
@@ -263,18 +264,19 @@ test("moves an already-Codex-archived recovery Task into Caffold Archived", { ta
     ["restoreToActive", "moveToArchived", "recheck"],
   );
   const state = await installRecoveryList(page, recovery);
-  const archivedState = { tasks: [] };
-  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
-    route.fulfill({
-      json: { tasks: archivedState.tasks, nextCursor: null },
-    }),
-  );
+  let archivedTasks = [];
+  let releaseArchivedRefresh;
+  const archivedRefreshGate = new Promise((resolve) => { releaseArchivedRefresh = resolve; });
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, async (route) => {
+    if (archivedTasks.length) await archivedRefreshGate;
+    await route.fulfill({ json: { tasks: archivedTasks, nextCursor: null } });
+  });
   let archiveCalls = 0;
   await page.route(`/api/tasks/${threadId}/recovery/archive`, (route) => {
     archiveCalls += 1;
     state.projection = activeTaskProjection();
-    archivedState.tasks = [recovery];
-    return route.fulfill({ json: recovery });
+    archivedTasks = [archivedListTask(recovery)];
+    return route.fulfill({ json: archivedListTask(recovery) });
   });
 
   await openRecovery(page, recovery);
@@ -290,6 +292,10 @@ test("moves an already-Codex-archived recovery Task into Caffold Archived", { ta
       `caffold-archived-task-list .task-archived-row[data-thread-id="${threadId}"]`,
     ),
   ).toBeVisible();
+  const row = page.locator(`.task-archived-row[data-thread-id="${threadId}"]`);
+  await expect(row.locator("time")).toBeVisible();
+  await expect(row.locator("caffold-task-status-chip")).toHaveCount(0);
+  releaseArchivedRefresh();
 });
 
 test("confirms before removing a missing Codex Thread from Caffold", { tag: "@server-steady" }, async ({

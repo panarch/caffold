@@ -25,7 +25,6 @@ function archivedTask(overrides = {}) {
     threadId: "thread-a",
     title: "Alpha",
     conversationAvailable: true,
-    threadStatus: { type: "idle" },
     cwd: "/repo/alpha",
     cwdPath: "/repo/alpha",
     relativeCwd: "",
@@ -34,7 +33,7 @@ function archivedTask(overrides = {}) {
     updatedMs: Date.UTC(2026, 0, 1),
     recencyMs: null,
     lastCompletedMs: Date.UTC(2026, 0, 1),
-    unseen: false,
+    repositoryPath: null,
     ...overrides,
   };
 }
@@ -63,7 +62,7 @@ test("draws nothing and stays hidden until its navigator reveals it", () => {
   assert.deepEqual([...list.classes], []);
 });
 
-test("draws each archived Task with its status or time and its two actions", () => {
+test("draws each archived Task with its time, availability and two actions", () => {
   const list = archivedHost({
     revealed: true,
     archivedTasks: [
@@ -72,7 +71,6 @@ test("draws each archived Task with its status or time and its two actions", () 
         threadId: "thread-b",
         title: "Beta",
         conversationAvailable: false,
-        threadStatus: { type: "systemError" },
         updatedMs: Date.UTC(2026, 0, 2),
         lastCompletedMs: Date.UTC(2026, 0, 2),
       }),
@@ -82,13 +80,28 @@ test("draws each archived Task with its status or time and its two actions", () 
   list.deleting.add("thread-a");
 
   const drawn = html(list);
+  assert.doesNotMatch(drawn, /caffold-task-status-chip/);
   assert.match(drawn, /^<header class="task-list-section-header"><h2>Archived<\/h2><span class="task-list-section-count">2<\/span><\/header>/);
   assert.ok(drawn.indexOf("Beta") < drawn.indexOf("Alpha"), "most recent first");
-  assert.match(drawn, /<li class="task-archived-row" data-thread-id="thread-b" data-task-list-key="[^"]*"><div class="task-archived-copy" title="Beta"><span class="task-row-title">Beta<\/span><span class="task-row-indicators"><caffold-task-status-chip class="task-row-meta" \.task=""><\/caffold-task-status-chip><\/span><\/div><div class="task-archived-actions"><span class="task-archived-unavailable-status" role="img" aria-label="Conversation unavailable; restore is not available"/);
+  assert.match(drawn, /<li class="task-archived-row" data-thread-id="thread-b" data-task-list-key="[^"]*"><div class="task-archived-copy" title="Beta"><span class="task-row-title">Beta<\/span><span class="task-row-indicators"><time class="task-row-meta task-row-time" datetime="2026-01-02T00:00:00.000Z"[^>]*>[^<]*<\/time><\/span><\/div><div class="task-archived-actions"><span class="task-archived-unavailable-status" role="img" aria-label="Conversation unavailable; restore is not available"/);
   assert.match(drawn, /<button type="button" class="task-archived-action-button" data-task-action="restore-archived-task" data-thread-id="thread-a" aria-label="Restore Alpha" title="Restore task" \?disabled="true"/);
   assert.match(drawn, /<button type="button" class="task-archived-action-button task-delete-button is-loading" data-task-action="delete-archived-task" data-thread-id="thread-a" aria-label="Deleting Alpha" title="Deleting task" \?disabled="true"/);
   assert.match(drawn, /<time class="task-row-meta task-row-time" datetime="2026-01-01T00:00:00.000Z"/);
   assert.match(drawn, /<button type="button" class="task-secondary-button" data-task-action="load-more-archived-tasks" \?disabled="false" @click="">Load more archived tasks<\/button><\/div>$/);
+});
+
+test("uses completion, recency, then update time for archived row metadata", () => {
+  const times = [Date.UTC(2026, 0, 1), Date.UTC(2026, 0, 2), Date.UTC(2026, 0, 3)];
+  for (const [lastCompletedMs, recencyMs, expected] of [
+    [times[0], times[1], times[0]],
+    [null, times[1], times[1]],
+    [null, null, times[2]],
+  ]) {
+    const list = archivedHost({ revealed: true, archivedTasks: [archivedTask({
+      lastCompletedMs, recencyMs, updatedMs: times[2],
+    })] });
+    assert.ok(html(list).includes(`datetime="${new Date(expected).toISOString()}"`));
+  }
 });
 
 test("says why the list is empty", () => {

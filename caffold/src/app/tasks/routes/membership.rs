@@ -1,3 +1,4 @@
+use super::archived::ArchivedTaskRecord;
 use super::commands::{apply_managed_thread_metadata, require_codex_thread_connection};
 use super::store::{
     ManagedTaskMembership, task_store_api_error, task_store_archive, task_store_delete_task_rows,
@@ -12,6 +13,7 @@ use crate::agent::{Conversation, Driver};
 use crate::app::error::ApiError;
 use crate::app::tasks::active_list::{ActiveTask, isolates_task, runs_in_managed_worktree};
 use crate::app::tasks::presence::{active_record, archived_record, moved_refusal, refusal};
+use crate::app::tasks::projection::conversation_from_row;
 use crate::app::tasks::recovery::{
     ActiveTaskRecovery, ActiveTaskRecoveryReason, ManagedCodexThreadLocation,
 };
@@ -101,7 +103,7 @@ pub(super) fn task_store_join_error(error: tokio::task::JoinError) -> ApiError {
 pub(super) async fn task_archive(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
-) -> Result<Json<TaskRecord>, ApiError> {
+) -> Result<Json<ArchivedTaskRecord>, ApiError> {
     let result = archive_task(&state, &thread_id).await;
     match result {
         Ok(task) => Ok(task),
@@ -109,7 +111,10 @@ pub(super) async fn task_archive(
     }
 }
 
-async fn archive_task(state: &TaskState, thread_id: &str) -> Result<Json<TaskRecord>, ApiError> {
+async fn archive_task(
+    state: &TaskState,
+    thread_id: &str,
+) -> Result<Json<ArchivedTaskRecord>, ApiError> {
     let thread_id = thread_id.to_string();
     active_record(&state.task_store, &thread_id).await?;
     let _mutation = state.task_sessions.reserve_mutation(&thread_id).await;
@@ -129,7 +134,26 @@ async fn archive_task(state: &TaskState, thread_id: &str) -> Result<Json<TaskRec
     };
     let task = match &driver {
         Some(driver) => match driver.describe(&managed.thread_id).await {
-            Ok(described) => Some(task_described_as(state, driver, &managed, described).await?),
+            Ok(described) => {
+                let active = described.as_ref().is_some_and(|conversation| {
+                    matches!(conversation.status, agent::ThreadStatus::Active { .. })
+                });
+                let task = ArchivedTaskRecord::described(
+                    &state.fs,
+                    &state.task_store,
+                    driver,
+                    &managed,
+                    described,
+                )
+                .await?;
+                if active {
+                    return Err(ApiError::BadRequest {
+                        code: "task_active",
+                        message: "active tasks cannot be archived".to_string(),
+                    });
+                }
+                Some(task)
+            }
             Err(error) => {
                 eprintln!(
                     "failed to describe the provider conversation while archiving Task {thread_id}; continuing with Caffold archive: {error}"
@@ -139,18 +163,6 @@ async fn archive_task(state: &TaskState, thread_id: &str) -> Result<Json<TaskRec
         },
         None => None,
     };
-    // A turn still running would be archived out from under itself, and the
-    // agent asked about it afterwards would be asked about a Task nothing is
-    // watching any more.
-    if matches!(
-        task.as_ref().map(|task| &task.thread_status),
-        Some(agent::ThreadStatus::Active { .. })
-    ) {
-        return Err(ApiError::BadRequest {
-            code: "task_active",
-            message: "active tasks cannot be archived".to_string(),
-        });
-    }
     state
         .lifecycle
         .preflight_archive_worktree(thread_id.clone())
@@ -190,16 +202,16 @@ async fn archive_task(state: &TaskState, thread_id: &str) -> Result<Json<TaskRec
         }
     };
     notify_task_removed(state, &thread_id, "archived");
-    Ok(Json(
-        task.unwrap_or_else(|| unavailable_archived_task(&archived)),
-    ))
+    Ok(Json(task.unwrap_or_else(|| {
+        ArchivedTaskRecord::unavailable(&archived)
+    })))
 }
 
 pub(super) async fn task_force_archive(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
     Json(request): Json<TaskForceArchiveRequest>,
-) -> Result<Json<TaskRecord>, ApiError> {
+) -> Result<Json<ArchivedTaskRecord>, ApiError> {
     // Own an accepted destructive request even if its browser leaves.
     tokio::spawn(force_archive_task(state, thread_id, request))
         .await
@@ -210,7 +222,7 @@ async fn force_archive_task(
     state: TaskState,
     thread_id: String,
     request: TaskForceArchiveRequest,
-) -> Result<Json<TaskRecord>, ApiError> {
+) -> Result<Json<ArchivedTaskRecord>, ApiError> {
     let _mutation = state.task_sessions.reserve_mutation(&thread_id).await;
     let managed = active_record(&state.task_store, &thread_id).await?;
     state
@@ -260,7 +272,7 @@ async fn force_archive_task(
     notify_task_removed(&state, &thread_id, "archived");
     // Git may be unavailable, so the retained Task row owns this response.
     // Never recreate the discarded checkout as a rollback after removal.
-    Ok(Json(unavailable_archived_task(&archived)))
+    Ok(Json(ArchivedTaskRecord::unavailable(&archived)))
 }
 
 async fn archive_failure(state: &TaskState, thread_id: &str, error: ApiError) -> ApiError {
@@ -368,64 +380,12 @@ pub(super) async fn described_task(
     managed: &ManagedThread,
 ) -> Result<TaskRecord, ApiError> {
     let described = driver.describe(&managed.thread_id).await?;
-    task_described_as(state, driver, managed, described).await
-}
-
-/// What Caffold's own row says about a conversation, for an agent that cannot
-/// be asked without being started.
-///
-/// A Claude Task's row carries where it works, and where it works is what a
-/// Section placement and a worktree are worked out from — so the row is enough
-/// to describe one, and it goes through the same reading as a conversation the
-/// agent answered with.
-fn conversation_from_row(managed: &ManagedThread, cwd: &str) -> Conversation {
-    let seen_at_ms = managed
-        .last_observed_recency_ms
-        .or(managed.archived_at_ms)
-        .unwrap_or(managed.claimed_at_ms);
-    Conversation {
-        id: managed.thread_id.clone(),
-        title: Some(managed.display_name.clone()),
-        preview: String::new(),
-        status: agent::ThreadStatus::NotLoaded,
-        background_work: false,
-        cwd: cwd.to_string(),
-        transcript_path: None,
-        created_at_ms: seen_at_ms,
-        updated_at_ms: seen_at_ms,
-        recency_at_ms: Some(seen_at_ms),
-        turns: Vec::new(),
-    }
-}
-
-/// The record for a Task, from what its agent said about it — or did not.
-///
-/// Split from the provider request so each caller can choose its provider
-/// failure policy at that boundary. Once a description exists, local
-/// projection and path failures remain request failures.
-pub(super) async fn task_described_as(
-    state: &TaskState,
-    driver: &Driver,
-    managed: &ManagedThread,
-    described: Option<Conversation>,
-) -> Result<TaskRecord, ApiError> {
     let mut task = match described {
         Some(conversation) => state.detail.record_from_conversation(&conversation)?,
         None => {
-            let (RunBy::Claude { cwd } | RunBy::Grok { cwd } | RunBy::Antigravity { cwd }) =
-                &managed.run_by
-            else {
-                // Only an agent that cannot be asked answers with nothing, and
-                // only a Claude or Grok row carries where it works. A Codex
-                // answer is either a conversation or a failure.
-                return Err(ApiError::Internal(format!(
-                    "no agent answered for Task {}",
-                    managed.thread_id
-                )));
-            };
             let mut task = state
                 .detail
-                .record_from_conversation(&conversation_from_row(managed, cwd))?;
+                .record_from_conversation(&conversation_from_row(managed)?)?;
             task.conversation_available = driver.conversation_exists(&managed.thread_id).await?;
             task
         }
@@ -547,7 +507,7 @@ pub(super) async fn task_recovery_recheck(
 pub(super) async fn task_recovery_archive(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
-) -> Result<Json<TaskRecord>, ApiError> {
+) -> Result<Json<ArchivedTaskRecord>, ApiError> {
     let managed = active_record(&state.task_store, &thread_id).await?;
     let connection = require_codex_thread_connection(&state).await?;
     let thread = match recovery::locate_thread(&connection.client, &thread_id).await? {
@@ -556,10 +516,12 @@ pub(super) async fn task_recovery_archive(
             return Err(task_recovery_changed_error());
         }
     };
-    let mut task = state
-        .detail
-        .record_from_conversation(&Conversation::from(&thread))?;
-    apply_managed_thread_metadata(&mut task, &managed);
+    let mut task = ArchivedTaskRecord::from_conversation(
+        &state.fs,
+        &state.task_store,
+        &managed,
+        Conversation::from(&thread),
+    )?;
     task.conversation_available = false;
     state
         .lifecycle
@@ -869,34 +831,6 @@ pub(super) fn notify_task_removed(state: &TaskState, thread_id: &str, reason: &'
     state.task_list_events.remove(thread_id, reason);
 }
 
-pub(super) fn unavailable_archived_task(managed: &ManagedThread) -> TaskRecord {
-    let activity_ms = managed
-        .last_observed_recency_ms
-        .or(managed.archived_at_ms)
-        .unwrap_or(managed.claimed_at_ms);
-    TaskRecord {
-        id: managed.thread_id.clone(),
-        thread_id: managed.thread_id.clone(),
-        conversation_available: false,
-        title: managed.display_name.clone(),
-        preview: "Conversation unavailable".to_string(),
-        thread_status: agent::ThreadStatus::NotLoaded,
-        background_work: false,
-        latest_turn_status: None,
-        active_turn: None,
-        cwd: String::new(),
-        cwd_path: None,
-        relative_cwd: String::new(),
-        worktree: None,
-        created_ms: managed.claimed_at_ms,
-        updated_ms: activity_ms,
-        recency_ms: Some(activity_ms),
-        last_completed_ms: managed.last_completed_at_ms,
-        last_event_summary: Some("Conversation unavailable".to_string()),
-        unseen: false,
-    }
-}
-
 pub(super) fn task_recovery_changed_error() -> ApiError {
     ApiError::BadRequest {
         code: "task_recovery_changed",
@@ -933,6 +867,7 @@ mod tests {
         path::{Path, PathBuf},
     };
     use tower::ServiceExt;
+    use uuid::Uuid;
 
     use super::super::test_support::*;
     use super::*;
@@ -2136,6 +2071,30 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(response.status(), axum::http::StatusCode::OK);
+            let body: JsonValue = serde_json::from_slice(
+                &axum::body::to_bytes(response.into_body(), 8192)
+                    .await
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(body["threadId"], id);
+            assert_eq!(body["conversationAvailable"], false);
+            assert_eq!(body.as_object().unwrap().len(), 12);
+            for key in [
+                "threadStatus",
+                "backgroundWork",
+                "activeTurn",
+                "latestTurnStatus",
+                "id",
+                "preview",
+                "lastEventSummary",
+                "unseen",
+            ] {
+                assert!(
+                    !body.as_object().unwrap().contains_key(key),
+                    "force Archive leaked {key}"
+                );
+            }
             assert!(!Path::new(&worktree.worktree_path).exists());
             assert!(state.task_store.get(id).unwrap().is_none());
             let archived = state.task_store.get_archived(id).unwrap().unwrap();
@@ -2424,7 +2383,7 @@ mod tests {
             .expect("the archived list does not ask Codex either")
             .0;
         assert_eq!(listed.tasks.len(), 1);
-        assert_eq!(listed.tasks[0].task.thread_id, thread_id);
+        assert_eq!(listed.tasks[0].thread_id, thread_id);
 
         let restored = task_restore(State(state.clone()), AxumPath(thread_id.to_string()))
             .await
@@ -2530,7 +2489,7 @@ mod tests {
             list_archived_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
                 .await
                 .expect("archived list succeeds");
-        assert_eq!(archived_page.0.tasks[0].task.thread_id, thread_id);
+        assert_eq!(archived_page.0.tasks[0].thread_id, thread_id);
 
         let restored = task_restore(State(state.clone()), AxumPath(thread_id.to_string()))
             .await
@@ -2906,14 +2865,41 @@ mod tests {
         manage_test_thread(&state, thread_id, root.path()).await;
         terminals.open_for_test(thread_id, root.path()).await;
 
-        let archived = task_recovery_archive(State(state.clone()), AxumPath(thread_id.to_string()))
+        let response = router(state.clone())
+            .oneshot(
+                axum::http::Request::post(format!("/api/tasks/{thread_id}/recovery/archive"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
-            .expect("recovery archive succeeds")
-            .0;
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let archived: JsonValue = serde_json::from_slice(
+            &axum::body::to_bytes(response.into_body(), 8192)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(archived.as_object().unwrap().len(), 12);
+        for key in [
+            "threadStatus",
+            "backgroundWork",
+            "activeTurn",
+            "latestTurnStatus",
+            "id",
+            "preview",
+            "lastEventSummary",
+            "unseen",
+        ] {
+            assert!(
+                !archived.as_object().unwrap().contains_key(key),
+                "Recovery Archive leaked {key}"
+            );
+        }
 
         assert!(!terminals.is_open(thread_id));
-        assert_eq!(archived.thread_id, thread_id);
-        assert!(!archived.conversation_available);
+        assert_eq!(archived["threadId"], thread_id);
+        assert_eq!(archived["conversationAvailable"], false);
         assert!(task_store_get(&state, thread_id).await.unwrap().is_none());
         assert!(
             task_store_get_archived(&state, thread_id)
@@ -3146,6 +3132,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn antigravity_closure_failure_keeps_active_membership() {
+        let root = tempfile::tempdir().unwrap();
+        let id = Uuid::new_v4().to_string();
+        let client = CodexThreadClient::mock(vec![]);
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        state
+            .task_store
+            .claim(
+                ManagedThread::new(
+                    &id,
+                    RunBy::Antigravity {
+                        cwd: root.path().display().to_string(),
+                    },
+                    Some(1_000),
+                    None,
+                    None,
+                ),
+                1,
+            )
+            .unwrap();
+
+        let error = task_archive(State(state.clone()), AxumPath(id.clone()))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, ApiError::Agent(_)), "{error}");
+        assert!(state.task_store.get(&id).unwrap().is_some());
+        assert!(state.task_store.get_archived(&id).unwrap().is_none());
+    }
+
+    #[tokio::test]
     async fn provider_rollback_runs_only_after_provider_archive_succeeds() {
         let thread_id = "thread-provider-archive-rollback";
         let failed_client = CodexThreadClient::mock(vec![MockCodexResponse::error(
@@ -3225,7 +3242,6 @@ mod tests {
         assert_eq!(archived.thread_id, thread_id);
         assert_eq!(archived.title, "Cached task name");
         assert!(!archived.conversation_available);
-        assert_eq!(archived.preview, "Conversation unavailable");
         assert!(task_store_get(&state, thread_id).await.unwrap().is_none());
         assert!(
             task_store_get_archived(&state, thread_id)
@@ -3414,9 +3430,8 @@ mod tests {
                 .await
                 .expect("unavailable conversation remains listable");
         assert_eq!(archived.0.tasks.len(), 1);
-        assert_eq!(archived.0.tasks[0].task.thread_id, thread_id);
-        assert!(!archived.0.tasks[0].task.conversation_available);
-        assert_eq!(archived.0.tasks[0].task.preview, "Conversation unavailable");
+        assert_eq!(archived.0.tasks[0].thread_id, thread_id);
+        assert!(!archived.0.tasks[0].conversation_available);
 
         state.task_events.publish_local(TaskEventRecord {
             id: "cached-event".to_string(),

@@ -20,12 +20,12 @@ use super::{
     lifecycle::worktree_api_error,
     presence::{active_record, moved_refusal},
     projection::{
-        ResolvedTaskCwd, TaskRecord, apply_turn_states_projection, resolve_checkout_cwd,
-        resolve_conversation_cwd, task_record_from_conversation,
+        ResolvedTaskCwd, TaskRecord, apply_turn_states_projection, project_managed_worktree_cwd,
+        task_record_from_conversation,
     },
     runtime::{TaskAgent, TaskRuntime, TaskRuntimeSignal},
     sync::TaskSync,
-    worktrees::{ManagedWorktrees, inspect_ready_worktree},
+    worktrees::ManagedWorktrees,
 };
 use crate::agent::AgentError;
 use crate::{
@@ -36,7 +36,7 @@ use crate::{
     app::error::{ApiError, ErrorBody},
     app::tasks::sessions::{SessionSnapshot, TaskSessions, ViewerLease},
     fs::RootedFs,
-    task_store::{ManagedThread, ManagedWorktreeState, TaskProvider, TaskStore, TaskStoreError},
+    task_store::{ManagedThread, TaskProvider, TaskStore, TaskStoreError},
 };
 
 pub(super) const TASK_DETAIL_TURNS_PAGE_SIZE: usize = 8;
@@ -774,37 +774,6 @@ impl DetailContext {
     }
 }
 
-/// Point a conversation at the worktree Caffold moved it into.
-///
-/// An agent reports the directory it was started in, which is no longer where
-/// the work happens once a Task has been isolated. Everything downstream — Git,
-/// review, file links — resolves from this one field.
-fn project_managed_worktree_cwd(
-    fs: &RootedFs,
-    store: &TaskStore,
-    mut conversation: Conversation,
-) -> Result<(Conversation, Option<ResolvedTaskCwd>), ApiError> {
-    let worktree = store
-        .worktree_for_thread(&conversation.id)
-        .map_err(|error| ApiError::Internal(error.to_string()))?;
-    if let Some(worktree) = worktree
-        && worktree.state == ManagedWorktreeState::Ready
-    {
-        let checkout = inspect_ready_worktree(&worktree).map_err(|error| ApiError::BadRequest {
-            code: "managed_worktree_unavailable",
-            message: format!(
-                "the managed worktree is unavailable at {}: {error}",
-                worktree.worktree_path
-            ),
-        })?;
-        conversation.cwd = worktree.worktree_path;
-        let resolved = resolve_checkout_cwd(fs, &checkout);
-        return Ok((conversation, resolved));
-    }
-    let resolved = resolve_conversation_cwd(fs, &conversation);
-    Ok((conversation, resolved))
-}
-
 pub(in crate::app::tasks) fn loading_detail(
     thread_id: &str,
     revision: u64,
@@ -1129,25 +1098,10 @@ fn store_join_error(error: tokio::task::JoinError) -> ApiError {
 
 #[cfg(test)]
 mod inline_tests {
-    use crate::agent::codex::CodexThread;
     use crate::app::tasks::events::task_event_record;
-    use crate::git;
     use serde_json::json;
 
     use super::*;
-    use crate::task_store::{CheckoutAnchor, ManagedWorktree};
-
-    /// A conversation whose only interesting field is where it says it is
-    /// running, which is what the managed-worktree projection replaces.
-    fn codex_thread(cwd: &str) -> Conversation {
-        let thread: CodexThread = serde_json::from_value(json!({
-            "id": "thread-1",
-            "cwd": cwd,
-            "status": { "type": "idle" },
-        }))
-        .expect("the fixture decodes as a Codex thread");
-        Conversation::from(&thread)
-    }
 
     fn positioned_event(turn_id: &str, event_type: &str, anchor_ms: u64) -> TaskEventRecord {
         task_event_record(
@@ -1354,111 +1308,6 @@ mod inline_tests {
         assert_eq!(covered.len(), events.len());
     }
 
-    #[test]
-    fn ready_branch_switch_projects_live_git_context_without_persisting_the_observation() {
-        let temp = tempfile::tempdir().unwrap();
-        let source = temp.path().join("source");
-        initialize_repository(&source);
-        let managed = temp.path().join("managed");
-        let checkout =
-            git::create_attached_worktree(&source, &managed, "caffold/review", None).unwrap();
-        let store = TaskStore::memory().unwrap();
-        store
-            .create_worktree(ManagedWorktree {
-                worktree_id: "worktree-1".to_string(),
-                thread_id: Some("thread-1".to_string()),
-                repository_git_dir: checkout.common_dir.display().to_string(),
-                worktree_path: managed.display().to_string(),
-                state: ManagedWorktreeState::Ready,
-                checkout_anchor: None,
-                created_at_ms: 1,
-                updated_at_ms: 1,
-            })
-            .unwrap();
-        let stored_before = store.worktree("worktree-1").unwrap().unwrap();
-        git(&managed, &["switch", "-c", "review/next"]);
-        std::fs::write(managed.join("next.txt"), "next branch\n").unwrap();
-        git(&managed, &["add", "next.txt"]);
-        git(&managed, &["commit", "-m", "Advance next branch"]);
-        let live_head = git_output(&managed, &["rev-parse", "HEAD"]);
-
-        let fs = RootedFs::new(temp.path()).unwrap();
-        let (projected, resolved) =
-            project_managed_worktree_cwd(&fs, &store, codex_thread("/stale/source")).unwrap();
-
-        assert_eq!(projected.cwd, managed.display().to_string());
-        let context = resolved.unwrap().worktree.unwrap();
-        assert_eq!(context.branch.as_deref(), Some("review/next"));
-        assert_eq!(context.head_sha, live_head);
-        assert_eq!(
-            store.worktree("worktree-1").unwrap().unwrap(),
-            stored_before
-        );
-    }
-
-    #[test]
-    fn unavailable_ready_worktree_rejects_cwd_projection() {
-        let temp = tempfile::tempdir().unwrap();
-        let source = temp.path().join("source");
-        initialize_repository(&source);
-        let repository = git::managed_repository(&source).unwrap();
-        let missing = temp.path().join("missing-managed");
-        let store = TaskStore::memory().unwrap();
-        store
-            .create_worktree(ManagedWorktree {
-                worktree_id: "worktree-1".to_string(),
-                thread_id: Some("thread-1".to_string()),
-                repository_git_dir: repository.common_dir.display().to_string(),
-                worktree_path: missing.display().to_string(),
-                state: ManagedWorktreeState::Ready,
-                checkout_anchor: None,
-                created_at_ms: 1,
-                updated_at_ms: 1,
-            })
-            .unwrap();
-        let fs = RootedFs::new(temp.path()).unwrap();
-
-        let error =
-            project_managed_worktree_cwd(&fs, &store, codex_thread("/stale/source")).unwrap_err();
-
-        assert!(matches!(
-            error,
-            ApiError::BadRequest {
-                code: "managed_worktree_unavailable",
-                message,
-            } if message.contains(&missing.display().to_string())
-        ));
-    }
-
-    #[test]
-    fn incomplete_managed_worktree_keeps_canonical_cwd_visible() {
-        let temp = tempfile::tempdir().unwrap();
-        let managed = temp.path().join("managed");
-        std::fs::create_dir(&managed).unwrap();
-        let store = TaskStore::memory().unwrap();
-        store
-            .create_worktree(ManagedWorktree {
-                worktree_id: "worktree-1".to_string(),
-                thread_id: Some("thread-1".to_string()),
-                repository_git_dir: temp.path().join(".git").display().to_string(),
-                worktree_path: managed.display().to_string(),
-                state: ManagedWorktreeState::RecoveryRequired,
-                checkout_anchor: Some(CheckoutAnchor {
-                    branch_name: "caffold/review".to_string(),
-                    head_sha: "deadbeef".to_string(),
-                }),
-                created_at_ms: 1,
-                updated_at_ms: 1,
-            })
-            .unwrap();
-
-        let fs = RootedFs::new(temp.path()).unwrap();
-        let (projected, _) =
-            project_managed_worktree_cwd(&fs, &store, codex_thread("/original/source")).unwrap();
-
-        assert_eq!(projected.cwd, "/original/source");
-    }
-
     pub(super) fn initialize_repository(path: &std::path::Path) {
         std::fs::create_dir(path).unwrap();
         for args in [
@@ -1486,21 +1335,6 @@ mod inline_tests {
             String::from_utf8_lossy(&output.stderr)
         );
     }
-
-    fn git_output(path: &std::path::Path, args: &[&str]) -> String {
-        let output = std::process::Command::new("git")
-            .arg("-C")
-            .arg(path)
-            .args(args)
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "git {args:?} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        String::from_utf8(output.stdout).unwrap().trim().to_string()
-    }
 }
 
 #[cfg(test)]
@@ -1511,6 +1345,7 @@ mod request_tests {
     use crate::agent::codex::{CodexThread, MockCodexResponse, TurnsPage};
     use crate::agent::driver::REVIEWED_PERMISSION_MODE;
     use crate::app::tasks::sessions::SessionTurnPage;
+    use crate::app::tasks::worktrees::inspect_ready_worktree;
     use std::time::Duration;
 
     use futures_util::StreamExt;

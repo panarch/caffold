@@ -5,6 +5,7 @@ import {
   activeListTask,
   activeLiveUpdateChannels,
   activeTaskProjection,
+  archivedListTask,
   canonicalTaskState,
   captureReviewScreenshot,
   emitTaskDetailBootstrap,
@@ -228,7 +229,7 @@ test("retains an initial Archived result without revealing it before active Task
   await expect(navigator.getByText("Loading...", { exact: true })).toHaveCount(1);
   await expect(navigator.getByRole("button", { name: "New Task" })).toBeVisible();
 
-  gates.settleArchived({ tasks: [archivedTask], nextCursor: null });
+  gates.settleArchived({ tasks: [archivedListTask(archivedTask)], nextCursor: null });
   await expect.poll(() =>
     archivedList.evaluate((element) => element.initialRequestSettled),
   ).toBe(true);
@@ -406,7 +407,7 @@ test("shows an initial active failure immediately and reveals Archived after it 
   ).toBeVisible();
   await expect(navigator.getByText("Archived", { exact: true })).toHaveCount(0);
 
-  gates.settleArchived({ tasks: [archivedTask], nextCursor: null });
+  gates.settleArchived({ tasks: [archivedListTask(archivedTask)], nextCursor: null });
   const archivedSection = navigator.locator(
     '.task-list-section[data-task-section="archived"]',
   );
@@ -453,14 +454,14 @@ test("keeps settled list sections visible during later parallel refreshes", { ta
     if (archivedReads === 1) {
       return route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify({ tasks: [archivedTask], nextCursor: null }),
+        body: JSON.stringify({ tasks: [archivedListTask(archivedTask)], nextCursor: null }),
       });
     }
     archivedRefreshStarted.resolve();
     await archivedRefreshRelease.promise;
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [archivedTask], nextCursor: null }),
+      body: JSON.stringify({ tasks: [archivedListTask(archivedTask)], nextCursor: null }),
     });
   });
 
@@ -1226,11 +1227,9 @@ test("keeps Archived Task indicator columns aligned with unavailable warning act
     linked: true,
   };
   const archivedTask = (threadId, title, elapsed, overrides = {}) => ({
-    id: threadId,
     threadId,
-    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    conversationAvailable: overrides.conversationAvailable ?? true,
     title,
-    preview: `${title} preview`,
     cwd: worktree.rootPath,
     cwdPath: worktree.rootPath,
     relativeCwd: "",
@@ -1239,9 +1238,7 @@ test("keeps Archived Task indicator columns aligned with unavailable warning act
     updatedMs: now - elapsed,
     recencyMs: now - elapsed,
     lastCompletedMs: now - elapsed,
-    lastEventSummary: `${title} summary`,
-    unseen: false,
-    ...overrides,
+    repositoryPath: null,
   });
   const archivedTasks = [
     archivedTask(
@@ -1277,7 +1274,7 @@ test("keeps Archived Task indicator columns aligned with unavailable warning act
   await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: archivedTasks, nextCursor: null }),
+      body: JSON.stringify({ tasks: archivedTasks.map(archivedListTask), nextCursor: null }),
     }),
   );
 
@@ -1719,6 +1716,8 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   );
   let activeTasks = [activeTask];
   let archivedTasks = [existingArchivedTask];
+  let releaseArchivedRefresh;
+  const archivedRefreshGate = new Promise((resolve) => { releaseArchivedRefresh = resolve; });
   const mutations = [];
   let releaseRestore;
   const restoreGate = new Promise((resolve) => {
@@ -1736,12 +1735,10 @@ test("archives and restores an idle Caffold task through the grouped Archived se
     pendingApprovals: [],
   };
 
-  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ tasks: archivedTasks, nextCursor: null }),
-    }),
-  );
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, async (route) => {
+    if (archivedTasks.length > 1) await archivedRefreshGate;
+    await route.fulfill({ json: { tasks: archivedTasks.map(archivedListTask), nextCursor: null } });
+  });
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -1760,7 +1757,7 @@ test("archives and restores an idle Caffold task through the grouped Archived se
     archivedTasks = [activeTask, existingArchivedTask];
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify(activeTask),
+      body: JSON.stringify(archivedListTask(activeTask)),
     });
   });
   await page.route(/\/api\/tasks\/thread_archive\/restore$/, async (route) => {
@@ -1863,6 +1860,11 @@ test("archives and restores an idle Caffold task through the grouped Archived se
     '.task-list-section[data-task-section="archived"]',
   );
   await expect(archivedSection).toContainText("Archive round trip");
+  // The refreshed GET is held: this row must come from the command response.
+  const insertedRow = archivedSection.locator(`[data-thread-id="${activeTask.threadId}"]`);
+  await expect(insertedRow.locator("time")).toBeVisible();
+  await expect(insertedRow.locator("caffold-task-status-chip")).toHaveCount(0);
+  releaseArchivedRefresh();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
@@ -2031,11 +2033,9 @@ test("keeps a task archived when restore fails", { tag: "@server-steady" }, asyn
   await installEventSourceMock(page);
   await mockAgentModels(page);
   const task = {
-    id: "thread_restore_failure",
     threadId: "thread_restore_failure",
-    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    conversationAvailable: true,
     title: "Restore failure stays archived",
-    preview: "Restore failure fixture",
     cwd: "frontend/tests/e2e/fixtures/home/project",
     cwdPath: "frontend/tests/e2e/fixtures/home/project",
     relativeCwd: "",
@@ -2043,8 +2043,8 @@ test("keeps a task archived when restore fails", { tag: "@server-steady" }, asyn
     createdMs: 10,
     updatedMs: 20,
     recencyMs: 20,
-    lastEventSummary: "Restore failure fixture",
-    unseen: false,
+    lastCompletedMs: null,
+    repositoryPath: null,
   };
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>

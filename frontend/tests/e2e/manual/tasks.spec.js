@@ -187,6 +187,8 @@ test("Task details shows the worktree and holds Fork task and Archive task", { t
   const archived = page.locator("caffold-archived-task-list");
   await expect(archived.getByRole("button", { name: /^Restore / })).toHaveCount(2);
   await expect(archived.getByRole("button", { name: /^Delete / })).toHaveCount(2);
+  await expect(archived.locator("time")).toHaveCount(2);
+  await expect(archived.locator("caffold-task-status-chip")).toHaveCount(0);
 
   await page.getByRole("button", { name: /^Task details/ }).click();
   const details = page.locator(".task-detail-popover");

@@ -19,6 +19,7 @@ use axum::extract::Query;
 use axum::extract::State;
 mod agent;
 mod antigravity;
+mod archived;
 mod claude;
 mod codex;
 mod commands;
@@ -32,6 +33,7 @@ mod store;
 mod uploads;
 
 use agent::{agent_models, agent_permissions};
+use archived::ArchivedTaskRecord;
 use claude::{claude_restart, claude_status};
 use codex::{
     codex_mcp_diagnostics, codex_readiness, codex_reset_credit_consume, codex_restart,
@@ -54,12 +56,14 @@ use membership::{
 use store::{task_store_claim, task_store_get, task_store_update_composer_settings};
 use uploads::{task_upload, task_upload_discard};
 
+#[cfg(test)]
+use super::TaskRecord;
+use super::TaskState;
 use super::active_list::ActiveTask;
 use super::lifecycle::ActiveTaskTopPlacement;
 pub(super) use super::live::TaskListEvents;
 #[cfg(test)]
 pub(super) use super::live::TaskListUpdate;
-use super::{TaskRecord, TaskState};
 use axum::{
     Router,
     extract::DefaultBodyLimit,
@@ -188,15 +192,6 @@ struct TaskApprovalRequest {
 struct TaskListResponse {
     tasks: Vec<ArchivedTaskRecord>,
     next_cursor: Option<String>,
-}
-
-/// An archived Task's listing repository is independent of its removed checkout.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ArchivedTaskRecord {
-    #[serde(flatten)]
-    task: TaskRecord,
-    repository_path: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

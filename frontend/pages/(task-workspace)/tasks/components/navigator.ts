@@ -5,7 +5,11 @@ import {
   ActionHints,
   mergeActionHintScopes,
 } from "#app/action-hints.js";
-import type { ActiveTask, ActiveTaskTopPlacement, Task } from "#app/api.js";
+import type {
+  ActiveTask,
+  ActiveTaskTopPlacement,
+  ArchivedTask,
+} from "#app/api.js";
 import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
 import { ScrollSurfaces, scrollBackToTop } from "#app/scroll-scope.js";
@@ -175,7 +179,7 @@ export class CaffoldTaskNavigator extends CaffoldElement {
     this.activeTaskList.placeCanonicalTaskAtTop(task, placement);
   }
 
-  acceptArchivedTask(task: Task) {
+  acceptArchivedTask(task: ArchivedTask) {
     const threadId = taskThreadId(task);
     if (!threadId) {
       return;

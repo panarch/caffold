@@ -1,12 +1,12 @@
-use super::membership::{task_described_as, task_provider_driver, unavailable_archived_task};
+use super::membership::task_provider_driver;
 use super::store::task_store_list_archived;
 use super::{
     ArchivedTaskRecord, TASK_CANONICAL_READ_CONCURRENCY, TASK_LIST_PAGE_SIZE, TaskListResponse,
     TasksQuery,
 };
 use crate::app::error::ApiError;
+use crate::app::tasks::TaskState;
 use crate::app::tasks::active_list;
-use crate::app::tasks::{TaskRecord, TaskState, task_activity_ms};
 use crate::task_store::{ManagedThread, ManagedWorktreeState};
 use std::path::Path;
 
@@ -34,28 +34,21 @@ pub(super) async fn list_archived_tasks(
         .map(|managed| {
             let state = state.clone();
             async move {
-                let task = archived_task(&state, &managed).await?;
-                let repository_path = archived_repository_path(&state, &managed.thread_id).await?;
-                let activity_ms = task_activity_ms(&task);
-                Ok::<_, ApiError>((
-                    ArchivedTaskRecord {
-                        task,
-                        repository_path,
-                    },
-                    activity_ms,
-                ))
+                let mut task = archived_task(&state, &managed).await?;
+                task.repository_path = archived_repository_path(&state, &managed.thread_id).await?;
+                Ok::<_, ApiError>(task)
             }
         })
         .buffer_unordered(TASK_CANONICAL_READ_CONCURRENCY)
         .collect::<Vec<_>>()
         .await;
     let mut tasks = reads.into_iter().collect::<Result<Vec<_>, ApiError>>()?;
-    tasks.sort_by(|(left, _), (right, _)| {
-        task_activity_ms(&right.task)
-            .cmp(&task_activity_ms(&left.task))
-            .then_with(|| left.task.thread_id.cmp(&right.task.thread_id))
+    tasks.sort_by(|left, right| {
+        right
+            .activity_ms()
+            .cmp(&left.activity_ms())
+            .then_with(|| left.thread_id.cmp(&right.thread_id))
     });
-    let tasks = tasks.into_iter().map(|(task, _)| task).collect();
     Ok(Json(TaskListResponse { tasks, next_cursor }))
 }
 
@@ -94,10 +87,9 @@ async fn archived_repository_path(
 /// One row of the archived list, described by the agent that runs it when the
 /// provider is available.
 ///
-/// Only one thing on the row needs the agent at all: whether there is still a
-/// conversation to go back to, which is what decides whether restoring is
-/// offered. The name, the worktree, and when it was last seen are Caffold's own
-/// and come from the row.
+/// The agent establishes whether there is still a conversation to restore and,
+/// when it can describe one, supplies its cwd and activity times. Caffold owns
+/// the retained name, completion time, and managed-worktree metadata.
 ///
 /// Codex answers by reading the thread, which also describes it. Claude cannot
 /// be asked without being started, and starting a session for every archived
@@ -106,7 +98,10 @@ async fn archived_repository_path(
 /// filesystem. Provider acquisition and description are best-effort here: a
 /// failure still returns Caffold's archived row, while local projection and
 /// path failures after a successful description remain request failures.
-async fn archived_task(state: &TaskState, managed: &ManagedThread) -> Result<TaskRecord, ApiError> {
+async fn archived_task(
+    state: &TaskState,
+    managed: &ManagedThread,
+) -> Result<ArchivedTaskRecord, ApiError> {
     let driver = match task_provider_driver(state, managed).await? {
         Ok(driver) => driver,
         Err(error) => {
@@ -114,7 +109,7 @@ async fn archived_task(state: &TaskState, managed: &ManagedThread) -> Result<Tas
                 "failed to acquire the provider while listing archived Task {}; using its Caffold row: {error}",
                 managed.thread_id
             );
-            return Ok(unavailable_archived_task(managed));
+            return Ok(ArchivedTaskRecord::unavailable(managed));
         }
     };
     let described = match driver.describe(&managed.thread_id).await {
@@ -124,16 +119,10 @@ async fn archived_task(state: &TaskState, managed: &ManagedThread) -> Result<Tas
                 "failed to describe the provider conversation while listing archived Task {}; using its Caffold row: {error}",
                 managed.thread_id
             );
-            return Ok(unavailable_archived_task(managed));
+            return Ok(ArchivedTaskRecord::unavailable(managed));
         }
     };
-    if let Some(conversation) = &described {
-        state
-            .task_sessions
-            .observe_thread_metadata(conversation.clone())
-            .await;
-    }
-    task_described_as(state, &driver, managed, described).await
+    ArchivedTaskRecord::described(&state.fs, &state.task_store, &driver, managed, described).await
 }
 
 #[cfg(test)]
@@ -153,6 +142,80 @@ mod tests {
         app::tasks::{projection::*, test_support::*},
         fs::RootedFs,
     };
+
+    #[tokio::test]
+    async fn archived_http_returns_only_listing_fields_without_creating_runtime_state() {
+        use super::super::router;
+        use axum::{
+            body::{Body, to_bytes},
+            http::Request,
+        };
+        use tower::ServiceExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let id = "archived-active-observation";
+        let mut thread = task_thread_list(id, root.path())["data"][0].clone();
+        thread["status"] = json!({"type": "active", "activeFlags": ["waitingOnApproval"]});
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/read",
+            json!({"thread": thread}),
+        )]);
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        manage_test_thread(&state, id, root.path()).await;
+        state
+            .task_store
+            .update_display_name(id, "Retained title")
+            .unwrap();
+        state.task_store.update_completed_at(id, 1_500).unwrap();
+        task_store_archive(&state, id).await.unwrap();
+        assert!(state.task_sessions.snapshot(id).await.is_none());
+
+        let response = router(state.clone())
+            .oneshot(
+                Request::get("/api/tasks/archived")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(response.status().is_success());
+        let body: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                .unwrap();
+        let row = &body["tasks"][0];
+        assert_eq!(
+            row.as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            [
+                "conversationAvailable",
+                "createdMs",
+                "cwd",
+                "cwdPath",
+                "lastCompletedMs",
+                "recencyMs",
+                "relativeCwd",
+                "repositoryPath",
+                "threadId",
+                "title",
+                "updatedMs",
+                "worktree",
+            ]
+        );
+        assert_eq!(row["threadId"], id);
+        assert_eq!(row["title"], "Retained title");
+        assert_eq!(row["conversationAvailable"], true);
+        assert_eq!(row["lastCompletedMs"], 1_500);
+        assert_eq!(row["createdMs"], 1_000);
+        assert_eq!(row["updatedMs"], 2_000);
+        assert_eq!(body["nextCursor"], serde_json::Value::Null);
+        assert!(
+            state.task_sessions.snapshot(id).await.is_none(),
+            "listing must not create a runtime session"
+        );
+    }
 
     #[tokio::test]
     async fn archived_worktrees_keep_their_repository_after_normal_archive() {
@@ -234,6 +297,24 @@ mod tests {
                 "archive {id}: {status} {}",
                 String::from_utf8_lossy(&body)
             );
+            let archived: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(archived["threadId"], id);
+            assert_eq!(archived.as_object().unwrap().len(), 12);
+            for key in [
+                "threadStatus",
+                "backgroundWork",
+                "activeTurn",
+                "latestTurnStatus",
+                "id",
+                "preview",
+                "lastEventSummary",
+                "unseen",
+            ] {
+                assert!(
+                    !archived.as_object().unwrap().contains_key(key),
+                    "Archive leaked {key}"
+                );
+            }
             assert!(!path.exists());
         }
         let before = state
@@ -415,8 +496,8 @@ mod tests {
             .unwrap()
             .0;
         assert_eq!(response.tasks[0].repository_path.as_deref(), Some("source"));
-        assert!(!response.tasks[0].task.conversation_available);
-        assert!(response.tasks[0].task.worktree.is_none());
+        assert!(!response.tasks[0].conversation_available);
+        assert!(response.tasks[0].worktree.is_none());
     }
 
     #[tokio::test]
@@ -507,12 +588,23 @@ mod tests {
             .unwrap()
             .unwrap();
 
+        let observed: CodexThread =
+            serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
+                .unwrap();
+        state
+            .task_sessions
+            .observe_thread_metadata(Conversation::from(&observed))
+            .await;
+        let runtime_before = state.task_sessions.snapshot(thread_id).await.unwrap();
         let response =
             list_archived_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
                 .await
                 .expect("archived list succeeds");
+        let runtime_after = state.task_sessions.snapshot(thread_id).await.unwrap();
+        assert_eq!(runtime_after.revision, runtime_before.revision);
+        assert_eq!(runtime_after.conversation, runtime_before.conversation);
 
-        assert_eq!(response.0.tasks[0].task.title, "Stable cached name");
+        assert_eq!(response.0.tasks[0].title, "Stable cached name");
         assert_eq!(response.0.tasks[0].repository_path, None);
         assert_eq!(
             task_store_get_archived(&state, thread_id)
@@ -543,13 +635,12 @@ mod tests {
             .0;
 
         assert_eq!(response.tasks.len(), 1);
-        assert_eq!(response.tasks[0].task.thread_id, thread_id);
+        assert_eq!(response.tasks[0].thread_id, thread_id);
         assert!(
-            !response.tasks[0].task.conversation_available,
+            !response.tasks[0].conversation_available,
             "an unaskable agent cannot promise the conversation is there: {:?}",
             response.tasks[0]
         );
-        assert_eq!(response.tasks[0].task.preview, "Conversation unavailable");
     }
 
     #[tokio::test]
@@ -595,16 +686,15 @@ mod tests {
         let good = response
             .tasks
             .iter()
-            .find(|row| row.task.thread_id == good_id)
+            .find(|row| row.thread_id == good_id)
             .expect("readable row remains present");
-        assert!(good.task.conversation_available);
+        assert!(good.conversation_available);
         let unavailable = response
             .tasks
             .iter()
-            .find(|row| row.task.thread_id == failed_id)
+            .find(|row| row.thread_id == failed_id)
             .expect("provider-unavailable row remains present");
-        assert!(!unavailable.task.conversation_available);
-        assert_eq!(unavailable.task.preview, "Conversation unavailable");
+        assert!(!unavailable.conversation_available);
         assert_eq!(
             task_store_get_archived(&state, good_id)
                 .await

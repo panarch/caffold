@@ -69,6 +69,24 @@ export function activeListTask(task) {
   };
 }
 
+// The Archived wire row shared by listing and Archive command fixtures.
+export function archivedListTask(task) {
+  return {
+    threadId: task.threadId,
+    title: task.title,
+    conversationAvailable: task.conversationAvailable ?? true,
+    cwd: task.cwd ?? "",
+    cwdPath: task.cwdPath ?? null,
+    relativeCwd: task.relativeCwd ?? "",
+    worktree: typeof task.worktree === "object" ? task.worktree : null,
+    createdMs: task.createdMs ?? task.updatedMs,
+    updatedMs: task.updatedMs,
+    recencyMs: task.recencyMs ?? null,
+    lastCompletedMs: task.lastCompletedMs ?? null,
+    repositoryPath: task.repositoryPath ?? null,
+  };
+}
+
 export function createdTaskResponse(detail, activeTopPlacement) {
   return {
     detail,

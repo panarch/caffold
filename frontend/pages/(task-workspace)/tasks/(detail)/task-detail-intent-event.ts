@@ -1,4 +1,8 @@
-import type { ActiveTask, ActiveTaskTopPlacement, Task } from "#app/api.js";
+import type {
+  ActiveTask,
+  ActiveTaskTopPlacement,
+  ArchivedTask,
+} from "#app/api.js";
 import type { ParsedRoute } from "#app/navigation-routes.js";
 
 export const TASK_DETAIL_INTENT_EVENT = "caffold:task-detail-intent";
@@ -21,7 +25,7 @@ export interface TaskRequestFailedIntent {
 export type TaskDetailIntent =
   | BrokenTaskDeleteIntent
   | TaskRequestFailedIntent
-  | { type: "task-archived"; task: Task }
+  | { type: "task-archived"; task: ArchivedTask }
   | {
       type: "task-restored";
       task: ActiveTask;

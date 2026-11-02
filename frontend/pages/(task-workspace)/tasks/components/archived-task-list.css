@@ -155,12 +155,6 @@
   justify-self: center;
 }
 
-caffold-task-status-chip {
-  --task-status-chip-running-background: var(--surface-muted);
-  --task-status-chip-warning-background: var(--surface-muted);
-  --task-status-chip-danger-background: var(--surface-muted);
-}
-
 .task-row-time {
   color: var(--muted);
   font-variant-numeric: tabular-nums;

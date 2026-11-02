@@ -467,7 +467,7 @@ export async function reorderSection(
 }
 
 export async function archiveTask(threadId: string) {
-  return requestJson<Task>(
+  return requestJson<ArchivedTask>(
     `/api/tasks/${encodeURIComponent(threadId)}/archive`,
     {},
     {
@@ -480,7 +480,7 @@ export async function forceArchiveTask(
   threadId: string,
   expectedWorktreeId: string,
 ) {
-  return requestJson<Task>(
+  return requestJson<ArchivedTask>(
     `/api/tasks/${encodeURIComponent(threadId)}/archive/force`,
     {},
     {
@@ -567,7 +567,7 @@ export async function recheckRecoveryTask(threadId: string) {
 }
 
 export async function archiveRecoveryTask(threadId: string) {
-  return requestJson<Task>(
+  return requestJson<ArchivedTask>(
     `/api/tasks/${encodeURIComponent(threadId)}/recovery/archive`,
     {},
     { method: "POST" },
@@ -1575,9 +1575,20 @@ export interface Task {
 }
 
 // The Archived listing can name the original repository after its worktree
-// directory is removed. A Task received directly from Archive may omit it.
-export interface ArchivedTask extends Task {
-  repositoryPath?: string | null;
+// directory is removed. Archive completion responses leave it null.
+export interface ArchivedTask {
+  threadId: string;
+  conversationAvailable: boolean;
+  title: string;
+  cwd: string;
+  cwdPath: string | null;
+  relativeCwd: string;
+  worktree: TaskWorktree | null;
+  createdMs: number;
+  updatedMs: number;
+  recencyMs: number | null;
+  lastCompletedMs: number | null;
+  repositoryPath: string | null;
 }
 
 // What the agent is doing for a Task. An active Task with no flags is working.

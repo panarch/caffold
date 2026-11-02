@@ -9,12 +9,12 @@ import {
   type ActiveTask,
   type ActiveTaskRecovery,
   type ActiveTaskTopPlacement,
+  type ArchivedTask,
   archiveRecoveryTask,
   recheckRecoveryTask,
   removeRecoveryTask,
   restoreRecoveryTask,
   restoreTask,
-  type Task,
   type TaskAbsence,
   taskAbsence,
   taskAlreadyActive,
@@ -62,7 +62,7 @@ export type TaskRecoveryIntent =
       task: ActiveTask;
       activeTopPlacement: ActiveTaskTopPlacement;
     }
-  | { type: "resolved"; resolution: "archived"; task: Task }
+  | { type: "resolved"; resolution: "archived"; task: ArchivedTask }
   | { type: "resolved"; resolution: "removed"; threadId: string };
 
 /**

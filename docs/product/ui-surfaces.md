@@ -52,11 +52,18 @@ The Task navigator provides:
 
 - active and Archived sections;
 - repository grouping derived from canonical Task cwd/worktree state;
-- task title, recency, availability, and unseen-completion state;
+- task title, recency, and availability, with execution and unseen-completion
+  state in Active;
 - a worktree mark on each active Task that runs in a worktree Caffold prepared
   for it;
 - exclusive Task and Section reorder modes for the persistent Active order;
 - Task Switcher, New Task, Archive, Restore, and eligible delete actions.
+
+Archived rows show their last completion or activity time alongside Restore
+and Delete. They carry no running, approval, input, error, or background-work
+badge. Restore and Delete retain their own request progress and failure
+indicators; a conversation-unavailable warning replaces Restore when the
+provider cannot confirm the conversation exists.
 
 Managed Section headers are selectable and open Section Detail. Recovery group
 headings remain labels only. The selected Section is represented by local id;
