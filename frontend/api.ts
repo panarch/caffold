@@ -1161,6 +1161,7 @@ export function taskResponseError(
     "worktreeId",
     "worktreePath",
     "worktreeMissing",
+    "createdTaskId",
   ]) {
     if (body[key] !== undefined) {
       (error as unknown as Record<string, unknown>)[key] = body[key];
@@ -1703,6 +1704,7 @@ export interface TaskResponseError extends Error {
   worktreeId?: string;
   worktreePath?: string;
   worktreeMissing?: boolean;
+  createdTaskId?: string;
 }
 
 // Where an item sits in its conversation: its turn's anchor and its place in

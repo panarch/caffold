@@ -86,7 +86,7 @@ async fn reconnect_owned(
                 "{}: {} Changes already made are kept. Resolve the problem and reconnect to the same folder.",
                 managed.display_name, body.message
             );
-            return Err(ApiError::Diagnostic(body));
+            return Err(ApiError::Diagnostic(Box::new(body)));
         }
     }
     reconnect_archived(&state, plan.clone()).await;

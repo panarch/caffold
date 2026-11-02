@@ -76,5 +76,5 @@ can change depends on the agent; see [Approval modes](approvals.md#approval-mode
   directory with the choices last used there. See [Sections](sections.md).
 - **From GitHub.** An Issue or a Pull Request can start a Task that prepares its
   own worktree. See [GitHub](../review/github.md).
-- **From a Codex conversation.** Fork an existing Codex conversation into a new
-  Task. See [Fork a Codex conversation](fork.md).
+- **From an existing conversation.** Fork a Codex, Claude, or Grok conversation into a new
+  Task. See [Fork a conversation](fork.md).

@@ -346,7 +346,7 @@ impl DetailContext {
             Err(ApiError::Diagnostic(error)) => (
                 loading_detail(thread_id, 0, self.store_get(thread_id).await?.as_ref()),
                 0,
-                Some(error),
+                Some(*error),
             ),
             Err(error) => return Err(error),
         };
@@ -747,7 +747,7 @@ impl DetailContext {
             .await
             .map_err(worktree_api_error)?
         {
-            return Err(ApiError::Diagnostic(error));
+            return Err(ApiError::Diagnostic(Box::new(error)));
         }
         Ok(())
     }

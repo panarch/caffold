@@ -30,7 +30,7 @@ mod fork;
 mod initial_request_name;
 
 use crate::git;
-pub(in crate::app::tasks) use fork::{ForkCodexSource, ForkCodexTask};
+pub(in crate::app::tasks) use fork::{ForkTask, ForkTaskSource};
 
 pub(in crate::app::tasks) struct CreateTask {
     pub(in crate::app::tasks) cwd: String,

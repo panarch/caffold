@@ -224,21 +224,24 @@ it where Global New shows the directory field, without the field's controls. It
 omits setup guidance and preserves its draft across same-Section surface
 switches.
 
-Section New also presents an **Existing conversations** card once Codex
-capability is known and Codex is installed. Its Codex row opens a native dialog
-that accepts a Thread ID or a copied `codex://threads/<id>` link only after an
-explicit **Preview thread** action. The preview reads the provider-owned name,
-summary, status, last activity, source cwd, and recent messages without
-resuming the thread or adding it to managed Tasks. Editing the ID invalidates
-that preview. Idle and not-loaded previews enable **Fork task**; the latter
-displays **Live status unavailable** rather than being presented as idle.
-Active, system-error, and unrecognized statuses keep the action disabled.
+Section New presents an **Existing conversations** card with **Fork conversation**.
+The native dialog offers Codex, Claude and Grok. It accepts a native Thread ID
+or Session ID; Codex also accepts `codex://threads/<id>` links. Explicit
+**Preview conversation** reads the provider-owned metadata and recent messages
+without resuming or adopting the source. Changing the provider or ID invalidates
+the preview and any pending lookup. Antigravity is excluded.
 
-Forking uses Codex's native conversation fork and creates the managed child at
-the selected Section's project root. The source cwd is display-only. Files,
-uncommitted changes, branches, and worktrees are not copied or created. A
-temporarily unavailable Codex runtime leaves the row visible but disabled with
-the reason; Claude, Grok, and Antigravity are not offered by this surface.
+Idle and not-loaded previews enable **Fork task**; the latter says **Live status
+unavailable**, not idle. Known active, system-error and unrecognized states
+keep the action disabled. The backend also requires an active managed source
+to be idle. Provider failures are shown for the selected source; a Codex
+installation failure does not hide Claude or Grok.
+
+Fork creates the child at the selected Section's project root. Files, branches
+and worktrees are not copied. While creating, inputs and user dismissal are
+blocked. A successful creation whose handoff fails offers **Open forked task**,
+reusing the same result. A lost transport response clears the preview and asks
+the person to check the Task list before retrying.
 
 ## Detail
 
@@ -264,10 +267,9 @@ sent in the reader's own time zone, and a **Forget these** action. The record
 is read when that dialog opens, and the dialog says so while the Task has kept
 nothing yet.
 
-An idle Codex Task exposes **Fork task** in Task actions. It performs the same
+An idle Codex, Claude, or Grok Task exposes **Fork task** in Task actions. It performs the same
 native fork without an ID lookup, places the child at the source Task's Section
-project root, and opens the distinct managed child. Active Codex Tasks, Claude
-Tasks, Grok Tasks, and Antigravity Tasks keep the action disabled with an explicit reason. Forking
+project root, and opens the distinct managed child. Active Tasks and Antigravity Tasks keep the action disabled with an explicit reason. Forking
 remains separate from worktree isolation.
 
 Task details offers **Discard changes and archive** after an eligible ordinary

@@ -1125,3 +1125,128 @@ async fn a_conversation_survives_the_runner_being_killed_outright() {
     task.wait_for(TurnState::Idle, Duration::from_secs(120))
         .await;
 }
+
+/// Both public fork routes, persistence before a model turn, backend restart,
+/// independent continuation, and deleting a child while retaining the parent.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn native_forks_persist_before_prompting_and_keep_the_parent_independent() {
+    use serde_json::json;
+    let mut backend = Backend::start().await;
+    let source = backend
+        .start_task(
+            "Reply with FORK_PARENT_729. Do not use tools except Caffold task naming.",
+            MODEL,
+        )
+        .await;
+    source
+        .wait_for(TurnState::Idle, Duration::from_secs(120))
+        .await;
+    let original = source.detail().await;
+    assert!(original["events"].to_string().contains("FORK_PARENT_729"));
+    let created = backend
+        .post(
+            &format!("/api/tasks/{}/fork", source.thread_id()),
+            json!({}),
+        )
+        .await
+        .unwrap();
+    let child_id = created["detail"]["threadId"]
+        .as_str()
+        .unwrap_or_else(|| panic!("fork failed: {created}"))
+        .to_string();
+    assert_ne!(child_id, source.thread_id());
+    assert_eq!(created["detail"]["provider"], "claude");
+    assert!(
+        created["detail"]["events"]
+            .to_string()
+            .contains("FORK_PARENT_729")
+    );
+    let section = created["activeTopPlacement"]["section"]["id"]
+        .as_str()
+        .unwrap();
+    let preview = backend
+        .post(
+            "/api/task-forks/preview",
+            json!({"provider":"claude","sourceId":source.thread_id()}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(preview["sourceId"], source.thread_id(), "{preview}");
+    let external = backend
+        .post(
+            "/api/task-forks",
+            json!({"provider":"claude","sourceId":source.thread_id(),"sectionId":section}),
+        )
+        .await
+        .unwrap();
+    let external_id = external["detail"]["threadId"]
+        .as_str()
+        .unwrap_or_else(|| panic!("external fork failed: {external}"))
+        .to_string();
+    let child = backend.task(&child_id);
+    backend.replace().await;
+    // Native lifecycle and history hydration have separate owners. An idle
+    // session may already be known while its persisted turns are still loading.
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut restored = child.detail().await;
+    eprintln!(
+        "first restored fork: sync={}, historyLoading={}, events={}",
+        restored["syncState"],
+        restored["historyLoading"],
+        restored["events"].as_array().map_or(0, Vec::len)
+    );
+    while restored["historyLoading"] != false || restored["syncState"] != "ready" {
+        assert!(
+            Instant::now() < deadline,
+            "fork history did not finish loading: {restored}"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        restored = child.detail().await;
+    }
+    assert!(
+        restored["events"].to_string().contains("FORK_PARENT_729"),
+        "persisted fork history: {restored}"
+    );
+    child
+        .say("Reply with FORK_CHILD_729. Do not use tools.")
+        .await;
+    child
+        .wait_for(TurnState::Idle, Duration::from_secs(120))
+        .await;
+    assert!(
+        child.detail().await["events"]
+            .to_string()
+            .contains("FORK_CHILD_729")
+    );
+    assert!(
+        !source.detail().await["events"]
+            .to_string()
+            .contains("FORK_CHILD_729")
+    );
+    for id in [&child_id, &external_id] {
+        backend
+            .post(&format!("/api/tasks/{id}/archive"), json!({}))
+            .await
+            .unwrap();
+        let removed = backend.delete(&format!("/api/tasks/{id}")).await.unwrap();
+        assert!(removed.get("error").is_none(), "{removed}");
+    }
+    assert!(
+        source.detail().await["events"]
+            .to_string()
+            .contains("FORK_PARENT_729")
+    );
+    backend
+        .post(
+            &format!("/api/tasks/{}/archive", source.thread_id()),
+            json!({}),
+        )
+        .await
+        .unwrap();
+    let removed = backend
+        .delete(&format!("/api/tasks/{}", source.thread_id()))
+        .await
+        .unwrap();
+    assert!(removed.get("error").is_none(), "{removed}");
+}

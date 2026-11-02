@@ -92,7 +92,11 @@ impl ClaudeClient {
     /// The answer is a turn like any other, and it is waited for: what follows
     /// is the person's turn, and a `result` arriving late would close theirs
     /// instead of this one.
-    async fn ask_quietly(&self, session: &Arc<Session>, text: &str) -> Result<(), ClaudeError> {
+    pub(super) async fn ask_quietly(
+        &self,
+        session: &Arc<Session>,
+        text: &str,
+    ) -> Result<(), ClaudeError> {
         let (sender, receiver) = oneshot::channel();
         session.state.lock().await.quiet_turn = Some(sender);
         let (_, frame) = protocol::user_message(text, &[]);
@@ -102,7 +106,10 @@ impl ClaudeClient {
             return Err(error);
         }
         match tokio::time::timeout(ANSWER_TIMEOUT, receiver).await {
-            Ok(_) => Ok(()),
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => Err(ClaudeError::Protocol(
+                "Claude exited before answering the local command".into(),
+            )),
             Err(_) => {
                 session.state.lock().await.quiet_turn = None;
                 Err(ClaudeError::Protocol(format!(

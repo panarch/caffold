@@ -32,6 +32,7 @@ const ARCHIVE_ABOUT =
 export interface TaskActionState {
   loading: boolean;
   error: Error | null;
+  openCreated?: boolean;
 }
 
 // What the actions show: the Task, whether its details have been read, its
@@ -87,6 +88,11 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
     const forking = snapshot.forkState.loading;
     const forkUnavailable = forkDisabledReason(snapshot);
     const forkError = actionErrorMessage(snapshot.forkState.error);
+    const createdTaskId = (snapshot.forkState.error as TaskResponseError | null)
+      ?.createdTaskId;
+    const forkLabel = snapshot.forkState.openCreated
+      ? "Open forked task"
+      : "Fork task";
     const archiving = snapshot.archiveState.loading;
     const archiveError = actionErrorMessage(snapshot.archiveState.error);
     const archiveFailure = snapshot.archiveState
@@ -127,7 +133,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
         <button
           ${this.hints.button({
             id: `${threadId}:fork`,
-            label: "Fork task",
+            label: forkLabel,
             action: ACTION_HINT_ACTION.TASK_FORK,
             badgeAtEnd: true,
           })}
@@ -137,12 +143,20 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
           title=${forking || !forkUnavailable ? nothing : forkUnavailable}
           ?disabled=${forking || Boolean(forkUnavailable)}
           @click=${this.requestAction}
-        >${forking ? "Forking..." : "Fork task"}</button>
+        >${forking ? "Forking..." : forkLabel}</button>
         <p
           class="task-detail-action-error task-detail-fork-error"
           role="alert"
           ?hidden=${!forkError}
         >${forkError}</p>
+        ${
+          createdTaskId
+            ? html`<a
+          ${this.hints.link({ id: `${threadId}:open-fork`, label: "Open forked task", action: ACTION_HINT_ACTION.LINK_OPEN })}
+          href=${`/tasks/${encodeURIComponent(createdTaskId)}`}
+        >Open forked task</a>`
+            : nothing
+        }
       </div>
       <div class="task-detail-task-action task-detail-archive-action">
         <p>${ARCHIVE_ABOUT}</p>
@@ -222,11 +236,13 @@ function actionErrorMessage(error: Error | null) {
 }
 
 function forkDisabledReason(snapshot: TaskInfoActionsSnapshot) {
+  if ((snapshot.forkState.error as TaskResponseError | null)?.createdTaskId)
+    return "The fork already exists. Open it below.";
   if (!snapshot.canonicalTaskAvailable) {
     return "Fork is unavailable until Task details load.";
   }
-  if (snapshot.provider !== "codex") {
-    return "Fork is currently available only for Codex Tasks.";
+  if (!["codex", "claude", "grok"].includes(snapshot.provider ?? "")) {
+    return "Fork is available for Codex, Claude and Grok Tasks.";
   }
   if (isTaskTransportStale(snapshot.transportState)) {
     return "Fork is unavailable while the Task connection is interrupted.";
@@ -235,7 +251,7 @@ function forkDisabledReason(snapshot: TaskInfoActionsSnapshot) {
     return "Another Task action is in progress.";
   }
   if (taskThreadStatusType(snapshot.task) !== "idle") {
-    return "Fork is available when the Codex Task is idle.";
+    return "Fork is available when the Task is idle.";
   }
   return "";
 }

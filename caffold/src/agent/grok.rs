@@ -13,6 +13,7 @@
 //! the Task.
 
 mod binding;
+mod fork;
 mod history;
 mod protocol;
 mod reading;
@@ -1838,6 +1839,13 @@ pub(crate) mod test_support {
                         new_id.clone(),
                         params["newCwd"].as_str().unwrap_or("").to_string(),
                     );
+                    let source_id = params["sourceSessionId"].as_str().unwrap_or("");
+                    if let Some(updates) = memory.updates.get(source_id).cloned() {
+                        memory.updates.insert(new_id.clone(), updates);
+                    }
+                    if let Some(config) = memory.config.get(source_id).cloned() {
+                        memory.config.insert(new_id.clone(), config);
+                    }
                     MockAnswer::Result(
                         json!({ "newSessionId": new_id, "chatMessagesCopied": 2, "updatesCopied": 4, "planStateCopied": false, "newCwd": params["newCwd"], "parentSessionId": params["sourceSessionId"] }),
                     )

@@ -173,6 +173,24 @@ impl Backend {
         panic!("the backend never began answering on port {}", self.at.port);
     }
 
+    /// An existing Task addressed through this backend, including a fork.
+    pub fn task(&self, thread_id: &str) -> Task {
+        Task {
+            at: self.at,
+            thread_id: thread_id.to_string(),
+        }
+    }
+
+    pub async fn delete(&self, path: &str) -> Option<Value> {
+        let response = reqwest::Client::new()
+            .delete(self.at.url(path))
+            .timeout(Duration::from_secs(120))
+            .send()
+            .await
+            .ok()?;
+        serde_json::from_str(&response.text().await.ok()?).ok()
+    }
+
     pub async fn get(&self, path: &str) -> Option<Value> {
         self.at.get(path).await
     }

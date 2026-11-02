@@ -15,7 +15,7 @@ use crate::{
 
 #[derive(Debug)]
 pub(super) enum ApiError {
-    Diagnostic(ErrorBody),
+    Diagnostic(Box<ErrorBody>),
     Fs(FsError),
     Agent(String),
     Watch(String),
@@ -68,6 +68,8 @@ pub(in crate::app) struct ErrorBody {
     pub(in crate::app) worktree_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(in crate::app) worktree_missing: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(in crate::app) created_task_id: Option<String>,
 }
 
 impl ErrorBody {
@@ -79,6 +81,7 @@ impl ErrorBody {
             worktree_id: None,
             worktree_path: None,
             worktree_missing: None,
+            created_task_id: None,
         }
     }
 }
@@ -148,7 +151,7 @@ impl ApiError {
 
     fn response_parts(self) -> (StatusCode, ErrorBody) {
         let (status, code, message) = match self {
-            ApiError::Diagnostic(body) => return (StatusCode::CONFLICT, body),
+            ApiError::Diagnostic(body) => return (StatusCode::CONFLICT, *body),
             ApiError::Fs(FsError::RootUnavailable { path, .. }) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "root_unavailable",

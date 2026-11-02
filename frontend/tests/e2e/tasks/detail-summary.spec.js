@@ -299,7 +299,7 @@ test("keeps the task info leaf and popover stable across canonical sync", { tag:
   ).toHaveCSS("opacity", "0.58");
   await expect(
     taskDetailsPopover.locator(".task-detail-fork-availability"),
-  ).toHaveText("Fork is available when the Codex Task is idle.");
+  ).toHaveText("Fork is available when the Task is idle.");
   await expect
     .poll(() => summaryNodeState(page))
     .toEqual({ ...stableSummaryNodes, infoOpen: true });
@@ -409,7 +409,8 @@ test("offers Git and GitHub from the listed Section before Task details arrive",
   await captureReviewScreenshot(page, testInfo, "tasks-header-folder");
 });
 
-test("forks an idle Codex Task and opens the distinct child", { tag: "@server-changes" }, async ({
+for (const provider of ["codex", "claude", "grok"]) {
+test(`forks an idle ${provider} Task and opens the distinct child`, { tag: "@server-changes" }, async ({
   page,
 }) => {
   const sourceThreadId = "thread_summary_fork_source";
@@ -423,7 +424,7 @@ test("forks an idle Codex Task and opens the distinct child", { tag: "@server-ch
     ...summaryTask(childThreadId, "Fork of Source task", rootPath, 101),
     worktree: null,
   };
-  const childDetail = summaryDetail(child);
+  const childDetail = { ...summaryDetail(child), provider };
   const childFork = createdTaskResponse(childDetail, {
     section: {
       id: "fixture-section-1",
@@ -456,7 +457,7 @@ test("forks an idle Codex Task and opens the distinct child", { tag: "@server-ch
   );
 
   await page.goto(`/tasks/${sourceThreadId}`);
-  await emitTaskDetailBootstrap(page, summaryDetail(source));
+  await emitTaskDetailBootstrap(page, { ...summaryDetail(source), provider });
   const summary = page.locator("caffold-task-detail-summary");
   await activateActionHintIntoPopover(page, /Task details, idle$/);
   const popover = summary.locator(".task-detail-popover");
@@ -490,16 +491,18 @@ test("forks an idle Codex Task and opens the distinct child", { tag: "@server-ch
   expect(requestCount).toBe(1);
 });
 
-test("keeps fork disabled for Claude Tasks and reports why", { tag: "@server-steady" }, async ({ page }) => {
-  const threadId = "thread_summary_claude_fork";
+}
+
+test("keeps fork disabled for Antigravity Tasks and reports why", { tag: "@server-steady" }, async ({ page }) => {
+  const threadId = "thread_summary_antigravity_fork";
   const task = {
-    ...summaryTask(threadId, "Claude source", "repo-claude", 100),
+    ...summaryTask(threadId, "Antigravity source", "repo-antigravity", 100),
     worktree: null,
   };
   await installSummaryFixture(page, [task]);
 
   await page.goto(`/tasks/${threadId}`);
-  await emitTaskDetailBootstrap(page, summaryDetail(task, 1, "claude"));
+  await emitTaskDetailBootstrap(page, summaryDetail(task, 1, "antigravity"));
   const summary = page.locator("caffold-task-detail-summary");
   await summary.getByRole("button", { name: /Task details/ }).click();
   const popover = summary.locator(".task-detail-popover");
@@ -508,11 +511,36 @@ test("keeps fork disabled for Claude Tasks and reports why", { tag: "@server-ste
   await expect(forkButton).toBeDisabled();
   await expect(forkButton).toHaveAttribute(
     "title",
-    "Fork is currently available only for Codex Tasks.",
+    "Fork is available for Codex, Claude and Grok Tasks.",
   );
   await expect(popover.locator(".task-detail-fork-availability")).toHaveText(
-    "Fork is currently available only for Codex Tasks.",
+    "Fork is available for Codex, Claude and Grok Tasks.",
   );
+});
+
+test("opens a claimed fork after its creation response reports unavailable details", { tag: "@server-steady" }, async ({ page }) => {
+  const task = summaryTask("fork_response_source", "Source", "repo", 100);
+  const child = summaryTask("fork_response_child", "Fork of Source", "repo", 101);
+  await installSummaryFixture(page, [task]);
+  let requests = 0;
+  await page.route(`**/api/tasks/${task.threadId}/fork`, route => {
+    requests++;
+    return route.fulfill({status:409,json:{error:{code:"task_fork_created",message:"The fork was created; details are temporarily unavailable.",createdTaskId:child.threadId}}});
+  });
+  await page.route(`**/api/tasks/${child.threadId}`, route => route.fulfill({json:summaryDetail(child)}));
+  await page.goto(`/tasks/${task.threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(task));
+  const summary = page.locator("caffold-task-detail-summary");
+  await summary.getByRole("button", {name:/Task details/}).click();
+  const popover = summary.locator(".task-detail-popover");
+  const fork = popover.locator('[data-task-info-action="fork"]');
+  await fork.click();
+  await expect(fork).toBeDisabled();
+  const open = popover.getByRole("link", {name:"Open forked task"});
+  await expect(open).toHaveAttribute("href", `/tasks/${child.threadId}`);
+  await open.click();
+  await expect(page).toHaveURL(new RegExp(`/tasks/${child.threadId}$`));
+  expect(requests).toBe(1);
 });
 
 test("keeps the source selected and shows a fork failure inline", { tag: "@server-steady" }, async ({

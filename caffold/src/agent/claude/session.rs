@@ -37,11 +37,13 @@ pub(crate) enum WorkingDirectoryMove {
 
 /// How a session is being started.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SessionStart {
+pub(super) enum SessionStart<'a> {
     /// A conversation that does not exist yet.
     Fresh,
     /// One the agent wrote to its own transcript and can pick up.
     Resume,
+    /// Let Claude copy its own transcript graph under a fresh identity.
+    Fork(&'a Path),
 }
 
 impl ClaudeClient {
@@ -49,7 +51,7 @@ impl ClaudeClient {
         &self,
         id: &str,
         cwd: &str,
-        start: SessionStart,
+        start: SessionStart<'_>,
         options: &ClaudeTurnOptions,
     ) -> Result<Arc<Session>, ClaudeError> {
         self.open_session_at(id, cwd, cwd, start, options)
@@ -65,7 +67,7 @@ impl ClaudeClient {
         id: &str,
         cwd: &str,
         spawn_cwd: &str,
-        start: SessionStart,
+        start: SessionStart<'_>,
         options: &ClaudeTurnOptions,
     ) -> Result<(Arc<Session>, bool), ClaudeError> {
         let spawn = caffold_runner::protocol::SpawnRequest {
@@ -175,6 +177,12 @@ impl ClaudeClient {
                 // A conversation with a past already fills some of its
                 // context. A fresh one is first counted at its first response.
                 self.ask_how_full_the_context_is(&session);
+            }
+            SessionStart::Fork(_) => {
+                // A fork has inherited history but no turn to take over.
+                // Wait for initialization before asking the local rename that
+                // commits Claude's pending fork to its own transcript.
+                session.control(protocol::initialize_request()).await?;
             }
         }
         Ok((session, info.spawned))
@@ -379,7 +387,7 @@ impl ClaudeClient {
 }
 
 /// The command that starts one session.
-fn session_argv(id: &str, start: SessionStart, options: &ClaudeTurnOptions) -> Vec<String> {
+fn session_argv(id: &str, start: SessionStart<'_>, options: &ClaudeTurnOptions) -> Vec<String> {
     let mut argv = vec!["claude".to_string()];
     argv.extend(BASE_ARGUMENTS.iter().map(|argument| argument.to_string()));
     match start {
@@ -390,6 +398,15 @@ fn session_argv(id: &str, start: SessionStart, options: &ClaudeTurnOptions) -> V
         SessionStart::Resume => {
             argv.push("--resume".to_string());
             argv.push(id.to_string());
+        }
+        SessionStart::Fork(source) => {
+            argv.extend([
+                "--resume".into(),
+                source.to_string_lossy().into_owned(),
+                "--fork-session".into(),
+                "--session-id".into(),
+                id.to_string(),
+            ]);
         }
     }
     if let Some(model) = &options.model {

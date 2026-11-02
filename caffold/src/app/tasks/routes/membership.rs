@@ -301,7 +301,7 @@ async fn archive_failure(state: &TaskState, thread_id: &str, error: ApiError) ->
         .push("forceArchive");
     body.worktree_id = Some(record.worktree_id);
     body.worktree_path = Some(record.worktree_path);
-    ApiError::Diagnostic(body)
+    ApiError::Diagnostic(Box::new(body))
 }
 
 /// Resolve every Caffold-owned input before exposing provider acquisition as

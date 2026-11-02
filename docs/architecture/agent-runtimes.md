@@ -913,3 +913,36 @@ the Grok driver's suite plays the leader from recorded `grok 1.0.30` answers.
 The ignored Codex, Claude, and Antigravity live suites verify real agents and
 may consume model usage. Commands and prerequisites are indexed in
 [Testing Caffold](../development/testing.md).
+
+## Independent conversation forks
+
+`agent/fork.rs` dispatches source snapshots and native child creation through
+the closed Driver set. `app/tasks/lifecycle/fork.rs` holds the managed source's
+mutation lease, checks source revisions and target Section around creation,
+and claims only a verified child. HTTP request ownership survives a browser
+disconnect. A claimed child whose detail response fails is returned as
+`task_fork_created` with `createdTaskId`, so clients can open it without creating
+another child. Cleanup before claim deletes only the known child; cleanup
+failures log its identity. Preview never resumes or registers the source. Codex retains its
+native thread/fork path and fresh MCP binding.
+
+Claude resolves UUIDs read-only across its native project transcripts. Missing,
+duplicate, malformed and unreadable files remain distinct from successful
+lookup. The snapshot fingerprints the source contents. A child starts with
+`--resume <transcript> --fork-session --session-id <child>` at the target cwd;
+initialization alone does not persist the fork. The native local `/rename`
+command both names the child and commits its inherited transcript without a
+model turn. Only a verified persisted child is claimed. The runner and SDK MCP
+handler are bound to the new session ID.
+
+Grok resolves Task IDs through its current binding and external native IDs
+through read-only session/info or session/list. Native update revisions detect
+observable source changes. An independent child gets a fresh binding with empty
+history, then native fork and a verified load with its own MCP binding. The
+worktree-switch state machine is not reused: it would rebind and close the
+parent, and its deletion history would give the child ownership of the parent.
+Native history remains provider-owned. External live state unavailable means
+stored-history access, not a claim that no other client is working.
+
+Antigravity is excluded from these conversation-fork entry points. Its existing
+worktree relocation follows a separate native operation and remains unchanged.

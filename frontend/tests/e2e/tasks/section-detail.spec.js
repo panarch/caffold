@@ -328,7 +328,8 @@ test("offers GitHub work shortcuts from repository Task creation", { tag: "@all-
   await expect(detail.locator("caffold-github-issues-list-page")).toBeVisible();
 });
 
-test("previews a Codex thread ID and forks it into the selected Section", { tag: "@all-viewports" }, async ({
+for (const provider of ["codex", "claude", "grok"]) {
+test(`previews a ${provider} conversation ID and forks it into the selected Section`, { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page);
@@ -362,6 +363,7 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
   const childFork = createdTaskResponse({
     ...taskDetailFixture(),
     threadId: childThreadId,
+    provider,
     task: childTask,
     events: [],
   }, {
@@ -384,12 +386,12 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
     previewRequests += 1;
     expect(route.request().method()).toBe("POST");
     expect(route.request().postDataJSON()).toEqual({
-      provider: "codex",
+      provider,
       sourceId: sourceThreadId,
     });
     await route.fulfill({
       json: {
-        provider: "codex",
+        provider,
         sourceId: sourceThreadId,
         displayName: "Long-running Codex work",
         summary: "Continue the established implementation direction.",
@@ -416,7 +418,7 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
     forkRequests += 1;
     expect(route.request().method()).toBe("POST");
     expect(route.request().postDataJSON()).toEqual({
-      provider: "codex",
+      provider,
       sourceId: sourceThreadId,
       sectionId: "fixture-section-1",
     });
@@ -433,11 +435,11 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
     "Create a Task here with an existing conversation's history.",
   );
   const openButton = shortcuts.getByRole("button", {
-    name: "Fork from Codex thread ID",
+    name: "Fork conversation",
   });
   await expect(openButton).toBeEnabled();
   await expect.poll(() => workspaceTargets(page, "section:fixture-section-1:"))
-    .toContainEqual(["fork-conversation", "Fork from Codex thread ID"]);
+    .toContainEqual(["fork-conversation", "Fork conversation"]);
   await page.mouse.move(0, 0);
   await openButton.evaluate((element) => element.blur());
   const resting = await focusLook(openButton);
@@ -452,10 +454,12 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
   expect(hovered).toEqual(await pointerHovers(page) ? focused : resting);
   await openButton.click();
 
-  const dialog = page.getByRole("dialog", { name: "Fork a Codex thread" });
+  const dialog = page.getByRole("dialog", { name: "Fork a conversation" });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator(".conversation-fork-target dd")).toHaveText(rootPath);
   let threadIdInput = dialog.locator("#conversation-fork-thread-id");
+  await dialog.getByLabel("Agent").selectOption(provider);
+  await threadIdInput.focus();
   await expect(threadIdInput).toBeFocused();
   await page.keyboard.press("f");
   await expect(threadIdInput).toHaveValue("f");
@@ -507,22 +511,22 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
   const initialHint = actionHintDialog(page);
   await expect(initialHint).toBeVisible();
   await expect(
-    initialHint.getByRole("button", { name: / — Focus Thread ID$/ }),
+    initialHint.getByRole("button", { name: / — Focus (Thread|Session) ID$/ }),
   ).toBeVisible();
   await expect(
     initialHint.getByRole("button", { name: / — Cancel$/ }),
   ).toBeVisible();
   await expect(
-    initialHint.getByRole("button", { name: / — Preview thread$/ }),
+    initialHint.getByRole("button", { name: / — Preview conversation$/ }),
   ).toHaveCount(0);
   const inputCode = await initialHint.getByRole("button", {
-    name: / — Focus Thread ID$/,
+    name: / — Focus (Thread|Session) ID$/,
   }).getAttribute("data-action-hint-code");
   expect(inputCode).toBeTruthy();
   await page.keyboard.type(inputCode.toLowerCase());
   await expect(initialHint).toBeHidden();
   await expect(threadIdInput).toBeFocused();
-  await threadIdInput.fill(`codex://threads/${sourceThreadId}`);
+  await threadIdInput.fill(provider === "codex" ? `codex://threads/${sourceThreadId}` : sourceThreadId);
   expect(previewRequests).toBe(0);
   await expect(dialog.getByRole("button", {
     name: "Fork task",
@@ -553,8 +557,8 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
   await expect(forkButton).toBeEnabled();
   const forkBody = dialog.locator(".conversation-fork-body");
   await forkBody.evaluate((element) => {
-    element.style.height = "120px";
-    element.style.maxHeight = "120px";
+    element.style.height = "220px";
+    element.style.maxHeight = "220px";
   });
   await expect.poll(() => forkBody.evaluate(
     (element) => element.scrollHeight > element.clientHeight + 1,
@@ -585,19 +589,19 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
   const topHint = actionHintDialog(page);
   await expect(topHint).toBeVisible();
   for (const name of [
-    / — Focus Thread ID$/,
+    / — Focus (Thread|Session) ID$/,
     / — Cancel$/,
     / — Fork task$/,
   ]) {
     await expect(topHint.getByRole("button", { name })).toBeVisible();
   }
   await expect(topHint.getByRole("button", {
-    name: / — Preview thread$/,
+    name: / — Preview conversation$/,
   })).toHaveCount(testInfo.project.name === "phone" ? 0 : 1);
   await page.keyboard.press("Escape");
 
   const previewButton = dialog.getByRole("button", {
-    name: "Preview thread",
+    name: "Preview conversation",
     exact: true,
   });
   await previewButton.evaluate((button) => {
@@ -624,7 +628,7 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
   const readyHint = actionHintDialog(page);
   await expect(readyHint).toBeVisible();
   for (const name of [
-    / — Preview thread$/,
+    / — Preview conversation$/,
     / — Cancel$/,
     / — Fork task$/,
   ]) {
@@ -663,6 +667,8 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
   ]);
   expect(forkRequests).toBe(1);
 });
+
+}
 
 test("keeps non-idle and unknown previews read-only and cancels an in-flight preview", { tag: "@server-changes" }, async ({
   page,
@@ -753,40 +759,40 @@ test("keeps non-idle and unknown previews read-only and cancels an in-flight pre
 
   await page.goto("/?section=fixture-section-1");
   const openButton = page.getByRole("button", {
-    name: "Fork from Codex thread ID",
+    name: "Fork conversation",
   });
   await openButton.click();
-  const dialog = page.getByRole("dialog", { name: "Fork a Codex thread" });
+  const dialog = page.getByRole("dialog", { name: "Fork a conversation" });
   const input = dialog.getByLabel("Thread ID");
   await input.fill("active-external-thread");
   expect(previewRequests).toBe(0);
-  await dialog.getByRole("button", { name: "Preview thread" }).click();
+  await dialog.getByRole("button", { name: "Preview conversation" }).click();
   await expect(dialog.locator("[data-fork-preview='status']")).toHaveText("Active");
   await expect(dialog).toContainText(
-    "Forking is unavailable while the Codex thread is active.",
+    "Forking is unavailable while the conversation is active.",
   );
   await expect(dialog.getByRole("button", { name: "Fork task" })).toBeDisabled();
 
   await input.fill("missing-thread");
   await expect(dialog.locator(".conversation-fork-preview")).toBeHidden();
-  await dialog.getByRole("button", { name: "Preview thread" }).click();
+  await dialog.getByRole("button", { name: "Preview conversation" }).click();
   await expect(dialog).toContainText("Codex could not resolve that Thread ID");
   await expect(dialog).toBeVisible();
   await input.fill("another-thread");
   await expect(dialog).not.toContainText("Codex could not resolve that Thread ID");
 
   await input.fill("unknown-thread");
-  await dialog.getByRole("button", { name: "Preview thread" }).click();
+  await dialog.getByRole("button", { name: "Preview conversation" }).click();
   await expect(dialog.locator("[data-fork-preview='status']")).toHaveText("Unknown");
   await expect(dialog).toContainText(
-    "Codex reported a thread status that Caffold cannot fork.",
+    "The agent reported a conversation status that Caffold cannot fork.",
   );
   await expect(dialog.getByRole("button", { name: "Fork task" })).toBeDisabled();
 
   await input.fill("slow-thread");
-  await dialog.getByRole("button", { name: "Preview thread" }).click();
+  await dialog.getByRole("button", { name: "Preview conversation" }).click();
   await slowPreviewObserved;
-  await expect(dialog).toContainText("Loading the Codex thread…");
+  await expect(dialog).toContainText("Loading the conversation…");
   await expect(dialog.getByRole("button", { name: "Cancel" })).toBeEnabled();
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeHidden();
@@ -796,86 +802,20 @@ test("keeps non-idle and unknown previews read-only and cancels an in-flight pre
   await slowPreviewFinished;
 });
 
-test("reveals the Codex row only once an installed Codex is known and explains disabled state", { tag: "@server-changes" }, async ({
-  page,
-}) => {
+test("the fork chooser remains available when Codex is missing", { tag: "@server-steady" }, async ({ page }) => {
   await installEventSourceMock(page);
   await mockAgentModels(page);
-  const rootPath = "frontend/tests/e2e/fixtures/home";
-  const task = {
-    id: "section-blocked-fork",
-    threadId: "section-blocked-fork",
-    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
-    title: "Section blocked fork",
-    cwd: rootPath,
-    cwdPath: rootPath,
-    relativeCwd: "",
-    worktree: null,
-    createdMs: 10,
-    updatedMs: 20,
-    lastEventSummary: "Section blocked fork",
-  };
-  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
-    route.fulfill({ json: activeTaskProjection([task]) })
-  );
-  // The row asks what the server last found about Codex each time it is
-  // shown. Answers are held until the test lets them through: first the
-  // blocked answers, then the later ones.
-  const firstAnswers = Promise.withResolvers();
-  const laterAnswers = Promise.withResolvers();
-  let answering = firstAnswers;
-  let readinessRequests = 0;
-  let currentReadiness = {
-    ...mockCodexStatus().readiness,
-    state: "error",
-    blocksTaskOperations: true,
-    reasonCode: "runtimeUnavailable",
-    diagnosticMessage: "Codex is reconnecting. Try again shortly.",
-  };
-  await page.route(/\/api\/codex\/readiness(?:\?|$)/, async (route) => {
-    const readiness = currentReadiness;
-    const answer = answering;
-    readinessRequests += 1;
-    await answer.promise;
-    await route.fulfill({ json: { readiness } });
-  });
-
+  const task = { ...taskDetailFixture().task, threadId: "fork-anchor", id:"fork-anchor", cwdPath:"", relativeCwd:"" };
+  await page.route(/\/api\/tasks(?:\?|$)/, route => route.fulfill({json:activeTaskProjection([task])}));
+  await page.route(/\/api\/codex\/readiness(?:\?|$)/, route => route.fulfill({json:{readiness:{...mockCodexStatus().readiness,state:"missing",blocksTaskOperations:true}}}));
   await page.goto("/?section=fixture-section-1");
   const shortcuts = page.locator("caffold-section-conversation-shortcuts");
-  await expect.poll(() => readinessRequests).toBeGreaterThan(0);
-  await expect(shortcuts).toBeHidden();
-  firstAnswers.resolve();
   await expect(shortcuts).toBeVisible();
-  const button = shortcuts.getByRole("button", {
-    name: /Fork from Codex thread ID/,
-  });
-  await expect(button).toBeDisabled();
-  await expect(shortcuts).toContainText("Codex is reconnecting. Try again shortly.");
-  await expect(button).toHaveCSS("cursor", "not-allowed");
-  await expect(shortcuts.getByText(/Claude/)).toHaveCount(0);
-
-  // Shown again, the row asks again. Without Codex installed there is nothing
-  // to fork from.
-  currentReadiness = {
-    ...mockCodexStatus().readiness,
-    state: "missing",
-    blocksTaskOperations: true,
-    reasonCode: "officialStandaloneNotFound",
-    diagnosticMessage: "Install Codex to use Codex models.",
-  };
-  answering = laterAnswers;
-  const shownBefore = readinessRequests;
-  await page.locator("caffold-task-navigator .task-list-new-task").click();
-  await expect(page).not.toHaveURL(/section=/);
-  await page.locator(
-    'caffold-active-task-list .task-repository-select[data-section-id="fixture-section-1"]',
-  ).click();
-  await expect.poll(() => readinessRequests).toBeGreaterThan(shownBefore);
-  laterAnswers.resolve();
-  await expect.poll(() => shortcuts.evaluate((element) =>
-    element.codexReadiness.status?.readiness?.state ?? null,
-  )).toBe("missing");
-  await expect(shortcuts).toBeHidden();
+  await shortcuts.getByRole("button", {name:"Fork conversation"}).click();
+  const chooser = page.getByRole("dialog", {name:"Fork a conversation"});
+  await expect(chooser.getByLabel("Agent").locator("option")).toHaveText(["Codex","Claude","Grok"]);
+  await chooser.getByLabel("Agent").selectOption("claude");
+  await expect(chooser.getByLabel("Session ID")).toBeEnabled();
 });
 
 test("returns a missing Section route to Tasks home", { tag: "@server-steady" }, async ({ page }) => {

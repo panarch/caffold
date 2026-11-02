@@ -125,7 +125,8 @@ dd {
   gap: var(--interface-control-gap);
 }
 
-.conversation-fork-source-control input {
+.conversation-fork-source-control input,
+.conversation-fork-source-control select {
   min-width: 0;
   min-height: var(--interface-control-hit-size);
   padding: var(--interface-space-2) var(--interface-space-5);
@@ -137,7 +138,8 @@ dd {
   font-size: var(--interface-meta-font-size);
 }
 
-.conversation-fork-source-control input:focus-visible {
+.conversation-fork-source-control input:focus-visible,
+.conversation-fork-source-control select:focus-visible {
   border-color: var(--border-strong);
   outline: 2px solid var(--focus-ring);
   outline-offset: 1px;

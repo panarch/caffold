@@ -36,6 +36,7 @@
 //! tools Caffold serves it, and [`settings`] carries what a person chose to a
 //! running session.
 
+mod fork;
 pub(crate) mod protocol;
 mod reading;
 pub(crate) mod runner;
@@ -330,7 +331,7 @@ struct SessionState {
     /// A command the agent answers — changing the depth is one — runs as a turn
     /// of its own. Opening the person's turn before that one has ended would
     /// let its answer close theirs.
-    quiet_turn: Option<oneshot::Sender<()>>,
+    quiet_turn: Option<oneshot::Sender<Result<(), ClaudeError>>>,
     /// When Caffold opened this session, and when it last saw it move.
     ///
     /// The agent reports neither. It is asked to run a conversation, not to

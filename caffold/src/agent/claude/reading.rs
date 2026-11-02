@@ -478,7 +478,14 @@ impl ClaudeClient {
 
         if let Some(waiting) = session.state.lock().await.quiet_turn.take() {
             // Something Caffold asked for on its own account, answered.
-            let _ = waiting.send(());
+            let answer = if status == TurnStatus::Completed {
+                Ok(())
+            } else {
+                Err(super::ClaudeError::Agent(
+                    "Claude did not complete the local command".into(),
+                ))
+            };
+            let _ = waiting.send(answer);
             return;
         }
         self.take_up_the_turn_the_file_names(session).await;
