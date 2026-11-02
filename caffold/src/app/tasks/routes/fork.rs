@@ -408,7 +408,7 @@ async fn fork_source_context(
                 .find(|thread| thread.thread_id == wanted);
             let section_id = source
                 .as_ref()
-                .and_then(|source| source.section_id.as_deref())
+                .and_then(ManagedThread::section_id)
                 .map(str::to_string);
             let section = match section_id {
                 Some(section_id) => tables

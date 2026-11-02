@@ -996,6 +996,95 @@ test("shows the worktree mark from the first Task list response", { tag: "@serve
   expect(detailReads).toEqual([]);
 });
 
+test("keeps a Section whose Tasks are all pinned and draws pinned rows as Section rows", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await mockAgentModels(page);
+  const longSection =
+    "workspace/a-section-whose-directory-name-runs-far-past-the-room-a-row-has";
+  const pinned = {
+    ...initialNavigatorTask(
+      "thread_pinned_long",
+      "A pinned Task whose title runs far past the room its row has",
+    ),
+    worktree: true,
+  };
+  const listed = initialNavigatorTask("thread_listed", "Listed");
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        pinned: [{ sectionId: "section-long", task: activeListTask(pinned) }],
+        sections: [
+          {
+            id: "section-long",
+            name: longSection,
+            repository: false,
+            tasks: [],
+          },
+          {
+            id: "section-listed",
+            name: "workspace/listed",
+            repository: false,
+            tasks: [activeListTask(listed)],
+          },
+        ],
+        unsectioned: [],
+      },
+    }),
+  );
+
+  await page.goto("/tasks");
+  const list = page.locator("caffold-active-task-list");
+  await expect(
+    list.locator(".task-repository-group").evaluateAll((groups) =>
+      groups.map((group) => group.dataset.taskRepositoryKey)
+    ),
+  ).resolves.toEqual(["pinned", "section-long", "section-listed"]);
+  const pinnedHeader = list.locator(
+    ".task-repository-group[data-task-pinned] .task-repository-header",
+  );
+  await expect(pinnedHeader.locator("svg.task-repository-pin-icon")).toHaveCSS(
+    "rotate",
+    "45deg",
+  );
+  await expect(
+    pinnedHeader.locator(".task-repository-label").evaluate((label) => ({
+      text: label.textContent.trim(),
+      clipped: label.scrollWidth > label.clientWidth,
+    })),
+  ).resolves.toEqual({ text: "Pinned", clipped: false });
+  const emptySection = list.locator(
+    '.task-repository-group[data-task-repository-key="section-long"]',
+  );
+  await expect(emptySection.locator(".task-repository-count")).toHaveText("0");
+  await expect(emptySection.locator(".task-list > li")).toHaveCount(0);
+  await expect(emptySection.locator("button.task-repository-select")).toBeVisible();
+
+  const rowShape = (threadId) =>
+    list.locator(`[data-thread-id="${threadId}"] .task-row`).evaluate((row) => {
+      const title = row.querySelector(".task-row-title");
+      const indicators = row.querySelector(".task-row-indicators");
+      return {
+        columns: getComputedStyle(row).gridTemplateColumns.split(" ").length,
+        titleClipped: title.scrollWidth > title.clientWidth,
+        titleRight: Math.round(title.getBoundingClientRect().right),
+        indicatorsLeft: Math.round(indicators.getBoundingClientRect().left),
+        worktree: Boolean(row.querySelector(".task-row-worktree")),
+      };
+    });
+  const pinnedRow = await rowShape("thread_pinned_long");
+  const sectionRow = await rowShape("thread_listed");
+  expect(pinnedRow).toMatchObject({
+    columns: 2,
+    titleClipped: true,
+    worktree: true,
+    indicatorsLeft: sectionRow.indicatorsLeft,
+  });
+  expect(pinnedRow.titleRight).toBeLessThanOrEqual(pinnedRow.indicatorsLeft);
+  expect(sectionRow.columns).toBe(2);
+});
+
 test("keeps Task row indicator columns aligned across worktree and meta states", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {

@@ -463,14 +463,11 @@ impl TaskLifecycle {
                     .into_iter()
                     .filter(|thread| {
                         thread.thread_id != thread_id
-                            && thread.section_id.as_deref() == Some(&section.section_id)
+                            && thread.section_id() == Some(section.section_id.as_str())
                     })
-                    .min_by(|left, right| {
-                        left.position_in_section
-                            .cmp(&right.position_in_section)
-                            .then_with(|| left.thread_id.cmp(&right.thread_id))
-                    })
-                    .map(|thread| thread.thread_id);
+                    .filter_map(|thread| Some((thread.position_in_section()?, thread.thread_id)))
+                    .min()
+                    .map(|(_, thread_id)| thread_id);
                 let managed = match mutation {
                     LocalPlacementMutation::Claim {
                         thread,
@@ -499,7 +496,7 @@ impl TaskLifecycle {
                 let active_section_ids = tables
                     .active_managed_threads()?
                     .into_iter()
-                    .filter_map(|thread| thread.section_id)
+                    .filter_map(|thread| thread.section_id().map(str::to_string))
                     .collect::<std::collections::HashSet<_>>();
                 let ordered_sections = tables.managed_sections()?;
                 let section_index = ordered_sections
@@ -729,11 +726,11 @@ mod tests {
             .read(|tables| Ok((tables.managed_sections()?, tables.active_managed_threads()?)))
             .unwrap();
         assert_eq!(sections.len(), 1);
-        threads.sort_by_key(|thread| thread.position_in_section);
+        threads.sort_by_key(|thread| thread.position_in_section());
         assert_eq!(
             threads
                 .iter()
-                .map(|thread| (thread.thread_id.as_str(), thread.position_in_section))
+                .map(|thread| (thread.thread_id.as_str(), thread.position_in_section()))
                 .collect::<Vec<_>>(),
             [("thread-second", Some(-1024)), ("thread-first", Some(0))]
         );

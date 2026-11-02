@@ -2233,17 +2233,18 @@ below `(task)`; shared review and repository domains are siblings below
 Within the Task navigator, `caffold-task-navigator` owns the exclusive Task or
 Section reorder mode selection. `caffold-active-task-list` owns the canonical
 active projection and serialized local reorder mutations. Each
-`caffold-active-task-section` owns its Section header and Task list, while each
-private `caffold-active-task-row` owns one Task row's selection and reorder
-interaction. Section and row components raise semantic intents to their parent
-instead of acquiring list API or persistence ownership. Normal Action Hint
-scope exposes Task and Section navigation. Active Task reorder scope replaces
-those navigation targets with visible row handles; active Section reorder scope
-uses visible Section handles. The navigator also exposes its exact Finish
-button. Handle activation only focuses the retained button, so its existing
-Arrow-key move, pending gate, focus restoration, and live announcement remain
-with the row or Section owner. Reorder blocks Scroll scope, and moving or
-finishing never starts another Hint session automatically.
+`caffold-active-task-section` owns its Section header and Task list; the pinned
+Tasks and the Tasks awaiting recovery each form one more group that it draws
+under a label. Each private `caffold-active-task-row` owns one Task row's
+selection and reorder interaction. Section and row components raise semantic
+intents to their parent instead of acquiring list API or persistence ownership.
+Normal Action Hint scope exposes Task and Section navigation. Active Task
+reorder scope replaces those navigation targets with visible row handles; active
+Section reorder scope uses visible Section handles. The navigator also exposes
+its exact Finish button. Handle activation only focuses the retained button, so
+its existing Arrow-key move, pending gate, focus restoration, and live
+announcement remain with the row or Section owner. Reorder blocks Scroll scope,
+and moving or finishing never starts another Hint session automatically.
 
 ## Styling and assets
 

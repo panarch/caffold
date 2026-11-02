@@ -64,6 +64,45 @@ test("orders by when a Task last finished, not by when it was last looked at", (
   assert.equal(switcher.open({ rows: [] }), false, "an open dialog stays as it is");
 });
 
+test("puts the pinned Tasks first, each part by when it last finished", () => {
+  const switcher = openedSwitcher();
+  switcher.dialog.open = false;
+
+  switcher.open({
+    rows: [
+      entry("finished-last", { lastCompletedMs: 5 }),
+      entry("pinned-earlier", { lastCompletedMs: 1 }, true),
+      entry("pinned-later", { lastCompletedMs: 3 }, true),
+      entry("finished-before", { lastCompletedMs: 4 }),
+    ],
+  });
+
+  assert.deepEqual(threadIds(switcher), [
+    "pinned-later",
+    "pinned-earlier",
+    "finished-last",
+    "finished-before",
+  ]);
+  assert.match(
+    html(switcher),
+    /data-thread-id="pinned-earlier".*?<\/li><li class="task-switcher-divider" role="separator"><\/li><li[^>]*data-thread-id="finished-last"/,
+  );
+  assert.match(
+    html(switcher),
+    /data-thread-id="pinned-later"[^>]*><button[^>]*\?autofocus="true"/,
+    "the top pinned Task takes the focus the dialog hands out",
+  );
+  assert.equal(html(switcher).match(/\?autofocus="true"/g).length, 1);
+
+  for (const pinned of [true, false]) {
+    const single = openedSwitcher();
+    single.dialog.open = false;
+    single.open({ rows: [entry("a", {}, pinned), entry("b", {}, pinned)] });
+    assert.doesNotMatch(html(single), /task-switcher-divider/);
+    assert.match(html(single), /data-thread-id="a"[^>]*><button[^>]*\?autofocus="true"/);
+  }
+});
+
 test("takes its order from the first loaded list when it opened without one", () => {
   const switcher = openedSwitcher();
   switcher.dialog.open = false;
@@ -154,6 +193,7 @@ function openedSwitcher() {
     Object.getOwnPropertyDescriptors({
       tasksLoaded: true,
       order: [],
+      pinnedAtOpen: new Set(),
       entries: new Map(),
       dialog,
       scrollport: { value: { scrollTop: 120 } },
@@ -168,7 +208,7 @@ function openedSwitcher() {
   return switcher;
 }
 
-function entry(threadId, task = {}) {
+function entry(threadId, task = {}, pinned = false) {
   return {
     task: {
       threadId,
@@ -182,6 +222,7 @@ function entry(threadId, task = {}) {
       ...task,
     },
     sectionName: "",
+    pinned,
   };
 }
 

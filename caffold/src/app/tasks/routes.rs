@@ -49,8 +49,9 @@ use conversation::{mark_task_seen, task_detail, task_generated_image};
 use grok::grok_status;
 use list::{list_archived_tasks, list_managed_tasks};
 use membership::{
-    section_reorder, task_archive, task_delete, task_force_archive, task_recovery_archive,
-    task_recovery_recheck, task_recovery_remove, task_recovery_restore, task_reorder, task_restore,
+    section_reorder, task_archive, task_delete, task_force_archive, task_pin,
+    task_recovery_archive, task_recovery_recheck, task_recovery_remove, task_recovery_restore,
+    task_reorder, task_restore, task_unpin,
 };
 #[cfg(test)]
 use store::{task_store_claim, task_store_get, task_store_update_composer_settings};
@@ -228,6 +229,14 @@ struct TaskReorderResponse {
     changed: bool,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskPinResponse {
+    thread_id: String,
+    pinned: bool,
+    changed: bool,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SectionReorderRequest {
@@ -331,6 +340,8 @@ pub(super) fn router(state: TaskState) -> Router {
         )
         .route("/api/tasks/{thread_id}/restore", post(task_restore))
         .route("/api/tasks/{thread_id}/reorder", post(task_reorder))
+        .route("/api/tasks/{thread_id}/pin", post(task_pin))
+        .route("/api/tasks/{thread_id}/unpin", post(task_unpin))
         .route(
             "/api/tasks/sections/{section_id}/reorder",
             post(section_reorder),
@@ -513,9 +524,15 @@ pub(super) mod test_support {
         projection: &active_list::ActiveTaskProjection,
     ) -> Vec<&active_list::ActiveTask> {
         projection
-            .sections
+            .pinned
             .iter()
-            .flat_map(|section| section.tasks.iter())
+            .map(|pinned| &pinned.task)
+            .chain(
+                projection
+                    .sections
+                    .iter()
+                    .flat_map(|section| section.tasks.iter()),
+            )
             .chain(projection.unsectioned.iter().map(|recovery| &recovery.task))
             .collect()
     }

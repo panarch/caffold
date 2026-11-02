@@ -451,12 +451,12 @@ live response except Active list rows, which carry only the worktree mark
 described in
 [Active Navigator Projection](#active-navigator-projection-and-archived-pagination).
 For Active Tasks, Caffold owns local group identity, durable Section order,
-Thread-to-Section membership, and dense within-Section order. A Section stores
-its Managed Section ID, RootedFs-logical repository/cwd path, and local order
-position. Each Task has its own canonical worktree root for shared Integrated
-Review, Git, and GitHub when that Task is the active Detail subject. Outside
-Git, cwd remains useful as the thread's creation and file-review context, but
-it does not filter Tasks.
+Thread-to-Section membership, dense within-Section order, and the order of the
+pinned Tasks. A Section stores its Managed Section ID, RootedFs-logical
+repository/cwd path, and local order position. Each Task has its own canonical
+worktree root for shared Integrated Review, Git, and GitHub when that Task is
+the active Detail subject. Outside Git, cwd remains useful as the thread's
+creation and file-review context, but it does not filter Tasks.
 
 Explicit Section folder reconnection updates a direct Task through
 `thread/settings/update` after confirming an idle native thread. It verifies
@@ -619,8 +619,11 @@ lifecycle.
 The Active Tasks API is local-first. `GET /api/tasks` reads Caffold's
 `managed_sections`, `managed_threads`, and `managed_worktrees` tables in one
 store read and returns the last committed Section order, Section membership,
-dense within-Section order, and each Task's list row without an agent RPC or
-persistent write. A Section with a recorded composer selection also includes
+dense within-Section order, the pinned Tasks in their own order with the
+Section each belongs to, and each Task's list row without an agent RPC or
+persistent write. A pinned Task has no place in its Section's rows but keeps
+its membership, so a Section is listed while it holds any active Task. A
+Section with a recorded composer selection also includes
 that model, reasoning effort, Fast-mode value, and permission mode. Section
 Task Create and Section-owned GitHub Task Start apply that selection, including
 one recorded while they are open, to the model until a person picks the model
@@ -678,11 +681,13 @@ still published only after the local commit. Fork claims only a returned child
 and leaves its source outside that commit. Normal runtime lifecycle commands do
 not create agent-owned Sections or move conversations between local Sections.
 New and restored Tasks are placed at local position zero, while archive clears
-their placement and compacts the remaining positions. Creating a managed
-Section inserts it at the top of the durable Section order. Task and Section
-reorder commands mutate only their respective local order, commit the move
-transaction, and then request a fresh Task-list projection; they do not call
-app-server or infer another placement from Codex state.
+their placement, including a pin, and compacts the remaining positions.
+Creating a managed Section inserts it at the top of the durable Section order.
+Task reorder moves a Task within its Section or among the pinned Tasks, and
+Section reorder moves a Section. Pin puts a Task first among the pinned Tasks;
+unpin returns it to the top of its Section. These commands mutate only local
+order, commit the transaction, and then request a fresh Task-list projection;
+they do not call app-server or infer another placement from Codex state.
 
 Upgrading an older Task store at startup does not call app-server either. The
 startup coordinator applies the local migrations to a staged copy and replaces

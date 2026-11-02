@@ -92,6 +92,22 @@ test("draws a header that opens the Section, counts its Tasks, and holds its han
   }));
   assert.match(recovery, /<div class="task-repository-select" title="\/repo\/alpha" data-section-id="" aria-current="">/);
   assert.doesNotMatch(recovery, /section-reorder-handle/);
+
+  const pinned = html(sectionHost({
+    snapshot: snapshot({
+      section: {
+        id: "pinned",
+        name: "Pinned Tasks",
+        label: "Pinned",
+        repository: false,
+        pinned: true,
+        tasks: [{ threadId: "thread-a" }],
+      },
+    }),
+  }));
+  assert.match(pinned, /<div class="task-repository-select" title="Pinned Tasks" data-section-id="" aria-current="">/);
+  assert.match(pinned, /<span class="task-repository-label">Pinned<\/span><\/div><span class="task-repository-count">1<\/span><\/div>/);
+  assert.doesNotMatch(pinned, /section-reorder-handle/);
 });
 
 function sectionHost(properties) {

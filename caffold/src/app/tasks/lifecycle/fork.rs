@@ -240,7 +240,7 @@ impl TaskLifecycle {
     ) -> Result<(), ApiError> {
         let store = self.store.clone();
         let source_thread_id = source.thread_id.clone();
-        let section_id = source.section_id.clone();
+        let section_id = source.section_id().map(str::to_string);
         let provider = source.run_by.provider();
         let archived_at_ms = source.archived_at_ms;
         let current = tokio::task::spawn_blocking(move || store.get(&source_thread_id))
@@ -249,7 +249,7 @@ impl TaskLifecycle {
             .map_err(|error| ApiError::Internal(error.to_string()))?;
         if current.is_none_or(|current| {
             current.archived_at_ms != archived_at_ms
-                || current.section_id != section_id
+                || current.section_id() != section_id.as_deref()
                 || current.run_by.provider() != provider
         }) {
             return Err(task_fork_source_changed());

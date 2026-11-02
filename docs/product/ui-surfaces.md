@@ -51,6 +51,7 @@ name, the header keeps only the Caffold mark.
 The Task navigator provides:
 
 - active and Archived sections;
+- a Pinned group above the Sections;
 - repository grouping derived from canonical Task cwd/worktree state;
 - task title, recency, and availability, with execution and unseen-completion
   state in Active;
@@ -65,10 +66,10 @@ badge. Restore and Delete retain their own request progress and failure
 indicators; a conversation-unavailable warning replaces Restore when the
 provider cannot confirm the conversation exists.
 
-Managed Section headers are selectable and open Section Detail. Recovery group
-headings remain labels only. The selected Section is represented by local id;
-its managed logical path supplies the fixed cwd and its repository capability
-controls which shared review surfaces are available.
+Managed Section headers are selectable and open Section Detail. Recovery and
+Pinned group headings remain labels only. The selected Section is represented
+by local id; its managed logical path supplies the fixed cwd and its repository
+capability controls which shared review surfaces are available.
 
 A verified missing Section directory adds a small warning beside its name.
 Section Detail replaces creation with an inline folder reconnection form,
@@ -80,19 +81,28 @@ shown as missing. A failed active repair retains the candidate and names the Tas
 previous successes remain usable. Archived repair failures do not appear in
 Section Detail; an unsuccessful Restore reports its own error when requested.
 
-Task reorder mode moves Tasks within their current Section. Section reorder
-mode presents the managed Section headers without their Task rows and moves the
-Sections as units. Only one mode is active at a time; recovery and Archived
-content are not reorderable.
+Pinning a Task takes its row out of its Section and puts it first in the Pinned
+group, where it is drawn like any other Task row. Unpinning returns the Task
+to the top of its Section, and archiving unpins it. A Section stays listed
+while it holds an active Task, pinned or not, so a Section whose Tasks are all
+pinned keeps its header with no rows under it. Pins are kept on the Mac, so
+every screen shows the same Pinned group.
+
+Task reorder mode moves Tasks within their current Section, and pinned Tasks
+among themselves. Section reorder mode presents the managed Section headers
+without their Task rows and moves the Sections as units; the Pinned group stays
+first. Only one mode is active at a time; recovery and Archived content are not
+reorderable.
 
 Selecting a Task opens its Conversation. Direct Task URLs load by `threadId`
 without requiring the Task to appear in the currently loaded navigator page.
 
 ## Task Switcher
 
-The Task Switcher is a modal list of the active Tasks ordered by when each one
-last finished a turn, newest first. That is also the time a row shows when it
-has nothing else to report, so the column reads in order. Merely opening a Task
+The Task Switcher is a modal list of the active Tasks: the pinned ones first,
+then a divider and the rest, each part ordered by when each Task last finished a
+turn, newest first. That is also the time a row shows when it has nothing else
+to report, so the column reads in order within each part. Merely opening a Task
 does not carry it up the list. It is offered on the Tasks surface, which is
 where the active Task list is held.
 
@@ -266,6 +276,10 @@ opens a dialog holding those messages oldest first, each under the time it was
 sent in the reader's own time zone, and a **Forget these** action. The record
 is read when that dialog opens, and the dialog says so while the Task has kept
 nothing yet.
+
+Task actions offer **Pin task**, or **Unpin task** for a pinned Task, once the
+Task list has placed the Task in a Section. The button shows its progress until
+the Task list has read the change back.
 
 An idle Codex, Claude, or Grok Task exposes **Fork task** in Task actions. It performs the same
 native fork without an ID lookup, places the child at the source Task's Section

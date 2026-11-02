@@ -15,6 +15,7 @@ import {
   getTask,
   interruptTask,
   markTaskSeen,
+  pinTask,
   resolveTaskApproval,
   restoreTask,
   sendTaskPrompt,
@@ -26,6 +27,7 @@ import {
   taskAbsence,
   taskAlreadyActive,
   taskResponseError,
+  unpinTask,
   uploadTaskFile,
 } from "#app/api.js";
 import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
@@ -164,7 +166,7 @@ interface ActionState {
 
 // What the Task screen tells its owner about the open Task: the Task once
 // read, its live connection, whether it is absent, where it works, and its
-// Archive and Fork requests.
+// Archive, Fork, and pin requests.
 export interface TaskSubjectSnapshot {
   task: Task | null;
   transportState: TaskTransportState;
@@ -174,6 +176,13 @@ export interface TaskSubjectSnapshot {
   permissionMode: string;
   archiveState: ActionState;
   forkState: ActionState;
+  pinState: ActionState;
+}
+
+// A pin this screen changed; `listed` settles once the Task list has read it
+// back.
+export interface TaskPinChangedHandoff {
+  listed: Promise<unknown> | null;
 }
 
 type ComposerAttachment = ComposerSubmission["attachments"][number];
@@ -297,6 +306,8 @@ export class CaffoldTaskDetail extends CaffoldElement {
   private archiveActionToken = 0;
   private forkActionToken = 0;
   private forkCreated: { sourceId: string; created: CreatedTask } | null = null;
+  private pinActionToken = 0;
+  private pinStateValue: ActionState = { loading: false, error: null };
   private approvalActionToken = 0;
   private promptSubmissionSequence = 0;
   private archiveStateValue: ActionState = { loading: false, error: null };
@@ -405,6 +416,8 @@ export class CaffoldTaskDetail extends CaffoldElement {
       this.archiveActionToken += 1;
       this.forkActionToken += 1;
       this.forkCreated = null;
+      this.pinActionToken += 1;
+      this.pinStateValue = { loading: false, error: null };
       this.approvalActionToken += 1;
       this.archiveStateValue = { loading: false, error: null };
       this.forkStateValue = { loading: false, error: null };
@@ -534,6 +547,8 @@ export class CaffoldTaskDetail extends CaffoldElement {
     this.archiveActionToken += 1;
     this.forkActionToken += 1;
     this.forkCreated = null;
+    this.pinActionToken += 1;
+    this.pinStateValue = { loading: false, error: null };
     this.approvalActionToken += 1;
     this.archiveStateValue = { loading: false, error: null };
     this.forkStateValue = { loading: false, error: null };
@@ -559,6 +574,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       permissionMode: this.followUpComposer()?.selectedPermissionMode() ?? "",
       archiveState: this.archiveStateValue,
       forkState: this.forkStateValue,
+      pinState: this.pinStateValue,
     };
   }
 
@@ -1813,6 +1829,40 @@ export class CaffoldTaskDetail extends CaffoldElement {
     }
   }
 
+  // The request stays in progress until the Task list has read the pin back,
+  // so the popover never shows the state the Task just left.
+  async pinSelectedTask(pinned: boolean) {
+    if (!this.selectedThreadId || this.pinStateValue.loading) {
+      return;
+    }
+    const actionToken = ++this.pinActionToken;
+    const threadId = this.selectedThreadId;
+    this.pinStateValue = { loading: true, error: null };
+    this.emitSubjectSnapshot();
+    try {
+      await (pinned ? pinTask(threadId) : unpinTask(threadId));
+      const handoff: TaskPinChangedHandoff = { listed: null };
+      this.dispatchEvent(
+        new CustomEvent<TaskPinChangedHandoff>("caffold:task-pin-changed", {
+          bubbles: true,
+          composed: true,
+          detail: handoff,
+        }),
+      );
+      await handoff.listed;
+      if (actionToken !== this.pinActionToken) {
+        return;
+      }
+      this.pinStateValue = { loading: false, error: null };
+    } catch (error) {
+      if (actionToken !== this.pinActionToken) {
+        return;
+      }
+      this.pinStateValue = { loading: false, error: error as Error };
+    }
+    this.emitSubjectSnapshot();
+  }
+
   private async resolveApproval(approvalId: string, decision: string) {
     if (
       !this.selectedThreadId ||
@@ -2738,5 +2788,6 @@ declare global {
 
   interface HTMLElementEventMap {
     "caffold:task-subject-snapshot": CustomEvent<TaskSubjectSnapshot>;
+    "caffold:task-pin-changed": CustomEvent<TaskPinChangedHandoff>;
   }
 }

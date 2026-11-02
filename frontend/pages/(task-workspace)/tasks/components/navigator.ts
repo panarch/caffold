@@ -233,6 +233,18 @@ export class CaffoldTaskNavigator extends CaffoldElement {
     return this.activeTaskList.sectionForTask(threadId);
   }
 
+  isPinned(threadId: string) {
+    return this.activeTaskList.isPinned(threadId);
+  }
+
+  // Reads the list again, past any load already in flight.
+  async reloadTasks() {
+    return await this.activeTaskList.loadTasks({
+      force: true,
+      requireFresh: true,
+    });
+  }
+
   recoveryFor(threadId: string) {
     return this.activeTaskList.recoveryFor(threadId);
   }

@@ -1010,7 +1010,8 @@ test("Task and Section reordering keep navigation, ordering, and row presentatio
   assert.match(section, /handle\.releasePointerCapture\(gesture\.pointerId\)/);
   assert.match(section, /event\.key === "ArrowUp"/);
   assert.match(section, /event\.key === "ArrowDown"/);
-  assert.match(section, /!section\.recovery && reorderMode === "none"/);
+  assert.match(section, /const group = section\.recovery \|\| section\.pinned;/);
+  assert.match(section, /!group && reorderMode === "none"/);
   assert.doesNotMatch(activeStyles, /section-reorder-handle|task-repository-count/);
   assert.match(rowStyles, /min-height: var\(--task-list-row-height\)/);
   assert.match(rowStyles, /@media \(prefers-reduced-motion: reduce\)/);

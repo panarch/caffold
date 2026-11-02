@@ -181,7 +181,7 @@ test("the Checklist opens from the plan above the Composer", { tag: "@desktop" }
   await captureReviewScreenshot(page, testInfo, "current-plan-checklist");
 });
 
-test("Task details shows the worktree and holds Fork task and Archive task", { tag: "@desktop" }, async ({ page }, testInfo) => {
+test("Task details shows the worktree and holds Pin task, Fork task, and Archive task", { tag: "@desktop" }, async ({ page }, testInfo) => {
   await page.goto(`/tasks/${MANUAL_TASKS.darkTheme.threadId}`);
 
   const archived = page.locator("caffold-archived-task-list");
@@ -194,6 +194,7 @@ test("Task details shows the worktree and holds Fork task and Archive task", { t
   const details = page.locator(".task-detail-popover");
   await expect(details).toBeVisible();
   await expect(details).toContainText(MANUAL_TASKS.darkTheme.worktree.branch);
+  await expect(details.getByRole("button", { name: "Pin task" })).toBeVisible();
   await expect(details.getByRole("button", { name: "Fork task" })).toBeVisible();
   await expect(details.getByRole("button", { name: "Archive task" })).toBeVisible();
   await captureReviewScreenshot(page, testInfo, "task-details");

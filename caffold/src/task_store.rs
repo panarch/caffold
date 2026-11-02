@@ -51,6 +51,8 @@ pub(crate) enum TaskStoreError {
     TaskReorderUnavailable(&'static str),
     #[error("task reorder conflicts with the current Section order: {0}")]
     TaskReorderConflict(&'static str),
+    #[error("task cannot be pinned or unpinned: {0}")]
+    TaskPinUnavailable(&'static str),
     #[error("Section cannot be reordered: {0}")]
     SectionReorderUnavailable(&'static str),
     #[error("Section reorder conflicts with the current order: {0}")]
@@ -260,6 +262,20 @@ impl TaskStoreTables<'_> {
         match self {
             Self::Memory(glue) => managed_thread::move_before(glue, thread_id, before_thread_id),
             Self::Redb(glue) => managed_thread::move_before(glue, thread_id, before_thread_id),
+        }
+    }
+
+    pub(crate) fn pin_managed_thread(&mut self, thread_id: &str) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => managed_thread::pin(glue, thread_id),
+            Self::Redb(glue) => managed_thread::pin(glue, thread_id),
+        }
+    }
+
+    pub(crate) fn unpin_managed_thread(&mut self, thread_id: &str) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => managed_thread::unpin(glue, thread_id),
+            Self::Redb(glue) => managed_thread::unpin(glue, thread_id),
         }
     }
 
@@ -1243,9 +1259,9 @@ mod tests {
                     let mut threads = tables
                         .active_managed_threads()?
                         .into_iter()
-                        .filter(|thread| thread.section_id.as_deref() == Some(&section_id))
+                        .filter(|thread| thread.section_id() == Some(section_id.as_str()))
                         .collect::<Vec<_>>();
-                    threads.sort_by_key(|thread| thread.position_in_section);
+                    threads.sort_by_key(|thread| thread.position_in_section());
                     Ok(threads)
                 })
                 .unwrap();

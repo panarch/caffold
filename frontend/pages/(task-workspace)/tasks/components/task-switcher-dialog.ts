@@ -1,4 +1,4 @@
-import { html } from "lit";
+import { html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
@@ -31,7 +31,8 @@ export interface TaskSwitcherSnapshot {
 }
 
 /**
- * A modal list of the active Tasks in most-recent-activity order.
+ * A modal list of the active Tasks: the pinned ones first, then the rest, each
+ * in most-recent-activity order.
  *
  * The Task navigator's order is the one a person arranged by hand, so it
  * cannot also answer "which Task moved last". This dialog is that second
@@ -46,8 +47,10 @@ export class CaffoldTaskSwitcherDialog extends CaffoldElement {
   static override styles = styles;
 
   private tasksLoaded = true;
-  // Thread IDs in the order taken when the dialog opened.
+  // Thread IDs in the order taken when the dialog opened, and the ones that
+  // were pinned then.
   private order: string[] = [];
+  private pinnedAtOpen = new Set<string>();
   private entries = new Map<string, TaskWithSection>();
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
@@ -68,7 +71,7 @@ export class CaffoldTaskSwitcherDialog extends CaffoldElement {
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
 
-  /** Show the given Tasks, most recently finished first. */
+  /** Show the given Tasks, pinned first, each part most recently finished first. */
   open({ rows = [], loaded = true }: TaskSwitcherSnapshot = {}) {
     const dialog = this.dialog;
     if (!dialog || dialog.open) {
@@ -129,6 +132,12 @@ export class CaffoldTaskSwitcherDialog extends CaffoldElement {
       const entry = this.entries.get(threadId);
       return entry ? [entry] : [];
     });
+    const pinned = rows.filter(({ task }) =>
+      this.pinnedAtOpen.has(taskThreadId(task)),
+    );
+    const others = rows.filter(
+      ({ task }) => !this.pinnedAtOpen.has(taskThreadId(task)),
+    );
     const closeLabel = "Close task switcher";
     const closeIcon = inlineIcon("X", closeLabel, "task-switcher-close-icon");
     return html`
@@ -168,9 +177,18 @@ export class CaffoldTaskSwitcherDialog extends CaffoldElement {
             class="task-switcher-scroll"
           >
             <ul class="task-switcher-list">${repeat(
-              rows,
+              pinned,
               ({ task }) => taskThreadId(task),
               (entry, index) => this.rowTemplate(entry, index === 0),
+            )}${
+              pinned.length && others.length
+                ? html`<li class="task-switcher-divider" role="separator"></li>`
+                : nothing
+            }${repeat(
+              others,
+              ({ task }) => taskThreadId(task),
+              (entry, index) =>
+                this.rowTemplate(entry, !pinned.length && index === 0),
             )}</ul>
             <p class="task-switcher-empty" ?hidden=${rows.length > 0}>${
               this.tasksLoaded
@@ -191,8 +209,8 @@ export class CaffoldTaskSwitcherDialog extends CaffoldElement {
     this.performUpdate();
   }
 
-  // Close comes first in the dialog, so the newest Task has to claim the
-  // focus the dialog hands out when it opens.
+  // Close comes first in the dialog, so the top row has to claim the focus
+  // the dialog hands out when it opens.
   private rowTemplate({ task, sectionName }: TaskWithSection, first: boolean) {
     const threadId = taskThreadId(task);
     const recovery = "recovery" in task;
@@ -240,12 +258,14 @@ export class CaffoldTaskSwitcherDialog extends CaffoldElement {
 
   private takeOrder(rows: TaskWithSection[]) {
     this.entries = byThread(rows);
-    this.order = [...this.entries.values()]
-      .sort(
-        (left, right) =>
-          taskCompletedMs(right.task) - taskCompletedMs(left.task),
-      )
-      .map(({ task }) => taskThreadId(task));
+    const entries = [...this.entries.values()].sort(
+      (left, right) => taskCompletedMs(right.task) - taskCompletedMs(left.task),
+    );
+    const pinned = entries.filter((entry) => entry.pinned);
+    this.pinnedAtOpen = new Set(pinned.map(({ task }) => taskThreadId(task)));
+    this.order = [...pinned, ...entries.filter((entry) => !entry.pinned)].map(
+      ({ task }) => taskThreadId(task),
+    );
   }
 
   private get dialog() {

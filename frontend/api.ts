@@ -414,6 +414,7 @@ export async function transcribeVoice(recording: Blob, signal?: AbortSignal) {
 
 export async function getTasks() {
   return requestJson<{
+    pinned: ActivePinnedTask[];
     sections: ActiveTaskSection[];
     unsectioned: ActiveTaskRecovery[];
   }>("/api/tasks", {}, { timeoutMs: SLOW_LINK_TIMEOUT_MS });
@@ -449,6 +450,22 @@ export async function reorderTask(
       method: "POST",
       body: { beforeThreadId: beforeThreadId ?? null },
     },
+  );
+}
+
+export async function pinTask(threadId: string) {
+  return requestJson<TaskPinChange>(
+    `/api/tasks/${encodeURIComponent(threadId)}/pin`,
+    {},
+    { method: "POST" },
+  );
+}
+
+export async function unpinTask(threadId: string) {
+  return requestJson<TaskPinChange>(
+    `/api/tasks/${encodeURIComponent(threadId)}/unpin`,
+    {},
+    { method: "POST" },
   );
 }
 
@@ -1686,6 +1703,19 @@ export interface ActiveTask {
   recencyMs: number | null;
   updatedMs: number;
   worktree: boolean;
+}
+
+// A pinned Task, and the Section the list names it by.
+export interface ActivePinnedTask {
+  sectionId: string;
+  task: ActiveTask;
+}
+
+// What a pin or unpin request did.
+export interface TaskPinChange {
+  threadId: string;
+  pinned: boolean;
+  changed: boolean;
 }
 
 // A listed Task that cannot sit in a Section until the person recovers it.

@@ -1226,6 +1226,111 @@ test("starts pointer reordering only from a handle and keeps moves inside a Sect
   ]);
 });
 
+test("moves pinned Tasks among themselves and keeps them above every Section", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const state = {
+    pinned: [task("thread-pin-a", "Pinned A"), task("thread-pin-b", "Pinned B")],
+    sections: [
+      {
+        id: "section-one",
+        name: "/workspace/one",
+        repository: false,
+        tasks: [task("thread-one", "One")],
+      },
+      {
+        id: "section-two",
+        name: "/workspace/two",
+        repository: false,
+        tasks: [task("thread-two", "Two")],
+      },
+    ],
+    moves: [],
+  };
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        pinned: state.pinned.map((pinned) => ({
+          sectionId: "section-two",
+          task: pinned,
+        })),
+        sections: state.sections,
+        unsectioned: [],
+      }),
+    })
+  );
+  await page.route(/\/api\/tasks\/([^/?]+)\/reorder$/, (route) => {
+    const threadId = new URL(route.request().url()).pathname.split("/").at(-2);
+    const body = route.request().postDataJSON();
+    state.moves.push({ threadId, ...body });
+    state.pinned = moveBefore(state.pinned, threadId, body.beforeThreadId);
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ threadId, ...body, changed: true }),
+    });
+  });
+  await page.route(/\/api\/tasks\/sections\/([^/?]+)\/reorder$/, (route) => {
+    const sectionId = new URL(route.request().url()).pathname.split("/").at(-2);
+    const body = route.request().postDataJSON();
+    state.moves.push({ sectionId, ...body });
+    state.sections = moveSectionBefore(
+      state.sections,
+      sectionId,
+      body.beforeSectionId,
+    );
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ sectionId, ...body, changed: true }),
+    });
+  });
+  const groupKeys = () =>
+    page
+      .locator("caffold-active-task-list .task-repository-group")
+      .evaluateAll((groups) =>
+        groups.map((group) => group.dataset.taskRepositoryKey)
+      );
+
+  await page.goto("/");
+  const navigator = page.locator("caffold-task-navigator");
+  const pinnedGroup = navigator.locator(
+    "caffold-active-task-list .task-repository-group[data-task-pinned]",
+  );
+  await expect.poll(groupKeys).toEqual(["pinned", "section-one", "section-two"]);
+  await expect(pinnedGroup.locator(".task-repository-label")).toHaveText("Pinned");
+
+  await enterReorderMode(page);
+  await navigator
+    .getByRole("button", { name: /^Reorder Pinned A\./ })
+    .press("ArrowUp");
+  await expect(navigator.locator(".task-reorder-announcement")).toHaveText(
+    "Pinned A is already first in Pinned.",
+  );
+  await navigator
+    .getByRole("button", { name: /^Reorder Pinned B\./ })
+    .press("ArrowUp");
+  await expect.poll(() => state.moves).toEqual([
+    { threadId: "thread-pin-b", beforeThreadId: "thread-pin-a" },
+  ]);
+  await expect.poll(() => threadOrder(page, "pinned")).toEqual([
+    "thread-pin-b",
+    "thread-pin-a",
+  ]);
+  await expect(navigator.locator(".task-reorder-announcement")).toHaveText(
+    "Pinned B moved to position 1 of 2 in Pinned.",
+  );
+
+  await page.keyboard.press("Escape");
+  await enterReorderMode(page, "Sections");
+  await expect(pinnedGroup.locator(".section-reorder-handle")).toHaveCount(0);
+  await navigator.getByRole("button", { name: "Reorder two" }).press("ArrowUp");
+  await expect.poll(groupKeys).toEqual(["pinned", "section-two", "section-one"]);
+  expect(state.moves.at(-1)).toEqual({
+    sectionId: "section-two",
+    beforeSectionId: "section-one",
+  });
+});
+
 test("reconciles an optimistic move to a newer canonical order", { tag: "@server-steady" }, async ({
   page,
 }) => {

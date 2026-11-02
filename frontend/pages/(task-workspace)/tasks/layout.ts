@@ -215,6 +215,10 @@ export class CaffoldTasksPage extends CaffoldElement {
         handoff?.submission,
       );
     });
+    this.addEventListener("caffold:task-pin-changed", (event) => {
+      event.stopPropagation();
+      event.detail.listed = this.taskNavigator()?.reloadTasks() ?? null;
+    });
     // A terminal that ended under the keyboard hands focus to the pane that
     // Escape leaves an editor for.
     this.addEventListener(TERMINAL_PAGE_FOCUS_RELEASE_EVENT, (event) => {
@@ -918,6 +922,9 @@ export class CaffoldTasksPage extends CaffoldElement {
     const section = navigator?.sectionForTask(this.selectedThreadId);
     this.taskDetail()?.setManagedTask(selected, {
       repository,
+      pinned:
+        Boolean(selected) &&
+        Boolean(navigator?.isPinned(this.selectedThreadId)),
       missingSectionId:
         section?.directory?.status === "missing" ? section.id : "",
     });

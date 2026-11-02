@@ -6,6 +6,7 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hints.js";
 import {
+  type ActivePinnedTask,
   type ActiveTask,
   type ActiveTaskComposerSettings,
   type ActiveTaskRecovery,
@@ -57,6 +58,9 @@ export type { ReorderMode } from "./active-task-list/components/section.js";
 // The Section component in each group the list made.
 const groupSections = new WeakMap<HTMLLIElement, CaffoldActiveTaskSection>();
 
+// The key of the group that holds the pinned Tasks.
+const PINNED_GROUP_ID = "pinned";
+
 export const ACTIVE_TASK_LIST_INITIAL_SETTLED_EVENT =
   "caffold:active-task-list-initial-settled";
 export const ACTIVE_TASK_LIST_ARCHIVE_SYNC_EVENT =
@@ -105,6 +109,7 @@ export interface ArchiveSyncDetail {
 export interface TaskWithSection {
   task: ListedTask;
   sectionName: string;
+  pinned: boolean;
 }
 
 export type ForegroundRecovery =
@@ -117,7 +122,15 @@ interface HeldSection extends ListedSection {
   composerSettings: SectionComposerSettings | null;
 }
 
+// The pinned Tasks as the list holds them, beside the Section each one is
+// named by.
+interface HeldPinnedGroup extends ListedSection {
+  pinned: true;
+  sectionIds: Map<string, string>;
+}
+
 interface HeldTaskList {
+  pinned: ListedTask[];
   sections: HeldSection[];
   unsectioned: ListedTask[];
 }
@@ -159,8 +172,9 @@ interface SectionDrag {
 }
 
 /**
- * The Active list: the person's Sections in the order they arranged, each with
- * its Tasks, and after them the Tasks awaiting recovery.
+ * The Active list: the pinned Tasks, then the person's Sections in the order
+ * they arranged, each with its Tasks, and after them the Tasks awaiting
+ * recovery.
  *
  * It loads the list, keeps it current from the workspace's Task list stream,
  * and saves the person's reordering. Its template is the frame: the reorder
@@ -176,6 +190,7 @@ export class CaffoldActiveTaskList extends CaffoldElement {
     styles,
   ];
 
+  private pinnedGroup: HeldPinnedGroup = heldPinnedGroup([], new Map());
   private sections: HeldSection[] = [];
   private unsectioned: ListedTask[] = [];
   private taskListLoading = false;
@@ -381,14 +396,8 @@ export class CaffoldActiveTaskList extends CaffoldElement {
       this.cancelDrag();
     }
     const previousCount = this.allTasks().length;
-    this.sections = this.sections
-      .map((section) => ({
-        ...section,
-        tasks: section.tasks.filter(
-          (candidate) => taskThreadId(candidate) !== threadId,
-        ),
-      }))
-      .filter((section) => section.tasks.length);
+    this.pinnedGroup = withoutPinned(this.pinnedGroup, threadId);
+    this.sections = this.withoutTask(this.sections, threadId);
     this.unsectioned = this.unsectioned.filter(
       (candidate) => taskThreadId(candidate) !== threadId,
     );
@@ -402,7 +411,7 @@ export class CaffoldActiveTaskList extends CaffoldElement {
     }
     // Focus goes to the handle that took the removed row's place, or back to
     // the reorder toggle once the Section is gone.
-    const section = this.sections.find(
+    const section = this.taskGroups().find(
       (candidate) => candidate.id === context.section.id,
     );
     const nextTask =
@@ -520,13 +529,23 @@ export class CaffoldActiveTaskList extends CaffoldElement {
   // navigator shows, so the Section travels with its Task.
   tasksWithSections(): TaskWithSection[] {
     return [
+      ...this.pinnedGroup.tasks.map((task) => ({
+        task,
+        sectionName: this.pinnedSectionName(taskThreadId(task)),
+        pinned: true,
+      })),
       ...this.sections.flatMap((section) =>
         section.tasks.map((task) => ({
           task,
           sectionName: sectionLabel(section.name),
+          pinned: false,
         })),
       ),
-      ...this.unsectioned.map((task) => ({ task, sectionName: "" })),
+      ...this.unsectioned.map((task) => ({
+        task,
+        sectionName: "",
+        pinned: false,
+      })),
     ];
   }
 
@@ -569,7 +588,15 @@ export class CaffoldActiveTaskList extends CaffoldElement {
   }
 
   sectionForTask(threadId: string) {
-    return this.sectionFor(this.sectionContext(threadId)?.section.id ?? "");
+    return this.sectionFor(
+      this.pinnedGroup.sectionIds.get(threadId) ??
+        this.sectionContext(threadId)?.section.id ??
+        "",
+    );
+  }
+
+  isPinned(threadId: string) {
+    return this.pinnedGroup.sectionIds.has(threadId);
   }
 
   recoveryFor(threadId: string) {
@@ -718,6 +745,7 @@ export class CaffoldActiveTaskList extends CaffoldElement {
       }
       group.dataset.taskRepositoryKey = section.id;
       group.toggleAttribute("data-task-recovery", Boolean(section.recovery));
+      group.toggleAttribute("data-task-pinned", Boolean(section.pinned));
       if (group === nextGroup) {
         nextGroup = nextListedGroup(nextGroup.nextElementSibling);
       } else {
@@ -771,7 +799,20 @@ export class CaffoldActiveTaskList extends CaffoldElement {
   }
 
   private projectedSections(): ListedSection[] {
+    const pinned = this.pinnedGroup;
     return [
+      ...(pinned.tasks.length
+        ? [
+            {
+              id: pinned.id,
+              name: pinned.name,
+              label: pinned.label,
+              repository: false,
+              pinned: true,
+              tasks: pinned.tasks,
+            },
+          ]
+        : []),
       ...this.sections,
       ...(this.unsectioned.length
         ? [
@@ -909,7 +950,10 @@ export class CaffoldActiveTaskList extends CaffoldElement {
       return;
     }
     const candidates = this.groupItems().filter(
-      (group) => group !== source && !group.hasAttribute("data-task-recovery"),
+      (group) =>
+        group !== source &&
+        !group.hasAttribute("data-task-recovery") &&
+        !group.hasAttribute("data-task-pinned"),
     );
     const before =
       candidates.find((group) => {
@@ -953,7 +997,7 @@ export class CaffoldActiveTaskList extends CaffoldElement {
       return;
     }
     const { section, index } = context;
-    const where = sectionLabel(section.name);
+    const where = groupLabel(section);
     if (direction === "up" && index === 0) {
       this.announce(`${context.task.title} is already first in ${where}.`);
       return;
@@ -1072,7 +1116,7 @@ export class CaffoldActiveTaskList extends CaffoldElement {
     } catch {
       move.optimistic = false;
       const positions = new Map(originalOrder.map((id, index) => [id, index]));
-      const section = this.sections.find(
+      const section = this.taskGroups().find(
         (candidate) => candidate.id === original.section.id,
       );
       if (section) {
@@ -1228,8 +1272,9 @@ export class CaffoldActiveTaskList extends CaffoldElement {
     return index >= 0 ? { section: this.sections[index], index } : null;
   }
 
+  // Where a listed Task sits: its Section, or the pinned group.
   private sectionContext(threadId: string) {
-    for (const section of this.sections) {
+    for (const section of this.taskGroups()) {
       const index = section.tasks.findIndex(
         (task) => taskThreadId(task) === threadId,
       );
@@ -1244,7 +1289,7 @@ export class CaffoldActiveTaskList extends CaffoldElement {
     const context = this.sectionContext(threadId);
     if (context) {
       this.announce(
-        `${context.task.title} moved to position ${context.index + 1} of ${context.section.tasks.length} in ${sectionLabel(context.section.name)}.`,
+        `${context.task.title} moved to position ${context.index + 1} of ${context.section.tasks.length} in ${groupLabel(context.section)}.`,
       );
     }
   }
@@ -1289,7 +1334,15 @@ export class CaffoldActiveTaskList extends CaffoldElement {
       const runtimeByThread = new Map(
         this.allTasks().map((task) => [taskThreadId(task), task]),
       );
-      this.sections = heldSections(listed(response.sections), runtimeByThread);
+      this.pinnedGroup = heldPinnedGroup(
+        listed(response.pinned),
+        runtimeByThread,
+      );
+      this.sections = heldSections(
+        listed(response.sections),
+        runtimeByThread,
+        new Set(this.pinnedGroup.sectionIds.values()),
+      );
       this.unsectioned = listed(response.unsectioned).map((task) =>
         withRuntime(task, runtimeByThread.get(taskThreadId(task))),
       );
@@ -1330,7 +1383,11 @@ export class CaffoldActiveTaskList extends CaffoldElement {
   }
 
   private heldTaskList(): HeldTaskList {
-    return { sections: this.sections, unsectioned: this.unsectioned };
+    return {
+      pinned: this.pinnedGroup.tasks,
+      sections: this.sections,
+      unsectioned: this.unsectioned,
+    };
   }
 
   private markSettled() {
@@ -1357,14 +1414,8 @@ export class CaffoldActiveTaskList extends CaffoldElement {
   ) {
     const threadId = taskThreadId(task);
     const targetId = placement.section.id;
-    const remaining = this.sections
-      .map((section) => ({
-        ...section,
-        tasks: section.tasks.filter(
-          (candidate) => taskThreadId(candidate) !== threadId,
-        ),
-      }))
-      .filter((section) => section.id === targetId || section.tasks.length);
+    this.pinnedGroup = withoutPinned(this.pinnedGroup, threadId);
+    const remaining = this.withoutTask(this.sections, threadId, targetId);
     const target: HeldSection = remaining.find(
       (section) => section.id === targetId,
     ) ?? { ...placement.section, composerSettings: null, tasks: [] };
@@ -1570,13 +1621,50 @@ export class CaffoldActiveTaskList extends CaffoldElement {
 
   private allTasks() {
     return [
-      ...this.sections.flatMap((section) => section.tasks),
+      ...this.taskGroups().flatMap((section) => section.tasks),
       ...this.unsectioned,
     ];
   }
 
-  // Puts a changed Task where its old entry was, and answers the Section it
-  // is in: a Section id, "unsectioned", or "" when it is not listed.
+  // The groups a Task can be moved within: the pinned Tasks and each Section.
+  private taskGroups(): ListedSection[] {
+    return [this.pinnedGroup, ...this.sections];
+  }
+
+  // The Sections with one Task taken out. A Section left without rows stays
+  // while a pinned Task belongs to it, or when it is `keepId`.
+  private withoutTask(
+    sections: HeldSection[],
+    threadId: string,
+    keepId = "",
+  ): HeldSection[] {
+    const named = new Set(this.pinnedGroup.sectionIds.values());
+    return sections
+      .map((section) => ({
+        ...section,
+        tasks: section.tasks.filter(
+          (candidate) => taskThreadId(candidate) !== threadId,
+        ),
+      }))
+      .filter(
+        (section) =>
+          section.id === keepId ||
+          section.tasks.length ||
+          named.has(section.id),
+      );
+  }
+
+  private pinnedSectionName(threadId: string) {
+    const sectionId = this.pinnedGroup.sectionIds.get(threadId);
+    const section = this.sections.find(
+      (candidate) => candidate.id === sectionId,
+    );
+    return section ? sectionLabel(section.name) : "";
+  }
+
+  // Puts a changed Task where its old entry was, and answers the group it is
+  // in: a Section id, the pinned group, "unsectioned", or "" when it is not
+  // listed.
   private replaceTaskInPlace(task: ListedTask) {
     const threadId = taskThreadId(task);
     const replace = (tasks: ListedTask[]) => {
@@ -1587,7 +1675,7 @@ export class CaffoldActiveTaskList extends CaffoldElement {
         ? null
         : tasks.map((candidate, at) => (at === index ? task : candidate));
     };
-    for (const section of this.sections) {
+    for (const section of this.taskGroups()) {
       const tasks = replace(section.tasks);
       if (tasks) {
         section.tasks = tasks;
@@ -1693,9 +1781,53 @@ function parseJson<T>(value: string): T | null {
   }
 }
 
+function heldPinnedGroup(
+  pinned: ActivePinnedTask[],
+  runtimeByThread: Map<string, ListedTask>,
+): HeldPinnedGroup {
+  const entries = pinned.filter(
+    (entry) => entry.sectionId && taskThreadId(entry.task),
+  );
+  return {
+    id: PINNED_GROUP_ID,
+    name: "Pinned Tasks",
+    label: "Pinned",
+    repository: false,
+    pinned: true,
+    sectionIds: new Map(
+      entries.map((entry) => [taskThreadId(entry.task), entry.sectionId]),
+    ),
+    tasks: entries.map(({ task }) =>
+      withRuntime(task, runtimeByThread.get(taskThreadId(task))),
+    ),
+  };
+}
+
+function withoutPinned(
+  group: HeldPinnedGroup,
+  threadId: string,
+): HeldPinnedGroup {
+  if (!group.sectionIds.has(threadId)) {
+    return group;
+  }
+  const sectionIds = new Map(group.sectionIds);
+  sectionIds.delete(threadId);
+  return {
+    ...group,
+    sectionIds,
+    tasks: group.tasks.filter((task) => taskThreadId(task) !== threadId),
+  };
+}
+
+function groupLabel(section: ListedSection) {
+  return section.label ?? sectionLabel(section.name);
+}
+
+// A Section whose Tasks are all pinned arrives with none of its own and stays.
 function heldSections(
   sections: ActiveTaskSection[],
   runtimeByThread: Map<string, ListedTask>,
+  pinnedSectionIds: Set<string>,
 ): HeldSection[] {
   return sections
     .map((section) => ({
@@ -1708,7 +1840,11 @@ function heldSections(
         withRuntime(task, runtimeByThread.get(taskThreadId(task))),
       ),
     }))
-    .filter((section) => section.id && section.tasks.length);
+    .filter(
+      (section) =>
+        section.id &&
+        (section.tasks.length || pinnedSectionIds.has(section.id)),
+    );
 }
 
 // A list the answer left out reads as empty.

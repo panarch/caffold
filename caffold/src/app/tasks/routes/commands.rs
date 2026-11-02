@@ -2040,7 +2040,7 @@ mod tests {
             .expect("Section composer settings update channel remains open")
         {
             TaskListUpdate::SectionComposerSettings(update) => {
-                assert_eq!(update.section_id, stored.section_id.clone().unwrap());
+                assert_eq!(update.section_id, stored.section_id().unwrap());
                 assert_eq!(
                     update.composer_settings.model.as_deref(),
                     Some("gpt-5.6-sol")
@@ -2050,7 +2050,7 @@ mod tests {
             }
             update => panic!("expected Section settings update, got {update:?}"),
         }
-        let section_id = stored.section_id.as_deref().unwrap();
+        let section_id = stored.section_id().unwrap();
         let section = state
             .task_store
             .read(|tables| tables.managed_sections())
@@ -3088,7 +3088,7 @@ mod tests {
         assert_eq!(stored.model.as_deref(), Some("gpt-before-steer"));
         assert_eq!(stored.reasoning_effort.as_deref(), Some("medium"));
         assert!(!stored.fast_mode);
-        let section_id = stored.section_id.as_deref().unwrap();
+        let section_id = stored.section_id().unwrap();
         let section = state
             .task_store
             .read(|tables| tables.managed_sections())

@@ -1,6 +1,7 @@
 mod schema;
 mod v10_to_v11;
 mod v11_to_v12;
+mod v12_to_v13;
 mod v5_to_v6;
 mod v6_to_v7;
 mod v7_to_v8;
@@ -26,7 +27,7 @@ use super::{
     note_directory, push_installation, push_vapid_key, schema_migration,
 };
 
-const LATEST_SCHEMA_VERSION: i64 = 12;
+const LATEST_SCHEMA_VERSION: i64 = 13;
 const OLDEST_SUPPORTED_SCHEMA_VERSION: i64 = 5;
 const LEGACY_ARCHIVED_THREADS_TABLE: &str = "archived_threads";
 
@@ -48,6 +49,7 @@ enum DetectedSchemaVersion {
     V10,
     V11,
     V12,
+    V13,
     UnsupportedOlder(i64),
     UnsupportedNewer(i64),
 }
@@ -70,7 +72,7 @@ pub(crate) fn migrate_to_latest(path: &Path) -> Result<()> {
     }
 
     match detect_redb_schema(path)? {
-        DetectedSchemaVersion::Fresh | DetectedSchemaVersion::V12 => Ok(()),
+        DetectedSchemaVersion::Fresh | DetectedSchemaVersion::V13 => Ok(()),
         DetectedSchemaVersion::V5 => prepare_v5(path),
         DetectedSchemaVersion::V6 => prepare_v6(path),
         DetectedSchemaVersion::V7 => prepare_v7(path),
@@ -78,6 +80,7 @@ pub(crate) fn migrate_to_latest(path: &Path) -> Result<()> {
         DetectedSchemaVersion::V9 => prepare_v9(path),
         DetectedSchemaVersion::V10 => prepare_v10(path),
         DetectedSchemaVersion::V11 => prepare_v11(path),
+        DetectedSchemaVersion::V12 => prepare_v12(path),
         DetectedSchemaVersion::UnsupportedOlder(found) => {
             Err(TaskStoreError::UnsupportedOlderSchemaVersion {
                 found,
@@ -95,7 +98,7 @@ pub(crate) fn migrate_to_latest(path: &Path) -> Result<()> {
 
 fn prepare_v5(path: &Path) -> Result<()> {
     prepare_v5_with_validation(path, |staged_path| {
-        if detect_redb_schema(staged_path)? != DetectedSchemaVersion::V12 {
+        if detect_redb_schema(staged_path)? != DetectedSchemaVersion::V13 {
             return Err(TaskStoreError::IncompleteSchema);
         }
         Ok(())
@@ -111,7 +114,7 @@ where
 
 fn prepare_v6(path: &Path) -> Result<()> {
     prepare_supported_with_validation(path, DetectedSchemaVersion::V6, |staged_path| {
-        if detect_redb_schema(staged_path)? != DetectedSchemaVersion::V12 {
+        if detect_redb_schema(staged_path)? != DetectedSchemaVersion::V13 {
             return Err(TaskStoreError::IncompleteSchema);
         }
         Ok(())
@@ -120,7 +123,7 @@ fn prepare_v6(path: &Path) -> Result<()> {
 
 fn prepare_v7(path: &Path) -> Result<()> {
     prepare_supported_with_validation(path, DetectedSchemaVersion::V7, |staged_path| {
-        if detect_redb_schema(staged_path)? != DetectedSchemaVersion::V12 {
+        if detect_redb_schema(staged_path)? != DetectedSchemaVersion::V13 {
             return Err(TaskStoreError::IncompleteSchema);
         }
         Ok(())
@@ -129,7 +132,7 @@ fn prepare_v7(path: &Path) -> Result<()> {
 
 fn prepare_v8(path: &Path) -> Result<()> {
     prepare_supported_with_validation(path, DetectedSchemaVersion::V8, |staged_path| {
-        if detect_redb_schema(staged_path)? != DetectedSchemaVersion::V12 {
+        if detect_redb_schema(staged_path)? != DetectedSchemaVersion::V13 {
             return Err(TaskStoreError::IncompleteSchema);
         }
         Ok(())
@@ -138,7 +141,7 @@ fn prepare_v8(path: &Path) -> Result<()> {
 
 fn prepare_v9(path: &Path) -> Result<()> {
     prepare_supported_with_validation(path, DetectedSchemaVersion::V9, |staged_path| {
-        if detect_redb_schema(staged_path)? != DetectedSchemaVersion::V12 {
+        if detect_redb_schema(staged_path)? != DetectedSchemaVersion::V13 {
             return Err(TaskStoreError::IncompleteSchema);
         }
         Ok(())
@@ -147,7 +150,7 @@ fn prepare_v9(path: &Path) -> Result<()> {
 
 fn prepare_v10(path: &Path) -> Result<()> {
     prepare_supported_with_validation(path, DetectedSchemaVersion::V10, |staged_path| {
-        if detect_redb_schema(staged_path)? != DetectedSchemaVersion::V12 {
+        if detect_redb_schema(staged_path)? != DetectedSchemaVersion::V13 {
             return Err(TaskStoreError::IncompleteSchema);
         }
         Ok(())
@@ -156,7 +159,16 @@ fn prepare_v10(path: &Path) -> Result<()> {
 
 fn prepare_v11(path: &Path) -> Result<()> {
     prepare_supported_with_validation(path, DetectedSchemaVersion::V11, |staged_path| {
-        if detect_redb_schema(staged_path)? != DetectedSchemaVersion::V12 {
+        if detect_redb_schema(staged_path)? != DetectedSchemaVersion::V13 {
+            return Err(TaskStoreError::IncompleteSchema);
+        }
+        Ok(())
+    })
+}
+
+fn prepare_v12(path: &Path) -> Result<()> {
+    prepare_supported_with_validation(path, DetectedSchemaVersion::V12, |staged_path| {
+        if detect_redb_schema(staged_path)? != DetectedSchemaVersion::V13 {
             return Err(TaskStoreError::IncompleteSchema);
         }
         Ok(())
@@ -182,6 +194,7 @@ where
             v9_to_v10::migrate(staged.path())?;
             v10_to_v11::migrate(staged.path())?;
             v11_to_v12::migrate(staged.path())?;
+            v12_to_v13::migrate(staged.path())?;
         }
         DetectedSchemaVersion::V6 => {
             v6_to_v7::migrate(staged.path())?;
@@ -190,6 +203,7 @@ where
             v9_to_v10::migrate(staged.path())?;
             v10_to_v11::migrate(staged.path())?;
             v11_to_v12::migrate(staged.path())?;
+            v12_to_v13::migrate(staged.path())?;
         }
         DetectedSchemaVersion::V7 => {
             v7_to_v8::migrate(staged.path())?;
@@ -197,24 +211,32 @@ where
             v9_to_v10::migrate(staged.path())?;
             v10_to_v11::migrate(staged.path())?;
             v11_to_v12::migrate(staged.path())?;
+            v12_to_v13::migrate(staged.path())?;
         }
         DetectedSchemaVersion::V8 => {
             v8_to_v9::migrate(staged.path())?;
             v9_to_v10::migrate(staged.path())?;
             v10_to_v11::migrate(staged.path())?;
             v11_to_v12::migrate(staged.path())?;
+            v12_to_v13::migrate(staged.path())?;
         }
         DetectedSchemaVersion::V9 => {
             v9_to_v10::migrate(staged.path())?;
             v10_to_v11::migrate(staged.path())?;
             v11_to_v12::migrate(staged.path())?;
+            v12_to_v13::migrate(staged.path())?;
         }
         DetectedSchemaVersion::V10 => {
             v10_to_v11::migrate(staged.path())?;
             v11_to_v12::migrate(staged.path())?;
+            v12_to_v13::migrate(staged.path())?;
         }
         DetectedSchemaVersion::V11 => {
             v11_to_v12::migrate(staged.path())?;
+            v12_to_v13::migrate(staged.path())?;
+        }
+        DetectedSchemaVersion::V12 => {
+            v12_to_v13::migrate(staged.path())?;
         }
         _ => return Err(TaskStoreError::IncompleteSchema),
     }
@@ -272,7 +294,8 @@ pub(super) fn initialize_redb(glue: &mut Glue<RedbStorage>, path: &Path) -> Resu
     begin().execute(glue)?;
     let result = match detect_schema(glue) {
         Ok(DetectedSchemaVersion::Fresh) => create_latest_schema(glue, Utc::now().naive_utc()),
-        Ok(DetectedSchemaVersion::V12) => Ok(()),
+        Ok(DetectedSchemaVersion::V13) => Ok(()),
+        Ok(DetectedSchemaVersion::V12) => Err(TaskStoreError::MigrationRequired(12)),
         Ok(DetectedSchemaVersion::V11) => Err(TaskStoreError::MigrationRequired(11)),
         Ok(DetectedSchemaVersion::V10) => Err(TaskStoreError::MigrationRequired(10)),
         Ok(DetectedSchemaVersion::V9) => Err(TaskStoreError::MigrationRequired(9)),
@@ -428,9 +451,13 @@ where
             schema::v11::validate(glue)?;
             Ok(DetectedSchemaVersion::V11)
         }
-        LATEST_SCHEMA_VERSION => {
+        12 => {
             schema::v12::validate(glue)?;
             Ok(DetectedSchemaVersion::V12)
+        }
+        LATEST_SCHEMA_VERSION => {
+            schema::v13::validate(glue)?;
+            Ok(DetectedSchemaVersion::V13)
         }
         version => Ok(DetectedSchemaVersion::UnsupportedNewer(version)),
     }
@@ -488,13 +515,18 @@ mod tests {
         v10_to_v11::migrate(path).unwrap();
     }
 
+    pub(super) fn write_v12(path: &Path) {
+        write_v11(path);
+        v11_to_v12::migrate(path).unwrap();
+    }
+
     #[test]
-    fn fresh_stores_initialize_directly_as_v12() {
+    fn fresh_stores_initialize_directly_as_v13() {
         let mut memory = Glue::new(MemoryStorage::default());
         initialize_memory(&mut memory).unwrap();
         assert_eq!(
             detect_schema(&mut memory).unwrap(),
-            DetectedSchemaVersion::V12
+            DetectedSchemaVersion::V13
         );
 
         let temp = tempfile::tempdir().unwrap();
@@ -504,22 +536,24 @@ mod tests {
         drop(TaskStore::redb(&path).unwrap());
         assert_eq!(
             detect_redb_schema(&path).unwrap(),
-            DetectedSchemaVersion::V12
+            DetectedSchemaVersion::V13
         );
     }
 
     #[test]
-    fn every_supported_schema_path_converges_on_v12() {
+    fn every_supported_schema_path_converges_on_v13() {
         type SchemaWriter = (&'static str, fn(&Path));
 
         let temp = tempfile::tempdir().unwrap();
-        let writers: [SchemaWriter; 6] = [
+        let writers: [SchemaWriter; 8] = [
             ("v5", write_v5),
             ("v6", write_v6),
             ("v7", write_v7),
             ("v8", write_v8),
             ("v9", write_v9),
             ("v10", write_v10),
+            ("v11", write_v11),
+            ("v12", write_v12),
         ];
         for (name, write) in writers {
             let path = temp.path().join(format!("{name}.redb"));
@@ -527,9 +561,37 @@ mod tests {
             migrate_to_latest(&path).unwrap();
             assert_eq!(
                 detect_redb_schema(&path).unwrap(),
-                DetectedSchemaVersion::V12
+                DetectedSchemaVersion::V13
             );
             migrate_to_latest(&path).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_supported_older_store_opens_only_after_migration() {
+        type SchemaWriter = (i64, fn(&Path));
+
+        let temp = tempfile::tempdir().unwrap();
+        let writers: [SchemaWriter; 8] = [
+            (5, write_v5),
+            (6, write_v6),
+            (7, write_v7),
+            (8, write_v8),
+            (9, write_v9),
+            (10, write_v10),
+            (11, write_v11),
+            (12, write_v12),
+        ];
+        for (version, write) in writers {
+            let path = temp.path().join(format!("v{version}.redb"));
+            write(&path);
+            let before = std::fs::read(&path).unwrap();
+
+            assert!(matches!(
+                TaskStore::redb(&path),
+                Err(TaskStoreError::MigrationRequired(found)) if found == version
+            ));
+            assert_eq!(std::fs::read(&path).unwrap(), before);
         }
     }
 
@@ -593,13 +655,15 @@ mod tests {
     #[test]
     fn supported_final_validation_failures_preserve_source_and_remove_staged_database() {
         type SupportedSchema = (&'static str, fn(&Path), DetectedSchemaVersion);
-        let schemas: [SupportedSchema; 6] = [
+        let schemas: [SupportedSchema; 8] = [
             ("v5", write_v5, DetectedSchemaVersion::V5),
             ("v6", write_v6, DetectedSchemaVersion::V6),
             ("v7", write_v7, DetectedSchemaVersion::V7),
             ("v8", write_v8, DetectedSchemaVersion::V8),
             ("v9", write_v9, DetectedSchemaVersion::V9),
             ("v10", write_v10, DetectedSchemaVersion::V10),
+            ("v11", write_v11, DetectedSchemaVersion::V11),
+            ("v12", write_v12, DetectedSchemaVersion::V12),
         ];
         for (name, write, detected) in schemas {
             let temp = tempfile::tempdir().unwrap();
@@ -611,7 +675,7 @@ mod tests {
                 prepare_supported_with_validation(&path, detected, |staged_path| {
                     assert_eq!(
                         detect_redb_schema(staged_path).unwrap(),
-                        DetectedSchemaVersion::V12
+                        DetectedSchemaVersion::V13
                     );
                     Err(TaskStoreError::IncompleteSchema)
                 }),
