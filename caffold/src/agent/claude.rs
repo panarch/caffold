@@ -176,6 +176,13 @@ pub(crate) enum ClaudeRuntimeEvent {
         conversation_id: String,
         ask: ToolAsk,
     },
+    /// The agent exited without Caffold letting go of its session: it ended
+    /// on its own, or with the runtime a person restarted.
+    ///
+    /// The conversation is still written down and resumes when it is next
+    /// opened, but whatever watches its Task still takes it for open until
+    /// told.
+    Closed { conversation_id: String },
     /// The session can no longer be reached, and did not say it was ending.
     ///
     /// Distinct from the agent exiting, which the agent says and which leaves a

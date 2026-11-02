@@ -67,18 +67,25 @@ impl ClaudeClient {
                     client.report_turn_ended(&session.id, ended, gone_at_ms);
                 }
             }
-            {
+            let was_held = {
                 // By identity, not by name: a conversation closed and opened
                 // again in the meantime is a session this reader never read.
                 let mut sessions = client.inner.sessions.lock().await;
-                if sessions
+                let ours = sessions
                     .get(&session.id)
-                    .is_some_and(|held| Arc::ptr_eq(held, &session))
-                {
+                    .is_some_and(|held| Arc::ptr_eq(held, &session));
+                if ours {
                     sessions.remove(&session.id);
                 }
-            }
-            if !said_goodbye {
+                ours
+            };
+            if said_goodbye {
+                if was_held {
+                    client.publish(ClaudeRuntimeEvent::Closed {
+                        conversation_id: session.id.clone(),
+                    });
+                }
+            } else {
                 // Nothing said it was ending, so the runner went away under it.
                 // Said out loud rather than dropped: everything Caffold last
                 // heard would otherwise stand as the current state of a
@@ -2732,19 +2739,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_session_the_agent_ended_says_so_rather_than_asking_to_be_opened_again() {
-        // The other half. An agent that exits has said what happened, and a
-        // conversation with no process behind it is not one to re-open behind
-        // a person's back.
-        let (_client, runner, mut events) = watching().await;
+    async fn a_session_the_agent_ended_is_reported_idle_and_closed_rather_than_unreachable() {
+        // The other half. An agent that exits has said what happened: the
+        // conversation is idle with no process behind it, and the next open
+        // resumes it.
+        let (client, runner, mut events) = watching().await;
 
         runner.exit(SESSION, Some(0)).await;
 
-        let ended = tokio::time::timeout(REPORT_TIMEOUT, async {
+        let reported = tokio::time::timeout(REPORT_TIMEOUT, async {
+            let mut idle = false;
             loop {
-                match events.recv().await {
-                    Ok(ClaudeRuntimeEvent::Unreachable { .. }) => return false,
-                    Ok(ClaudeRuntimeEvent::Session(event))
+                match events.recv().await.expect("the report channel stays open") {
+                    ClaudeRuntimeEvent::Unreachable { .. } => {
+                        panic!("an exit is not a runner going away")
+                    }
+                    ClaudeRuntimeEvent::Session(event)
                         if matches!(
                             &event.kind,
                             SessionEventKind::StatusChanged {
@@ -2752,16 +2762,43 @@ mod tests {
                             }
                         ) =>
                     {
-                        return true;
+                        idle = true;
                     }
-                    Ok(_) => continue,
-                    Err(_) => return false,
+                    ClaudeRuntimeEvent::Closed { conversation_id } => {
+                        return (idle, conversation_id);
+                    }
+                    _ => {}
                 }
             }
         })
         .await
         .expect("the exit is reported");
-        assert!(ended, "an exit is reported as an exit");
+        assert_eq!(reported, (true, SESSION.to_string()), "idle, then closed");
+        assert!(client.session(SESSION).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_session_caffold_closed_is_not_reported_closed() {
+        // Whatever closed it let go on purpose and already knows.
+        let (client, _runner, mut events) = watching().await;
+
+        client
+            .close_conversation(SESSION)
+            .await
+            .expect("the conversation closes");
+        drop(client);
+
+        // The reader holds the last client, so the reports end with it.
+        let closed = tokio::time::timeout(REPORT_TIMEOUT, async {
+            let mut closed = false;
+            while let Ok(event) = events.recv().await {
+                closed |= matches!(event, ClaudeRuntimeEvent::Closed { .. });
+            }
+            closed
+        })
+        .await
+        .expect("the reader finishes");
+        assert!(!closed);
     }
 
     #[tokio::test]
