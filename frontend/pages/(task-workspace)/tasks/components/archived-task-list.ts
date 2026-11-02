@@ -13,10 +13,11 @@ import {
   deleteTask,
   getArchivedTasks,
   restoreTask,
-  type Task,
 } from "#app/api.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import {
   type TaskOperationsPresentation,
   taskStoreOperationsPresentation,
@@ -25,7 +26,6 @@ import {
   isTaskTransportStale,
   TASK_TRANSPORT_STATE,
   type TaskTransportState,
-  taskStatusView,
 } from "../runtime-state.js";
 import { formatRelativeAgePresentation } from "../task-format.js";
 import {
@@ -37,9 +37,6 @@ import {
   taskWorktreeLabel,
   upsertTask,
 } from "../task-list-model.js";
-import "./task-status-chip.js";
-import { CaffoldElement } from "#app/caffold-element.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import type { ArchivedTaskListIntent } from "../task-navigator-intent-event.js";
 import { TASK_NAVIGATOR_INTENT_EVENT } from "../task-navigator-intent-event.js";
 
@@ -171,7 +168,7 @@ export class CaffoldArchivedTaskList extends CaffoldElement {
     }
   }
 
-  acceptTask(task: Task) {
+  acceptTask(task: ArchivedTask) {
     if (!taskThreadId(task)) {
       return;
     }
@@ -401,7 +398,7 @@ export class CaffoldArchivedTaskList extends CaffoldElement {
     </li>`;
   }
 
-  private rowTemplate(task: Task, repositoryKey: string) {
+  private rowTemplate(task: ArchivedTask, repositoryKey: string) {
     const threadId = taskThreadId(task);
     const restoring = this.restoring.has(threadId);
     const deleting = this.deleting.has(threadId);
@@ -567,7 +564,7 @@ export class CaffoldArchivedTaskList extends CaffoldElement {
     }
   }
 
-  private requestDelete(event: Event, task: Task) {
+  private requestDelete(event: Event, task: ArchivedTask) {
     event.stopPropagation();
     if (this.taskOperations.blocked) {
       return;
@@ -679,15 +676,8 @@ export class CaffoldArchivedTaskList extends CaffoldElement {
   }
 }
 
-// The one thing a row says beside its title: what the agent is doing, or
-// when it last finished.
-function rowMeta(task: Task) {
-  if (taskStatusView(task)) {
-    return html`<caffold-task-status-chip
-      class="task-row-meta"
-      .task=${task}
-    ></caffold-task-status-chip>`;
-  }
+// When the archived Task last finished, or was last active.
+function rowMeta(task: ArchivedTask) {
   const ms = task.lastCompletedMs ?? task.recencyMs ?? task.updatedMs;
   const date = new Date(ms);
   const age = formatRelativeAgePresentation(ms);

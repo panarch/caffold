@@ -7,7 +7,6 @@ import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeListTask,
   activeTaskProjection,
-  canonicalTaskState,
   captureReviewScreenshot,
   installEventSourceMock,
   mockAgentModels,
@@ -21,12 +20,9 @@ test.beforeEach(async ({ page }) => {
 
 function archivedTask(threadId, title, conversationAvailable = true) {
   return {
-    id: threadId,
     threadId,
     conversationAvailable,
-    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title,
-    preview: conversationAvailable ? `${title} preview` : "Conversation unavailable",
     cwd: conversationAvailable ? "frontend/tests/e2e/fixtures/home/project" : "",
     cwdPath: conversationAvailable ? "frontend/tests/e2e/fixtures/home/project" : null,
     relativeCwd: "",
@@ -34,10 +30,8 @@ function archivedTask(threadId, title, conversationAvailable = true) {
     createdMs: 10,
     updatedMs: 20,
     recencyMs: 20,
-    lastEventSummary: conversationAvailable
-      ? `${title} summary`
-      : "Conversation unavailable",
-    unseen: false,
+    lastCompletedMs: null,
+    repositoryPath: null,
   };
 }
 
@@ -56,20 +50,15 @@ async function mockArchivedList(page, tasks) {
   );
 }
 
-test("turns the status ring of an archived Task that is still running", { tag: "@server-steady" }, async ({
-  page,
-}) => {
-  await mockArchivedList(page, [{
-    ...archivedTask("thread_archived_running", "Archived running task"),
-    ...canonicalTaskState("active"),
-  }]);
-
+test("shows archived time without execution status", { tag: "@server-steady" }, async ({ page }) => {
+  const task = archivedTask("thread_archived", "Archived task");
+  task.lastCompletedMs = Date.UTC(2026, 0, 1);
+  await mockArchivedList(page, [task]);
   await page.goto("/tasks");
-  const spinner = page.locator(
-    'caffold-task-navigator .task-archived-row[data-thread-id="thread_archived_running"] .task-status-spinner',
-  );
-  await expect(spinner).toBeVisible();
-  await expect(spinner).toHaveCSS("animation-name", "caffold-busy-spin");
+  const row = page.locator('.task-archived-row[data-thread-id="thread_archived"]');
+  await expect(row.locator("time")).toHaveAttribute("datetime", "2026-01-01T00:00:00.000Z");
+  await expect(row.locator("caffold-task-status-chip")).toHaveCount(0);
+  await expect(row.getByRole("button", { name: "Restore Archived task", exact: true })).toBeEnabled();
 });
 
 test("confirms permanent deletion and removes the archived row only after success", { tag: "@all-viewports" }, async ({
@@ -150,6 +139,10 @@ test("confirms permanent deletion and removes the archived row only after succes
     name: "Deleting Delete archived task",
   });
   await expect(deleting).toBeDisabled();
+  await expect(deleting.locator(".task-archived-action-icon")).toHaveCSS(
+    "animation-name",
+    "caffold-busy-spin",
+  );
   await expect(
     row.getByRole("button", { name: "Restore Delete archived task" }),
   ).toBeDisabled();

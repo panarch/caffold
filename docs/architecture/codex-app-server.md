@@ -529,8 +529,9 @@ closed status vocabulary without weakening it. The browser JSON retains the
 same structured shape:
 
 - `TaskRecord.threadStatus` uses the serialized `{ type, activeFlags }` shape.
-- Active list rows carry no `latestTurnStatus` or `activeTurn`. Archived list
-  responses carry both as null because they do not resolve a turn page.
+- Active list rows carry no `latestTurnStatus` or `activeTurn`. Archived rows
+  carry no execution status or control pointer; their response contract is
+  described under [Archived pagination](#active-navigator-projection-and-archived-pagination).
 - Detail responses populate them only from the current canonical turn page.
 - `activeTurn` is present only when `threadStatus.type` is `active` and the
   latest canonical turn is `inProgress`. Its ID is a control pointer, not a
@@ -549,7 +550,7 @@ same structured shape:
   transport fails, Detail may use one REST fallback to provide readable content
   while reporting that live updates are unavailable.
 
-A Codex Task's list and header badges use only `threadStatus`: Codex reports
+An active Codex Task's list and header badges use only `threadStatus`: Codex reports
 no background work, so its `backgroundWork` is always false. Within active
 flags, `waitingOnApproval` takes display precedence over `waitingOnUserInput`,
 while the original flag array remains unchanged. Turn completion, failure, and
@@ -719,8 +720,12 @@ canonical activity, and expose the opaque recency-and-conversation-ID cursor.
 If provider acquisition or `thread/read` fails for one ID, that Task uses its
 unavailable archived-row projection and the rest of the page remains visible;
 the mixed page sorts by each canonical or local fallback activity value.
-Archived GET projection does not persist the observed read payload. Claude
-archive resolution follows the transcript boundary in
+Archived GET projection neither persists the observed read payload nor updates
+runtime sessions. Listing and Archive completion responses use the same
+Archived record: identity, title, conversation availability, time, and
+cwd/worktree/repository data. They omit `threadStatus`, `backgroundWork`,
+`activeTurn`, `latestTurnStatus`, and unused conversation-summary/unseen fields.
+Claude archive resolution follows the transcript boundary in
 [Agent Runtimes](agent-runtimes.md#claude-lifecycle).
 
 Thread state comes only from app-server `Thread.status` snapshots and

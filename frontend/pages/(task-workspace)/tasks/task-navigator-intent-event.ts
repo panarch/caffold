@@ -1,4 +1,4 @@
-import type { ActiveTaskRecovery, Task } from "#app/api.js";
+import type { ActiveTaskRecovery, ArchivedTask } from "#app/api.js";
 
 export const TASK_NAVIGATOR_INTENT_EVENT = "caffold:task-navigator-intent";
 
@@ -12,11 +12,11 @@ export type ActiveTaskListIntent =
     }
   | { type: "select-section"; sectionId: string };
 
-// What the list asks of its navigator's owner: deleting a Task needs the
+// What the list asks of its navigator's owner: deleting an archived Task needs the
 // person to confirm it first.
 export interface ArchivedTaskListIntent {
   type: "delete-archived-task";
-  task: Task;
+  task: ArchivedTask;
 }
 
 // What the navigator asks of its owner beside what its lists ask.

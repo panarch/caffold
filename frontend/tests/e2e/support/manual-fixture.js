@@ -86,23 +86,26 @@ const RUNNING_CHECKOUT = manualTask({
 export const MANUAL_SECTION_ID = "section-lumen";
 
 const ARCHIVED_TASKS = [
-  manualTask({
+  {
     threadId: "019d6f0b-8d42-7e19-a6c5-2b90f3e7d184",
     title: "Compress thumbnails on upload",
-    worktree: null,
     cwd: REPOSITORY,
     finishedAgoMs: 3 * 24 * 60 * 60_000,
-    state: canonicalTaskState("idle", { latestTurnStatus: "completed" }),
-  }),
-  manualTask({
+  },
+  {
     threadId: "019d6c55-2f7a-7b63-9e04-c8d1a6f5b320",
     title: "Raise the API rate limits",
-    worktree: null,
     cwd: API_REPOSITORY,
     finishedAgoMs: 5 * 24 * 60 * 60_000,
-    state: canonicalTaskState("idle", { latestTurnStatus: "completed" }),
-  }),
-].map((task) => ({ ...task, conversationAvailable: true }));
+  },
+].map(({ threadId, title, cwd, finishedAgoMs }) => ({
+  threadId, title, cwd, cwdPath: cwd, relativeCwd: "", worktree: null,
+  conversationAvailable: true, repositoryPath: null,
+  createdMs: MANUAL_NOW - finishedAgoMs - 20 * 60_000,
+  updatedMs: MANUAL_NOW - finishedAgoMs,
+  recencyMs: MANUAL_NOW - finishedAgoMs,
+  lastCompletedMs: MANUAL_NOW - finishedAgoMs,
+}));
 
 function manualSections(checkout) {
   return [

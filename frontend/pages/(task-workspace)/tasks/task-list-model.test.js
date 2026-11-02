@@ -11,7 +11,6 @@ import {
 
 function task(threadId, recencyMs, overrides = {}) {
   return {
-    id: threadId,
     threadId,
     title: threadId,
     cwdPath: "workspace/project",
@@ -71,7 +70,7 @@ test("repository grouping sorts groups and tasks by canonical recency", () => {
   ]);
 });
 
-test("upsert and detail identity accept canonical threadId before legacy id", () => {
+test("upsert and detail identity use canonical thread IDs", () => {
   const next = task("thread-1", 20, { title: "Next" });
   const tasks = upsertTask([task("thread-1", 10), task("thread-2", 5)], next);
 

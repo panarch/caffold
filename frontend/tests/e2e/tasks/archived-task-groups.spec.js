@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
-  canonicalTaskState,
   installEventSourceMock,
   mockAgentModels,
 } from "../support/task-fixtures.js";
@@ -14,7 +13,6 @@ test("groups removed worktrees under their recorded repository in Archived", { t
     threadId,
     title,
     conversationAvailable: true,
-    ...canonicalTaskState("notLoaded"),
     cwd: `/caffold/worktrees/${threadId}`,
     cwdPath: null,
     relativeCwd: `/caffold/worktrees/${threadId}`,
@@ -24,7 +22,6 @@ test("groups removed worktrees under their recorded repository in Archived", { t
     updatedMs: 2,
     recencyMs: 2,
     lastCompletedMs: null,
-    unseen: false,
   });
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => route.fulfill({
     json: { sections: [], unsectioned: [] },

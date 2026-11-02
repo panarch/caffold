@@ -3,6 +3,7 @@ import { popoverActionHintDialog } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
+  archivedListTask,
   canonicalTaskState,
   captureReviewScreenshot,
   installEventSourceMock,
@@ -27,6 +28,8 @@ test("a broken worktree can be explicitly discarded and archived from Task detai
     worktreePath: `/managed/${worktreeId}`, worktreeMissing: false,
   };
   let archived = false;
+  let releaseArchivedRefresh;
+  const archivedRefreshGate = new Promise((resolve) => { releaseArchivedRefresh = resolve; });
   let normalRequests = 0;
   let forceRequests = 0;
   let release;
@@ -34,9 +37,10 @@ test("a broken worktree can be explicitly discarded and archived from Task detai
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => route.fulfill({
     json: activeTaskProjection(archived ? [] : [task]),
   }));
-  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) => route.fulfill({
-    json: { tasks: archived ? [{ ...task, conversationAvailable: true }] : [], nextCursor: null },
-  }));
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, async (route) => {
+    if (archived) await archivedRefreshGate;
+    await route.fulfill({ json: { tasks: archived ? [archivedListTask(task)] : [], nextCursor: null } });
+  });
   await page.route(`**/api/tasks/${id}`, (route) => route.fulfill({
     status: 409, json: { error: diagnosis },
   }));
@@ -51,7 +55,7 @@ test("a broken worktree can be explicitly discarded and archived from Task detai
     expect(route.request().postDataJSON()).toEqual({ expectedWorktreeId: worktreeId });
     await gate;
     archived = true;
-    await route.fulfill({ json: task });
+    await route.fulfill({ json: archivedListTask({ ...task, conversationAvailable: false }) });
   });
   await page.goto(`/tasks/${id}`);
   await expect.poll(() => page.evaluate((id) => Boolean(window.__caffoldTaskSse.source(id)), id)).toBe(true);
@@ -118,5 +122,9 @@ test("a broken worktree can be explicitly discarded and archived from Task detai
   release();
   await expect(page).toHaveURL("/");
   await expect(page.locator(`.task-row[data-thread-id="${id}"]`)).toHaveCount(0);
-  await expect(page.locator(`.task-archived-row[data-thread-id="${id}"]`)).toContainText(task.title);
+  const row = page.locator(`.task-archived-row[data-thread-id="${id}"]`);
+  await expect(row).toContainText(task.title);
+  await expect(row.locator("time")).toBeVisible();
+  await expect(row.locator("caffold-task-status-chip")).toHaveCount(0);
+  releaseArchivedRefresh();
 });

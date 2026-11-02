@@ -22,7 +22,7 @@ export interface TaskRepositoryGroup {
   rootPath: string;
   repository: boolean;
   updatedMs: number;
-  tasks: Task[];
+  tasks: ArchivedTask[];
 }
 
 export function taskThreadId(
@@ -44,7 +44,7 @@ export function taskDetailThreadId(
   return `${detail?.threadId ?? taskThreadId(detail?.task)}`;
 }
 
-export function taskUpdatedMs(task: Task) {
+export function taskUpdatedMs(task: ArchivedTask) {
   const value = Number(
     task?.recencyMs ?? task?.updatedMs ?? task?.createdMs ?? 0,
   );
@@ -52,7 +52,12 @@ export function taskUpdatedMs(task: Task) {
 }
 
 // The repository a Task works in, or its directory outside one.
-export function taskRepositoryPath(task: Task | null | undefined) {
+export function taskRepositoryPath(
+  task:
+    | Pick<Task, "cwd" | "cwdPath" | "relativeCwd" | "worktree">
+    | null
+    | undefined,
+) {
   return cleanLogicalPath(
     task?.worktree?.repositoryRootPath ??
       task?.worktree?.rootPath ??
@@ -73,14 +78,17 @@ export function taskRepositoryLabel(task: ArchivedTask) {
   return path.split("/").filter(Boolean).at(-1) ?? "Directory";
 }
 
-export function sortTasksByRecency(tasks: Task[]) {
+export function sortTasksByRecency(tasks: ArchivedTask[]) {
   return [...tasks].sort(
     (left, right) => taskUpdatedMs(right) - taskUpdatedMs(left),
   );
 }
 
 // One more page of Tasks laid over the ones already held, by thread.
-export function mergeTaskListPage(current: Task[], incoming: Task[]) {
+export function mergeTaskListPage(
+  current: ArchivedTask[],
+  incoming: ArchivedTask[],
+) {
   const tasks = new Map(current.map((task) => [taskThreadId(task), task]));
   for (const task of incoming) {
     tasks.set(taskThreadId(task), task);
@@ -117,7 +125,7 @@ export function groupTasksByRepository(tasks: ArchivedTask[]) {
     .sort((left, right) => right.updatedMs - left.updatedMs);
 }
 
-function taskWorktreeRef(task: Task) {
+function taskWorktreeRef(task: Pick<Task, "worktree">) {
   const branch = `${task?.worktree?.branch ?? ""}`.trim();
   if (branch) {
     return branch;
@@ -125,13 +133,15 @@ function taskWorktreeRef(task: Task) {
   return shortId(task?.worktree?.headSha ?? "");
 }
 
-export function taskWorktreeRootName(task: Task) {
+export function taskWorktreeRootName(task: Pick<Task, "worktree">) {
   const rootPath = cleanRelativeTaskPath(task?.worktree?.rootPath);
   return rootPath.split("/").filter(Boolean).at(-1) ?? "Worktree";
 }
 
 // Where a Task's worktree is, read as branch, worktree, and directory.
-export function taskWorktreeLabel(task: Task) {
+export function taskWorktreeLabel(
+  task: Pick<Task, "worktree" | "cwdPath" | "relativeCwd">,
+) {
   if (!task?.worktree) {
     return task?.cwdPath ?? task?.relativeCwd ?? "";
   }
@@ -146,7 +156,7 @@ export function taskWorktreeLabel(task: Task) {
 }
 
 // The Tasks with `task` first in place of any it replaces.
-export function upsertTask(tasks: Task[], task: Task) {
+export function upsertTask(tasks: ArchivedTask[], task: ArchivedTask) {
   const threadId = taskThreadId(task);
   const existing = tasks.filter((entry) => taskThreadId(entry) !== threadId);
   existing.unshift(task);
