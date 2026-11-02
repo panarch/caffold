@@ -172,8 +172,10 @@ h2 {
 }
 
 /* Visual's comparison choice ends where the representation choice above it
-   ends: the Integrated Review axis, or the header's own right edge. */
+   ends, the Integrated Review axis or the header's own right edge, in a row as
+   tall as the header. */
 caffold-visual-diff {
+  --visual-bar-block-size: var(--review-header-height, 2.625rem);
   --visual-bar-inline-end: var(--review-viewer-action-inline-end, 0.5rem);
 }
 

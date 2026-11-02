@@ -24,11 +24,18 @@ test("compares an image's change side by side and paints what changed in Differe
 
   await expect(axis.getByRole("button")).toHaveText(["Visual", "Preview"]);
   await expect(axis.getByRole("button", { name: "Visual" })).toHaveAttribute("aria-pressed", "true");
-  // The way to compare ends where the representation choice above it ends.
+  // The way to compare ends where the representation choice above it ends,
+  // in a row as tall as the header, with buttons as tall as the axis's.
   const modes = visual.locator("caffold-segmented-control");
   await expect(modes).toBeVisible();
   const [axisBox, modesBox] = [await axis.boundingBox(), await modes.boundingBox()];
   expect(Math.abs(axisBox.x + axisBox.width - (modesBox.x + modesBox.width))).toBeLessThan(1);
+  const header = taskReview.locator("caffold-review-file-viewer .viewer-panel > header");
+  const [headerBox, barBox] = [await header.boundingBox(), await visual.locator(".visual-bar").boundingBox()];
+  expect(Math.abs(barBox.height - headerBox.height)).toBeLessThan(0.5);
+  const buttonHeight = (control) =>
+    control.locator("button > span").first().evaluate((span) => span.getBoundingClientRect().height);
+  expect(Math.abs((await buttonHeight(modes)) - (await buttonHeight(axis)))).toBeLessThan(0.5);
   await expect(before.locator("figcaption")).toHaveText(
     `Before 64 × 40 · ${VISUAL_PICTURES.blobs[CARD_BLOB].bytes.length} B`,
   );

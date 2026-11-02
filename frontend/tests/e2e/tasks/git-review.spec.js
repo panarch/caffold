@@ -1854,6 +1854,12 @@ test("opens a picture's change as Visual in Commit and Compare, and offers Diff 
   await expectDrawnPicture(commitViewer.locator('caffold-visual-diff figure[data-side="before"] img'));
   await expectDrawnPicture(commitViewer.locator('caffold-visual-diff figure[data-side="after"] img'));
   await expect(commitViewer.locator(".viewer-change-control")).toHaveCount(0);
+  // The comparison row is as tall as the viewer's header.
+  const [headerBox, barBox] = [
+    await commitViewer.locator(".viewer-panel > header").boundingBox(),
+    await commitViewer.locator("caffold-visual-diff .visual-bar").boundingBox(),
+  ];
+  expect(Math.abs(barBox.height - headerBox.height)).toBeLessThan(0.5);
 
   await page
     .locator('caffold-commit-changes-tree button[data-file-tree-path="src/logo.svg"]')

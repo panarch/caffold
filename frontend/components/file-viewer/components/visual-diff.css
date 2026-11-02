@@ -7,12 +7,16 @@
 }
 
 /* The comparison choice sits at the right, on the line its owner names, so
-   it stays under the representation choice above it. */
+   it stays under the representation choice above it, in a row as tall as the
+   header above. */
 .visual-bar {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
-  padding: var(--interface-space-2) var(--interface-space-3);
-  padding-inline-end: var(--visual-bar-inline-end, var(--interface-space-3));
+  box-sizing: border-box;
+  height: var(--visual-bar-block-size, 2.625rem);
+  padding-inline: var(--interface-space-3)
+    var(--visual-bar-inline-end, var(--interface-space-3));
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
