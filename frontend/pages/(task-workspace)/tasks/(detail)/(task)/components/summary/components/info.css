@@ -63,6 +63,8 @@
 
 @media (max-width: 520px) {
   .task-detail-popover {
+    /* The initial `normal` anchors to the opener only with position-area set. */
+    position-anchor: auto;
     position-area: none;
     inset: auto var(--interface-space-4);
     top: calc(anchor(bottom) + var(--interface-space-3));

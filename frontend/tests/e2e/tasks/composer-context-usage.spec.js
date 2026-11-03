@@ -62,7 +62,7 @@ test("sits just left of the microphone, the microphone's size", { tag: "@all-vie
   await captureReviewScreenshot(page, testInfo, "tasks-composer-context-usage");
 });
 
-test("opens the agent's numbers above the pie in the Task details form", { tag: ["@desktop", "@phone"] }, async ({
+test("opens the agent's numbers above the pie in the Task details form", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {
   const { form } = await openTask(page);
@@ -81,12 +81,8 @@ test("opens the agent's numbers above the pie in the Task details form", { tag: 
     const pie = pieElement.getBoundingClientRect();
     const box = popover.getBoundingClientRect();
     return {
-      phone: window.innerWidth <= 520,
       abovePie: box.bottom <= pie.top,
       rightEdgeToPie: Math.abs(box.right - pie.right),
-      gapAbovePie: pie.top - box.bottom,
-      left: box.left,
-      right: window.innerWidth - box.right,
       form: popoverForm(popover),
     };
 
@@ -114,43 +110,28 @@ test("opens the agent's numbers above the pie in the Task details form", { tag: 
   await page.keyboard.press("Escape");
   await expect(popover).toBeHidden();
   await page.locator("caffold-task-detail-info .task-detail-info-button").click();
-  const reference = await page.evaluate(([buttonElement, popover]) => {
-    const button = buttonElement.getBoundingClientRect();
-    const box = popover.getBoundingClientRect();
+  const reference = await page.evaluate(([popover]) => {
     const style = getComputedStyle(popover);
     const term = getComputedStyle(popover.querySelector("dt"));
     const value = getComputedStyle(popover.querySelector("dd"));
     return {
-      belowButton: box.top - button.bottom,
-      left: box.left,
-      right: window.innerWidth - box.right,
-      form: {
-        border: style.borderTopWidth,
-        borderColor: style.borderTopColor,
-        radius: style.borderTopLeftRadius,
-        padding: style.padding,
-        background: style.backgroundColor,
-        shadow: style.boxShadow,
-        termSize: term.fontSize,
-        termColor: term.color,
-        valueSize: value.fontSize,
-      },
+      border: style.borderTopWidth,
+      borderColor: style.borderTopColor,
+      radius: style.borderTopLeftRadius,
+      padding: style.padding,
+      background: style.backgroundColor,
+      shadow: style.boxShadow,
+      termSize: term.fontSize,
+      termColor: term.color,
+      valueSize: value.fontSize,
     };
   }, await elementHandles(page.locator("caffold-detail-layout"), [
-    ".task-detail-info-button",
     ".task-detail-popover",
   ]));
 
-  expect(opened.form).toEqual(reference.form);
-  if (opened.phone) {
-    // The width of Task details, and its gap from the button it opens from.
-    expect(opened.left).toBeCloseTo(reference.left, 1);
-    expect(opened.right).toBeCloseTo(reference.right, 1);
-    expect(opened.gapAbovePie).toBeCloseTo(reference.belowButton, 1);
-  } else {
-    expect(opened.abovePie).toBe(true);
-    expect(opened.rightEdgeToPie).toBeLessThan(1);
-  }
+  expect(opened.form).toEqual(reference);
+  expect(opened.abovePie).toBe(true);
+  expect(opened.rightEdgeToPie).toBeLessThan(1);
 });
 
 test("opens from Action Hints like the Composer's other buttons", { tag: "@server-steady" }, async ({

@@ -111,28 +111,3 @@
   font-variant-numeric: lining-nums tabular-nums;
   line-height: var(--interface-line-height);
 }
-
-@media (max-width: 520px) {
-  .task-context-usage-popover {
-    position-area: none;
-    position-try-fallbacks: none;
-    inset: auto var(--interface-space-4);
-    bottom: calc(anchor(top) + var(--interface-space-3));
-    width: auto;
-    margin: 0;
-  }
-
-  .task-context-usage-popover dl {
-    grid-template-columns: 1fr;
-    gap: 0.1875rem;
-  }
-
-  .task-context-usage-popover dl div {
-    display: grid;
-    gap: 0.125rem;
-  }
-
-  .task-context-usage-popover dl div + div {
-    margin-top: 0.5rem;
-  }
-}
