@@ -15,6 +15,15 @@ import {
   installEventSourceMock,
   mockAgentModels,
 } from "../support/task-fixtures.js";
+import { openCompletedTaskForReview } from "../support/task-review-test.js";
+
+// What the Lucide stub in browser-defaults draws for the icons Task details
+// actions show.
+const PIN_ICON = 'svg path[d^="M9 10.76"]';
+const PIN_OFF_ICON = 'svg path[d="m2 2 20 20"]';
+const SPLIT_ICON = 'svg path[d="M16 3h5v5"]';
+const ARROW_RIGHT_ICON = 'svg path[d="m12 5 7 7-7 7"]';
+const BUSY_ICON = '.task-detail-action-icon.is-busy svg path[d="M21 12a9 9 0 1 1-6.2-8.6"]';
 
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
@@ -464,6 +473,7 @@ test(`forks an idle ${provider} Task and opens the distinct child`, { tag: "@ser
   const popover = summary.locator(".task-detail-popover");
   const forkButton = popover.locator('[data-task-info-action="fork"]');
   await expect(forkButton).toBeEnabled();
+  await expect(forkButton.locator(SPLIT_ICON)).toHaveCount(1);
 
   const hint = popoverActionHintDialog(page);
   await expect(hint).toBeVisible();
@@ -477,6 +487,11 @@ test(`forks an idle ${provider} Task and opens the distinct child`, { tag: "@ser
   await forkObserved;
   await expect(forkButton).toBeDisabled();
   await expect(forkButton).toHaveText("Forking...");
+  await expect(forkButton.locator(BUSY_ICON)).toHaveCount(1);
+  await expect(forkButton.locator(".task-detail-action-icon")).toHaveCSS(
+    "animation-name",
+    "caffold-busy-spin",
+  );
   await expect(
     popover.locator('[data-task-info-action="archive"]'),
   ).toBeDisabled();
@@ -554,6 +569,7 @@ test("pins and unpins the open Task, holding the button until the list reads it 
     "Pinned Tasks stay at the top of the Task list and the Task Switcher.",
   );
   await expect(pin).toHaveText("Pin task");
+  await expect(pin.locator(PIN_ICON)).toHaveCount(1);
 
   let releaseList;
   holdList = new Promise((resolve) => {
@@ -563,6 +579,7 @@ test("pins and unpins the open Task, holding the button until the list reads it 
   await expect.poll(() => requests).toEqual(["pin"]);
   await expect(pin).toHaveText("Pinning...");
   await expect(pin).toBeDisabled();
+  await expect(pin.locator(BUSY_ICON)).toHaveCount(1);
   const listRead = page.waitForRequest(/\/api\/tasks(?:\?|$)/);
   releasePin();
   await listRead;
@@ -571,6 +588,7 @@ test("pins and unpins the open Task, holding the button until the list reads it 
 
   await expect(pin).toHaveText("Unpin task");
   await expect(pin).toBeEnabled();
+  await expect(pin.locator(PIN_OFF_ICON)).toHaveCount(1);
   await expect(popover.locator(".task-detail-pin-action > p").first()).toHaveText(
     "This Task is pinned. Unpinning returns it to the top of its Section.",
   );
@@ -584,6 +602,7 @@ test("pins and unpins the open Task, holding the button until the list reads it 
 
   await pin.click();
   await expect(pin).toHaveText("Pin task");
+  await expect(pin.locator(PIN_ICON)).toHaveCount(1);
   await expect(pinnedGroup).toHaveCount(0);
   await expect(section.locator(".task-row-title")).toHaveText([
     "Pinned task",
@@ -617,7 +636,7 @@ test("keeps fork disabled for Antigravity Tasks and reports why", { tag: "@serve
   );
 });
 
-test("opens a claimed fork after its creation response reports unavailable details", { tag: "@server-steady" }, async ({ page }) => {
+test("offers Open forked task in place of Fork when the creation response reports unavailable details, and opens the claimed fork", { tag: "@server-steady" }, async ({ page }) => {
   const task = summaryTask("fork_response_source", "Source", "repo", 100);
   const child = summaryTask("fork_response_child", "Fork of Source", "repo", 101);
   await installSummaryFixture(page, [task]);
@@ -634,12 +653,148 @@ test("opens a claimed fork after its creation response reports unavailable detai
   const popover = summary.locator(".task-detail-popover");
   const fork = popover.locator('[data-task-info-action="fork"]');
   await fork.click();
-  await expect(fork).toBeDisabled();
-  const open = popover.getByRole("link", {name:"Open forked task"});
+  const forkAction = popover.locator(".task-detail-fork-action");
+  const open = forkAction.getByRole("link", { name: "Open forked task" });
   await expect(open).toHaveAttribute("href", `/tasks/${child.threadId}`);
+  await expect(open.locator(ARROW_RIGHT_ICON)).toHaveCount(1);
+  await expect(fork).toHaveCount(0);
+  await expect(forkAction.locator(".task-detail-fork-availability")).toBeHidden();
+  const error = forkAction.locator(".task-detail-fork-error");
+  await expect(error).toHaveText("The fork was created; details are temporarily unavailable.");
+  expect(await error.evaluate(
+    (element, link) => Boolean(element.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING),
+    await open.elementHandle(),
+  )).toBe(true);
+  // The link is drawn as the Task actions are.
+  const look = (control) => control.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const frame = getComputedStyle(element, "::before");
+    return {
+      height: element.getBoundingClientRect().height,
+      fontSize: style.fontSize,
+      lineHeight: style.lineHeight,
+      color: style.color,
+      textDecorationLine: style.textDecorationLine,
+      paddingInline: [style.paddingLeft, style.paddingRight],
+      frame: [frame.top, frame.bottom, frame.borderTopWidth, frame.borderTopLeftRadius, frame.backgroundColor],
+    };
+  });
+  expect(await look(open)).toEqual(await look(popover.locator('[data-task-info-action="archive"]')));
   await open.click();
   await expect(page).toHaveURL(new RegExp(`/tasks/${child.threadId}$`));
   expect(requests).toBe(1);
+});
+
+test("opens the fork it made when the screen could not open it, without forking again", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const rootPath = "repo-fork-handoff";
+  const source = {
+    ...summaryTask("thread_fork_handoff_source", "Source task", rootPath, 100),
+    worktree: null,
+  };
+  const child = {
+    ...summaryTask("thread_fork_handoff_child", "Fork of Source task", rootPath, 101),
+    worktree: null,
+  };
+  const childDetail = summaryDetail(child);
+  let requests = 0;
+  await installSummaryFixture(page, [source]);
+  await page.route(`**/api/tasks/${source.threadId}/fork`, (route) => {
+    requests += 1;
+    return route.fulfill({
+      json: createdTaskResponse(childDetail, {
+        section: { id: "fixture-section-1", name: rootPath, repository: false },
+        beforeSectionId: null,
+        beforeThreadId: source.threadId,
+      }),
+    });
+  });
+  await page.route(
+    new RegExp(`/api/tasks/${child.threadId}(?:\\?|$)`),
+    (route) => route.fulfill({ json: childDetail }),
+  );
+
+  await page.goto(`/tasks/${source.threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(source));
+  // Nothing takes up the created Task while this holds the handoff, as when
+  // the Task screen cannot open it.
+  await page.evaluate(() => {
+    window.holdTaskHandoff = true;
+    window.addEventListener("caffold:task-created", (event) => {
+      if (window.holdTaskHandoff) {
+        event.stopImmediatePropagation();
+      }
+    }, { capture: true });
+  });
+  const summary = page.locator("caffold-task-detail-summary");
+  await summary.getByRole("button", { name: /Task details/ }).click();
+  const popover = summary.locator(".task-detail-popover");
+  const fork = popover.locator('[data-task-info-action="fork"]');
+  await fork.click();
+
+  await expect(popover.locator(".task-detail-fork-error")).toHaveText(
+    "The forked Task was created but could not be opened. Retry to open the same Task.",
+  );
+  await expect(fork).toHaveText("Fork task");
+  await expect(fork.locator(SPLIT_ICON)).toHaveCount(1);
+  await expect(fork).toBeEnabled();
+
+  await page.evaluate(() => {
+    window.holdTaskHandoff = false;
+  });
+  await fork.click();
+  await expect(page).toHaveURL(new RegExp(`/tasks/${child.threadId}$`));
+  expect(requests).toBe(1);
+});
+
+test("Task details actions place their icons as File details places Download's", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  // The icon sits before the label on one line, and the frame leaves the same
+  // space before the icon as after the label.
+  const iconPlacement = (control) => control.evaluate((element) => {
+    const frame = element.getBoundingClientRect();
+    const icon = element.querySelector(":scope > span:first-child").getBoundingClientRect();
+    const label = element.querySelector(":scope > span:last-child").getBoundingClientRect();
+    return {
+      iconBeforeLabel: icon.right <= label.left,
+      centerOffset: Math.abs((icon.top + icon.bottom) / 2 - (label.top + label.bottom) / 2),
+      insetDifference: Math.abs((icon.left - frame.left) - (frame.right - label.right)),
+      iconSize: [icon.width, icon.height],
+      gap: label.left - icon.right,
+    };
+  });
+
+  await mockAgentModels(page);
+  const { taskScenario, taskReview } = await openCompletedTaskForReview(page);
+  await page.locator("caffold-task-detail-info .task-detail-info-button").click();
+  const actions = page.locator(
+    ".task-detail-popover .task-detail-task-action:not([hidden]) > button",
+  );
+  await expect(actions.filter({ hasText: "Fork task" })).toBeVisible();
+  await expect(actions.filter({ hasText: "Archive task" })).toBeVisible();
+  const placements = [];
+  for (const action of await actions.all()) {
+    await expect(action.locator("svg")).toBeVisible();
+    placements.push([(await action.innerText()).trim(), await iconPlacement(action)]);
+  }
+
+  await page.goto(`/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=alpha.rs`);
+  const viewer = taskReview.locator("caffold-review-file-viewer:not([hidden])");
+  await expect(viewer).toContainText("pub const ALPHA");
+  await viewer.locator(".viewer-info-button").click();
+  const fileDownload = viewer.locator(".viewer-meta-popover > .viewer-meta-actions > .viewer-download-link");
+  await expect(fileDownload.locator(".viewer-download-svg")).toBeVisible();
+  const fileIcon = await iconPlacement(fileDownload);
+
+  for (const [label, placement] of placements) {
+    expect(placement.iconBeforeLabel, label).toBe(true);
+    expect(placement.centerOffset, label).toBeLessThanOrEqual(0.5);
+    expect(placement.insetDifference, label).toBeLessThanOrEqual(0.5);
+    expect(placement.iconSize, label).toEqual(fileIcon.iconSize);
+    expect(placement.gap, label).toBeCloseTo(fileIcon.gap, 1);
+  }
 });
 
 test("keeps the source selected and shows a fork failure inline", { tag: "@server-steady" }, async ({

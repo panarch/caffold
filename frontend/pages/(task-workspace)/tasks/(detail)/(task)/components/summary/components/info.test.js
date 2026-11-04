@@ -87,7 +87,7 @@ test("offers Pin or Unpin only for a Task the list has placed", () => {
   const task = { threadId: "thread-a", threadStatus: { type: "idle" } };
   const pinBlock = (snapshot) =>
     drawnActions({ task, ...snapshot }).markup.match(
-      /task-detail-pin-action"[^>]*\?hidden="(true|false)" > <p>([^<]*)<\/p>.*?data-task-info-action="(pin|unpin)"[^>]*>([^<]*)<\/button>/,
+      /task-detail-pin-action"[^>]*\?hidden="(true|false)" > <p>([^<]*)<\/p>.*?data-task-info-action="(pin|unpin)"[^>]*>.*?<span>([^<]*)<\/span> ?<\/button>/,
     )?.slice(1);
 
   assert.equal(pinBlock({ pinned: null })[0], "true");
