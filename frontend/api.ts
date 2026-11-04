@@ -921,6 +921,10 @@ export function downloadUrl(path: string) {
   return url.toString();
 }
 
+export function noteDownloadUrl(noteId: string) {
+  return `/api/notes/${encodeURIComponent(noteId)}/download`;
+}
+
 export async function getGitStatus(path = "") {
   return requestJson<GitStatus>("/api/git/status", { path });
 }

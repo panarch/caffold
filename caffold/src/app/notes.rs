@@ -14,6 +14,8 @@ use std::{
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
+    http::{HeaderValue, header},
+    response::IntoResponse,
     routing::get,
 };
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -21,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use super::error::ApiError;
+use super::{content_disposition::attachment_disposition, error::ApiError};
 use crate::{
     agent::notes_tools::NotesToolCall,
     fs::RootedFs,
@@ -37,6 +39,7 @@ pub(in crate::app) fn router(store: TaskStore) -> Router {
     Router::new()
         .route("/api/notes", get(notes_level))
         .route("/api/notes/{note_id}", get(note_detail))
+        .route("/api/notes/{note_id}/download", get(note_download))
         .with_state(NotesState { store })
 }
 
@@ -212,10 +215,7 @@ async fn note_detail(
     .map_err(worker_failure)?
     .map_err(store_api_error)?;
     let Some((note, location, created_by, updated_by)) = found else {
-        return Err(ApiError::NotFound {
-            code: "note_not_found",
-            message: format!("No Note has the id `{note_id}`."),
-        });
+        return Err(note_not_found(&note_id));
     };
     Ok(Json(NoteResponse {
         id: note.note_id,
@@ -233,6 +233,38 @@ async fn note_detail(
             state: updated_by,
         },
     }))
+}
+
+/// One Note's Markdown as a file the browser saves under the Note's name.
+async fn note_download(
+    State(state): State<NotesState>,
+    Path(note_id): Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    let store = state.store;
+    let requested = note_id.clone();
+    let note = tokio::task::spawn_blocking(move || store.read(|tables| tables.note(&requested)))
+        .await
+        .map_err(worker_failure)?
+        .map_err(store_api_error)?
+        .ok_or_else(|| note_not_found(&note_id))?;
+    let headers = [
+        (
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/markdown; charset=utf-8"),
+        ),
+        (
+            header::CONTENT_DISPOSITION,
+            attachment_disposition(&download_file_name(&note.name)),
+        ),
+        (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
+    ];
+    Ok((headers, note.content))
+}
+
+/// A Note name has no extension, and its `/` would read as a folder in a file
+/// name.
+fn download_file_name(note_name: &str) -> String {
+    format!("{}.md", note_name.replace('/', "_"))
 }
 
 /// What one directory, or the top of the Notes tree when there is none,
@@ -709,6 +741,13 @@ fn missing_directory(directory_id: &str) -> String {
 
 fn store_failure(error: TaskStoreError) -> String {
     format!("Caffold could not reach its Notes store: {error}")
+}
+
+fn note_not_found(note_id: &str) -> ApiError {
+    ApiError::NotFound {
+        code: "note_not_found",
+        message: missing_note(note_id),
+    }
 }
 
 fn store_api_error(error: TaskStoreError) -> ApiError {
@@ -1493,6 +1532,7 @@ mod tests {
 
         for (uri, code) in [
             ("/api/notes/gone", "note_not_found"),
+            ("/api/notes/gone/download", "note_not_found"),
             ("/api/notes?directoryId=gone", "note_directory_not_found"),
         ] {
             let missing = app
@@ -1506,6 +1546,63 @@ mod tests {
                     .unwrap();
             assert_eq!(body["error"]["code"], code, "{uri}");
         }
+    }
+
+    #[tokio::test]
+    async fn a_note_downloads_as_its_markdown_in_a_file_named_after_it() {
+        let store = TaskStore::memory().unwrap();
+        let content = "# 설계\n\nKeep **one** copy.\n";
+        let note_id = apply(
+            &store,
+            "task-writer",
+            NotesToolCall::CreateNote {
+                name: "설계/결정".to_string(),
+                content: content.to_string().into(),
+                directory_id: None,
+            },
+            1_000,
+        )["noteId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let response = router(store)
+            .oneshot(
+                Request::get(format!("/api/notes/{note_id}/download"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let headers = response.headers();
+        assert_eq!(
+            headers[header::CONTENT_TYPE],
+            "text/markdown; charset=utf-8"
+        );
+        assert_eq!(headers[header::CONTENT_LENGTH], content.len().to_string());
+        assert_eq!(
+            headers[header::CONTENT_DISPOSITION],
+            "attachment; filename=\"_____.md\"; \
+             filename*=UTF-8''%EC%84%A4%EA%B3%84_%EA%B2%B0%EC%A0%95.md"
+        );
+        assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(body, content.as_bytes());
+    }
+
+    #[test]
+    fn a_download_file_name_is_the_note_name_with_md_added_and_slashes_replaced() {
+        assert_eq!(
+            download_file_name("Storage decision"),
+            "Storage decision.md"
+        );
+        assert_eq!(
+            download_file_name("Copy/Wrap/Preview"),
+            "Copy_Wrap_Preview.md"
+        );
+        assert_eq!(download_file_name("PLAN.md"), "PLAN.md.md");
     }
 
     #[test]

@@ -7,6 +7,7 @@ import {
 } from "#app/action-hints.js";
 import type { Note } from "#app/api.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
 
 import styles from "./copy-markdown.css.js";
 
@@ -29,9 +30,17 @@ export class CaffoldNotesInfoCopyMarkdown extends CaffoldElement {
   private generation = 0;
   private feedbackTimer: number | undefined;
   private readonly hints = new ActionHints(this);
+  private readonly iconsReady = () => this.requestUpdate();
+
+  override connectedCallback() {
+    super.connectedCallback();
+    window.addEventListener("caffold:icons-ready", this.iconsReady);
+    void warmIcons();
+  }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
+    window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.invalidatePendingCopy();
   }
 
@@ -65,7 +74,14 @@ export class CaffoldNotesInfoCopyMarkdown extends CaffoldElement {
         aria-disabled=${this.copyState === "copying"}
         data-copy-state=${this.copyState}
         @click=${this.copy}
-      >${feedback || "Copy Markdown"}</button>
+      >
+        <span class="notes-info-copy-markdown-icon" aria-hidden="true">${inlineIcon(
+          copyIcon(this.copyState),
+          "",
+          "notes-info-copy-markdown-svg",
+        )}</span>
+        <span>${feedback || "Copy Markdown"}</span>
+      </button>
       <span
         class="notes-info-copy-markdown-status sr-only"
         role="status"
@@ -122,6 +138,16 @@ export class CaffoldNotesInfoCopyMarkdown extends CaffoldElement {
     window.clearTimeout(this.feedbackTimer);
     this.feedbackTimer = undefined;
   }
+}
+
+function copyIcon(state: CopyState) {
+  if (state === "copied") {
+    return "Check";
+  }
+  if (state === "failed") {
+    return "TriangleAlert";
+  }
+  return "Copy";
 }
 
 function copyFeedback(state: CopyState) {

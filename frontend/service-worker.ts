@@ -215,6 +215,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/notes/components/info/components/copy-markdown.js",
   "/assets/pages/(task-workspace)/notes/components/info/components/copy-path.css.js",
   "/assets/pages/(task-workspace)/notes/components/info/components/copy-path.js",
+  "/assets/pages/(task-workspace)/notes/components/info/components/download.css.js",
+  "/assets/pages/(task-workspace)/notes/components/info/components/download.js",
   "/assets/pages/(task-workspace)/notes/components/navigator.css.js",
   "/assets/pages/(task-workspace)/notes/components/navigator.js",
   "/assets/pages/(task-workspace)/notes/layout.css.js",

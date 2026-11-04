@@ -558,11 +558,15 @@ The Notes surface only reads them.
   last, that Task. An active Task links to its Conversation. A Task archived
   since then shows its name marked archived, and a Task deleted since then is
   named as deleted; neither has a link.
-- Below those details, Copy path puts the names of the directories that hold
-  the Note and the Note's name, joined by ` / ` and followed by
+- Below those details are Copy path, Copy Markdown, and Download, each with
+  an icon before its label. Copy path puts the names of the directories that
+  hold the Note and the Note's name, joined by ` / ` and followed by
   `(note id: <id>)`, on the clipboard, and Copy Markdown puts the Note's
-  Markdown content there. Each briefly reports Copied or a failure. Copy
-  Markdown is unavailable for an empty Note.
+  Markdown content there. Each copy briefly reports Copied or a failure, in
+  its label and its icon. Download saves the Markdown Caffold holds for the Note
+  when it is chosen, which can be newer than the Note on screen, in a file
+  named after the Note. Copy Markdown and Download are unavailable for an
+  empty Note.
 - The content renders as Markdown. An empty Note and a Note that no longer
   exists each say so, and a failed read offers Retry.
 - An agent points the person at a Note, or at two Notes side by side, with a

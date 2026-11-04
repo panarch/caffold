@@ -3,11 +3,14 @@
   justify-items: start;
 }
 
-/* The same button the Task details popover gives its actions. */
+/* The same button the Task details popover gives its actions, with its icon
+   before the label as File details draws Download. */
 .notes-info-copy-path-button {
   position: relative;
   isolation: isolate;
   display: inline-grid;
+  grid-auto-flow: column;
+  gap: 0.3125rem;
   align-items: center;
   justify-content: center;
   min-height: var(--interface-compact-hit-size);
@@ -64,4 +67,17 @@
 .notes-info-copy-path-button[aria-disabled="true"] {
   cursor: default;
   opacity: 0.65;
+}
+
+.notes-info-copy-path-icon {
+  display: block;
+  width: var(--interface-icon-small-size);
+  height: var(--interface-icon-small-size);
+}
+
+.notes-info-copy-path-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  stroke-width: 2.2;
 }

@@ -584,6 +584,18 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/notes/components/info/components/copy-path.js"
             ))))
         }
+        "pages/(task-workspace)/notes/components/info/components/download.css.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/notes/components/info/components/download.css.js"
+            ))))
+        }
+        "pages/(task-workspace)/notes/components/info/components/download.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/notes/components/info/components/download.js"
+            ))))
+        }
         "pages/(task-workspace)/notes/components/navigator.css.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
@@ -2649,6 +2661,7 @@ mod tests {
             "pages/(task-workspace)/notes/components/info.css",
             "pages/(task-workspace)/notes/components/info/components/copy-markdown.css",
             "pages/(task-workspace)/notes/components/info/components/copy-path.css",
+            "pages/(task-workspace)/notes/components/info/components/download.css",
             "pages/(task-workspace)/notes/components/navigator.css",
             "pages/(task-workspace)/notes/layout.css",
             "pages/(task-workspace)/settings/about/page.css",
@@ -2956,6 +2969,7 @@ mod tests {
             "pages/(task-workspace)/notes/components/info.js",
             "pages/(task-workspace)/notes/components/info/components/copy-markdown.js",
             "pages/(task-workspace)/notes/components/info/components/copy-path.js",
+            "pages/(task-workspace)/notes/components/info/components/download.js",
             "pages/(task-workspace)/notes/components/navigator.js",
             "pages/(task-workspace)/notes/tree.js",
             "pages/(task-workspace)/settings/layout.js",

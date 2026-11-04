@@ -7,11 +7,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use futures_util::{Stream, stream};
-use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use tokio::io::AsyncReadExt;
 
 use crate::{
     app::{
+        content_disposition::attachment_disposition,
         error::ApiError,
         workspace::{PathQuery, WorkspaceState},
     },
@@ -19,14 +19,6 @@ use crate::{
 };
 
 const DOWNLOAD_CHUNK_BYTES: usize = 64 * 1024;
-
-/// What the `filename*` parameter of a download keeps as it is. Every other
-/// byte of the UTF-8 name is percent-encoded.
-const FILENAME_UNRESERVED: &AsciiSet = &NON_ALPHANUMERIC
-    .remove(b'-')
-    .remove(b'_')
-    .remove(b'.')
-    .remove(b'~');
 
 pub(super) async fn download(
     State(state): State<WorkspaceState>,
@@ -63,23 +55,6 @@ fn file_chunks(download: DownloadFile) -> impl Stream<Item = io::Result<Bytes>> 
     })
 }
 
-// `filename*` carries the exact name; the plain `filename` is an ASCII stand-in
-// for a client that reads only that one.
-fn attachment_disposition(name: &str) -> HeaderValue {
-    let ascii_name: String = name
-        .chars()
-        .map(|character| match character {
-            ' ' | '!' | '#'..='[' | ']'..='~' => character,
-            _ => '_',
-        })
-        .collect();
-    let encoded_name = utf8_percent_encode(name, FILENAME_UNRESERVED);
-    HeaderValue::from_str(&format!(
-        "attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded_name}"
-    ))
-    .expect("a download disposition holds only visible ASCII")
-}
-
 #[cfg(test)]
 mod tests {
     use std::{path::Path, sync::Arc};
@@ -89,6 +64,7 @@ mod tests {
         body::to_bytes,
         http::{Request, StatusCode},
     };
+    use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
     use serde_json::Value;
     use tower::ServiceExt;
 
