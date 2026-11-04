@@ -28,9 +28,11 @@ pub(crate) use self::status::GrokStatus;
 pub(crate) use self::transport::mock::MockLeader;
 pub(crate) use super::http_mcp::TaskMcpBindings as GrokMcpBindings;
 
+use super::history::RecordedPage;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     env, fs,
+    io::{self, ErrorKind},
     path::{Path, PathBuf},
     sync::{Arc, Mutex as StdMutex},
 };
@@ -532,6 +534,18 @@ impl GrokClient {
     /// Put a conversation away: the leader closes the session and keeps its
     /// files. The binding stays, because restoring is opening again.
     pub(crate) async fn close_conversation(&self, thread_id: &str) -> Result<(), GrokError> {
+        self.close_with_confirmation(thread_id, false).await
+    }
+
+    pub(crate) async fn close_for_handoff(&self, thread_id: &str) -> Result<(), GrokError> {
+        self.close_with_confirmation(thread_id, true).await
+    }
+
+    async fn close_with_confirmation(
+        &self,
+        thread_id: &str,
+        required: bool,
+    ) -> Result<(), GrokError> {
         let native = self.native_of(thread_id).await?;
         let closed: CloseResult = serde_json::from_value(
             self.inner
@@ -543,6 +557,10 @@ impl GrokClient {
                 .await?,
         )
         .unwrap_or_default();
+        if required && !closed.closed() {
+            return Err(GrokError::Protocol("Grok did not confirm that the source session stopped; its worktree was not transferred.".into()));
+        }
+
         if let Some(session) = self.session(thread_id).await {
             let mut state = session.state.lock().await;
             state.closed = true;
@@ -839,36 +857,80 @@ impl GrokClient {
         cursor: Option<&str>,
         limit: usize,
     ) -> Result<TurnPage, GrokError> {
+        self.read_turns_with_live(thread_id, cursor, limit, true)
+            .await
+    }
+
+    pub(crate) async fn read_recorded_history(
+        &self,
+        thread_id: &str,
+        cursor: Option<&str>,
+    ) -> Result<RecordedPage, GrokError> {
+        let native = self.native_of(thread_id).await?;
+        self.require_recorded_session(&native).await?;
+        let page = self
+            .read_turns_with_live(thread_id, cursor, 1, false)
+            .await?;
+        let after = self.native_of(thread_id).await?;
+        if native != after {
+            return Err(GrokError::Binding(
+                "The history source changed while it was read.".into(),
+            ));
+        }
+        self.require_recorded_session(&native).await?;
+        Ok(RecordedPage {
+            identity: format!("grok:{}:{}", native.session_id, native.cwd),
+            page,
+            warnings: Vec::new(),
+        })
+    }
+
+    /// Updates alone cannot distinguish a missing session from an empty one.
+    /// Keep filesystem failures explicit without loading the native session.
+    async fn require_recorded_session(&self, native: &NativeSession) -> Result<(), GrokError> {
+        let directory = self.session_directory(native);
+        tokio::task::spawn_blocking(move || {
+            let inspect = || -> io::Result<()> {
+                if !fs::symlink_metadata(&directory)?.file_type().is_dir() {
+                    return Err(io::Error::other(
+                        "The recorded session is not an ordinary directory.",
+                    ));
+                }
+                // Opening the directory also checks access; metadata alone
+                // does not establish that its records can be inspected.
+                fs::read_dir(&directory)?;
+                Ok(())
+            };
+            inspect().map_err(|error| {
+                if error.kind() == ErrorKind::NotFound {
+                    GrokError::ConversationGone(directory.display().to_string())
+                } else {
+                    GrokError::Unreachable(format!(
+                        "Cannot inspect recorded session {}: {error}",
+                        directory.display()
+                    ))
+                }
+            })
+        })
+        .await
+        .map_err(|error| GrokError::Unreachable(error.to_string()))?
+    }
+
+    async fn read_turns_with_live(
+        &self,
+        thread_id: &str,
+        cursor: Option<&str>,
+        limit: usize,
+        include_live: bool,
+    ) -> Result<TurnPage, GrokError> {
         let native = self.native_of(thread_id).await?;
         let limit = limit.max(1);
-        let (result, window_start) = match cursor {
+        let (mut result, mut window_start) = match cursor {
             None => {
-                let mut result: UpdatesResult = self
+                let result: UpdatesResult = self
                     .updates(&native, UpdatesWindow::LastTurns(limit))
                     .await?;
-                let mut window_start = result.total_count.saturating_sub(result.updates.len());
-                // The leader counts interjections as turns, so the window
-                // can begin inside one; walk back to where that turn began.
-                while window_start > 0 && !begins_a_turn(&result) {
-                    let Some((start, len)) =
-                        history::older_window(&result.prompt_starts, window_start, 1)
-                    else {
-                        break;
-                    };
-                    let earlier: UpdatesResult = self
-                        .updates(
-                            &native,
-                            UpdatesWindow::Range {
-                                offset: start,
-                                limit: len,
-                            },
-                        )
-                        .await?;
-                    let mut updates = earlier.updates;
-                    updates.append(&mut result.updates);
-                    result.updates = updates;
-                    window_start = start;
-                }
+                let window_start = result.total_count.saturating_sub(result.updates.len());
                 (result, window_start)
             }
             Some(cursor) => {
@@ -901,6 +963,35 @@ impl GrokClient {
                 (result, start)
             }
         };
+        // Native prompt starts include interjections. Both latest and older
+        // windows must reach the real turn start before they can be projected.
+        while window_start > 0 && !begins_a_turn(&result) {
+            let (start, len) = history::older_window(&result.prompt_starts, window_start, 1)
+                .ok_or_else(|| {
+                    GrokError::Protocol("Cannot locate the recorded turn's start.".into())
+                })?;
+            let earlier: UpdatesResult = self
+                .updates(
+                    &native,
+                    UpdatesWindow::Range {
+                        offset: start,
+                        limit: len,
+                    },
+                )
+                .await?;
+            if earlier.updates.len() != len {
+                return Err(GrokError::Protocol(
+                    "The recorded turn's earlier updates are incomplete.".into(),
+                ));
+            }
+            let mut updates = earlier.updates;
+            updates.append(&mut result.updates);
+            result.updates = updates;
+            window_start = start;
+        }
+        if !include_live {
+            return Ok(history::turns_page(&result, window_start, None));
+        }
         let live_turn = match self.session(thread_id).await {
             Some(session) => session.state.lock().await.active_turn.clone(),
             None => None,
@@ -1723,6 +1814,7 @@ pub(crate) mod test_support {
         pub(crate) updates: HashMap<String, Value>,
         /// Per-session config values as last set.
         pub(crate) config: HashMap<String, (String, String)>,
+        pub(crate) close_outcome: Option<&'static str>,
     }
 
     /// A leader that answers every question a Task needs answered, and holds
@@ -1825,9 +1917,9 @@ pub(crate) mod test_support {
                 "_x.ai/interject" => {
                     MockAnswer::Result(json!({ "result": { "status": "queued" } }))
                 }
-                "session/close" => {
-                    MockAnswer::Result(json!({ "_meta": { "x.ai/closeOutcome": "closed" } }))
-                }
+                "session/close" => MockAnswer::Result(
+                    json!({ "_meta": { "x.ai/closeOutcome": memory.close_outcome.unwrap_or("closed") } }),
+                ),
                 "_x.ai/session/delete" => {
                     memory.cwds.remove(&session_id);
                     MockAnswer::Result(json!({ "success": true }))
@@ -2587,6 +2679,310 @@ mod tests {
             client.settings_of(&conversation.id).await["permissionMode"],
             "autoMode"
         );
+    }
+
+    #[tokio::test]
+    async fn handoff_close_requires_the_leaders_confirmation_and_keeps_an_unconfirmed_session_observable()
+     {
+        let dir = tempfile::tempdir().unwrap();
+        let (client, bridges) = GrokClient::mock(dir.path());
+        let (_leader, memory) = scripted_leader(bridges);
+        let conversation = client
+            .start_conversation(CWD, &GrokTurnOptions::default())
+            .await
+            .unwrap();
+        memory.lock().unwrap().close_outcome = Some("still_running");
+        assert!(client.close_for_handoff(&conversation.id).await.is_err());
+        assert!(
+            client
+                .watched_conversation(&conversation.id)
+                .await
+                .is_some()
+        );
+        memory.lock().unwrap().close_outcome = Some("closed");
+        client.close_for_handoff(&conversation.id).await.unwrap();
+        assert!(
+            client
+                .watched_conversation(&conversation.id)
+                .await
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn recorded_history_reads_the_bound_leader_log_without_loading_a_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let (client, bridges) = GrokClient::mock(dir.path());
+        let (_leader, memory) = scripted_leader(bridges);
+        let conversation = client
+            .start_conversation(CWD, &GrokTurnOptions::default())
+            .await
+            .unwrap();
+        let mut stored: Value =
+            serde_json::from_str(include_str!("grok/fixtures/updates-result.json")).unwrap();
+        let end = stored["promptStarts"][1].as_u64().unwrap() as usize;
+        stored["updates"].as_array_mut().unwrap().truncate(end);
+        stored["promptStarts"] = json!([0]);
+        stored["totalCount"] = json!(end);
+        let (cold, bridges) = GrokClient::mock(dir.path());
+        let (leader, cold_memory) = scripted_leader(bridges);
+        cold_memory
+            .lock()
+            .unwrap()
+            .updates
+            .insert(conversation.id.clone(), stored);
+        fs::create_dir_all(
+            cold.session_directory(&cold.native_of(&conversation.id).await.unwrap()),
+        )
+        .unwrap();
+        let page = cold
+            .read_recorded_history(&conversation.id, None)
+            .await
+            .unwrap();
+        assert_eq!(page.page.turns.len(), 1);
+        assert!(!page.page.turns[0].items.is_empty());
+        assert!(cold.watched_conversation(&conversation.id).await.is_none());
+        leader.wait_for("_x.ai/session/updates").await;
+        assert!(memory.lock().unwrap().updates.is_empty());
+    }
+
+    #[tokio::test]
+    async fn recorded_history_reaches_older_interjections_and_pages_every_item_once() {
+        use super::test_support::scripted_leader_with;
+        use super::transport::mock::MockAnswer;
+        use crate::agent::history::HistoryArguments;
+
+        let dir = tempfile::tempdir().unwrap();
+        let (client, bridges) = GrokClient::mock(dir.path());
+        let mut log: Value =
+            serde_json::from_str(include_str!("grok/fixtures/updates-result.json")).unwrap();
+        // The fixture's fifth turn contains an interjection. A later turn
+        // places that interjection at the start of an older native window.
+        let mut user = log["updates"][0].clone();
+        user["params"]["_meta"]["eventId"] = json!("last-user");
+        user["params"]["update"]["content"]["text"] = json!("New turn after interjection");
+        let mut end = log["updates"].as_array().unwrap().last().unwrap().clone();
+        end["params"]["update"]["prompt_id"] = json!("last-turn");
+        end["params"]["_meta"]["eventId"] = json!("last-end");
+        let start = log["updates"].as_array().unwrap().len();
+        log["promptStarts"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!(start));
+        log["updates"].as_array_mut().unwrap().extend([user, end]);
+        log["totalCount"] = json!(start + 2);
+        let native: UpdatesResult = serde_json::from_value(log.clone()).unwrap();
+        let full = history::turns_page(&native, 0, None);
+        assert_eq!(full.turns.len(), 6);
+        let expected = full
+            .turns
+            .iter()
+            .rev()
+            .flat_map(|turn| {
+                turn.items
+                    .iter()
+                    .map(|item| (turn.id.clone(), item.id.clone()))
+            })
+            .collect::<Vec<_>>();
+        let (_leader, _) = scripted_leader_with(bridges, move |method, params| {
+            if method != "_x.ai/session/updates" {
+                return None;
+            }
+            let total = log["updates"].as_array().unwrap().len();
+            let (start, end) = if let Some(turns) = params["turnIndex"].as_u64() {
+                let starts = log["promptStarts"].as_array().unwrap();
+                (
+                    starts[starts.len().saturating_sub(turns as usize)]
+                        .as_u64()
+                        .unwrap() as usize,
+                    total,
+                )
+            } else {
+                let start = params["offset"].as_u64().unwrap() as usize;
+                (
+                    start,
+                    (start + params["limit"].as_u64().unwrap() as usize).min(total),
+                )
+            };
+            let mut answer = log.clone();
+            answer["updates"] = json!(&log["updates"].as_array().unwrap()[start..end]);
+            Some(MockAnswer::Result(answer))
+        });
+        let task = client
+            .start_conversation(CWD, &GrokTurnOptions::default())
+            .await
+            .unwrap();
+        fs::create_dir_all(client.session_directory(&client.native_of(&task.id).await.unwrap()))
+            .unwrap();
+        client.close_conversation(&task.id).await.unwrap();
+        let driver = client.driver();
+        let page = driver
+            .read_history(&HistoryArguments {
+                task_id: task.id.clone(),
+                cursor: None,
+                limit: Some(100),
+            })
+            .await
+            .unwrap();
+        assert_eq!(page.turns.len(), 6);
+        assert!(page.next_cursor.is_none());
+        assert!(page.warnings.is_empty());
+
+        let mut cursor = None;
+        let mut seen = HashSet::new();
+        let mut actual = Vec::new();
+        loop {
+            assert!(
+                seen.insert(cursor.clone()),
+                "a history cursor must make progress"
+            );
+            let page = driver
+                .read_history(&HistoryArguments {
+                    task_id: task.id.clone(),
+                    cursor,
+                    limit: Some(2),
+                })
+                .await
+                .unwrap();
+            let value = serde_json::to_value(&page).unwrap();
+            for turn in value["turns"].as_array().unwrap().iter().rev() {
+                for item in turn["items"].as_array().unwrap().iter().rev() {
+                    actual.push((
+                        turn["id"].as_str().unwrap().to_string(),
+                        item["id"].as_str().unwrap().to_string(),
+                    ));
+                }
+            }
+            cursor = page.next_cursor;
+            if cursor.is_none() {
+                break;
+            }
+        }
+        actual.reverse();
+        assert_eq!(actual, expected);
+        assert!(client.watched_conversation(&task.id).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn recorded_history_rejects_an_unrecoverable_interjection_prefix() {
+        use super::test_support::scripted_leader_with;
+        use super::transport::mock::MockAnswer;
+
+        for (missing_index, expected) in [
+            (true, "Cannot locate the recorded turn's start."),
+            (false, "The recorded turn's earlier updates are incomplete."),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let (client, bridges) = GrokClient::mock(dir.path());
+            let log: Value =
+                serde_json::from_str(include_str!("grok/fixtures/updates-result.json")).unwrap();
+            let start = log["promptStarts"]
+                .as_array()
+                .unwrap()
+                .last()
+                .unwrap()
+                .as_u64()
+                .unwrap() as usize;
+            let (_leader, _) = scripted_leader_with(bridges, move |method, params| {
+                if method != "_x.ai/session/updates" {
+                    return None;
+                }
+                let mut answer = log.clone();
+                answer["updates"] = if params["turnIndex"].is_number() {
+                    json!(&log["updates"].as_array().unwrap()[start..])
+                } else {
+                    // The leader cannot return the requested preceding span.
+                    json!([])
+                };
+                if missing_index {
+                    answer["promptStarts"] = json!([start]);
+                }
+                Some(MockAnswer::Result(answer))
+            });
+            let task = client
+                .start_conversation(CWD, &GrokTurnOptions::default())
+                .await
+                .unwrap();
+            fs::create_dir_all(
+                client.session_directory(&client.native_of(&task.id).await.unwrap()),
+            )
+            .unwrap();
+            client.close_conversation(&task.id).await.unwrap();
+            assert!(matches!(
+                client.read_recorded_history(&task.id, None).await,
+                Err(GrokError::Protocol(message)) if message == expected
+            ));
+            assert!(client.watched_conversation(&task.id).await.is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn recorded_history_distinguishes_empty_missing_and_unreadable_sessions() {
+        let dir = tempfile::tempdir().unwrap();
+        let (client, bridges) = GrokClient::mock(dir.path());
+        let (_leader, _) = scripted_leader(bridges);
+        let task = client
+            .start_conversation(CWD, &GrokTurnOptions::default())
+            .await
+            .unwrap();
+        client.close_conversation(&task.id).await.unwrap();
+        let directory = client.session_directory(&client.native_of(&task.id).await.unwrap());
+        fs::create_dir_all(&directory).unwrap();
+        let empty = client.read_recorded_history(&task.id, None).await.unwrap();
+        assert!(empty.page.turns.is_empty());
+        assert!(empty.page.next_cursor.is_none());
+
+        fs::remove_dir(&directory).unwrap();
+        assert!(matches!(
+            client.read_recorded_history(&task.id, None).await,
+            Err(GrokError::ConversationGone(_))
+        ));
+        fs::write(&directory, "not a session directory").unwrap();
+        assert!(matches!(
+            client.read_recorded_history(&task.id, None).await,
+            Err(GrokError::Unreachable(_))
+        ));
+        fs::remove_file(&directory).unwrap();
+        std::os::unix::fs::symlink(dir.path(), &directory).unwrap();
+        assert!(matches!(
+            client.read_recorded_history(&task.id, None).await,
+            Err(GrokError::Unreachable(_))
+        ));
+        assert!(client.watched_conversation(&task.id).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn recorded_history_rejects_a_native_record_removed_during_the_leader_read() {
+        use super::test_support::scripted_leader_with;
+        use super::transport::mock::MockAnswer;
+        let dir = tempfile::tempdir().unwrap();
+        let (client, bridges) = GrokClient::mock(dir.path());
+        let removing = Arc::new(StdMutex::new(None::<PathBuf>));
+        let pending = removing.clone();
+        let (_leader, _) = scripted_leader_with(bridges, move |method, _| {
+            if method != "_x.ai/session/updates" {
+                return None;
+            }
+            if let Some(path) = pending.lock().unwrap().take() {
+                fs::remove_dir(path).unwrap();
+            }
+            Some(MockAnswer::Result(
+                json!({"updates":[], "totalCount":0, "promptStarts":[]}),
+            ))
+        });
+        let task = client
+            .start_conversation(CWD, &GrokTurnOptions::default())
+            .await
+            .unwrap();
+        let directory = client.session_directory(&client.native_of(&task.id).await.unwrap());
+        fs::create_dir_all(&directory).unwrap();
+        *removing.lock().unwrap() = Some(directory);
+        client.close_conversation(&task.id).await.unwrap();
+        assert!(matches!(
+            client.read_recorded_history(&task.id, None).await,
+            Err(GrokError::ConversationGone(_))
+        ));
+        assert!(client.watched_conversation(&task.id).await.is_none());
     }
 
     #[tokio::test]

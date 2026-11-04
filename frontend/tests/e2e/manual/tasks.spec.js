@@ -181,7 +181,7 @@ test("the Checklist opens from the plan above the Composer", { tag: "@desktop" }
   await captureReviewScreenshot(page, testInfo, "current-plan-checklist");
 });
 
-test("Task details shows the worktree and holds Pin task, Fork task, and Archive task", { tag: "@desktop" }, async ({ page }, testInfo) => {
+test("Task details shows the worktree and holds Pin, Fork, and Archive actions", { tag: "@desktop" }, async ({ page }, testInfo) => {
   await page.goto(`/tasks/${MANUAL_TASKS.darkTheme.threadId}`);
 
   const archived = page.locator("caffold-archived-task-list");
@@ -197,7 +197,38 @@ test("Task details shows the worktree and holds Pin task, Fork task, and Archive
   await expect(details.getByRole("button", { name: "Pin task" })).toBeVisible();
   await expect(details.getByRole("button", { name: "Fork task" })).toBeVisible();
   await expect(details.getByRole("button", { name: "Archive task" })).toBeVisible();
+  await expect(details.locator('[data-task-info-action="handoff"]')).toHaveCount(0);
   await captureReviewScreenshot(page, testInfo, "task-details");
+});
+
+test("Task handoff starts from another agent in the model picker", { tag: "@desktop" }, async ({ page }, testInfo) => {
+  await page.goto(`/tasks/${MANUAL_TASKS.darkTheme.threadId}`);
+  const composer = page.locator(".task-follow-up-form");
+  const trigger = composer.getByRole("button", { name: /^Choose model/ });
+  await expect(trigger).toHaveText("6 Astra · high");
+  const current = await trigger.innerText();
+  await trigger.click();
+  const picker = composer.locator(".task-model-popover");
+  await picker.getByRole("button", { name: "Claude", exact: true }).click();
+  await expect(picker.getByRole("button", { name: "Continue with Claude", exact: true })).toBeVisible();
+  await expect(picker).toContainText("reads this conversation and the current files");
+  await expect(trigger).toHaveText(current);
+  await captureReviewScreenshot(page, testInfo, "task-handoff-picker");
+});
+
+test("Task handoff selects an agent and explains the shared worktree", { tag: "@desktop" }, async ({ page }, testInfo) => {
+  await page.goto(`/tasks/${MANUAL_TASKS.darkTheme.threadId}`);
+  const composer = page.locator(".task-follow-up-form");
+  await composer.getByRole("button", { name: /^Choose model/ }).click();
+  const picker = composer.locator(".task-model-popover");
+  await picker.getByRole("button", { name: "Claude", exact: true }).click();
+  await picker.getByRole("button", { name: "Continue with Claude", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Continue with another agent", exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Only the selected model runs the preparation turn");
+  await expect(dialog).toContainText("The previous Task remains available for reading its history");
+  await expect(dialog.getByRole("button", { name: "Continue with selected agent", exact: true })).toBeEnabled();
+  await captureReviewScreenshot(page, testInfo, "task-handoff");
 });
 
 test("the prompts a Task settled open from its details", { tag: "@desktop" }, async ({ page }, testInfo) => {

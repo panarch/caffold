@@ -54,6 +54,29 @@ rebase, or changes inside a submodule, stop the move instead.
   because Git cannot check out one branch in two places. Ask to bring the
   changes, or commit them first.
 
+## Continue with another agent
+
+Open the model picker beside the follow-up prompt. Select another agent, such
+as **Claude**, then choose **Continue with Claude**. Review the model and its
+options in the continuation dialog before continuing.
+
+The selected model reads the previous Task's history
+and current files, summarizes the situation, and waits for your next request.
+The previous model is not asked to generate a summary.
+
+![Choose another agent from the model picker](../assets/screenshots/task-handoff-picker-desktop.png)
+
+![Continue with another agent](../assets/screenshots/task-handoff-desktop.png)
+
+The same worktree, including uncommitted changes and build output, moves to the
+new Task. The previous Task stays in Active so you can read its conversation;
+its notice links to the Task that can continue working there. For an ordinary
+directory or a worktree Caffold did not prepare, both Tasks remain usable.
+
+Creating the Task and receiving its summary are separate steps. If creation
+succeeds but opening fails, use **Open created Task**. If the connection ends
+without a result, check the Task list before trying again.
+
 ## Clean up
 
 Archiving a Task removes the worktree Caffold prepared for it and keeps its

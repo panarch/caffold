@@ -469,6 +469,82 @@ test("a Task's provider boundary rejects browsing and choosing other agents", as
   assert.deepEqual(server.asked(), ["codex/shared"]);
 });
 
+test("handoff browsing shows guidance without changing the Task's model or permissions", async (t) => {
+  const { element, events, server } = mount({ provider: "codex", allowHandoff: true });
+  t.after(() => server.restore());
+  await answerModels(server);
+  await answerModes(server);
+  const before = element.submissionOptions();
+  const announced = events.length;
+  element.browseProvider("claude");
+  const menu = menuMarkup(element, "model");
+  assert.match(menu, /Continue with Claude/);
+  assert.match(menu, /reads this conversation and the current files/);
+  assert.doesNotMatch(menu, /data-turn-options-action="select-model"/);
+  assert.doesNotMatch(menu, /Continue with Claude(?:…|\.\.\.)/);
+  element.selectModel("haiku", "claude");
+  assert.deepEqual(element.submissionOptions(), before);
+  assert.equal(events.length, announced);
+  assert.deepEqual(server.asked(), ["codex/gpt-6-astra"]);
+  element.browseProvider("codex");
+  assert.match(menuMarkup(element, "model"), /data-turn-options-action="select-model"/);
+  assert.doesNotMatch(menuMarkup(element, "model"), /data-turn-options-action="handoff"/);
+});
+
+test("handoff emits the target and focus owner only when the Task can hand off", async (t) => {
+  const { element, server } = mount({ provider: "codex", allowHandoff: true });
+  t.after(() => server.restore());
+  await answerModels(server);
+  await answerModes(server);
+  const opener = {};
+  element.modelButton = { value: opener };
+  const intents = [];
+  element.dispatchEvent = event => { if (event.type === "caffold:task-turn-options-handoff") intents.push(event); return true; };
+  element.requestHandoff("codex");
+  element.requestHandoff("missing");
+  assert.equal(intents.length, 0);
+  element.requestHandoff("claude");
+  assert.equal(intents.length, 1);
+  assert.deepEqual(intents[0].detail, { provider: "claude", opener });
+  assert.equal(intents[0].bubbles, true);
+  assert.equal(intents[0].composed, true);
+  element.setContext({ locked: true });
+  element.requestHandoff("grok");
+  element.setContext({ locked: false, allowHandoff: false });
+  element.requestHandoff("grok");
+  element.setContext({ provider: "", allowHandoff: true });
+  element.requestHandoff("grok");
+  assert.equal(intents.length, 1);
+});
+
+test("a new Task can prefer an agent without fixing its conversation-start permissions", async (t) => {
+  const { element, server } = mount({ initialSelection: { provider: "grok" } });
+  t.after(() => server.restore());
+  await answerModels(server);
+  await answerModes(server);
+  assert.equal(element.submissionOptions().provider, "grok");
+  assert.equal(element.submissionOptions().model, "grok-4.6");
+  assert.equal(drawing(element).permission.disabled, false);
+  assert.deepEqual(server.asked(), ["grok/grok-4.6"]);
+  element.selectPermission("autoMode");
+  assert.equal(element.submissionOptions().permissionMode, "autoMode");
+  element.selectModel("gpt-6-astra", "codex");
+  await answerModes(server);
+  assert.equal(element.submissionOptions().provider, "codex");
+  assert.equal(drawing(element).permission.disabled, false);
+});
+
+test("initial agent preference identifies a shared model name and changes on reset", async (t) => {
+  const { element, server } = mount({ initialSelection: { provider: "claude", model: "shared", effort: "high" } });
+  t.after(() => server.restore());
+  await answerModels(server, SHARED_NAME_CATALOG);
+  assert.equal(element.submissionOptions().provider, "claude");
+  assert.equal(element.submissionOptions().effort, "high");
+  element.reset({ initialSelection: { provider: "codex", model: "shared" } });
+  assert.equal(element.submissionOptions().provider, "codex");
+  assert.equal(element.submissionOptions().effort, "low");
+});
+
 test("an effort must be offered even when an unavailable default is supplied", async (t) => {
   const { element, server } = mount({
     initialSelection: { model: "gpt-test", effort: "missing" },

@@ -75,6 +75,7 @@ test("draws Send again once the turn options take the new context", () => {
   assert.deepEqual(JSON.parse(taken), {
     cwd: ".",
     provider: "",
+    allowHandoff: false,
     initialSelection: { model: "", effort: "", fastMode: false, permissionMode: "" },
     locked: false,
     placement: "above",
@@ -140,11 +141,11 @@ test("puts a suggested request after what is being written, ready to read and se
 });
 
 test("takes no text in its prompt field while dictating or creating", () => {
-  const owner = (phase, { disabled = false, mode = "follow-up", submitting = false } = {}) => {
+  const owner = (phase, { disabled = false, readOnly = false, mode = "follow-up", submitting = false } = {}) => {
     const host = composerHost({
       activeSubmissionFor: () => (submitting ? { id: "submission" } : null),
     });
-    Object.assign(host.context, { disabled, mode });
+    Object.assign(host.context, { disabled, readOnly, mode });
     host.voice.phase = phase;
     return host;
   };
@@ -153,6 +154,7 @@ test("takes no text in its prompt field while dictating or creating", () => {
   assert.equal(locked(owner("idle")), false);
   assert.equal(locked(owner("idle", { submitting: true })), false);
   assert.equal(locked(owner("idle", { disabled: true })), false);
+  assert.equal(locked(owner("idle", { readOnly: true })), true);
   for (const phase of ["requesting", "recording", "transcribing"]) {
     assert.equal(locked(owner(phase)), true, phase);
   }
@@ -287,6 +289,31 @@ test("shows the context pie only in a Task's follow-up Composer", () => {
 });
 
 // A Composer with its own fields as it starts, and no drawing of its own.
+test("forwards its own handoff intent while retaining the draft and honoring existing locks", () => {
+  const options = {};
+  const intents = [];
+  const owner = composerHost({ turnOptions: () => options, dispatchEvent: event => intents.push(event) });
+  Object.assign(owner.context, { mode: "follow-up", allowHandoff: true });
+  owner.voice.phase = "idle";
+  owner.state.prompt = "Keep this draft";
+  const opener = {};
+  const request = { target: options, detail: { provider: "claude", opener }, stopPropagation() {} };
+  owner.handoffRequested(request);
+  assert.deepEqual(intents[0].detail, { type: "handoff", provider: "claude", opener });
+  assert.equal(owner.state.prompt, "Keep this draft");
+  owner.context.settingsLocked = true;
+  owner.handoffRequested(request);
+  owner.context.settingsLocked = false;
+  owner.context.readOnly = true;
+  owner.handoffRequested(request);
+  owner.context.readOnly = false;
+  owner.context.mode = "create";
+  owner.handoffRequested(request);
+  owner.context.mode = "follow-up";
+  owner.handoffRequested({ ...request, target: {} });
+  assert.equal(intents.length, 1);
+});
+
 function composerHost(properties = {}) {
   const host = Object.create(Composer.prototype, {
     ...Object.getOwnPropertyDescriptors({
@@ -300,6 +327,7 @@ function composerHost(properties = {}) {
         cancel: false,
         disabled: false,
         settingsLocked: false,
+        allowHandoff: false,
         requestError: "",
         turnActive: false,
         supportsSteering: true,

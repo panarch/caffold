@@ -345,6 +345,18 @@ impl TaskStoreTables<'_> {
         }
     }
 
+    pub(crate) fn transfer_worktree_owner(
+        &mut self,
+        expected: &ManagedWorktree,
+        target: &str,
+        now_ms: u64,
+    ) -> Result<()> {
+        match self {
+            Self::Memory(glue) => managed_worktree::transfer_owner(glue, expected, target, now_ms),
+            Self::Redb(glue) => managed_worktree::transfer_owner(glue, expected, target, now_ms),
+        }
+    }
+
     pub(crate) fn reconnect_managed_thread(
         &mut self,
         expected: &ManagedThread,
@@ -1004,6 +1016,60 @@ mod tests {
     use gluesql::core::query_builder::table;
 
     use super::*;
+
+    #[test]
+    fn owner_transfer_is_atomic_and_survives_redb_restart_without_changing_the_checkout() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("handoff.redb");
+        for store in [
+            TaskStore::memory().unwrap(),
+            TaskStore::redb(&path).unwrap(),
+        ] {
+            let mut expected = worktree("same", "source");
+            expected.state = ManagedWorktreeState::Ready;
+            expected.checkout_anchor = None;
+            store.create_worktree(expected.clone()).unwrap();
+            let failed = store.transaction(|tables| {
+                tables.transfer_worktree_owner(&expected, "target", 200)?;
+                Err::<(), _>(TaskStoreError::InvalidRow("injected_after_transfer"))
+            });
+            assert!(failed.is_err());
+            assert_eq!(
+                store.worktree_for_thread("source").unwrap(),
+                Some(expected.clone())
+            );
+            store
+                .transaction(|tables| tables.transfer_worktree_owner(&expected, "target", 200))
+                .unwrap();
+            let mut transferred = expected.clone();
+            transferred.thread_id = Some("target".into());
+            transferred.updated_at_ms = 200;
+            assert_eq!(store.worktree_for_thread("source").unwrap(), None);
+            assert_eq!(
+                store.worktree_for_thread("target").unwrap(),
+                Some(transferred)
+            );
+            assert!(
+                store
+                    .transaction(|tables| tables.transfer_worktree_owner(
+                        &expected,
+                        "duplicate",
+                        300
+                    ))
+                    .is_err()
+            );
+        }
+        let reopened = TaskStore::redb(&path).unwrap();
+        assert_eq!(
+            reopened
+                .worktree_for_thread("target")
+                .unwrap()
+                .unwrap()
+                .worktree_id,
+            "same"
+        );
+        assert!(reopened.worktree_for_thread("source").unwrap().is_none());
+    }
 
     #[test]
     fn reconnect_task_success_survives_a_later_failure_and_redb_restart() {

@@ -1,5 +1,8 @@
 use crate::agent::antigravity::AntigravityClient;
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use serde::Serialize;
 use uuid::Uuid;
@@ -21,12 +24,14 @@ use super::{
     events::now_ms,
     projection::{resolve_conversation_cwd, task_activity_ms, task_record_from_conversation},
     routes::TaskListEvents,
+    workspace_access::WorkspaceAccess,
     worktrees::{
         ArchiveOutcome, IsolateOutcome, ManagedWorktreeError, ManagedWorktrees, RestoreOutcome,
     },
 };
 
 mod fork;
+mod handoff;
 mod initial_request_name;
 
 use crate::git;
@@ -77,6 +82,7 @@ enum LocalPlacementMutation {
         thread: Box<ManagedThread>,
         display_name: String,
         section_id: String,
+        handoff: Option<Box<handoff::HandoffSource>>,
     },
     Place,
     Restore,
@@ -96,6 +102,29 @@ pub(in crate::app::tasks) struct TaskLifecycle {
 }
 
 impl TaskLifecycle {
+    pub(in crate::app::tasks) fn managed_root(&self) -> &Path {
+        self.worktrees.root()
+    }
+
+    pub(in crate::app::tasks) async fn workspace_access(
+        &self,
+        task: &str,
+        cwd: &str,
+    ) -> WorkspaceAccess {
+        let fs = self.fs.clone();
+        let store = self.store.clone();
+        let task = task.to_string();
+        let cwd = cwd.to_string();
+        let root = self.worktrees.root().to_path_buf();
+        tokio::task::spawn_blocking(move || {
+            WorkspaceAccess::inspect(&fs, &store, &root, &task, &cwd)
+        })
+        .await
+        .unwrap_or_else(|error| WorkspaceAccess::Unavailable {
+            reason: error.to_string(),
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(in crate::app::tasks) fn new(
         fs: Arc<RootedFs>,
@@ -132,6 +161,15 @@ impl TaskLifecycle {
         agent: &TaskAgent,
         request: CreateTask,
     ) -> Result<CreatedTask, ApiError> {
+        self.create_task_inner(agent, request, None).await
+    }
+
+    async fn create_task_inner(
+        &self,
+        agent: &TaskAgent,
+        request: CreateTask,
+        handoff: Option<handoff::HandoffSource>,
+    ) -> Result<CreatedTask, ApiError> {
         let CreateTask {
             cwd,
             title_source,
@@ -144,6 +182,15 @@ impl TaskLifecycle {
         let accepted = driver.accept_turn_options(&turn_options).await?;
         let mut started = driver.start_conversation(&cwd, &accepted).await?;
         let conversation_id = started.conversation.id.clone();
+        if handoff
+            .as_ref()
+            .is_some_and(|source| source.managed.thread_id == conversation_id)
+        {
+            return Err(ApiError::Conflict {
+                code: "task_handoff_target_not_new",
+                message: "The agent reused the source Task ID. Target initialization and cleanup were not attempted.".into(),
+            });
+        }
         let request = self.sessions.reserve_request(&conversation_id).await;
         let initial_name = initial_request_name::from_prompt(&title_source)
             .unwrap_or_else(|| format!("Thread {}", short_thread_id(&conversation_id)));
@@ -163,6 +210,22 @@ impl TaskLifecycle {
             None
         };
         started.conversation.title = Some(initial_name);
+        let same_directory = handoff.is_none()
+            || matches!(
+                (
+                    self.fs.logical_path_for_absolute(Path::new(&cwd)),
+                    self.fs.logical_path_for_absolute(Path::new(&started.conversation.cwd)),
+                ),
+                (Ok(expected), Ok(actual)) if expected == actual
+            );
+        if !same_directory {
+            self.rollback_unclaimed_conversation(agent, &conversation_id)
+                .await;
+            return Err(ApiError::Conflict {
+                code: "task_handoff_target_cwd_changed",
+                message: "The target conversation did not open in the source directory.".into(),
+            });
+        }
         // What the person asked for stands where they asked for something, and
         // what the agent settled on fills the rest.
         let settled = TurnOptions {
@@ -192,7 +255,21 @@ impl TaskLifecycle {
             requested_fast_mode,
             settled.permission_mode.clone(),
         );
-        let placement = match self.claim_at_top(managed, &task.title, &task).await {
+        if let Some(source) = &handoff
+            && let Err(error) = self.release_handoff_source(source).await
+        {
+            self.rollback_unclaimed_conversation(agent, &conversation_id)
+                .await;
+            return Err(error);
+        }
+        let owns_worktree = handoff
+            .as_ref()
+            .is_some_and(|source| source.worktree.is_some());
+        let placement_result = match handoff {
+            Some(source) => self.claim_handoff(managed, &task, source).await,
+            None => self.claim_at_top(managed, &task.title, &task).await,
+        };
+        let placement = match placement_result {
             Ok(placement) => placement,
             Err(error) => {
                 self.rollback_unclaimed_conversation(agent, &conversation_id)
@@ -215,8 +292,8 @@ impl TaskLifecycle {
                 },
             )
             .await;
-        // A conversation started a moment ago has no managed worktree record.
-        let active_task = ActiveTask::of(&task, false);
+        // Continuation reuses the source checkout; ordinary creation owns none.
+        let active_task = ActiveTask::of(&task, owns_worktree);
         self.list_events
             .place(active_task.clone(), placement.clone());
         Ok(CreatedTask {
@@ -252,6 +329,7 @@ impl TaskLifecycle {
         base_ref: Option<String>,
         include_changes: bool,
     ) -> Result<IsolateOutcome, ApiError> {
+        let _mutation = self.sessions.reserve_mutation(&thread_id).await;
         let source = source.canonicalize().map_err(|error| {
             ApiError::Internal(format!(
                 "failed to resolve source task directory {}: {error}",
@@ -259,6 +337,13 @@ impl TaskLifecycle {
             ))
         })?;
         self.fs.logical_path_for_absolute(&source)?;
+        self.workspace_access(&thread_id, &source.to_string_lossy())
+            .await
+            .require_write()
+            .map_err(|message| ApiError::Conflict {
+                code: "task_workspace_read_only",
+                message,
+            })?;
         let outcome = self
             .worktrees
             .isolate_current(
@@ -468,6 +553,24 @@ impl TaskLifecycle {
                     .filter_map(|thread| Some((thread.position_in_section()?, thread.thread_id)))
                     .min()
                     .map(|(_, thread_id)| thread_id);
+                if let LocalPlacementMutation::ClaimInSection {
+                    handoff: Some(source),
+                    ..
+                } = &mutation
+                {
+                    let current = tables
+                        .managed_thread(&source.managed.thread_id)?
+                        .ok_or(TaskStoreError::UnexpectedPayload)?;
+                    if current.run_by.provider() != source.managed.run_by.provider()
+                        || current.section_id() != source.managed.section_id()
+                    {
+                        return Err(TaskStoreError::UnexpectedPayload);
+                    }
+                    if let Some(worktree) = &source.worktree {
+                        tables.reconnect_managed_thread(&current, &worktree.worktree_path)?;
+                        tables.transfer_worktree_owner(worktree, &thread_id, now_ms())?;
+                    }
+                }
                 let managed = match mutation {
                     LocalPlacementMutation::Claim {
                         thread,

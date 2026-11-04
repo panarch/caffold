@@ -23,7 +23,10 @@ pub(crate) fn caffold_mcp_tools() -> Vec<Value> {
     let notes_tools = notes_tool_specs()
         .into_iter()
         .map(|tool| listed_tool(tool.name, tool.description, tool.input_schema));
-    task_tools.chain(notes_tools).collect()
+    task_tools
+        .chain(std::iter::once(crate::agent::history::tool_definition()))
+        .chain(notes_tools)
+        .collect()
 }
 
 fn listed_tool(name: &str, description: &str, input_schema: Value) -> Value {

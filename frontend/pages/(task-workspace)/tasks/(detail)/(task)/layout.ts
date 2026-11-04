@@ -88,7 +88,9 @@ import type {
   ConversationSnapshot,
 } from "./components/conversation.js";
 import "./components/current-plan.js";
+import "./components/handoff-dialog.js";
 import type { CaffoldTaskCurrentPlan } from "./components/current-plan.js";
+import type { CaffoldTaskHandoffDialog } from "./components/handoff-dialog.js";
 import "./components/markdown-preview-dialog.js";
 import type {
   CaffoldTaskMarkdownPreviewDialog,
@@ -167,6 +169,7 @@ interface ActionState {
 // read, its live connection, whether it is absent, where it works, and its
 // Archive, Fork, and pin requests.
 export interface TaskSubjectSnapshot {
+  workspaceAccess?: TaskDetail["workspaceAccess"];
   task: Task | null;
   transportState: TaskTransportState;
   absent: boolean;
@@ -334,6 +337,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
   private readonly conversationComponent =
     new DrawnRef<CaffoldTaskConversation>(this);
   private readonly commandDialog = new DrawnRef<CaffoldTaskCommandDialog>(this);
+  private readonly handoffDialog = new DrawnRef<CaffoldTaskHandoffDialog>(this);
   private readonly toolCallDialog = new DrawnRef<CaffoldTaskToolCallDialog>(
     this,
   );
@@ -406,6 +410,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
     }
 
     if (this.selectedThreadId !== targetThreadId) {
+      this.handoffDialog.value?.deactivate();
       this.brokenDeleteDialog.value?.reset();
       this.forceArchiveDialog.value?.reset();
       this.deactivateFollowUpComposer();
@@ -538,6 +543,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
   // Ends what the open Task's surfaces have in flight: its requests, older
   // history, and the dialogs opened over its conversation.
   private endTaskRequests() {
+    this.handoffDialog.value?.deactivate();
     this.brokenDeleteDialog.value?.reset();
     this.forceArchiveDialog.value?.reset();
     this.history.deactivate();
@@ -572,6 +578,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       provider: `${this.taskDetail?.provider ?? ""}`.trim(),
       permissionMode: this.followUpComposer()?.selectedPermissionMode() ?? "",
       archiveState: this.archiveStateValue,
+      workspaceAccess: this.taskDetail?.workspaceAccess,
       forkState: this.forkStateValue,
       pinState: this.pinStateValue,
     };
@@ -598,6 +605,8 @@ export class CaffoldTaskDetail extends CaffoldElement {
     const slot = this.followUpComposerSlot.value;
     const clipRoots = [this, pane];
     return mergeActionHintScopes(
+      own,
+      this.handoffDialog.value?.actionHintScope(),
       composer && slot && composer.parentElement === slot
         ? mergeActionHintScopes(
             composer.actionHintScope({ scopeId, clipRoots }),
@@ -634,6 +643,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
     const deletionContexts = mergeKeyboardNavigationContexts(
       this.brokenDeleteDialog.value?.keyboardNavigationContexts() ?? [],
       this.forceArchiveDialog.value?.keyboardNavigationContexts() ?? [],
+      this.handoffDialog.value?.keyboardNavigationContexts() ?? [],
     );
     if (
       this.hidden ||
@@ -780,6 +790,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
     this.taskDetail = {
       ...current,
       revision: message.revision,
+      workspaceAccess: message.workspaceAccess ?? current.workspaceAccess,
       task,
       provider: message.provider,
       permissionMode: message.permissionMode,
@@ -1716,6 +1727,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       loading: true,
       error: confirmation ? failure : null,
     };
+    this.syncFollowUpComposer();
     this.emitSubjectSnapshot();
     try {
       const task = expectedWorktreeId
@@ -1728,6 +1740,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
         return;
       }
       this.archiveStateValue = { loading: false, error: null };
+      this.syncFollowUpComposer();
       this.dispatchEvent(
         new CustomEvent<TaskDetailIntent>(TASK_DETAIL_INTENT_EVENT, {
           bubbles: true,
@@ -1744,6 +1757,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       }
       const failure = error as TaskResponseError;
       this.archiveStateValue = { loading: false, error: failure };
+      this.syncFollowUpComposer();
       if (this.reportTaskAbsence(threadId, failure)) {
         return;
       }
@@ -1822,6 +1836,33 @@ export class CaffoldTaskDetail extends CaffoldElement {
       }
       this.emitSubjectSnapshot();
     }
+  }
+
+  private openHandoff(provider: string, opener?: HTMLElement | null) {
+    const taskId = this.selectedThreadId;
+    if (
+      !taskId ||
+      !this.handoffAvailable() ||
+      provider === this.taskDetail?.provider
+    )
+      return;
+    void this.handoffDialog.value?.open(
+      {
+        taskId,
+        cwd: this.activeCwdPath(),
+        managed: this.taskDetail?.workspaceAccess?.ownerTaskId === taskId,
+        targetProvider: provider,
+      },
+      opener,
+    );
+  }
+
+  private handoffAvailable() {
+    return (
+      this.taskDetail?.workspaceAccess?.mode === "readWrite" &&
+      !this.archiveStateValue.loading &&
+      !isTaskActivelyWorking(this.taskDetail.task)
+    );
   }
 
   // The request stays in progress until the Task list has read the pin back,
@@ -2151,8 +2192,17 @@ export class CaffoldTaskDetail extends CaffoldElement {
       placeholder: "Send another prompt to this task",
       ariaLabel: "Follow-up prompt",
       submitLabel: "Send prompt",
-      disabled: isTaskTransportStale(this.detailSession.state),
-      settingsLocked: isTaskActivelyWorking(task),
+      readOnly: this.taskDetail?.workspaceAccess?.mode === "readOnly",
+      disabled:
+        isTaskTransportStale(this.detailSession.state) ||
+        Boolean(
+          this.taskDetail?.workspaceAccess &&
+            this.taskDetail.workspaceAccess.mode !== "readWrite",
+        ),
+      settingsLocked:
+        isTaskActivelyWorking(task) ||
+        this.taskDetail?.workspaceAccess?.mode === "readOnly",
+      allowHandoff: this.handoffAvailable(),
       turnActive: isTaskActivelyWorking(task),
       uploading:
         this.followUpRequests.get(threadId)?.node ===
@@ -2333,6 +2383,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
             @caffold:task-detail-intent=${this.permissionIntent}
           ></caffold-task-permission-instructions-dialog>
           <div class="task-follow-up-composer-dock">
+            ${this.taskDetail?.workspaceAccess?.mode === "readOnly" ? html`<p class="workspace-access" role="status">This worktree belongs to another Task. You can read this conversation. <a ${this.hints.link({ id: "workspace-owner", label: "Open the current workspace owner", action: ACTION_HINT_ACTION.LINK_OPEN })} href=${`/tasks/${encodeURIComponent(this.taskDetail.workspaceAccess.ownerTaskId ?? "")}`}>Open the current Task</a></p>` : this.taskDetail?.workspaceAccess?.mode === "unavailable" ? html`<p class="workspace-access" role="status">${this.taskDetail.workspaceAccess.reason}</p>` : nothing}
             <caffold-task-current-plan
               ${drawn(this.currentPlanComponent)}
             ></caffold-task-current-plan>
@@ -2364,6 +2415,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
         ${drawn(this.forceArchiveDialog)}
         @caffold:task-force-archive-confirmed=${this.forceArchiveConfirmed}
       ></caffold-task-force-archive-dialog>
+      <caffold-task-handoff-dialog ${drawn(this.handoffDialog)}></caffold-task-handoff-dialog>
       <caffold-broken-task-delete-dialog
         ${drawn(this.brokenDeleteDialog)}
         @caffold:task-detail-intent=${this.brokenDeleteIntent}
@@ -2586,14 +2638,15 @@ export class CaffoldTaskDetail extends CaffoldElement {
 
   private composerIntent(event: CustomEvent<ComposerIntentDetail>) {
     const composer = this.followUpComposer();
-    if (
-      !composer ||
-      !this.fromComposer(event, composer) ||
-      event.detail?.type !== "interrupt"
-    ) {
+    if (!composer || !this.fromComposer(event, composer)) {
       return;
     }
     event.stopPropagation();
+    if (event.detail?.type === "handoff") {
+      this.openHandoff(event.detail.provider, event.detail.opener);
+      return;
+    }
+    if (event.detail?.type !== "interrupt") return;
     // Stop takes back a message still uploading, and stops the turn as well
     // when one is running.
     this.stopPromptUpload(this.selectedThreadId);

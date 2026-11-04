@@ -31,6 +31,7 @@ import { scopedStyle } from "#app/scoped-style.js";
 import type {
   CaffoldTaskTurnOptions,
   TurnOptionsContext,
+  TurnOptionsHandoffIntent,
   TurnOptionsSnapshot,
   TurnSubmissionOptions,
 } from "./task-turn-options.js";
@@ -55,7 +56,9 @@ export interface ComposerContext {
   submitLabel: string;
   cancel: boolean;
   disabled: boolean;
+  readOnly: boolean;
   settingsLocked: boolean;
+  allowHandoff: boolean;
   requestError: string;
   turnActive: boolean;
   supportsSteering: boolean;
@@ -85,9 +88,9 @@ export type ComposerSubmitDetail = Omit<
   "restorePromptFocusOnRejection"
 >;
 
-export interface ComposerIntentDetail {
-  type: "cancel" | "interrupt";
-}
+export type ComposerIntentDetail =
+  | { type: "cancel" | "interrupt" }
+  | ({ type: "handoff" } & TurnOptionsHandoffIntent);
 
 // How the owner answered a submission. Only a rejected one comes back to the
 // draft.
@@ -208,7 +211,9 @@ export class CaffoldTaskComposer extends CaffoldElement {
     submitLabel: "Send prompt",
     cancel: false,
     disabled: false,
+    readOnly: false,
     settingsLocked: false,
+    allowHandoff: false,
     requestError: "",
     turnActive: false,
     supportsSteering: true,
@@ -328,6 +333,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
       threadId: nextThreadId,
       cwd: cleanLogicalPath(context.cwd ?? this.context.cwd),
       disabled: Boolean(context.disabled),
+      readOnly: Boolean(context.readOnly ?? this.context.readOnly),
       settingsLocked: Boolean(context.settingsLocked),
       turnActive: Boolean(context.turnActive),
       supportsSteering: context.supportsSteering !== false,
@@ -549,6 +555,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
   // takes text; only sending waits for it.
   promptFieldLocked() {
     return (
+      this.context.readOnly ||
       VOICE_BUSY_PHASES.has(this.voice.phase) ||
       (Boolean(this.activeSubmissionFor()) && this.context.mode === "create")
     );
@@ -560,7 +567,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
       this.state.prompt.trim() || this.state.attachments.length,
     );
     const voicePhase = this.voice.phase;
-    const transportBlocked = this.context.disabled;
+    const transportBlocked = this.context.disabled || this.context.readOnly;
     const optionsReady = Boolean(this.turnOptions()?.readyForSubmission());
     const send = ({
       disabled = false,
@@ -810,6 +817,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
               <caffold-task-turn-options
                 ${drawn(this.optionsControl)}
                 @caffold:task-turn-options-change=${this.turnOptionsChanged}
+                @caffold:task-turn-options-handoff=${this.handoffRequested}
               ></caffold-task-turn-options>
             </div>
             <div class="task-composer-actions">
@@ -948,6 +956,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
     const requestLocked =
       submitting ||
       this.context.disabled ||
+      this.context.readOnly ||
       VOICE_BUSY_PHASES.has(this.voice.phase) ||
       this.context.interrupting;
     return {
@@ -955,6 +964,8 @@ export class CaffoldTaskComposer extends CaffoldElement {
       // A follow-up belongs to a Task that already has an agent; a new Task
       // does not, and every agent's models are on offer.
       provider: this.context.provider ?? "",
+      allowHandoff:
+        this.context.mode === "follow-up" && this.context.allowHandoff,
       initialSelection: {
         model: this.context.model ?? "",
         effort: this.context.effort ?? "",
@@ -981,6 +992,20 @@ export class CaffoldTaskComposer extends CaffoldElement {
     if (event.target === this.turnOptions()) {
       this.draw();
     }
+  }
+
+  private handoffRequested(event: CustomEvent<TurnOptionsHandoffIntent>) {
+    if (event.target !== this.turnOptions()) return;
+    event.stopPropagation();
+    const context = this.turnOptionsContext();
+    if (!context.allowHandoff || context.locked) return;
+    this.dispatchEvent(
+      new CustomEvent<ComposerIntentDetail>("caffold:task-composer-intent", {
+        bubbles: true,
+        composed: true,
+        detail: { type: "handoff", ...event.detail },
+      }),
+    );
   }
 
   // Messages that never reached the agent go back in the order they were
@@ -1073,6 +1098,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
     return (
       Boolean(this.activeSubmissionFor()) ||
       this.context.disabled ||
+      this.context.readOnly ||
       this.context.interrupting ||
       VOICE_WAITING_PHASES.has(this.voice.phase) ||
       this.voice.phase === "unavailable"
@@ -1443,6 +1469,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
   private acceptsAttachments() {
     return (
       !this.context.disabled &&
+      !this.context.readOnly &&
       !(this.context.mode === "create" && this.activeSubmissionFor())
     );
   }
@@ -1501,6 +1528,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
       if (
         !this.activeSubmissionFor() &&
         !this.context.disabled &&
+        !this.context.readOnly &&
         submitter?.classList.contains("task-primary-action-button")
       ) {
         void this.stopVoiceRecording({ submitAfterTranscription: true });
@@ -1510,6 +1538,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
     if (
       this.activeSubmissionFor() ||
       this.context.disabled ||
+      this.context.readOnly ||
       (this.context.turnActive && !this.context.supportsSteering) ||
       !this.turnOptions()?.readyForSubmission() ||
       VOICE_BUSY_PHASES.has(this.voice.phase)

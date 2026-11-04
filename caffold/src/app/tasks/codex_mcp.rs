@@ -1083,6 +1083,89 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_bound_codex_task_reads_archived_claude_items_through_mcp_without_starting_either_model()
+     {
+        let host = memory_host("http://127.0.0.1:5177".into());
+        let store = TaskStore::memory().unwrap();
+        store
+            .claim(
+                ManagedThread::new("receiver", RunBy::Codex, None, None, None),
+                1,
+            )
+            .unwrap();
+        let source = "bc2500b7-3062-488f-b46c-f3719136d742";
+        store
+            .claim(
+                ManagedThread::new(
+                    source,
+                    RunBy::Claude {
+                        cwd: "/history-project".into(),
+                    },
+                    None,
+                    None,
+                    None,
+                ),
+                1,
+            )
+            .unwrap();
+        store.archive(source, 2).unwrap();
+        let projects = tempfile::tempdir().unwrap();
+        let (claude, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
+        claude.write_test_transcript("/history-project", source, &format!("{}\n{}\n",
+            json!({"type":"user","uuid":"question","promptSource":"sdk","message":{"role":"user","content":"Original goal"}}),
+            json!({"type":"assistant","uuid":"answer","parentUuid":"question","message":{"role":"assistant","content":[{"type":"text","text":"Original decision"}]}})));
+        let codex = CodexThreadClient::mock(Vec::new());
+        let (shutdown, _) = broadcast::channel(1);
+        let runtime = TaskRuntime::new(
+            claude,
+            GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
+            TaskSessions::default(),
+            TaskEvents::default(),
+            store,
+            shutdown,
+        );
+        runtime.install_test_client(1, codex.clone()).await;
+        host.attach_runtime(runtime);
+        let caller = bind_thread(&host, "receiver").await;
+        let call = |arguments| json!({"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"read_task_history","arguments":arguments}});
+        let first = response_json(
+            bound_request(&host, &caller, call(json!({"taskId":source,"limit":1}))).await,
+        )
+        .await;
+        assert_eq!(first["result"]["isError"], false, "{first}");
+        let first: Value =
+            serde_json::from_str(first["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(first["source"]["provider"], "claude");
+        assert_eq!(first["turns"][0]["items"][0]["text"], "Original decision");
+        assert_eq!(first["turns"][0]["partial"], true);
+        let older = response_json(
+            bound_request(
+                &host,
+                &caller,
+                call(json!({"taskId":source,"cursor":first["nextCursor"],"limit":1})),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(older["result"]["isError"], false, "{older}");
+        let older: Value =
+            serde_json::from_str(older["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(older["turns"][0]["items"][0]["text"], "Original goal");
+        assert!(older["nextCursor"].is_null());
+        for bad in [
+            json!({"taskId":"unmanaged"}),
+            json!({"taskId":source,"limit":0}),
+            json!({"taskId":source,"cursor":"stale"}),
+        ] {
+            let error = response_json(bound_request(&host, &caller, call(bad)).await).await;
+            assert_eq!(error["result"]["isError"], true, "{error}");
+        }
+        assert!(runner.spawned(source).await.is_none());
+        assert!(codex.mock_requests().await.is_empty());
+    }
+
+    #[tokio::test]
     async fn a_bound_connection_reads_its_tasks_name_without_asking_codex() {
         let host = memory_host("http://127.0.0.1:5177".to_string());
         let store = TaskStore::memory().unwrap();

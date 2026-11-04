@@ -237,7 +237,7 @@ test("a list that cannot be read again leaves the model unavailable", { tag: "@s
   await expect(picker.locator(".task-permission-picker")).toBeHidden();
 });
 
-test("offers only the existing Task's provider", { tag: "@server-steady" }, async ({ page }) => {
+test("keeps the Task's provider boundary when handoff is not available", { tag: "@server-steady" }, async ({ page }) => {
   await installCatalog(page);
   const detail = taskDetailFixture({ model: "shared", reasoningEffort: "xhigh" });
   await page.route("**/api/tasks/thread-1", (route) => route.fulfill({ json: detail }));

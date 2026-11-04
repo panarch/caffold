@@ -9,7 +9,9 @@ lists what is planned.
   internet; see [Who can use Caffold](data-and-privacy.md#who-can-use-caffold).
   It runs only on Apple silicon Macs with macOS 14 or later.
 - **Four built-in agents.** Caffold works with Codex, Claude Code, Grok, and Antigravity and
-  cannot load other agents. A Task cannot switch agents, and a feature one
+  cannot load other agents. Each Task keeps its agent;
+  [Continue with another agent](../tasks/worktrees.md#continue-with-another-agent)
+  opens a separate Task at the same files. A feature one
   agent offers may not exist in another; forking supports Codex, Claude, and Grok; Antigravity is excluded.
   Antigravity supports Stop and editable drafts during work, but no steering.
 - **No code editor, and one terminal per Task.** Ask the agent to change

@@ -21,6 +21,8 @@ boundaries.
   rules name, and leaves the rest to a person;
 - Tasks backed by Codex, Claude Code, Grok, or Antigravity, with the agent selected by model
   when the Task is created and fixed for the Task's lifetime;
+- [Continue with another agent](workflows.md#continue-with-another-agent), starting
+  a separate Task at the same files with history available for preparation;
 - native Codex app-server integration, including its persistent daemon and
   replaceable Caffold proxy;
 - native Claude Code CLI integration, including transcript recovery and the

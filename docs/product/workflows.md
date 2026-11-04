@@ -98,6 +98,20 @@ explicit worktree-isolation operation. A failure before the managed claim
 creates no Task. Caffold attempts to delete a native child if validation or
 claim fails; cleanup failures retain the child ID in diagnostics.
 
+### Continue with another agent
+
+Open the follow-up model picker, browse another agent, and choose its
+**Continue with** button. Review its model and turn options in the continuation dialog,
+then continue. The target Task opens in the same directory. Its
+first turn reads the source history and current code, summarizes the goal,
+current state, decisions and remaining work, then waits. Only the selected
+model is asked to infer; the source model is not asked to prepare a summary.
+
+A managed worktree moves to the target Task while its source stays in Active
+for reading. Ordinary directories and external worktrees retain their usual
+shared-directory behavior. See the [workspace ownership contract](../architecture/worktree-lifecycle.md#continue-in-the-same-workspace)
+and [recorded history interface](../architecture/agent-runtimes.md#recorded-task-history).
+
 ### Open an existing Task
 
 1. Selecting a Task immediately keeps its stable header identity from the
@@ -353,7 +367,7 @@ independent objects:
 
 | Object | Role and owner |
 | --- | --- |
-| Origin | Global New, managed Section, explicit GitHub Issue/PR Start Task, or a native fork of an existing supported conversation. |
+| Origin | Global New, managed Section, explicit GitHub Issue/PR Start Task, a native fork of an existing supported conversation, or continuation from another Task. |
 | Task | Caffold-owned membership, display identity, selected agent, and review entry point. |
 | Agent conversation | Codex app-server thread, Claude session/transcript, Grok leader-held session, or Antigravity native trajectory that owns prompts, turns, and agent activity. |
 | Note | Caffold-owned Markdown record shared by every Task, changed only through agents' Notes tools. |

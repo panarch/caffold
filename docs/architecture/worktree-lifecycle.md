@@ -22,6 +22,39 @@ worktrees are never adopted or removed.
 - Tasks without a managed-worktree record retain their existing cwd and files
   when archived.
 
+## Continue in the same workspace
+
+**Continue with another agent** starts a new native conversation using the source
+Task's current physical cwd. For an ordinary directory or external Git worktree,
+both Tasks remain usable. For a ready managed worktree, the source must have no
+active turn or background work. Caffold prepares the target conversation, closes
+the source terminal and provider observation, and atomically registers the target
+Task and transfers the existing `managed_worktrees.thread_id` owner. The worktree
+UUID, path, Git checkout, index, uncommitted files and ignored output stay in place.
+The source Task retains its provider and Task ID. Pending driver relocation uses
+that driver's existing directory operation before transfer. Claude's effective
+cwd is retained in its existing Task row; a stopped transcript is read at its
+recorded location or resolved by a unique Session ID if that file is absent.
+
+The source stays in Active. Task Detail reads its recorded history without
+resuming it. `workspaceAccess` is derived from the canonical cwd, managed ownership
+record and actual Git identity: `readWrite`, `readOnly` with `ownerTaskId` when a
+different Task owns that managed checkout, or `unavailable` with a reason. A
+missing, ambiguous or mismatched managed workspace cannot become an ordinary
+writable directory. No readonly flag, handoff status or storage migration is used.
+The prompt, isolation and Task-terminal boundaries enforce the same rule; the
+browser disables input and links to the current owner. Archive or deletion of
+the source has no owned worktree to remove.
+
+Before local commit, failure leaves ownership with the source and attempts to
+clean up an unclaimed target. A source process already closed can reopen on a
+later source request after such a failure. After commit, a detail-read error
+returns the created Task ID so the browser can open it without creating another.
+The target's initial summary is a separate ordinary prompt submission; creating
+the empty Task does not claim that summary succeeded. An uncertain transport
+failure requires checking the Task list before retrying, especially for ordinary
+directories, where there is no persistent handoff idempotency record.
+
 ## Isolation Preparation
 
 The `isolate_current_task` tool is available only inside a Task already managed
@@ -53,9 +86,10 @@ A Claude Task reaches the same state by moving rather than by per-turn `cwd`:
 the agent only changes directory between turns, so the session is moved into
 the worktree the moment the isolating turn ends, and every later opening of the
 Task starts its session in the worktree directly. The agent keeps its
-transcript where its session runs, and the CLI relocates the file with the
-move, so a Task that has a worktree record — whatever state that record is in —
-is read, resumed, and erased at the worktree's path.
+transcript where its session runs, and the CLI relocates the file with a
+successful move. Resume uses the worktree's path; recorded reads, existence
+checks and deletion can resolve the unique Session ID when the recorded file
+is absent.
 
 A Grok session never changes directory. When the isolating turn ends, Caffold
 forks the session into the worktree with Grok's own `_x.ai/session/fork`, loads
@@ -244,6 +278,9 @@ attached HEAD. It changes only verified owned markers and their repository
 records, without broad repair, pruning external worktrees, switching branches,
 or changing the index or working files. Missing individual worktrees are not
 recreated, and in-progress lifecycle records prevent reconnection.
+An Active Task still pointing to another Task's managed checkout after a
+handoff keeps its directory and recorded-history access. Reconnection repairs
+that checkout through its owner without opening the former owner's session.
 
 Direct active Tasks under the old directory retain their relative subpaths.
 Each provider confirms the same Task at the destination: Codex updates native
@@ -251,11 +288,12 @@ thread settings and reads effective cwd; Claude resumes existing history and
 moves its session/transcript; Grok switches its durable native binding while
 keeping the Caffold Task identity; Antigravity reloads its same native UUID at
 the destination. Independently moved Task directories outside
-both source and target stay unchanged. Caffold persists Claude/Grok/Antigravity's new cwd;
+both source and target stay unchanged without opening their sessions.
+Caffold persists Claude/Grok/Antigravity's new cwd;
 Codex remains the owner of its native cwd. Moved Task terminals close.
 
 Affected active Task mutations are reserved in stable order. Running or unknown
-Task state blocks repair. Each successful Task repair is persisted separately;
+Task state blocks repair of that Task. Each successful Task repair is persisted separately;
 a later failure retains those successes, keeps the Section's old path, and
 names the failing Task. Repeating with the same selected folder recognizes
 already repaired pointers and native directories. No recovery job or movement

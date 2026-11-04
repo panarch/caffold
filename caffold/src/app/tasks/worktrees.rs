@@ -79,6 +79,10 @@ pub(in crate::app::tasks) struct ManagedWorktrees {
 }
 
 impl ManagedWorktrees {
+    pub(in crate::app::tasks) fn root(&self) -> &Path {
+        &self.root
+    }
+
     pub(in crate::app::tasks) fn new(
         fs: Arc<RootedFs>,
         store: TaskStore,

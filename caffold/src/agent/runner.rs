@@ -509,6 +509,31 @@ impl RunnerClient {
         }
     }
 
+    /// Confirm stopped writers without treating a runner error as absence.
+    pub(crate) async fn checked_live_sessions(&self) -> Result<Vec<String>, RunnerError> {
+        if self.inspect().await?.is_none() {
+            return Ok(Vec::new());
+        }
+        let mut client = self
+            .connect()
+            .await
+            .map_err(|error| RunnerError::Unavailable(error.to_string()))?;
+        match client
+            .request(Request::SessionList)
+            .await
+            .map_err(|error| RunnerError::Unavailable(error.to_string()))?
+        {
+            ReplyBody::Sessions { sessions } => Ok(sessions
+                .into_iter()
+                .filter(|session| matches!(session.state, protocol::SessionState::Running))
+                .map(|session| session.session)
+                .collect()),
+            _ => Err(RunnerError::Unavailable(
+                "The runner returned an unexpected session list.".into(),
+            )),
+        }
+    }
+
     /// Stop the runner and start a fresh one, reporting the replacement.
     ///
     /// Deliberate, and only deliberate: every session the old runner held ends

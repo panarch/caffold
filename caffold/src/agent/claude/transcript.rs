@@ -294,6 +294,67 @@ pub(crate) fn locate(projects: &Path, cwd: &str, session_id: &str) -> Option<Pat
     })
 }
 
+/// Use the known native location, or resolve a unique record after a cwd move.
+pub(crate) fn resolve(projects: &Path, cwd: &str, id: &str) -> std::io::Result<PathBuf> {
+    use std::io::{Error, ErrorKind};
+    let path = locate(projects, cwd, id)
+        .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid Claude Session ID"))?;
+    match std::fs::symlink_metadata(&path) {
+        Ok(metadata) if metadata.file_type().is_file() => Ok(path),
+        Ok(_) => Err(Error::new(
+            ErrorKind::InvalidData,
+            "Claude's transcript is not an ordinary file",
+        )),
+        Err(error) if error.kind() == ErrorKind::NotFound => find(projects, id),
+        Err(error) => Err(error),
+    }
+}
+
+/// Find one ordinary native record by session identity, independently of cwd.
+/// A stopped session can have a different transcript location from its Task's
+/// effective workspace. Ambiguous files are never selected by directory order.
+pub(crate) fn find(projects: &Path, id: &str) -> std::io::Result<PathBuf> {
+    use std::io::{Error, ErrorKind};
+    if !names_one_conversation(id) {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Invalid Claude Session ID",
+        ));
+    }
+    let mut found = None;
+    for directory in std::fs::read_dir(projects)? {
+        let directory = directory?;
+        if !directory.file_type()?.is_dir() {
+            continue;
+        }
+        let candidate = directory.path().join(format!("{id}.jsonl"));
+        match std::fs::symlink_metadata(&candidate) {
+            Ok(metadata) if metadata.file_type().is_file() => {
+                if found.replace(candidate).is_some() {
+                    return Err(Error::new(
+                        ErrorKind::InvalidData,
+                        "That Claude Session ID has multiple transcripts; resolve the duplicate before reading or deleting it",
+                    ));
+                }
+            }
+            Ok(_) => {
+                return Err(Error::new(
+                    ErrorKind::InvalidData,
+                    "Claude's transcript is not an ordinary file",
+                ));
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+    found.ok_or_else(|| {
+        Error::new(
+            ErrorKind::NotFound,
+            format!("Claude could not resolve Session ID {id}"),
+        )
+    })
+}
+
 /// Whether an identifier names one conversation and nothing else.
 ///
 /// The agent names a session with a UUID and so does Caffold, so this asks for
@@ -414,8 +475,26 @@ pub(crate) fn read(path: &Path, before: Option<&str>, limit: usize) -> Result<Re
         }
         Err(error) => return Err(error.into()),
     };
+    read_file(&mut file, before, limit)
+}
+
+/// Recorded-history callers distinguish an absent ledger from an empty file.
+pub(crate) fn read_existing(
+    path: &Path,
+    before: Option<&str>,
+    limit: usize,
+) -> Result<Reading, ReadError> {
+    let mut file = std::fs::File::open(path)?;
+    read_file(&mut file, before, limit)
+}
+
+fn read_file(
+    file: &mut std::fs::File,
+    before: Option<&str>,
+    limit: usize,
+) -> Result<Reading, ReadError> {
     let snapshot_len = file.metadata()?.len();
-    let window = bytes::window(&mut file, snapshot_len, before, limit)?;
+    let window = bytes::window(file, snapshot_len, before, limit)?;
     let lines = window.contents.lines().collect::<Vec<_>>();
     let parsed = turns(&lines);
     Ok(Reading {
@@ -897,6 +976,21 @@ pub(super) fn plant(projects: &Path, cwd: &str, session_id: &str, contents: &str
 mod tests {
     use super::*;
     use crate::agent::{CommandExecution, ItemKind, TurnOrigin, TurnStatus};
+
+    #[test]
+    fn a_known_transcript_location_wins_and_a_moved_location_requires_unique_identity() {
+        let projects = tempfile::tempdir().unwrap();
+        let id = "session-1";
+        let known = locate(projects.path(), "/known", id).unwrap();
+        std::fs::create_dir_all(known.parent().unwrap()).unwrap();
+        std::fs::write(&known, "").unwrap();
+        assert_eq!(resolve(projects.path(), "/moved", id).unwrap(), known);
+        let duplicate = locate(projects.path(), "/duplicate", id).unwrap();
+        std::fs::create_dir_all(duplicate.parent().unwrap()).unwrap();
+        std::fs::write(&duplicate, "").unwrap();
+        assert_eq!(resolve(projects.path(), "/known", id).unwrap(), known);
+        assert!(resolve(projects.path(), "/moved", id).is_err());
+    }
 
     /// Measured against CLI 2.1.236: `/Users/x/a_b.c d` is filed as
     /// `-Users-x-a-b-c-d`.

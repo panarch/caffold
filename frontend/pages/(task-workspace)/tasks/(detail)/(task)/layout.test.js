@@ -113,6 +113,7 @@ test("offers the conversation, follow-up Composer, and Current Plan while the co
   const owner = Object.assign(screen(), {
     hints: { scope: () => ({ targets: [{ id: "load-error" }] }) },
     absenceNotice: { value: undefined },
+    handoffDialog: { value: undefined },
     conversationPane: { value: pane },
     followUpComposerSlot: { value: slot },
     conversationComponent: { value: part("conversation-action", {}) },
@@ -122,7 +123,7 @@ test("offers the conversation, follow-up Composer, and Current Plan while the co
   const scope = () => taskDetail.actionHintScope.call(owner);
   const ids = () => scope().targets.map(({ id }) => id);
 
-  assert.deepEqual(ids(), ["prompt", "conversation-action", "plan"]);
+  assert.deepEqual(ids(), ["load-error", "prompt", "conversation-action", "plan"]);
   assert.deepEqual(pulls.map(({ scopeId }) => scopeId), [
     "task:thread-a",
     "task:thread-a:conversation",
@@ -132,7 +133,7 @@ test("offers the conversation, follow-up Composer, and Current Plan while the co
   assert.ok(scope().mutationRoots.includes(slot));
 
   composer = null;
-  assert.deepEqual(ids(), ["conversation-action", "plan"]);
+  assert.deepEqual(ids(), ["load-error", "conversation-action", "plan"]);
 
   owner.notice = {};
   assert.deepEqual(ids(), ["load-error"], "a read that failed offers its action");
@@ -165,6 +166,7 @@ test("merges composer popovers, Current Plan, Command, Tool call, Markdown previ
     performUpdate() {},
     brokenDeleteDialog: { value: undefined },
     forceArchiveDialog: { value: { keyboardNavigationContexts: () => [{ id: "force-archive" }] } },
+    handoffDialog: { value: { keyboardNavigationContexts: () => [{ id: "handoff" }] } },
     followUpComposer: () => composer,
     followUpComposerSlot: { value: slot },
     currentPlanComponent: {
@@ -190,6 +192,7 @@ test("merges composer popovers, Current Plan, Command, Tool call, Markdown previ
     taskDetail.keyboardNavigationContexts.call(owner),
     [
       { id: "force-archive" },
+      { id: "handoff" },
       composerContext,
       planContext,
       commandContext,
@@ -203,6 +206,7 @@ test("merges composer popovers, Current Plan, Command, Tool call, Markdown previ
     taskDetail.keyboardNavigationContexts.call(owner),
     [
       { id: "force-archive" },
+      { id: "handoff" },
       composerContext,
       commandContext,
       toolCallContext,
@@ -215,6 +219,7 @@ test("merges composer popovers, Current Plan, Command, Tool call, Markdown previ
     taskDetail.keyboardNavigationContexts.call(owner),
     [
       { id: "force-archive" },
+      { id: "handoff" },
       composerContext,
       commandContext,
       toolCallContext,
@@ -224,7 +229,7 @@ test("merges composer popovers, Current Plan, Command, Tool call, Markdown previ
   owner.permissionInstructionsDialog = { value: undefined };
   assert.deepEqual(
     taskDetail.keyboardNavigationContexts.call(owner),
-    [{ id: "force-archive" }, composerContext, commandContext, toolCallContext],
+    [{ id: "force-archive" }, { id: "handoff" }, composerContext, commandContext, toolCallContext],
   );
 });
 

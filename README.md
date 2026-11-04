@@ -162,7 +162,9 @@ does not provide authentication for a public deployment or multi-user
 authorization.
 
 Agent support is built in rather than loaded as a runtime plugin. Caffold
-drives the four built-in agents and does not let an existing Task switch agents.
+drives the four built-in agents, and each Task keeps its agent.
+[Continue with another agent](docs/product/workflows.md#continue-with-another-agent)
+opens a separate Task at the same files.
 Antigravity does not support steering: drafts remain editable during work,
 and Stop remains available.
 

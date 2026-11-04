@@ -228,6 +228,7 @@ impl TaskLifecycle {
                 thread: Box::new(thread),
                 display_name: display_name.to_string(),
                 section_id: section.section_id.clone(),
+                handoff: None,
             },
         )
         .await?

@@ -1124,18 +1124,16 @@ impl Driver {
             // Task restored onto a conversation that is gone is one that can
             // never be opened again. So the same refusal is made here, by
             // looking — which is the only way this agent can be asked.
-            Self::Claude(claude) => {
-                match claude
-                    .client
-                    .was_written_down(&claude.cwd, conversation_id)
-                    .await
-                {
-                    true => Ok(None),
-                    false => Err(AgentError::ConversationGone(format!(
-                        "the agent no longer has conversation {conversation_id}"
-                    ))),
-                }
-            }
+            Self::Claude(claude) => match claude
+                .client
+                .recorded_conversation_exists(&claude.cwd, conversation_id)
+                .await?
+            {
+                true => Ok(None),
+                false => Err(AgentError::ConversationGone(format!(
+                    "the agent no longer has conversation {conversation_id}"
+                ))),
+            },
             Self::Grok(client) => match client.conversation_exists(conversation_id).await {
                 true => Ok(None),
                 false => Err(AgentError::ConversationGone(format!(
@@ -1210,8 +1208,8 @@ impl Driver {
             Self::Claude(claude) => {
                 claude
                     .client
-                    .was_written_down(&claude.cwd, conversation_id)
-                    .await
+                    .recorded_conversation_exists(&claude.cwd, conversation_id)
+                    .await?
             }
             Self::Grok(client) => client.conversation_exists(conversation_id).await,
         })
@@ -1240,6 +1238,37 @@ impl Driver {
             Self::Claude(claude) => Ok(claude.client.watched_conversation(conversation_id).await),
             Self::Grok(client) => Ok(client.watched_conversation(conversation_id).await),
         }
+    }
+
+    /// A managed workspace may move only after live work is ruled out.
+    pub(crate) async fn handoff_source(
+        &self,
+        task: &str,
+    ) -> Result<Option<Conversation>, AgentError> {
+        let conversation = self.describe(task).await?;
+        if let Some(conversation) = &conversation {
+            if !(matches!(
+                conversation.status,
+                ThreadStatus::Idle | ThreadStatus::SystemError
+            ) || matches!(self, Self::Codex(_))
+                && matches!(conversation.status, ThreadStatus::NotLoaded))
+                || conversation.background_work
+            {
+                return Err(AgentError::Failed(
+                    "Finish the source Task's work before handing off its worktree.".into(),
+                ));
+            }
+        } else {
+            let unobserved = match self {
+                Self::Codex(_) | Self::Grok(_) => true,
+                Self::Claude(claude) => claude.client.has_unobserved_writer(task).await?,
+                Self::Antigravity(client) => client.has_unobserved_writer(task).await?,
+            };
+            if unobserved {
+                return Err(AgentError::Failed("Open the source Task and wait for its live status before continuing its worktree.".into()));
+            }
+        }
+        Ok(conversation)
     }
 
     /// Stop watching a conversation. It carries on without an audience.
@@ -1419,5 +1448,31 @@ mod tests {
         let requests = client.mock_requests().await;
         assert_eq!(requests[0].0, "thread/unsubscribe");
         assert_eq!(requests[0].1["threadId"], json!("thread_1"));
+    }
+
+    #[tokio::test]
+    async fn handoff_checks_native_activity_without_prompting_and_accepts_an_ended_error() {
+        for (status, allowed) in [
+            ("idle", true),
+            ("systemError", true),
+            ("notLoaded", true),
+            ("active", false),
+        ] {
+            let client = codex(vec![MockCodexResponse::ok(
+                "thread/read",
+                json!({
+                    "thread": { "id":"source", "preview":"Source goal", "status":{"type":status,"activeFlags":[]}, "cwd":"/workspace", "createdAt":1.0,"updatedAt":1.0,"turns":[] }
+                }),
+            )]);
+            assert_eq!(
+                client.driver().handoff_source("source").await.is_ok(),
+                allowed,
+                "{status}"
+            );
+            let requests = client.mock_requests().await;
+            assert_eq!(requests.len(), 1);
+            assert_eq!(requests[0].0, "thread/read");
+            assert_eq!(requests[0].1["includeTurns"], false);
+        }
     }
 }

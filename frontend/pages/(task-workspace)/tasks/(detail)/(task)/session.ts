@@ -135,6 +135,7 @@ export interface TaskSyncMessage {
 
 // The Task's state beside its conversation.
 export interface TaskStateMessage {
+  workspaceAccess?: TaskDetail["workspaceAccess"];
   threadId: string;
   revision?: number;
   task?: Task | null;

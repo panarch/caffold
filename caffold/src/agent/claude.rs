@@ -48,6 +48,7 @@ pub(crate) mod status;
 pub(crate) mod transcript;
 pub(crate) mod translate;
 
+use super::history::RecordedPage;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -637,6 +638,16 @@ impl ClaudeClient {
         self.inner.runner.live_sessions().await
     }
 
+    pub(crate) async fn has_unobserved_writer(&self, task: &str) -> Result<bool, ClaudeError> {
+        Ok(self
+            .inner
+            .runner
+            .checked_live_sessions()
+            .await?
+            .iter()
+            .any(|id| id == task))
+    }
+
     /// Let go of a conversation. Nothing happens.
     ///
     /// Caffold lets go of a Codex conversation once nothing has needed it for
@@ -696,6 +707,27 @@ impl ClaudeClient {
             .unwrap_or(false)
     }
 
+    /// Archived history uses its known native location, with a unique Session
+    /// ID fallback when its effective workspace has moved.
+    pub(crate) async fn recorded_conversation_exists(
+        &self,
+        cwd: &str,
+        conversation_id: &str,
+    ) -> Result<bool, ClaudeError> {
+        let Some(projects) = self.projects().map(|projects| projects.to_path_buf()) else {
+            return Ok(false);
+        };
+        let id = conversation_id.to_string();
+        let cwd = cwd.to_string();
+        tokio::task::spawn_blocking(move || match transcript::resolve(&projects, &cwd, &id) {
+            Ok(_) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(ClaudeError::History(error.to_string())),
+        })
+        .await
+        .map_err(|error| ClaudeError::History(error.to_string()))?
+    }
+
     /// Remove a conversation from the world.
     ///
     /// What the agent wrote is a local session in its entirety: there is
@@ -716,12 +748,30 @@ impl ClaudeClient {
                 "cannot work out where conversation {conversation_id} is written down"
             )));
         };
-        tokio::task::spawn_blocking(move || transcript::erase(&written))
-            .await
-            .map_err(|error| ClaudeError::Runner(error.to_string()))?
-            .map_err(|error| {
-                ClaudeError::Runner(format!("could not remove what the agent wrote: {error}"))
-            })
+        let projects = self
+            .projects()
+            .expect("the transcript path requires a projects directory")
+            .to_path_buf();
+        let id = conversation_id.to_string();
+        tokio::task::spawn_blocking(move || {
+            let written = match std::fs::symlink_metadata(&written) {
+                Ok(_) => written,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    match transcript::find(&projects, &id) {
+                        Ok(found) => found,
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => written,
+                        Err(error) => return Err(error),
+                    }
+                }
+                Err(error) => return Err(error),
+            };
+            transcript::erase(&written)
+        })
+        .await
+        .map_err(|error| ClaudeError::Runner(error.to_string()))?
+        .map_err(|error| {
+            ClaudeError::Runner(format!("could not remove what the agent wrote: {error}"))
+        })
     }
 
     /// Where this conversation works now.
@@ -1129,6 +1179,63 @@ impl ClaudeClient {
             recency_at_ms: Some(state.moved_at_ms),
             turns: state.turns.clone(),
         }
+    }
+
+    /// Read the native transcript without opening a process or adding live items.
+    pub(crate) async fn read_recorded_history(
+        &self,
+        conversation_id: &str,
+        cwd: &str,
+        cursor: Option<&str>,
+    ) -> Result<RecordedPage, ClaudeError> {
+        let session = self.session(conversation_id).await;
+        let (cwd, _settled) = match &session {
+            Some(session) => {
+                let settled = session.relocation.read().await;
+                (session.cwd.lock().await.clone(), Some(settled))
+            }
+            None => (cwd.to_string(), None),
+        };
+        let projects = self
+            .projects()
+            .ok_or_else(|| ClaudeError::History("Cannot locate the recorded transcript.".into()))?
+            .to_path_buf();
+        let id = conversation_id.to_string();
+        let watched = session.is_some();
+        let cursor = cursor.map(str::to_string);
+        let (identity, reading) = tokio::task::spawn_blocking(move || {
+            let path = if watched {
+                transcript::locate(&projects, &cwd, &id)
+                    .ok_or_else(|| ClaudeError::History("Invalid recorded Session ID.".into()))?
+            } else {
+                transcript::resolve(&projects, &cwd, &id)
+                    .map_err(|error| ClaudeError::History(error.to_string()))?
+            };
+            let metadata = std::fs::symlink_metadata(&path)
+                .map_err(|error| ClaudeError::History(error.to_string()))?;
+            if !metadata.file_type().is_file() {
+                return Err(ClaudeError::History(
+                    "The recorded transcript is not an ordinary file.".into(),
+                ));
+            }
+            let reading = transcript::read_existing(&path, cursor.as_deref(), 1)
+                .map_err(|error| ClaudeError::History(error.to_string()))?;
+            Ok::<_, ClaudeError>((format!("claude:{}", path.display()), reading))
+        })
+        .await
+        .map_err(|error| ClaudeError::History(error.to_string()))??;
+        Ok(RecordedPage {
+            identity,
+            page: reading.page,
+            warnings: if reading.unreadable == 0 {
+                Vec::new()
+            } else {
+                vec![format!(
+                    "{} transcript record(s) could not be read; this history is incomplete.",
+                    reading.unreadable
+                )]
+            },
+        })
     }
 
     /// A conversation's turns, newest first, and where the older ones are.
@@ -2846,6 +2953,74 @@ mod tests {
         assert_eq!(
             moved.created_at_ms, opened.created_at_ms,
             "when it began does not move"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_surviving_unobserved_child_is_not_treated_as_an_idle_handoff_source() {
+        let (client, runner) = ClaudeClient::mock();
+        runner
+            .greet_next_session_with(vec![init_frame(SESSION)])
+            .await;
+        client
+            .open_conversation(SESSION, CWD, &options("opus"))
+            .await
+            .unwrap();
+        let cold = ClaudeClient::with_runner(client.inner.runner.clone());
+        assert!(cold.driver(CWD).handoff_source(SESSION).await.is_err());
+        assert!(runner.spawned(SESSION).await.is_some());
+    }
+
+    #[tokio::test]
+    async fn a_stopped_history_is_found_by_session_id_when_its_task_workspace_changed() {
+        let projects = written_conversation();
+        let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
+        let page = client
+            .read_recorded_history(SESSION, "/worktrees/new-owner", None)
+            .await
+            .unwrap();
+        assert!(!page.page.turns.is_empty());
+        assert!(
+            client
+                .recorded_conversation_exists("/worktrees/new-owner", SESSION)
+                .await
+                .unwrap()
+        );
+        assert!(runner.spawned(SESSION).await.is_none());
+        let path = transcript::locate(projects.path(), CWD, SESSION).unwrap();
+        client.erase(SESSION, "/worktrees/new-owner").await.unwrap();
+        assert!(!path.exists());
+        assert!(
+            !client
+                .recorded_conversation_exists("/worktrees/new-owner", SESSION)
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn recorded_history_reads_a_cold_transcript_and_reports_missing_files_without_starting_a_process()
+     {
+        let projects = written_conversation();
+        let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
+        let before =
+            std::fs::read(transcript::locate(projects.path(), CWD, SESSION).unwrap()).unwrap();
+        let page = client
+            .read_recorded_history(SESSION, CWD, None)
+            .await
+            .unwrap();
+        assert_eq!(page.page.turns.len(), 1);
+        assert!(!page.page.turns[0].items.is_empty());
+        assert!(runner.spawned(SESSION).await.is_none());
+        assert!(
+            client
+                .read_recorded_history("missing", CWD, None)
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            before,
+            std::fs::read(transcript::locate(projects.path(), CWD, SESSION).unwrap()).unwrap()
         );
     }
 

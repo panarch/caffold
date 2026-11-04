@@ -101,7 +101,12 @@ pub(super) async fn mark_task_seen(
             .and_then(|snapshot| snapshot.conversation.as_ref())
         {
             Some(conversation) => state.detail.record_from_conversation(conversation)?,
-            None => unavailable_task_record(&managed),
+            None => state
+                .detail
+                .recorded_detail(&thread_id, None)
+                .await?
+                .and_then(|detail| detail.task)
+                .unwrap_or_else(|| unavailable_task_record(&managed)),
         },
     };
     // Recovered native history can expose a completion that no live event

@@ -228,6 +228,46 @@
   border-left: 1px solid var(--border-subtle);
 }
 
+.task-model-handoff {
+  padding: var(--interface-space-2) var(--interface-space-3);
+  justify-items: start;
+}
+
+.task-model-popover .task-model-handoff {
+  gap: var(--interface-space-5);
+}
+
+.task-model-handoff h3 {
+  margin: 0;
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+  font-weight: 600;
+}
+
+.task-model-popover .task-model-handoff p {
+  padding: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-model-handoff-button {
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: var(--interface-compact-visual-size);
+  max-width: 100%;
+  font: inherit;
+  font-size: var(--interface-meta-font-size);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.task-model-handoff-button::before {
+  inset-block: calc(0px - var(--interface-compact-hit-outset));
+}
+
+.task-model-handoff-icon {
+  width: var(--interface-icon-small-size);
+  height: var(--interface-icon-small-size);
+}
+
 .task-provider-list,
 .task-model-list,
 .task-model-settings {
