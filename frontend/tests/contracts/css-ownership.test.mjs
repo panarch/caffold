@@ -51,6 +51,7 @@ const shadowRootStyles = new Map([
   ["pages/(task-workspace)/notes/components/info.css", "caffold-notes-info"],
   ["pages/(task-workspace)/notes/components/info/components/copy-markdown.css", "caffold-notes-info-copy-markdown"],
   ["pages/(task-workspace)/notes/components/info/components/copy-path.css", "caffold-notes-info-copy-path"],
+  ["pages/(task-workspace)/notes/components/info/components/download.css", "caffold-notes-info-download"],
   ["pages/(task-workspace)/notes/components/navigator.css", "caffold-notes-navigator"],
   ["pages/(task-workspace)/notes/layout.css", "caffold-notes-workspace"],
   ["pages/(task-workspace)/settings/about/page.css", "caffold-settings-about-page"],

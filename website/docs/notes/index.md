@@ -32,7 +32,8 @@ wide screen or in its place on a phone, where **Back** returns to the tree.
 changed, and which Task did each, with a link to that Task's conversation.
 
 In Note details, **Copy path** copies the Note's path and id to paste to an
-agent, and **Copy Markdown** copies its content.
+agent, and **Copy Markdown** copies its content. **Download** saves it as a
+Markdown file.
 
 The open Note does not change on screen by itself. Notes reads the tree and
 each open Note again whenever you come back to it or bring the app back to the

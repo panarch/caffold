@@ -1942,24 +1942,31 @@ own clipped input and scroll scope. Hidden panes supply no active targets.
 
 `notes/components/info.ts` defines `caffold-notes-info`, the Info button at the
 end of the Note header. Its popover lists when the open Note changed and was
-created and the Tasks that wrote it, and below that offers Copy path and Copy
-Markdown. The button provides its own Action Hint, and the popover is a
-session-bound keyboard context that Task Workspace includes while Notes is
-shown, so opening it through Action Hints continues them over the popover's
-Task links and copy actions. The popover closes when another Note takes the
+created and the Tasks that wrote it, and below that offers Copy path, Copy
+Markdown, and Download. The button provides its own Action Hint, and the
+popover is a session-bound keyboard context that Task Workspace includes while
+Notes is shown, so opening it through Action Hints continues them over the
+popover's Task links and actions. The popover closes when another Note takes the
 header, when no Note is shown, or when Notes is left, and stays open while the
 same Note is read again.
 
-The two copy actions are separate components in
+The three actions are separate components in
 `notes/components/info/components/`, and the popover hands each the Note it
-shows. `copy-path.ts` defines
-`caffold-notes-info-copy-path`, which copies the names in the Note's `location`
-and the Note's own name, joined by ` / `, followed by `(note id: <id>)` with the
-id the Notes tools read the Note by. `copy-markdown.ts` defines
-`caffold-notes-info-copy-markdown`, which copies the Note's Markdown content and
-is disabled for an empty Note. Each writes to the clipboard, reports Copied or
-a failure for a moment, drops a copy still in flight when what it copies
-changes, and provides its own Action Hint.
+shows. Each draws its icon before its label, as File details draws Download,
+redraws when the icons arrive, and provides its own Action Hint.
+`copy-path.ts` defines `caffold-notes-info-copy-path`, which copies the names
+in the Note's `location` and the Note's own name, joined by ` / `, followed by
+`(note id: <id>)` with the id the Notes tools read the Note by.
+`copy-markdown.ts` defines `caffold-notes-info-copy-markdown`, which copies the
+Note's Markdown content and is disabled for an empty Note. Each copy action
+writes to the clipboard, reports Copied or a failure for a moment with a Check
+or TriangleAlert icon in place of Copy, and drops a copy still in flight when
+what it copies changes. `download.ts` defines `caffold-notes-info-download`, a
+link to `/api/notes/<id>/download` that carries `download` without a file
+name. That route reads the Note from the store and answers its Markdown as a
+`text/markdown` attachment named after the Note with each `/` replaced by `_`
+and `.md` added, so the server alone names the file. For an empty Note the
+link has no address and is marked as a disabled link.
 
 A link to a Note opens in place wherever Caffold renders Markdown. Task
 Markdown and the shared Markdown Preview keep a link whose href

@@ -19,6 +19,8 @@ import { CaffoldElement } from "#app/caffold-element.js";
 import { returnPopoverFocus } from "#app/popover-focus.js";
 import { scopedStyle } from "#app/scoped-style.js";
 import type { CaffoldNotesInfoCopyPath } from "./info/components/copy-path.js";
+import "./info/components/download.js";
+import type { CaffoldNotesInfoDownload } from "./info/components/download.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
 import styles from "./info.css.js";
@@ -26,8 +28,8 @@ import styles from "./info.css.js";
 let notesInfoInstanceId = 0;
 
 // The details button at the end of the Note header. Its popover shows when the
-// open Note changed and was created and the Tasks that wrote it, and copies the
-// Note's path or its Markdown.
+// open Note changed and was created and the Tasks that wrote it, copies the
+// Note's path or its Markdown, and downloads the Note.
 @customElement("caffold-notes-info")
 export class CaffoldNotesInfo extends CaffoldElement {
   static override styles = [
@@ -51,6 +53,7 @@ export class CaffoldNotesInfo extends CaffoldElement {
   private readonly copyMarkdown = new DrawnRef<CaffoldNotesInfoCopyMarkdown>(
     this,
   );
+  private readonly download = new DrawnRef<CaffoldNotesInfoDownload>(this);
 
   override connectedCallback() {
     super.connectedCallback();
@@ -150,6 +153,10 @@ export class CaffoldNotesInfo extends CaffoldElement {
             ${drawn(this.copyMarkdown)}
             .note=${note}
           ></caffold-notes-info-copy-markdown>
+          <caffold-notes-info-download
+            ${drawn(this.download)}
+            .note=${note}
+          ></caffold-notes-info-download>
         </div>
         <caffold-keyboard-navigation-presentation
           ${this.keyboard.presentation()}
@@ -182,6 +189,7 @@ export class CaffoldNotesInfo extends CaffoldElement {
           this.hints.scope(pull),
           this.copyPath.value?.actionHintScope(pull),
           this.copyMarkdown.value?.actionHintScope(pull),
+          this.download.value?.actionHintScope(pull),
         ),
     });
   }

@@ -88,6 +88,13 @@ const NOTES = {
   blank: note("blank", { content: "" }),
 };
 
+// What the Lucide stub in browser-defaults draws for the icons Note details
+// actions show.
+const COPY_ICON = 'svg rect[width="14"]';
+const CHECK_ICON = 'svg path[d="m20 6-11 11-5-5"]';
+const TRIANGLE_ALERT_ICON = 'svg path[d="M12 9v4"]';
+const DOWNLOAD_ICON = 'svg path[d="M12 15V3"]';
+
 async function stubNotes(page, {
   tree = TREE,
   notes = NOTES,
@@ -348,7 +355,7 @@ test("an archived Task that wrote a Note is named without a link", { tag: "@serv
   const details = workspace.locator(".notes-info-popover");
   await expect(details.locator("dl > div:not([hidden]) > dd").nth(2))
     .toHaveText("Draft the inbox (archived)");
-  await expect(details.getByRole("link")).toHaveText(["Write storage notes"]);
+  await expect(details.locator("dl").getByRole("link")).toHaveText(["Write storage notes"]);
 });
 
 test("Action Hints open Note details and continue inside them until Escape closes them", { tag: "@server-steady" }, async ({
@@ -369,7 +376,7 @@ test("Action Hints open Note details and continue inside them until Escape close
   await expect(details).toBeHidden();
 });
 
-test("Note details copies the Note's path and its Markdown, and has no Markdown to copy for an empty Note", { tag: "@server-steady" }, async ({
+test("Note details copies the Note's path and its Markdown, shows how each copy went by its icon, and has no Markdown to copy for an empty Note", { tag: "@server-steady" }, async ({
   context,
   page,
 }) => {
@@ -390,18 +397,30 @@ test("Note details copies the Note's path and its Markdown, and has no Markdown 
   const copyMarkdown = details.locator("caffold-notes-info-copy-markdown > button");
   await expect(copyPath).toHaveText("Copy path");
   await expect(copyMarkdown).toHaveText("Copy Markdown");
+  await expect(copyPath.locator(COPY_ICON)).toHaveCount(1);
+  await expect(copyMarkdown.locator(COPY_ICON)).toHaveCount(1);
 
   await copyPath.click();
   await expect(copyPath).toHaveText("Copied");
+  await expect(copyPath.locator(CHECK_ICON)).toHaveCount(1);
   await expect(details.locator('caffold-notes-info-copy-path > [role="status"]')).toHaveText("Copied");
   await expect(details).toBeVisible();
   await expect.poll(clipboardText).toBe("Projects / Decisions / Storage decision (note id: storage)");
   await page.clock.fastForward(1_800);
   await expect(copyPath).toHaveText("Copy path");
+  await expect(copyPath.locator(COPY_ICON)).toHaveCount(1);
 
   await copyMarkdown.click();
   await expect(copyMarkdown).toHaveText("Copied");
+  await expect(copyMarkdown.locator(CHECK_ICON)).toHaveCount(1);
   await expect.poll(clipboardText).toBe("# Storage\n\nKeep **one** current copy.\n");
+  await page.clock.fastForward(1_800);
+  await page.evaluate(() => {
+    navigator.clipboard.writeText = () => Promise.reject(new Error("denied"));
+  });
+  await copyMarkdown.click();
+  await expect(copyMarkdown).toHaveText("Copy failed — retry");
+  await expect(copyMarkdown.locator(TRIANGLE_ALERT_ICON)).toHaveCount(1);
 
   await treeEntry(page, "Blank").click();
   await expect(notesTitle(page)).toHaveText("Blank");
@@ -410,6 +429,55 @@ test("Note details copies the Note's path and its Markdown, and has no Markdown 
   await expect(copyMarkdown).toHaveText("Copy Markdown");
   await expect(copyMarkdown).toBeDisabled();
   await expect(copyPath).toBeEnabled();
+});
+
+test("Note details downloads the Note from its address without leaving the page, and has nothing to download for an empty Note", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await stubNotes(page);
+  await page.goto("/notes/storage");
+  await expect(notesTitle(page)).toHaveText("Storage decision");
+
+  const workspace = primaryDocument(page);
+  const detailsButton = workspace.getByRole("button", { name: "Note details" });
+  await detailsButton.click();
+  const details = workspace.locator(".notes-info-popover");
+  const download = details.locator("caffold-notes-info-download > a");
+  await expect(download).toHaveText("Download");
+  await expect(download.locator(DOWNLOAD_ICON)).toHaveCount(1);
+  await expect(download).toHaveAttribute("href", "/api/notes/storage/download");
+
+  // A link download bypasses page routes and the test server holds no Notes,
+  // so the server's Rust tests own what the file holds and what it is named.
+  const saving = page.waitForEvent("download");
+  await download.click();
+  expect(new URL((await saving).url()).pathname).toBe("/api/notes/storage/download");
+  await expect(page).toHaveURL(/\/notes\/storage$/);
+  await expect(details).toBeVisible();
+
+  await treeEntry(page, "Blank").click();
+  await expect(notesTitle(page)).toHaveText("Blank");
+  await detailsButton.click();
+  await expect(download).toHaveAttribute("aria-disabled", "true");
+  await expect(download).not.toHaveAttribute("href");
+});
+
+test("Action Hints download the Note from inside Note details", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await stubNotes(page);
+  await page.goto("/notes/storage");
+  await expect(notesTitle(page)).toHaveText("Storage decision");
+
+  await activateActionHintIntoPopover(page, "Note details");
+  const code = await popoverActionHintDialog(page)
+    .getByRole("button", { name: / — Download$/ })
+    .getAttribute("data-action-hint-code");
+  expect(code).toMatch(/^[A-Z]+$/);
+  const saving = page.waitForEvent("download");
+  await page.keyboard.type(code.toLowerCase());
+
+  expect(new URL((await saving).url()).pathname).toBe("/api/notes/storage/download");
 });
 
 test("Action Hints copy the Note path from inside Note details", { tag: "@server-steady" }, async ({
@@ -439,7 +507,7 @@ test("Action Hints copy the Note path from inside Note details", { tag: "@server
     .toBe("Projects / Decisions / Storage decision (note id: storage)");
 });
 
-test("Note details actions measure the same as the Task details actions", { tag: "@all-viewports" }, async ({
+test("Note details actions measure the same as the Task details actions, with icons placed as File details places Download's", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const actionGeometry = async (section, button) => section.evaluate((element, control) => {
@@ -457,12 +525,35 @@ test("Note details actions measure the same as the Task details actions", { tag:
     };
   }, await button.elementHandle());
 
+  // The icon sits before the label on one line, and the frame leaves the same
+  // space before the icon as after the label.
+  const iconPlacement = (control) => control.evaluate((element) => {
+    const frame = element.getBoundingClientRect();
+    const icon = element.querySelector(":scope > span:first-child").getBoundingClientRect();
+    const label = element.querySelector(":scope > span:last-child").getBoundingClientRect();
+    return {
+      iconBeforeLabel: icon.right <= label.left,
+      centerOffset: Math.abs((icon.top + icon.bottom) / 2 - (label.top + label.bottom) / 2),
+      insetDifference: Math.abs((icon.left - frame.left) - (frame.right - label.right)),
+      iconSize: [icon.width, icon.height],
+      gap: label.left - icon.right,
+    };
+  });
+
   await mockAgentModels(page);
-  await openCompletedTaskForReview(page);
+  const { taskScenario, taskReview } = await openCompletedTaskForReview(page);
   await page.locator("caffold-task-detail-info .task-detail-info-button").click();
   const taskSection = page.locator(".task-detail-popover .task-detail-fork-action");
   await expect(taskSection).toBeVisible();
   const task = await actionGeometry(taskSection, taskSection.locator(':scope > button[data-task-info-action="fork"]'));
+
+  await page.goto(`/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=alpha.rs`);
+  const viewer = taskReview.locator("caffold-review-file-viewer:not([hidden])");
+  await expect(viewer).toContainText("pub const ALPHA");
+  await viewer.locator(".viewer-info-button").click();
+  const fileDownload = viewer.locator(".viewer-meta-popover > .viewer-meta-actions > .viewer-download-link");
+  await expect(fileDownload.locator(".viewer-download-svg")).toBeVisible();
+  const fileIcon = await iconPlacement(fileDownload);
 
   await stubNotes(page);
   await page.goto("/notes/storage");
@@ -479,9 +570,27 @@ test("Note details actions measure the same as the Task details actions", { tag:
     notesSection,
     notesSection.locator(":scope > caffold-notes-info-copy-markdown > button"),
   );
+  const download = await actionGeometry(
+    notesSection,
+    notesSection.locator(":scope > caffold-notes-info-download > a"),
+  );
 
   expect(copyPath).toEqual(task);
   expect(copyMarkdown).toEqual(task);
+  expect(download).toEqual(task);
+  for (const control of [
+    ":scope > caffold-notes-info-copy-path > button",
+    ":scope > caffold-notes-info-copy-markdown > button",
+    ":scope > caffold-notes-info-download > a",
+  ]) {
+    await expect(notesSection.locator(control).locator("svg")).toBeVisible();
+    const placement = await iconPlacement(notesSection.locator(control));
+    expect(placement.iconBeforeLabel, control).toBe(true);
+    expect(placement.centerOffset, control).toBeLessThanOrEqual(0.5);
+    expect(placement.insetDifference, control).toBeLessThanOrEqual(0.5);
+    expect(placement.iconSize, control).toEqual(fileIcon.iconSize);
+    expect(placement.gap, control).toBeCloseTo(fileIcon.gap, 1);
+  }
 });
 
 test("a Note address opens the directories that hold it", { tag: "@server-steady" }, async ({
