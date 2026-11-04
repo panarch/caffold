@@ -427,7 +427,7 @@ test("creates a task with responsive composer controls and canonical approval st
   await expect(newTaskComposer.locator(".task-model-button")).toContainText("5.6 Sol");
   await expect(newTaskComposer.locator(".task-model-button")).toContainText("low");
   await newTaskComposer.locator(".task-model-button").click();
-  const modelPopover = page.locator("caffold-tasks-page .task-model-popover");
+  const modelPopover = newTaskComposer.locator(".task-model-popover");
   await expect(modelPopover).toBeVisible();
   const modelPopoverMetrics = await newTaskComposer.evaluate((form) => {
     // The model control is the turn options', in the Composer, in New Task.
