@@ -1036,11 +1036,11 @@ test("keeps a Section whose Tasks are all pinned and draws pinned rows as Sectio
 
   await page.goto("/tasks");
   const list = page.locator("caffold-active-task-list");
-  await expect(
+  await expect.poll(() =>
     list.locator(".task-repository-group").evaluateAll((groups) =>
       groups.map((group) => group.dataset.taskRepositoryKey)
     ),
-  ).resolves.toEqual(["pinned", "section-long", "section-listed"]);
+  ).toEqual(["pinned", "section-long", "section-listed"]);
   const pinnedHeader = list.locator(
     ".task-repository-group[data-task-pinned] .task-repository-header",
   );

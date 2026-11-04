@@ -430,6 +430,16 @@ test("backgrounding during idle entry retires its first history request before r
       window.__entryVisibility = "visible";
       document.dispatchEvent(new Event("visibilitychange"));
     });
+    // The bootstrap belongs to the subscription foreground recovery opens, not
+    // the one hiding retired, which can still look open here.
+    await expect.poll(() => page.locator("caffold-task-detail").evaluate((detail, threadId) => {
+      const session = detail.detailSession;
+      const source = window.__caffoldTaskSse.source(threadId);
+      return {
+        phase: session.phase,
+        current: Boolean(source) && session.bootstrap?.source.generation === source.generation,
+      };
+    }, fixture.threadId)).toEqual({ phase: "waiting-bootstrap", current: true });
     await emitTaskDetailBootstrap(page, fixture.complete);
     response.resolve();
     await expectAllTurns(page);
