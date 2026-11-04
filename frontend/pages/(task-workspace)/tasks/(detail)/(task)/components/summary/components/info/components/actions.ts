@@ -8,6 +8,7 @@ import {
 import type { TaskResponseError } from "#app/api.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import { scopedStyle } from "#app/scoped-style.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
 import {
   isTaskTransportStale,
   type TaskTransportState,
@@ -16,6 +17,7 @@ import {
 import { type ListedTask, taskThreadId } from "#tasks/task-list-model.js";
 
 import secondaryButton from "#app/component-styles/secondary-button.css.js";
+import busySpin from "#app/pages/component-styles/busy-spin.css.js";
 import styles from "./actions.css.js";
 
 /** The approval mode Caffold answers under, which is the one Jev judges for. */
@@ -36,7 +38,6 @@ const ARCHIVE_ABOUT =
 export interface TaskActionState {
   loading: boolean;
   error: Error | null;
-  openCreated?: boolean;
 }
 
 // What the actions show: the Task, whether its details have been read, its
@@ -79,11 +80,24 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
   accessor snapshot: TaskInfoActionsSnapshot | null = null;
 
   static override styles = [
+    scopedStyle(busySpin, ".task-detail-action-icon.is-busy"),
     scopedStyle(secondaryButton, ".task-secondary-button"),
     styles,
   ];
 
   private readonly hints = new ActionHints(this);
+  private readonly iconsReady = () => this.requestUpdate();
+
+  override connectedCallback() {
+    super.connectedCallback();
+    window.addEventListener("caffold:icons-ready", this.iconsReady);
+    void warmIcons();
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    window.removeEventListener("caffold:icons-ready", this.iconsReady);
+  }
 
   actionHintScope(pull: ActionHintPull = {}) {
     return this.hints.scope(pull);
@@ -99,13 +113,11 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
     const forkError = actionErrorMessage(snapshot.forkState.error);
     const createdTaskId = (snapshot.forkState.error as TaskResponseError | null)
       ?.createdTaskId;
-    const forkLabel = snapshot.forkState.openCreated
-      ? "Open forked task"
-      : "Fork task";
     const pinned = snapshot.pinned;
     const pinning = snapshot.pinState.loading;
     const pinError = actionErrorMessage(snapshot.pinState.error);
     const pinLabel = pinned ? "Unpin task" : "Pin task";
+    const pinIcon = pinned ? "PinOff" : "Pin";
     const archiving = snapshot.archiveState.loading;
     const archiveError = actionErrorMessage(snapshot.archiveState.error);
     const archiveFailure = snapshot.archiveState
@@ -135,7 +147,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
           class="task-secondary-button"
           data-task-info-action="permission-instructions"
           @click=${this.requestAction}
-        >What your prompts settled</button>
+        >${actionContent("ShieldCheck", "What your prompts settled")}</button>
       </div>
       <div
         class="task-detail-task-action task-detail-pin-action"
@@ -155,7 +167,11 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
           data-task-info-action=${pinned ? "unpin" : "pin"}
           ?disabled=${pinning}
           @click=${this.requestAction}
-        >${pinning ? (pinned ? "Unpinning..." : "Pinning...") : pinLabel}</button>
+        >${actionContent(
+          pinIcon,
+          pinning ? (pinned ? "Unpinning..." : "Pinning...") : pinLabel,
+          pinning,
+        )}</button>
         <p
           class="task-detail-action-error task-detail-pin-error"
           role="alert"
@@ -166,22 +182,26 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
         <p>${FORK_ABOUT}</p>
         <p
           class="task-detail-fork-availability"
-          ?hidden=${forking || !forkUnavailable}
+          ?hidden=${forking || Boolean(createdTaskId) || !forkUnavailable}
         >${forking ? "" : forkUnavailable}</p>
-        <button
-          ${this.hints.button({
-            id: `${threadId}:fork`,
-            label: forkLabel,
-            action: ACTION_HINT_ACTION.TASK_FORK,
-            badgeAtEnd: true,
-          })}
-          type="button"
-          class="task-secondary-button"
-          data-task-info-action="fork"
-          title=${forking || !forkUnavailable ? nothing : forkUnavailable}
-          ?disabled=${forking || Boolean(forkUnavailable)}
-          @click=${this.requestAction}
-        >${forking ? "Forking..." : forkLabel}</button>
+        ${
+          createdTaskId
+            ? nothing
+            : html`<button
+                ${this.hints.button({
+                  id: `${threadId}:fork`,
+                  label: "Fork task",
+                  action: ACTION_HINT_ACTION.TASK_FORK,
+                  badgeAtEnd: true,
+                })}
+                type="button"
+                class="task-secondary-button"
+                data-task-info-action="fork"
+                title=${forking || !forkUnavailable ? nothing : forkUnavailable}
+                ?disabled=${forking || Boolean(forkUnavailable)}
+                @click=${this.requestAction}
+              >${actionContent("Split", forking ? "Forking..." : "Fork task", forking)}</button>`
+        }
         <p
           class="task-detail-action-error task-detail-fork-error"
           role="alert"
@@ -190,9 +210,14 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
         ${
           createdTaskId
             ? html`<a
-          ${this.hints.link({ id: `${threadId}:open-fork`, label: "Open forked task", action: ACTION_HINT_ACTION.LINK_OPEN })}
-          href=${`/tasks/${encodeURIComponent(createdTaskId)}`}
-        >Open forked task</a>`
+                ${this.hints.link({
+                  id: `${threadId}:open-fork`,
+                  label: "Open forked task",
+                  action: ACTION_HINT_ACTION.LINK_OPEN,
+                })}
+                class="task-secondary-button"
+                href=${`/tasks/${encodeURIComponent(createdTaskId)}`}
+              >${actionContent("ArrowRight", "Open forked task")}</a>`
             : nothing
         }
       </div>
@@ -214,7 +239,11 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
             snapshot.archiveBlockedByActive
           }
           @click=${this.requestAction}
-        >${archiving ? "Archiving..." : "Archive task"}</button>
+        >${actionContent(
+          "Archive",
+          archiving ? "Archiving..." : "Archive task",
+          archiving,
+        )}</button>
         <p
           class="task-detail-action-error task-detail-archive-error"
           role="alert"
@@ -239,7 +268,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
                     snapshot.archiveBlockedByActive
                   }
                   @click=${this.requestAction}
-                >Discard changes and archive</button>
+                >${actionContent("ArchiveX", "Discard changes and archive")}</button>
               `
             : nothing
         }
@@ -269,13 +298,21 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
   }
 }
 
+// An action's icon before its label. While the action runs, the busy icon
+// turns in the icon's place.
+function actionContent(icon: string, label: string, busy = false) {
+  return html`<span
+      class=${busy ? "task-detail-action-icon is-busy" : "task-detail-action-icon"}
+      aria-hidden="true"
+    >${inlineIcon(busy ? "LoaderCircle" : icon, "", "task-detail-action-svg")}</span>
+    <span>${label}</span>`;
+}
+
 function actionErrorMessage(error: Error | null) {
   return error ? `${error.message ?? error}` : "";
 }
 
 function forkDisabledReason(snapshot: TaskInfoActionsSnapshot) {
-  if ((snapshot.forkState.error as TaskResponseError | null)?.createdTaskId)
-    return "The fork already exists. Open it below.";
   if (!snapshot.canonicalTaskAvailable) {
     return "Fork is unavailable until Task details load.";
   }

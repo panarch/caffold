@@ -161,7 +161,6 @@ interface TaskRoute {
 interface ActionState {
   loading: boolean;
   error: Error | null;
-  openCreated?: boolean;
 }
 
 // What the Task screen tells its owner about the open Task: the Task once
@@ -1817,11 +1816,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       ) {
         return;
       }
-      this.forkStateValue = {
-        loading: false,
-        error: error as Error,
-        openCreated: this.forkCreated?.sourceId === threadId,
-      };
+      this.forkStateValue = { loading: false, error: error as Error };
       if (this.reportTaskAbsence(threadId, error)) {
         return;
       }

@@ -70,8 +70,12 @@ test("a broken worktree can be explicitly discarded and archived from Task detai
   const actions = page.locator("caffold-task-detail-info-actions");
   const discard = actions.getByRole("button", { name: "Discard changes and archive", exact: true });
   await expect(discard).toHaveCount(0);
-  await actions.getByRole("button", { name: "Archive task", exact: true }).click();
+  const archive = actions.getByRole("button", { name: "Archive task", exact: true });
+  // What the Lucide stub in browser-defaults draws for Archive and ArchiveX.
+  await expect(archive.locator('svg path[d="M10 12h4"]')).toHaveCount(1);
+  await archive.click();
   await expect(discard).toBeEnabled();
+  await expect(discard.locator('svg path[d="m9.5 17 5-5"]')).toHaveCount(1);
   await expect(actions).not.toContainText("Discarded changes cannot be restored.");
   expect(normalRequests).toBe(1);
   expect(forceRequests).toBe(0);

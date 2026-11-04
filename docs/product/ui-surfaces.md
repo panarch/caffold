@@ -270,8 +270,10 @@ Task Detail presents the selected conversation, command requests,
 follow-up Composer, and Task actions. Integrated Review, Git, and GitHub remain
 shared repository surfaces.
 
-Task actions open from the Task details control. A Task whose next turn runs
-under Ask Jev first also offers **What your prompts settled** there, which
+Task actions open from the Task details control. Each shows an icon before its
+label. While a button reports progress, such as **Forking...**, a turning
+progress icon takes the icon's place. A Task whose next turn runs under Ask Jev
+first also offers **What your prompts settled** there, which
 opens a dialog holding those messages oldest first, each under the time it was
 sent in the reader's own time zone, and a **Forget these** action. The record
 is read when that dialog opens, and the dialog says so while the Task has kept
@@ -283,8 +285,10 @@ the Task list has read the change back.
 
 An idle Codex, Claude, or Grok Task exposes **Fork task** in Task actions. It performs the same
 native fork without an ID lookup, places the child at the source Task's Section
-project root, and opens the distinct managed child. Active Tasks and Antigravity Tasks keep the action disabled with an explicit reason. Forking
-remains separate from worktree isolation.
+project root, and opens the distinct managed child. Active Tasks and Antigravity Tasks keep the action disabled with an explicit reason. When
+the child is made but its details cannot be read, Task actions show that error
+and **Open forked task**, which opens the child, in place of **Fork task**.
+Forking remains separate from worktree isolation.
 
 Task details offers **Discard changes and archive** after an eligible ordinary
 Archive refusal. The action opens a native confirmation dialog naming the Task

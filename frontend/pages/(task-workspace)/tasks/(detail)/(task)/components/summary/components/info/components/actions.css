@@ -21,11 +21,15 @@
 
 .task-detail-task-action .task-secondary-button {
   position: relative;
+  /* As close as the Note and File details actions hold their icons, nearer
+     than the shared button's gap. */
+  gap: 0.3125rem;
   min-height: var(--interface-compact-hit-size);
   margin-block: calc(0rem - var(--interface-compact-hit-outset));
   border: 0;
   background: transparent;
   font-size: var(--interface-meta-font-size);
+  text-decoration: none;
 }
 
 .task-detail-task-action .task-secondary-button::before {
@@ -56,6 +60,19 @@
 .task-detail-task-action .task-secondary-button:disabled::before {
   border-color: var(--border);
   background: var(--surface-muted);
+}
+
+.task-detail-action-icon {
+  display: block;
+  width: var(--interface-icon-small-size);
+  height: var(--interface-icon-small-size);
+}
+
+.task-detail-action-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  stroke-width: 2.2;
 }
 
 .task-detail-task-action .task-detail-action-error {
