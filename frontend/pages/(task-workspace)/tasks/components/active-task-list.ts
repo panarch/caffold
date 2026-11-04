@@ -90,6 +90,7 @@ export interface ActiveTaskListState {
   loaded: boolean;
   loading: boolean;
   error: string;
+  selectedThreadId: string;
   selectedSection: SectionSummary | null;
   selectedRecovery: {
     threadId: string;
@@ -295,10 +296,6 @@ export class CaffoldActiveTaskList extends CaffoldElement {
     this.selectedSectionId = sectionId;
     this.syncSections();
     this.revealSelectedTask(threadId);
-    const task = threadId ? this.taskFor(threadId) : null;
-    if (task?.unseen) {
-      this.upsertCanonicalTask({ ...task, unseen: false });
-    }
   }
 
   // A Task chosen from a surface that does not follow this list's order can
@@ -335,14 +332,10 @@ export class CaffoldActiveTaskList extends CaffoldElement {
       return;
     }
     const current = this.taskFor(threadId);
-    const canonical =
+    const next =
       current && "recovery" in current && !("recovery" in task)
         ? current
         : task;
-    const next =
-      threadId === this.selectedThreadId
-        ? { ...canonical, unseen: false }
-        : canonical;
     const listKey = this.replaceTaskInPlace(next);
     if (!listKey) {
       return;
@@ -369,13 +362,11 @@ export class CaffoldActiveTaskList extends CaffoldElement {
     if (!threadId || !place) {
       return false;
     }
-    const next =
-      threadId === this.selectedThreadId ? { ...task, unseen: false } : task;
     if (!this.taskListLoaded) {
-      this.pendingTopPlacements.set(threadId, { task: next, placement: place });
+      this.pendingTopPlacements.set(threadId, { task, placement: place });
       return true;
     }
-    this.applyCanonicalTopPlacement(next, place);
+    this.applyCanonicalTopPlacement(task, place);
     this.draw();
     return true;
   }
@@ -614,6 +605,7 @@ export class CaffoldActiveTaskList extends CaffoldElement {
       loaded: this.taskListLoaded,
       loading: this.taskListLoading || !this.settled,
       error: this.taskListError?.message ?? "",
+      selectedThreadId: this.selectedThreadId,
       selectedSection: this.sectionFor(this.selectedSectionId),
       selectedRecovery: recovery
         ? {
@@ -1327,7 +1319,16 @@ export class CaffoldActiveTaskList extends CaffoldElement {
       this.draw();
     }
     try {
-      const response = await getTasks();
+      let response = await getTasks();
+      // An answer read before a change the list has since been told of would
+      // undo it, so the list asks again rather than show that answer.
+      while (
+        this.taskListRefreshPending &&
+        requestId === this.taskListRequestId
+      ) {
+        this.taskListRefreshPending = false;
+        response = await getTasks();
+      }
       if (requestId !== this.taskListRequestId) {
         return null;
       }
@@ -1491,6 +1492,11 @@ export class CaffoldActiveTaskList extends CaffoldElement {
       if (task && threadId) {
         this.upsertCanonicalTask(task);
         this.dispatchArchiveSync("remove", threadId);
+        // The server sends this once the change is stored, so a list read
+        // already under way may have been taken before it.
+        if (this.taskListLoadPromise) {
+          this.taskListRefreshPending = true;
+        }
       }
       return;
     }

@@ -215,9 +215,11 @@ export class CaffoldTaskNavigator extends CaffoldElement {
 
   activeTaskSnapshot() {
     const activeList = this.activeTaskList;
+    const { loaded, selectedThreadId } = activeList.listState();
     return {
       rows: activeList.tasksWithSections(),
-      loaded: activeList.listState().loaded,
+      loaded,
+      selectedThreadId,
     };
   }
 

@@ -194,6 +194,104 @@ test("gives a caller that joins a Task list load the answer when the first calle
   }
 });
 
+test("asks again when a Task is marked seen during a load, and gives every caller that answer", async () => {
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  const answers = [];
+  globalThis.window = Object.assign(new EventTarget(), {
+    location: { origin: "http://127.0.0.1" },
+    setTimeout,
+    clearTimeout,
+  });
+  globalThis.fetch = () =>
+    new Promise((resolve) => {
+      answers.push((unseen) =>
+        resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            sections: [appSection([{ threadId: "thread-a", unseen }])],
+            unsectioned: [],
+          }),
+        }),
+      );
+    });
+  const list = listHost({
+    sections: [appSection([{ threadId: "thread-a", unseen: true }])],
+    taskListLoaded: true,
+    taskListLoadPromise: null,
+    taskListRefreshPending: false,
+    taskListRequestId: 0,
+    revisionByThread: new Map(),
+    pendingMove: null,
+    pendingTopPlacements: new Map(),
+    pendingRuntimeSnapshot: null,
+    settled: true,
+    isConnected: true,
+    groups: { value: null },
+    draw() {},
+    publishState() {},
+    dispatchEvent() {},
+  });
+
+  try {
+    const load = list.loadTasks({ force: true });
+    const joined = list.loadTasks({ force: true });
+    list.handleStreamEvent("task-updated", {
+      data: JSON.stringify({ threadId: "thread-a", unseen: false }),
+    });
+    // Read before the seen mark was stored.
+    answers[0](true);
+    await until(() => answers.length === 2);
+    assert.equal(list.taskFor("thread-a").unseen, false);
+
+    answers[1](false);
+    const held = await load;
+    assert.equal(held.sections[0].tasks[0].unseen, false);
+    assert.equal(await joined, held);
+    assert.equal(list.taskFor("thread-a").unseen, false);
+  } finally {
+    globalThis.window = originalWindow;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("leaves whether the Task open now was seen to the server", () => {
+  const originalFrame = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = () => 0;
+  const list = listHost({
+    sections: [
+      appSection([
+        { threadId: "thread-a", unseen: false },
+        { threadId: "thread-b", unseen: true },
+      ]),
+    ],
+    taskListLoaded: true,
+    selectedThreadId: "thread-a",
+    selectedSectionId: "",
+    pendingTopPlacements: new Map(),
+    groups: { value: null },
+    draw() {},
+    publishState() {},
+  });
+
+  try {
+    list.upsertCanonicalTask({ threadId: "thread-a", unseen: true });
+    assert.equal(list.taskFor("thread-a").unseen, true);
+
+    list.setSelectedSubject({ kind: "task", id: "thread-b" });
+    assert.equal(list.taskFor("thread-b").unseen, true);
+
+    list.placeCanonicalTaskAtTop(
+      { threadId: "thread-b", unseen: true },
+      { section: { id: "app", name: "app" } },
+    );
+    assert.equal(list.taskFor("thread-b").unseen, true);
+  } finally {
+    globalThis.requestAnimationFrame = originalFrame;
+  }
+});
+
 test("frames its Sections with the load's state and the outcome of a move", () => {
   const loading = html(listHost({ taskListLoading: true }));
   assert.match(loading, /<div class="task-list-content"><p class="task-section-message task-section-loading"><caffold-loading-text>Loading...<\/caffold-loading-text><\/p><\/div>/);
@@ -231,6 +329,24 @@ function listHost(properties) {
     querySelector: () => null,
     ...properties,
   }));
+}
+
+function appSection(tasks) {
+  return {
+    id: "app",
+    name: "app",
+    repository: false,
+    directory: null,
+    composerSettings: null,
+    tasks,
+  };
+}
+
+async function until(condition) {
+  for (let turn = 0; turn < 100 && !condition(); turn += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.ok(condition());
 }
 
 function pinnedGroup(entries) {

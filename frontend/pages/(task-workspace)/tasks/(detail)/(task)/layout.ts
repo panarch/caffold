@@ -974,27 +974,10 @@ export class CaffoldTaskDetail extends CaffoldElement {
       return;
     }
     this.seenRequestKeys.add(requestKey);
-    void markTaskSeen(threadId)
-      .then((canonicalTask) => {
-        const current = this.taskDetail;
-        if (
-          threadId !== this.selectedThreadId ||
-          !current ||
-          taskDetailThreadId(current) !== threadId ||
-          !canonicalTask
-        ) {
-          return;
-        }
-        this.taskDetail = {
-          ...current,
-          task: canonicalTask,
-        };
-        this.draw();
-      })
-      .catch((error) => {
-        this.seenRequestKeys.delete(requestKey);
-        this.reportTaskAbsence(threadId, error);
-      });
+    void markTaskSeen(threadId).catch((error) => {
+      this.seenRequestKeys.delete(requestKey);
+      this.reportTaskAbsence(threadId, error);
+    });
   }
 
   // Detail positions remain identifiable if its event arrives before the HTTP

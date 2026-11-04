@@ -193,21 +193,32 @@ test("cleans keyboard state before route state, URL, and workspace mutations", a
 
 // A notification arrives from outside, so its Task opens over the screens it
 // sits under and Back reaches the Task list rather than what was interrupted.
-for (const [label, currentRoute, expected] of [
+for (const [label, currentRoute, locationHref, locationPathname, expected] of [
   [
     "keeps the Task list it opens over",
     { kind: "tasks" },
+    "https://caffold.test/tasks",
+    "/tasks",
     ["history-push:/tasks/thread-1", "workspace-open", "update-status"],
   ],
   [
     "puts the Task list under the screen it interrupts",
     { kind: "settings", section: "appearance" },
+    "https://caffold.test/settings/appearance",
+    "/settings/appearance",
     [
       "history-push:/",
       "history-push:/tasks/thread-1",
       "workspace-open",
       "update-status",
     ],
+  ],
+  [
+    "navigates to the Task conversation when open on another surface of the same Task",
+    { kind: "task-terminal", threadId: "thread-1", terminal: { sessionNumber: 1 } },
+    "https://caffold.test/tasks/thread-1/terminal",
+    "/tasks/thread-1/terminal",
+    ["history-push:/tasks/thread-1", "workspace-open", "update-status"],
   ],
 ]) {
   test(`a notification route ${label}`, async () => {
@@ -229,9 +240,9 @@ for (const [label, currentRoute, expected] of [
       refreshCaffoldUpdate: () => calls.push("update-status"),
     };
     globalThis.window.location = {
-      href: "https://caffold.test/tasks",
+      href: locationHref,
       origin: "https://caffold.test",
-      pathname: "/tasks",
+      pathname: locationPathname,
       search: "",
     };
     globalThis.window.history = {

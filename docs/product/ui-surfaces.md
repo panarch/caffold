@@ -54,7 +54,7 @@ The Task navigator provides:
 - a Pinned group above the Sections;
 - repository grouping derived from canonical Task cwd/worktree state;
 - task title, recency, and availability, with execution and unseen-completion
-  state in Active;
+  state in Active, where the Task open now shows no unseen completion;
 - a worktree mark on each active Task that runs in a worktree Caffold prepared
   for it;
 - exclusive Task and Section reorder modes for the persistent Active order;
@@ -118,10 +118,10 @@ and a click or tap outside it.
 It takes that order from the first loaded Task list and keeps it until it
 closes, so a Task that finishes while the list is open does not move the row
 being aimed at. Rows keep showing current title, the Section the Task sits in,
-availability, and unseen-completion state, and a Task that leaves the active
-list leaves the list. The navigator shows that Section as a heading its rows
-sit under; a flat list has to say it per row. Choosing a row opens that Task's
-Conversation.
+availability, and unseen-completion state as the navigator shows it, and a Task
+that leaves the active list leaves the list. The navigator shows that Section
+as a heading its rows sit under; a flat list has to say it per row. Choosing a
+row opens that Task's Conversation.
 
 Its order is independent of the Task navigator's persistent Active order and
 does not change it. Archived Tasks are not listed. An empty active list is
