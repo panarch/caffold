@@ -116,23 +116,34 @@ async fn reconnect_active_task(
         .direct_tasks
         .iter()
         .any(|task| &task.thread_id == thread);
-    ensure_not_running(state, thread).await?;
-    let known_destination = managed
-        .run_by
-        .cwd()
-        .and_then(|cwd| plan.destination_for(cwd));
-    let observed = if direct && (managed.run_by.cwd().is_none() || known_destination.is_some()) {
-        let destination = rooted_destination(
-            state,
-            known_destination.unwrap_or_else(|| plan.target.clone()),
-        )
-        .await?;
-        driver
-            .prepare_directory_reconnection(thread, &destination)
-            .await?
+    let described = driver.describe(thread).await?;
+    let observed = if direct {
+        let cwd = match &described {
+            Some(conversation) => conversation.cwd.clone(),
+            None => state.task_runtime.working_directory(managed).await?,
+        };
+        let Some(destination) = plan.destination_for(&cwd) else {
+            return Ok(());
+        };
+        // Ownership transfer leaves the source Active without an owned record.
+        // Resolve its directory before any operation that can resume a session.
+        if plan.retains_worktree_directory(&cwd)? {
+            return Ok(());
+        }
+        ensure_not_running(state, thread).await?;
+        match described {
+            Some(conversation) => Some(conversation),
+            None => {
+                let destination = rooted_destination(state, destination).await?;
+                driver
+                    .prepare_directory_reconnection(thread, &destination)
+                    .await?
+            }
+        }
     } else {
-        driver.describe(thread).await?
+        described
     };
+    ensure_not_running(state, thread).await?;
     let mut viewer = None;
     let conversation = match observed {
         Some(conversation)
@@ -497,6 +508,183 @@ mod tests {
             serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
                 .unwrap();
         (status, value)
+    }
+
+    #[tokio::test]
+    async fn reconnect_keeps_a_handed_off_codex_source_closed_and_repairs_its_owner() {
+        use crate::app::tasks::{test_support::resumed_task, workspace_access::WorkspaceAccess};
+
+        for aliased in [false, true] {
+            let (_temp, state, source, records) = fixture("idle").await;
+            let id = "aaa-former-owner";
+            let cwd = PathBuf::from(&records[0].worktree_path);
+            claim_cached_active(&state, id, "Handed off source", 1, "section", "source");
+            assert!(matches!(
+                state
+                    .lifecycle
+                    .workspace_access(id, cwd.to_str().unwrap())
+                    .await,
+                WorkspaceAccess::ReadOnly { .. }
+            ));
+            let moved = state.fs.root().join("moved");
+            fs::rename(&source, &moved).unwrap();
+            let native_cwd = if aliased {
+                let alias = moved.join("shared-checkout");
+                std::os::unix::fs::symlink(&cwd, &alias).unwrap();
+                alias
+            } else {
+                cwd.clone()
+            };
+            let mut cold = resumed_task(id, &native_cwd);
+            cold["thread"]["status"] = json!({"type": "notLoaded"});
+            let client = CodexThreadClient::mock(vec![
+                MockCodexResponse::ok("thread/read", cold),
+                MockCodexResponse::ok("thread/read", resumed_task("one", &cwd)),
+                MockCodexResponse::ok(
+                    "thread/read",
+                    resumed_task("two", &PathBuf::from(&records[1].worktree_path)),
+                ),
+            ]);
+            state
+                .task_runtime
+                .install_test_client(2, client.clone())
+                .await;
+            let (status, body) = post(&state, "source", "moved").await;
+            assert_eq!(status, 200, "aliased={aliased}: {body}");
+            let calls = client.mock_requests().await;
+            assert!(
+                calls.iter().all(|(method, _)| method == "thread/read"),
+                "{calls:?}"
+            );
+            let snapshot = state.task_sessions.snapshot(id).await.unwrap();
+            assert!(snapshot.conversation.is_none());
+            assert_eq!(snapshot.viewer_leases, 0);
+            assert!(!snapshot.runtime_lease);
+            assert!(state.task_store.worktree_for_thread(id).unwrap().is_none());
+            let owner = state
+                .task_store
+                .worktree_for_thread("one")
+                .unwrap()
+                .unwrap();
+            assert_eq!(owner.worktree_id, records[0].worktree_id);
+            assert_eq!(
+                owner.repository_git_dir,
+                moved.join(".git").to_string_lossy()
+            );
+            git::inspect_attached_worktree(&cwd, &moved.join(".git"), None).unwrap();
+            assert!(matches!(
+                state
+                    .lifecycle
+                    .workspace_access(id, native_cwd.to_str().unwrap())
+                    .await,
+                WorkspaceAccess::ReadOnly { .. }
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn reconnect_refuses_an_unresolvable_direct_directory_without_opening_it() {
+        use crate::app::tasks::test_support::resumed_task;
+
+        let (_temp, state, source, records) = fixture("idle").await;
+        let id = "aaa-unresolved";
+        claim_cached_active(&state, id, "Unresolved directory", 1, "section", "source");
+        let moved = state.fs.root().join("moved");
+        fs::rename(&source, &moved).unwrap();
+        let alias = moved.join("loop");
+        std::os::unix::fs::symlink(&alias, &alias).unwrap();
+        let mut cold = resumed_task(id, &alias);
+        cold["thread"]["status"] = json!({"type": "notLoaded"});
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok("thread/read", cold)]);
+        state
+            .task_runtime
+            .install_test_client(2, client.clone())
+            .await;
+
+        let (status, body) = post(&state, "source", "moved").await;
+        assert_eq!(status, 409, "{body}");
+        assert_eq!(body["error"]["code"], "section_directory_unavailable");
+        let calls = client.mock_requests().await;
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "thread/read");
+        assert!(
+            state
+                .task_sessions
+                .snapshot(id)
+                .await
+                .unwrap()
+                .conversation
+                .is_none()
+        );
+        assert_eq!(
+            state.section_directories.read("section").unwrap().path,
+            "source"
+        );
+        assert_eq!(
+            state.task_store.worktree_for_thread("one").unwrap(),
+            Some(records[0].clone())
+        );
+    }
+
+    #[tokio::test]
+    async fn reconnect_keeps_a_cold_claude_source_history_only() {
+        use crate::{app::tasks::test_support::resumed_task, task_store::RunBy};
+        let (_temp, state, source, records) = fixture("idle").await;
+        let id = "00000000-0000-4000-8000-000000000100";
+        let cwd = PathBuf::from(&records[0].worktree_path);
+        state
+            .task_store
+            .transaction(|tables| {
+                tables.claim_managed_thread_at_top(
+                    ManagedThread::new(
+                        id,
+                        RunBy::Claude {
+                            cwd: cwd.to_string_lossy().into_owned(),
+                        },
+                        Some(1),
+                        None,
+                        None,
+                    ),
+                    "Former Claude owner",
+                    "section",
+                    1,
+                )
+            })
+            .unwrap();
+        let claude = state.task_runtime.claude();
+        claude.write_test_transcript(
+            cwd.to_str().unwrap(),
+            id,
+            include_str!("../../../agent/claude/transcript/a-session-claude-wrote.jsonl"),
+        );
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok("thread/read", resumed_task("one", &cwd)),
+            MockCodexResponse::ok(
+                "thread/read",
+                resumed_task("two", &PathBuf::from(&records[1].worktree_path)),
+            ),
+        ]);
+        state.task_runtime.install_test_client(2, client).await;
+        fs::rename(&source, state.fs.root().join("moved")).unwrap();
+        let (status, body) = post(&state, "source", "moved").await;
+        assert_eq!(status, 200, "{body}");
+        assert!(claude.live_conversations().await.is_empty());
+        let snapshot = state.task_sessions.snapshot(id).await.unwrap();
+        assert!(snapshot.conversation.is_none());
+        assert_eq!(snapshot.viewer_leases, 0);
+        assert!(!snapshot.runtime_lease);
+        let detail = state
+            .detail
+            .recorded_detail(id, None)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!detail.events.is_empty());
+        assert!(claude.live_conversations().await.is_empty());
+        assert_eq!(
+            state.task_store.get(id).unwrap().unwrap().run_by.cwd(),
+            cwd.to_str()
+        );
     }
 
     #[tokio::test]

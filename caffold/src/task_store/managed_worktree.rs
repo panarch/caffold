@@ -327,6 +327,30 @@ where
     }
 }
 
+/// Change only the owner of one exact ready checkout inside the caller's transaction.
+pub(super) fn transfer_owner<S>(
+    glue: &mut Glue<S>,
+    expected: &ManagedWorktree,
+    target: &str,
+    now_ms: u64,
+) -> Result<()>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let mut current = required(glue, &expected.worktree_id)?;
+    if &current != expected || current.state != ManagedWorktreeState::Ready {
+        return Err(TaskStoreError::UnexpectedPayload);
+    }
+    if get_for_thread(glue, target)?.is_some() {
+        return Err(TaskStoreError::DuplicateManagedWorktreeThread(
+            target.into(),
+        ));
+    }
+    current.thread_id = Some(target.into());
+    current.updated_at_ms = now_ms;
+    update_all(glue, &current)
+}
+
 pub(super) fn columns() -> Vec<ExprNode<'static>> {
     ManagedWorktreeRow::glue_columns()
         .iter()

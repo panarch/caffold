@@ -275,6 +275,9 @@ impl TaskRuntime {
                 .await
             }
             AskedTool::ReadTaskName => self.current_task_name(thread_id).await,
+            AskedTool::ReadTaskHistory(arguments) => {
+                self.read_task_history(thread_id, arguments).await
+            }
             AskedTool::Notes(call) => self.execute_notes_tool(thread_id, call.clone()).await,
         };
         if let Err(error) = self.claude.answer_tool_ask(thread_id, &ask, &outcome).await {

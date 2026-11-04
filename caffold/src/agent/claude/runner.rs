@@ -82,6 +82,14 @@ impl RunnerClient {
         }
     }
 
+    pub(super) async fn checked_live_sessions(&self) -> Result<Vec<String>, ClaudeError> {
+        match self {
+            Self::Socket(client) => Ok(client.checked_live_sessions().await?),
+            #[cfg(test)]
+            Self::Mock(mock) => Ok(mock.live_sessions().await),
+        }
+    }
+
     pub(crate) async fn restart(&self) -> Result<protocol::DaemonStatus, ClaudeError> {
         match self {
             Self::Socket(client) => client.restart().await.map_err(Into::into),

@@ -360,6 +360,18 @@ Stop available with an editable next draft and attachments, and permits the
 next prompt when the current request ends. A late response does not erase
 newer choices, text, files or focus.
 
+The follow-up model picker offers other agents for an available writable
+workspace. Browsing another agent shows a short explanation and a **Continue
+with** button named for that agent; the current Task's selected model and options
+stay unchanged. The button opens **Continue with another agent**, with that agent's default model
+initially selected. Its modal uses the shared model, effort, speed and permission
+choices and explains which model supplies the summary and how the directory is
+reused. The picker keeps its existing active-turn, transport and readonly locks.
+The target opens with a preparation prompt; its conversation shows the actual
+submission and outcome. A source in another Task's managed worktree shows a
+history-only notice and a link to its current owner, with prompt and terminal
+controls unavailable. See [Continue with another agent](workflows.md#continue-with-another-agent).
+
 The Composer owns its draft, attachments, selection, and voice capture. A
 message that does not reach the agent returns to the Composer in the order it
 was sent and ahead of anything written since, and the conversation no longer
@@ -732,7 +744,7 @@ The browser UI does not provide:
 - creating, editing, renaming, moving, or deleting Notes by hand, or Note
   history and restore;
 - native agent Plan-mode selection or structured clarification forms;
-- switching an existing Task between agents.
+- changing an existing Task's agent in place.
 
 Planned additions belong in the [Roadmap](roadmap.md), not in this description
 of implemented surfaces.

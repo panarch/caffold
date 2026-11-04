@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 use super::{
     ClaudeClient, ClaudeError, ClaudeRuntimeEvent, ControlRequestFrame, Session, protocol,
 };
+use crate::agent::history::{HistoryArguments, READ_TASK_HISTORY_TOOL_NAME};
 use crate::agent::notes_tools::{NotesToolCall, notes_tool_call};
 
 /// One call of a Caffold-served tool, carrying everything answering it needs.
@@ -40,6 +41,7 @@ pub(crate) enum AskedTool {
         include_changes: bool,
     },
     ReadTaskName,
+    ReadTaskHistory(HistoryArguments),
     Notes(NotesToolCall),
 }
 
@@ -152,6 +154,9 @@ fn tool_ask(message: &Value, request_id: &str, mcp_id: &Value) -> Result<ToolAsk
         });
     }
     let asked = match tool {
+        READ_TASK_HISTORY_TOOL_NAME => AskedTool::ReadTaskHistory(HistoryArguments::parse(
+            params.get("arguments").cloned().unwrap_or(Value::Null),
+        )?),
         protocol::RENAME_CURRENT_TASK_TOOL_NAME => {
             let Some(name) = params
                 .get("arguments")

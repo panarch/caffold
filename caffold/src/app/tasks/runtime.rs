@@ -10,7 +10,10 @@ use tokio::sync::{Mutex, broadcast};
 #[cfg(test)]
 use tokio::sync::{MutexGuard, oneshot};
 
-use super::{events::TaskEvents, lifecycle::TaskLifecycle, push::PushService};
+use super::{
+    events::TaskEvents, lifecycle::TaskLifecycle, push::PushService,
+    workspace_access::WorkspaceAccess,
+};
 use crate::agent::AgentError;
 use crate::{
     agent::antigravity::AntigravityClient,
@@ -211,6 +214,97 @@ impl From<CodexThreadError> for ApprovalResolveError {
 }
 
 impl TaskRuntime {
+    pub(in crate::app::tasks) async fn workspace_access(
+        &self,
+        managed: &ManagedThread,
+    ) -> Result<WorkspaceAccess, AgentError> {
+        let cwd = self.working_directory(managed).await?;
+        let lifecycle = self
+            .lifecycle
+            .as_ref()
+            .ok_or_else(|| AgentError::Failed("Task workspace access is unavailable.".into()))?;
+        Ok(lifecycle.workspace_access(&managed.thread_id, &cwd).await)
+    }
+
+    pub(in crate::app::tasks) async fn working_directory(
+        &self,
+        managed: &ManagedThread,
+    ) -> Result<String, AgentError> {
+        let store = self.task_store.clone();
+        let id = managed.thread_id.clone();
+        let owned = tokio::task::spawn_blocking(move || store.worktree_for_thread(&id))
+            .await
+            .map_err(|error| AgentError::Failed(error.to_string()))?
+            .map_err(|error| AgentError::Failed(error.to_string()))?;
+        let cwd = match owned {
+            Some(worktree) => worktree.worktree_path,
+            None => match &managed.run_by {
+                RunBy::Codex => {
+                    self.connection()
+                        .await?
+                        .client
+                        .read_thread(&managed.thread_id)
+                        .await?
+                        .cwd
+                }
+                RunBy::Claude { cwd } => self
+                    .claude
+                    .working_directory(&managed.thread_id)
+                    .await
+                    .unwrap_or_else(|| cwd.clone()),
+                RunBy::Grok { .. } => self.grok.working_directory(&managed.thread_id).await?,
+                RunBy::Antigravity { .. } => {
+                    self.antigravity
+                        .working_directory(&managed.thread_id)
+                        .await?
+                }
+            },
+        };
+        Ok(cwd)
+    }
+
+    pub(in crate::app::tasks) async fn require_workspace_write(
+        &self,
+        managed: &ManagedThread,
+    ) -> Result<(), AgentError> {
+        if !self.has_other_managed_workspace(&managed.thread_id).await? {
+            return Ok(());
+        }
+        self.workspace_access(managed)
+            .await?
+            .require_write()
+            .map_err(AgentError::Failed)
+    }
+
+    pub(in crate::app::tasks) async fn has_other_managed_workspace(
+        &self,
+        task: &str,
+    ) -> Result<bool, AgentError> {
+        let store = self.task_store.clone();
+        let task = task.to_string();
+        let root = self
+            .lifecycle
+            .as_ref()
+            .map(|lifecycle| lifecycle.managed_root().to_path_buf());
+        tokio::task::spawn_blocking(move || {
+            store.read(|tables| {
+                let records = tables
+                    .managed_worktrees()?
+                    .iter()
+                    .any(|record| record.thread_id.as_deref() != Some(task.as_str()));
+                let directories = root.as_ref().is_some_and(|root| {
+                    std::fs::read_dir(root)
+                        .map(|mut entries| entries.next().is_some())
+                        .unwrap_or(true)
+                });
+                Ok(records || directories)
+            })
+        })
+        .await
+        .map_err(|error| AgentError::Failed(error.to_string()))?
+        .map_err(|error| AgentError::Failed(error.to_string()))
+    }
+
     pub(in crate::app::tasks) fn new(
         claude: ClaudeClient,
         grok: GrokClient,

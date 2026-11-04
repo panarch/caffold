@@ -14,9 +14,10 @@ mod recovery;
 mod routes;
 mod runtime;
 mod sections;
-mod sessions;
+pub(super) mod sessions;
 mod startup;
 mod sync;
+pub(super) mod workspace_access;
 mod worktrees;
 
 use super::{live_updates, notes};
@@ -146,7 +147,7 @@ impl TaskState {
             claude.clone(),
             grok.clone(),
             antigravity.clone(),
-            terminals,
+            terminals.clone(),
         );
         let task_runtime = TaskRuntime::new(
             claude,
@@ -244,16 +245,23 @@ impl TasksApp {
                 codex_mcp: Some(codex_mcp.bindings()),
             },
             Some(permission_reviewer),
-            terminals,
+            terminals.clone(),
         )?;
         let runtime = state.task_runtime.clone();
         let detail = state.detail.clone();
         let live_source = TaskLiveSource::new(&state);
+        let terminal_router = terminals.router(
+            state.fs.clone(),
+            state.task_store.clone(),
+            state.task_sessions.clone(),
+            state.lifecycle.managed_root().to_path_buf(),
+        );
         codex_mcp.attach_runtime(runtime.clone());
         grok_mcp.attach_runtime(runtime.clone());
         antigravity_mcp.attach_runtime(runtime.clone());
         Ok(Self {
             router: routes::router(state)
+                .merge(terminal_router)
                 .merge(live_updates::router(live_source, watch_hub, shutdown))
                 .merge(notes_router),
             runtime,

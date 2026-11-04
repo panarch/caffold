@@ -35,7 +35,7 @@ device or another one. The browser draws the terminal in the Detail body.
 
 | State | Owner | Writers | Persisted |
 | --- | --- | --- | --- |
-| Which subjects have a terminal | Registry | Open and Kill requests, a shell that fails to start or exits, Task isolation and Archive, eviction, backend shutdown | No |
+| Which subjects have a terminal | Registry | Open and Kill requests, a shell that fails to start or exits, Task isolation, managed-worktree handoff and Archive, eviction, backend shutdown | No |
 | Shell process and PTY | Operating system; the terminal's thread holds the PTY | The shell; the terminal's thread for size and stopping | No |
 | Screen and scrollback | The terminal's `alacritty_terminal` screen, owned by its thread | The terminal's thread: output and resizes | No |
 | Attached viewer | The terminal's thread, one per terminal | WebSocket attach and detach, terminal end | No |
@@ -58,8 +58,11 @@ A terminal ends only when:
    after the request's checks pass and before any managed worktree is removed;
    a refused request leaves it running.
    Ordinary archived Task deletion has no running terminal;
-5. the backend exits; or
-6. the cap below evicts it.
+5. its Task hands its managed worktree to another Task. The source terminal
+   closes after the target conversation has been prepared and before ownership
+   transfers; an ordinary-directory continuation keeps the source terminal;
+6. the backend exits; or
+7. the cap below evicts it.
 
 Closing a terminal takes it off the list at once; its thread then tells its
 viewer the terminal ended and sends the shell a hangup. A shell still running
@@ -138,6 +141,12 @@ viewer receives `resync` and a new snapshot.
 
 A request names its subject with exactly one of `task=<thread ID>` or
 `section=<Managed Section ID>`.
+
+Task terminal creation shares the Task mutation lease with managed-worktree
+handoff and checks the requested canonical directory against managed ownership.
+A directory owned by another Task, or unavailable ownership evidence, refuses
+creation. The store-ready Tasks router composes these routes with the narrow
+filesystem, store, session and managed-root capabilities they need.
 
 | Request | Behavior |
 | --- | --- |

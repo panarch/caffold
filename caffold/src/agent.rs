@@ -29,6 +29,7 @@ pub(crate) mod conversation;
 pub(crate) mod driver;
 pub(crate) mod fork;
 pub(crate) mod grok;
+pub(crate) mod history;
 pub(crate) mod http_mcp;
 mod mcp_content;
 pub(crate) mod notes_tools;

@@ -1658,6 +1658,18 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/force-archive-dialog.js"
             ))))
         }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/handoff-dialog.css.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/handoff-dialog.css.js"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/handoff-dialog.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/handoff-dialog.js"
+            ))))
+        }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
@@ -2655,6 +2667,7 @@ mod tests {
             "pages/(task-workspace)/codex-status/components/runtime-update-dialog.css",
             "pages/(task-workspace)/components/navigation.css",
             "pages/(task-workspace)/components/update-task-dialog.css",
+            "pages/(task-workspace)/tasks/(detail)/(task)/components/handoff-dialog.css",
             "pages/(task-workspace)/components/workspace-brand.css",
             "pages/(task-workspace)/layout.css",
             "pages/(task-workspace)/notes/components/document.css",
@@ -2856,6 +2869,7 @@ mod tests {
         for path in [
             "pages/components/update-result-dialog.js",
             "pages/(task-workspace)/components/update-task-dialog.js",
+            "pages/(task-workspace)/tasks/(detail)/(task)/components/handoff-dialog.js",
         ] {
             let dialog = get(path).expect("update dialog js asset");
             assert_eq!(dialog.content_type, "text/javascript; charset=utf-8");

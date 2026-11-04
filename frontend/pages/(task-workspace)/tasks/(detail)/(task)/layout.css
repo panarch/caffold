@@ -171,3 +171,15 @@ caffold-loading-text {
 .task-detail[hidden] {
   display: none;
 }
+
+.workspace-access {
+  margin: 0;
+  padding: var(--interface-space-4) var(--interface-space-8);
+  color: var(--muted);
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+  overflow-wrap: anywhere;
+}
+.workspace-access a {
+  color: var(--control-fg);
+}

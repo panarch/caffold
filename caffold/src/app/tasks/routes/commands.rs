@@ -102,6 +102,7 @@ async fn task_prompt_owned(
     let managed = active_record(&state.task_store, &thread_id).await?;
     let managed_worktree = task_store_worktree_for_thread(&state, &thread_id).await?;
     let managed_cwd = managed_prompt_cwd(managed_worktree.as_ref())?;
+    state.task_runtime.require_workspace_write(&managed).await?;
     let (prompt, image_paths) = normalize_task_input(&request.prompt, request.image_paths)?;
     let _requested_active_turn_id = request.active_turn_id;
     let agent = state.task_runtime.task_agent(&thread_id).await?;
@@ -162,6 +163,15 @@ async fn task_prompt_owned(
                     started_turn: None,
                 }),
             PromptTarget::Start { cwd } => {
+                state
+                    .lifecycle
+                    .workspace_access(&thread_id, &cwd)
+                    .await
+                    .require_write()
+                    .map_err(|message| ApiError::Conflict {
+                        code: "task_workspace_read_only",
+                        message,
+                    })?;
                 let chosen = TurnOptions {
                     model: requested_model.clone(),
                     effort: requested_effort.clone(),
@@ -389,7 +399,9 @@ pub(super) async fn task_interrupt(
     AxumPath(thread_id): AxumPath<String>,
     Query(_query): Query<TasksQuery>,
 ) -> Result<Json<TaskInterruptResponse>, ApiError> {
+    let _mutation = state.task_sessions.reserve_mutation(&thread_id).await;
     let managed = active_record(&state.task_store, &thread_id).await?;
+    state.task_runtime.require_workspace_write(&managed).await?;
     state
         .task_sessions
         .restore_managed_composer_settings(
@@ -484,7 +496,9 @@ pub(super) async fn task_approval(
     Query(_query): Query<TasksQuery>,
     Json(request): Json<TaskApprovalRequest>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    active_record(&state.task_store, &thread_id).await?;
+    let _mutation = state.task_sessions.reserve_mutation(&thread_id).await;
+    let managed = active_record(&state.task_store, &thread_id).await?;
+    state.task_runtime.require_workspace_write(&managed).await?;
     let agent = state.task_runtime.task_agent(&thread_id).await?;
     let decision = normalize_approval_decision(&request.decision)?;
     match state

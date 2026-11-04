@@ -83,6 +83,8 @@ pub(crate) const BASE_ARGUMENTS: &[&str] = &[
     "mcp__caffold__move_note_directory",
     "--allowedTools",
     "mcp__caffold__delete_note_directory",
+    "--allowedTools",
+    "mcp__caffold__read_task_history",
 ];
 
 /// What every session is started with beyond its arguments.
@@ -782,6 +784,10 @@ pub(crate) fn mcp_tool_listing() -> Value {
                 "inputSchema": tool.input_schema,
             })
         }));
+    listing["tools"]
+        .as_array_mut()
+        .expect("the listing contains tools")
+        .push(crate::agent::history::tool_definition());
     listing
 }
 
@@ -1187,7 +1193,7 @@ mod tests {
     fn the_listing_serves_every_notes_tool_after_the_task_tools_without_loading_them_up_front() {
         let listing = mcp_tool_listing();
         let tools = listing["tools"].as_array().unwrap();
-        let notes = &tools[3..];
+        let notes = &tools[3..tools.len() - 1];
         let specs = notes_tool_specs();
         assert_eq!(notes.len(), specs.len());
         for (tool, spec) in notes.iter().zip(specs) {
@@ -1196,6 +1202,8 @@ mod tests {
             assert_eq!(tool["inputSchema"], spec.input_schema);
             assert!(tool.get("_meta").is_none());
         }
+        assert_eq!(tools.last().unwrap()["name"], "read_task_history");
+        assert_eq!(tools.last().unwrap()["annotations"]["readOnlyHint"], true);
     }
 
     #[test]

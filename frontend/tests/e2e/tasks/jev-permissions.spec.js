@@ -52,7 +52,7 @@ test("the reviewed mode is offered and withheld with its reason until Jev is set
   const form = page.locator('.task-new-form[data-task-form="create"]');
 
   await form.getByRole("button", { name: "Choose approval mode" }).click();
-  const option = page.locator(
+  const option = form.locator(
     `.task-permission-option[data-permission-mode="${REVIEWED_MODE}"]`,
   );
 
@@ -62,7 +62,7 @@ test("the reviewed mode is offered and withheld with its reason until Jev is set
   await expect(option).toContainText(WITHHELD_REASON);
   // It keeps the modes that give up a protection last.
   await expect(
-    page.locator(".task-permission-option").last(),
+    form.locator(".task-permission-option").last(),
   ).toHaveAttribute("data-permission-mode", "fullAccess");
 });
 
@@ -75,7 +75,7 @@ test("the reviewed mode can be chosen once Jev is set up", { tag: "@server-stead
   const picker = form.getByRole("button", { name: "Choose approval mode" });
 
   await picker.click();
-  const option = page.locator(
+  const option = form.locator(
     `.task-permission-option[data-permission-mode="${REVIEWED_MODE}"]`,
   );
   await expect(option).toBeEnabled();
@@ -120,7 +120,7 @@ test("saving Jev settings offers the mode without reloading the page", { tag: "@
   await page.goto("/tasks/new?cwd=src");
   const form = page.locator('.task-new-form[data-task-form="create"]');
   const picker = form.getByRole("button", { name: "Choose approval mode" });
-  const option = page.locator(
+  const option = form.locator(
     `.task-permission-option[data-permission-mode="${REVIEWED_MODE}"]`,
   );
   await picker.click();

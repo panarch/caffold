@@ -518,6 +518,23 @@ export async function forkTask(threadId: string) {
   );
 }
 
+export async function handoffTask(
+  threadId: string,
+  options: {
+    provider?: string;
+    model?: string;
+    effort?: string;
+    fastMode?: boolean;
+    permissionMode?: string;
+  },
+) {
+  return requestJson<CreatedTask & { prompt: string }>(
+    `/api/tasks/${encodeURIComponent(threadId)}/handoff`,
+    {},
+    { method: "POST", body: options },
+  );
+}
+
 export async function previewTaskForkSource(
   source: { provider: string; sourceId: string },
   signal?: AbortSignal,
@@ -1850,6 +1867,11 @@ export interface TaskEventsRange {
 // it: the Task, a page of its items and the extent they cover, the
 // publication revision they carry, and what its next turn runs under.
 export interface TaskDetail {
+  workspaceAccess?: {
+    mode: "readWrite" | "readOnly" | "unavailable";
+    reason?: string;
+    ownerTaskId?: string;
+  } | null;
   supportsSteering?: boolean;
   threadId?: string;
   task: Task | null;

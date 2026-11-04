@@ -170,7 +170,7 @@ pub(in crate::app::tasks) enum PromptTarget {
 }
 
 #[derive(Clone, Default)]
-pub(in crate::app::tasks) struct TaskSessions {
+pub(in crate::app) struct TaskSessions {
     entries: Arc<AsyncMutex<HashMap<String, Arc<SessionEntry>>>>,
     events: TaskEvents,
 }
@@ -436,7 +436,22 @@ impl TaskSessions {
         self.events.remove_thread(thread_id);
     }
 
-    pub(in crate::app::tasks) async fn reserve_mutation(
+    /// Release an active Task's provider observation while retaining its
+    /// mutation lock. A workspace transfer must not replace the lock while
+    /// requests are waiting on it.
+    pub(in crate::app::tasks) async fn end_observation(&self, thread_id: &str) {
+        if let Some(entry) = self.existing_entry(thread_id).await {
+            let mut state = entry.state.lock().await;
+            state.transition(SubscriptionTransition::Reset);
+            state.observation_epoch = state.observation_epoch.saturating_add(1);
+            state.driver = None;
+            state.agent = None;
+            state.revision = state.revision.saturating_add(1);
+        }
+        self.events.remove_thread(thread_id);
+    }
+
+    pub(in crate::app) async fn reserve_mutation(
         &self,
         thread_id: &str,
     ) -> tokio::sync::OwnedMutexGuard<()> {

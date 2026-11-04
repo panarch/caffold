@@ -90,6 +90,12 @@ to the agent that created it. Switching a Task in place would produce a new
 conversation while presenting it as continuity, so Caffold refuses that model
 instead of emulating it.
 
+**Continue with another agent** creates a distinct Task and native conversation
+at the current directory. The target agent uses recorded Task history to prepare
+a concise situation summary, then waits for the next user request. The source
+agent generates no summary and receives no inference prompt. The managed checkout
+rules belong to [Worktree Lifecycle](worktree-lifecycle.md#continue-in-the-same-workspace).
+
 Codex, Claude, Grok, and Antigravity models may expose different effort levels, fast modes,
 and permission modes. The composer shows what the selected agent offers. A choice
 travels back under the agent's own name, and the driver verifies it before a
@@ -751,7 +757,7 @@ application.
 
 ## Caffold-served tools and worktrees
 
-Caffold exposes Task naming, managed-worktree isolation, and Notes through the
+Caffold exposes Task naming, managed-worktree isolation, recorded Task history, and Notes through the
 native extension point each agent already understands:
 
 - Codex receives Caffold's authenticated HTTP MCP server at `/api/codex/mcp`
@@ -777,7 +783,7 @@ nor a signing-key failure makes an HTTP MCP agent a prerequisite for a Claude-on
 Caffold service.
 
 All four MCP catalogs use the Task-owned base names `rename_current_task`,
-`isolate_current_task`, and `read_current_task_name`; Claude's transport
+`isolate_current_task`, `read_current_task_name`, and `read_task_history`; Claude's transport
 qualifies them as `mcp__caffold__...` and Grok's as `caffold__...`, while Codex
 presents the base names directly. Only the pre-MCP Codex dynamic-tool
 compatibility path accepts the historical `rename_current_thread` name.
@@ -786,6 +792,43 @@ compatibility path accepts the historical `rename_current_thread` name.
 name from Caffold Redb, the name the Task list shows. The answer is the same
 whichever agent asks, and no agent is consulted for it. The pre-MCP Codex
 dynamic-tool path does not serve it.
+
+### Recorded Task history
+
+`read_task_history({taskId, cursor?, limit?})` reads a managed source Task,
+including an Archived source, for an active managed caller. The Task application
+resolves the recorded provider and native binding; the caller supplies no paths
+or provider override. Each driver reads its native ledger without opening a
+conversation or sending a prompt: Codex full `thread/turns/list`, Claude's
+transcript under its watched session's settled cwd or its recorded cwd when cold,
+with a unique native Session ID fallback if that file is absent; Grok's bound
+leader updates, with native session directory access checked before and after
+the read; and Antigravity's
+SQLite/protobuf record through the bundled Rust reader. The receiving agent
+needs no additional history reader package.
+
+The response is `{source:{taskId,provider}, turns:[{id,status,partial,items}],
+nextCursor, warnings}`. `limit` counts whole items (default 20, maximum 100).
+Turn status is the status reconstructed from that ledger, without live overlays.
+The first window contains the latest items; groups and items within each
+response are chronological. `nextCursor` continues toward older items,
+including within one large turn. An individual item is never split or truncated
+by Caffold. A cursor binds the Task, native source and exact item boundary;
+a missing boundary or changed binding is an error, not a text-based repair.
+Grok's native prompt index includes interjections within a turn. Both latest
+and older native windows extend back to the real turn start before projection
+and item pagination, preserving the turn's preceding messages and tool results.
+
+Items use Caffold's conversation vocabulary: user and assistant messages,
+reasoning, plans, commands with available output and exit code, file-change
+paths, tools with available input/results, generated-image references, other
+work and failures. The projection is not a byte-for-byte transcript export.
+Known unreadable Claude records and omitted inline image/binary content produce
+warnings. File-change records contain paths; the receiving agent inspects the
+current files and Git diff for their content. A native read failure is reported
+as an error rather than empty history. No second transcript is persisted.
+
+### Notes tools
 
 The same catalogs serve the Notes tools: `list_notes`, `read_note`,
 `create_note`, `update_note_content`, `rename_note`, `move_note`, `delete_note`,
@@ -878,6 +921,7 @@ is not Caffold's canonical product schema.
 ```text
 caffold/src/agent.rs                    shared agent vocabulary and session instructions
 caffold/src/agent/driver.rs             closed driver choice and shared Task operations
+caffold/src/agent/history.rs            recorded-history tool, item projection, and continuation
 caffold/src/agent/codex.rs              Codex entry point
 caffold/src/agent/codex/                app-server transport, protocol, readiness, contract, MCP bindings
 caffold/src/agent/claude.rs             Claude entry point and live session state

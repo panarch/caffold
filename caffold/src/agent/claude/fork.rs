@@ -8,7 +8,7 @@ use std::{
     fs,
     hash::{Hash, Hasher},
     io::{BufRead, BufReader},
-    path::{Path, PathBuf},
+    path::Path,
 };
 use uuid::Uuid;
 
@@ -123,7 +123,13 @@ struct Model {
 }
 
 fn read_source(projects: &Path, id: &str) -> Result<ForkSource, AgentError> {
-    let path = locate_source(projects, id)?;
+    let path = transcript::find(projects, id).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            AgentError::ConversationGone(id.into())
+        } else {
+            history_error(error)
+        }
+    })?;
     let file = fs::File::open(&path).map_err(history_error)?;
     let mut fingerprint = DefaultHasher::new();
     let mut cwd = None;
@@ -205,41 +211,6 @@ fn read_source(projects: &Path, id: &str) -> Result<ForkSource, AgentError> {
             path,
             fingerprint: fingerprint.finish(),
         },
-    })
-}
-
-fn locate_source(projects: &Path, id: &str) -> Result<PathBuf, AgentError> {
-    let directories = match fs::read_dir(projects) {
-        Ok(directories) => directories,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Err(AgentError::ConversationGone(id.into()));
-        }
-        Err(error) => return Err(history_error(error)),
-    };
-    let mut found = None;
-    for directory in directories {
-        let directory = directory.map_err(history_error)?;
-        if !directory.file_type().map_err(history_error)?.is_dir() {
-            continue;
-        }
-        let candidate = directory.path().join(format!("{id}.jsonl"));
-        match fs::symlink_metadata(&candidate) {
-            Ok(metadata) if metadata.file_type().is_file() => {
-                if found.replace(candidate).is_some() {
-                    return Err(AgentError::Failed("That Claude Session ID has multiple transcripts; resolve the duplicate before forking".into()));
-                }
-            }
-            Ok(_) => {
-                return Err(AgentError::Failed(
-                    "Claude's transcript is not an ordinary file".into(),
-                ));
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(history_error(error)),
-        }
-    }
-    found.ok_or_else(|| {
-        AgentError::ConversationGone(format!("Claude could not resolve Session ID {id}"))
     })
 }
 

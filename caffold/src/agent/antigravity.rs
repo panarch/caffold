@@ -18,6 +18,7 @@ use super::driver::{
     AgentError, Driver, ModelOption, OpenedConversation, PermissionModes, PromptImage,
     StartedConversation, StartedTurn, TurnOptions,
 };
+use super::history::RecordedPage;
 use super::http_mcp::{TaskMcpBindings, new_binding_value};
 use super::runner::RunnerClient;
 use super::{
@@ -209,6 +210,34 @@ impl AntigravityClient {
     }
     pub(crate) async fn live_conversations(&self) -> Vec<String> {
         self.inner.runner.live_sessions().await
+    }
+
+    pub(crate) async fn has_unobserved_writer(&self, task: &str) -> Result<bool, AntigravityError> {
+        Ok(self
+            .inner
+            .runner
+            .checked_live_sessions()
+            .await
+            .map_err(|error| AntigravityError::Unreachable(error.to_string()))?
+            .iter()
+            .any(|id| id == task))
+    }
+
+    /// A closed Task retains its effective workspace independently of the
+    /// native trajectory's recorded cwd. No ACP child is loaded to record it.
+    pub(crate) async fn retain_closed_directory(
+        &self,
+        task: &str,
+        cwd: &str,
+    ) -> Result<(), AntigravityError> {
+        let slot = self.slot(task).await?;
+        let slot = slot.lock().await;
+        if slot.session.is_some() || self.has_unobserved_writer(task).await? {
+            return Err(AntigravityError::InputBusy);
+        }
+        let mut binding = self.binding(task).await?;
+        binding.cwd = cwd.to_string();
+        self.inner.bindings.write(&binding)
     }
     /// Backend shutdown releases observation only. The runner owns its children.
     pub(crate) async fn stop(&self) {
@@ -544,6 +573,26 @@ impl AntigravityClient {
         }
         Ok(self.read_snapshot(task, before, limit).await?.page)
     }
+    pub(crate) async fn read_recorded_history(
+        &self,
+        task: &str,
+        before: Option<&str>,
+    ) -> Result<RecordedPage, AntigravityError> {
+        let binding = self.binding(task).await?;
+        let page = self.read_snapshot(task, before, 1).await?.page;
+        let after = self.binding(task).await?;
+        if binding.native_id != after.native_id || binding.cwd != after.cwd {
+            return Err(AntigravityError::Binding(
+                "The history source changed while it was read.".into(),
+            ));
+        }
+        Ok(RecordedPage {
+            identity: format!("antigravity:{}:{}", binding.native_id, binding.cwd),
+            page,
+            warnings: Vec::new(),
+        })
+    }
+
     async fn read_snapshot(
         &self,
         task: &str,
@@ -933,6 +982,56 @@ fn input_rejected(error: AntigravityError) -> AntigravityError {
 mod tests {
     use super::*;
     use crate::agent::{SessionEventKind, http_mcp::new_binding_value};
+    use std::fs;
+
+    #[tokio::test]
+    async fn recorded_history_reads_bundled_sqlite_without_a_runner_or_installed_harness() {
+        let data = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let records = home.path().join("antigravity-acp/conversations");
+        fs::create_dir_all(&records).unwrap();
+        let fixture =
+            record::fixture::parse(include_str!("antigravity/record/fixtures/single-turn.json"));
+        let path = records.join(format!("{}.db", fixture.identity.cascade));
+        drop(record::fixture::write(&path, &fixture));
+        let before = fs::read(&path).unwrap();
+        let client = AntigravityClient::at_paths(data.path(), home.path().to_path_buf());
+        let task = Uuid::new_v4().to_string();
+        client
+            .inner
+            .bindings
+            .write(&Binding {
+                version: 1,
+                task_id: task.clone(),
+                native_id: fixture.identity.cascade,
+                cwd: data.path().display().to_string(),
+                mcp_binding: new_binding_value(),
+            })
+            .unwrap();
+        let page = client.read_recorded_history(&task, None).await.unwrap();
+        assert_eq!(page.page.turns.len(), 1);
+        assert_eq!(page.page.turns[0].items.len(), 2);
+        assert!(client.inner.sessions.lock().await.is_empty());
+        client
+            .retain_closed_directory(&task, "/shared-worktree")
+            .await
+            .unwrap();
+        assert_eq!(
+            client.working_directory(&task).await.unwrap(),
+            "/shared-worktree"
+        );
+        assert!(
+            !client
+                .read_recorded_history(&task, None)
+                .await
+                .unwrap()
+                .page
+                .turns
+                .is_empty()
+        );
+        assert_eq!(before, fs::read(path).unwrap());
+        assert!(client.read_recorded_history("missing", None).await.is_err());
+    }
 
     #[tokio::test]
     #[ignore = "read-only native record review; set CAFFOLD_AGY_REVIEW_HOME and CAFFOLD_AGY_REVIEW_SESSION"]

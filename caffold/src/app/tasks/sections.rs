@@ -87,6 +87,20 @@ pub(super) struct Reconnection {
 }
 
 impl Reconnection {
+    /// These checkouts are repaired through their managed owners. A Task
+    /// pointing into one after a handoff must not open or move its old session.
+    pub fn retains_worktree_directory(&self, cwd: &str) -> Result<bool, ApiError> {
+        let path = Path::new(cwd);
+        let resolved = match path.canonicalize() {
+            Ok(path) => path,
+            Err(error) if error.kind() == ErrorKind::NotFound => path.to_path_buf(),
+            Err(error) => return Err(io_error(error)),
+        };
+        Ok(self.records.iter().any(|record| {
+            path.starts_with(&record.worktree_path) || resolved.starts_with(&record.worktree_path)
+        }))
+    }
+
     pub fn destination_for(&self, cwd: &str) -> Option<PathBuf> {
         let cwd = Path::new(cwd);
         let relative = cwd

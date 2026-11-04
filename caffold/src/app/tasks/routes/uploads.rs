@@ -55,8 +55,8 @@ pub(super) async fn task_upload(
     if length.is_some_and(|length| length > MAX_UPLOAD_BYTES) {
         return Err(upload_too_large());
     }
-    let working_directory = task_working_directory(&state, &thread_id).await?;
-    let base = task_directory(state.fs.root(), &working_directory)?;
+    let _mutation = state.task_sessions.reserve_mutation(&thread_id).await;
+    let base = task_working_directory(&state, &thread_id).await?;
     ensure_room(&base, length)?;
     let uploads = uploads_directory(&base, true)?
         .ok_or_else(|| ApiError::Internal("the uploads directory was not created".to_string()))?;
@@ -94,8 +94,8 @@ pub(super) async fn task_upload_discard(
     AxumPath((thread_id, folder)): AxumPath<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
     validate_folder(&folder)?;
-    let working_directory = task_working_directory(&state, &thread_id).await?;
-    let base = task_directory(state.fs.root(), &working_directory)?;
+    let _mutation = state.task_sessions.reserve_mutation(&thread_id).await;
+    let base = task_working_directory(&state, &thread_id).await?;
     let Some(uploads) = uploads_directory(&base, false)? else {
         return Ok(StatusCode::NO_CONTENT);
     };
@@ -152,14 +152,25 @@ fn parse_upload_path(relative: &str) -> Result<(&str, &str), ApiError> {
     Ok((folder, name))
 }
 
-async fn task_working_directory(state: &TaskState, thread_id: &str) -> Result<String, ApiError> {
+async fn task_working_directory(state: &TaskState, thread_id: &str) -> Result<PathBuf, ApiError> {
     active_record(&state.task_store, thread_id).await?;
     let worktree = task_store_worktree_for_thread(state, thread_id).await?;
     let managed_cwd = managed_prompt_cwd(worktree.as_ref())?;
-    working_directory(
+    let cwd = working_directory(
         managed_cwd.as_deref(),
         state.task_sessions.snapshot(thread_id).await.as_ref(),
-    )
+    )?;
+    let base = task_directory(state.fs.root(), &cwd)?;
+    state
+        .lifecycle
+        .workspace_access(thread_id, &cwd)
+        .await
+        .require_write()
+        .map_err(|message| ApiError::Conflict {
+            code: "task_workspace_read_only",
+            message,
+        })?;
+    Ok(base)
 }
 
 async fn write_body(

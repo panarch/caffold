@@ -884,7 +884,7 @@ export class CaffoldDetailLayout extends CaffoldElement {
     this.gitMenu.value?.setSnapshot({ available: repository });
     this.githubMenu.value?.setSnapshot({ available: repository });
     this.terminalButton.value?.setSnapshot({
-      available: Boolean(canonicalTask?.cwdPath),
+      available: Boolean(this.terminalDirectory()),
       pressed: surface === "terminal",
     });
     this.syncHeaderVisibility(surface);
@@ -1531,6 +1531,11 @@ export class CaffoldDetailLayout extends CaffoldElement {
         ? ""
         : `${this.section?.name ?? ""}`;
     }
+    if (
+      this.taskSnapshot?.workspaceAccess &&
+      this.taskSnapshot.workspaceAccess.mode !== "readWrite"
+    )
+      return "";
     return `${this.taskSnapshot?.task?.cwdPath ?? ""}`;
   }
 

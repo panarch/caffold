@@ -10,6 +10,7 @@ use crate::agent::codex::{
     approval_request, approval_response,
 };
 use crate::agent::driver::REVIEWED_PERMISSION_MODE;
+use crate::agent::history::{HistoryArguments, READ_TASK_HISTORY_TOOL_NAME};
 use crate::agent::http_mcp::{
     ISOLATE_CURRENT_TASK_TOOL_NAME, READ_CURRENT_TASK_NAME_TOOL_NAME, RENAME_CURRENT_TASK_TOOL_NAME,
 };
@@ -919,6 +920,11 @@ impl TaskRuntime {
         tool: &str,
         arguments: JsonValue,
     ) -> Result<String, String> {
+        if tool == READ_TASK_HISTORY_TOOL_NAME {
+            return self
+                .read_task_history(thread_id, &HistoryArguments::parse(arguments)?)
+                .await;
+        }
         if let Some(call) = notes_tool_call(tool, &arguments) {
             return self.execute_notes_tool(thread_id, call?).await;
         }
@@ -1213,6 +1219,34 @@ impl TaskRuntime {
             Some(managed) => Ok(managed.display_name),
             None => Err("Caffold can only read the name of a task that it manages.".to_string()),
         }
+    }
+
+    /// Read the requested managed source, without opening its conversation.
+    pub(super) async fn read_task_history(
+        &self,
+        caller: &str,
+        arguments: &HistoryArguments,
+    ) -> Result<String, String> {
+        if self.managed_thread(caller).await?.is_none() {
+            return Err("Caffold only serves history to a Task it manages.".into());
+        }
+        let store = self.task_store.clone();
+        let source = arguments.task_id.clone();
+        let managed = tokio::task::spawn_blocking(move || store.find(&source))
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "Caffold does not manage the requested source Task.".to_string())?;
+        let agent = self
+            .agent_for(&managed)
+            .await
+            .map_err(|error| error.to_string())?;
+        let history = agent
+            .driver()
+            .read_history(arguments)
+            .await
+            .map_err(|error| error.to_string())?;
+        serde_json::to_string(&history).map_err(|error| error.to_string())
     }
 
     /// Carry out a Notes tool call. Notes belong to no agent, so every agent's

@@ -88,7 +88,6 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     }
     updates.check_release_in_background();
     let terminals = terminal::Terminals::new();
-    let terminal_router = terminals.router(fs.clone());
     let tasks = tasks::PersistentTasksGateway::new(
         fs,
         initial_path.clone(),
@@ -111,7 +110,6 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         jev_router,
         tailscale_router,
         updates.router(),
-        terminal_router,
         codex_mcp.router(),
         grok_mcp.router().merge(antigravity_mcp.router()),
     ));
@@ -180,7 +178,6 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     )
     .router();
     let terminals = terminal::Terminals::new();
-    let terminal_router = terminals.router(fs.clone());
     let origin = mcp_origin(SocketAddr::from((Ipv4Addr::LOCALHOST, 5_178)));
     let mcp_signer = McpSessionSigner::memory();
     let codex_mcp = tasks::CodexMcpHost::new(&origin, mcp_signer.clone());
@@ -207,7 +204,6 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         jev_router,
         tailscale_router,
         update_router,
-        terminal_router,
         codex_mcp.router(),
         grok_mcp.router().merge(antigravity_mcp.router()),
     ))
@@ -222,7 +218,6 @@ fn router_with_states(
     jev_router: Router,
     tailscale_router: Router,
     update_router: Router,
-    terminal_router: Router,
     codex_mcp_router: Router,
     grok_mcp_router: Router,
 ) -> Router {
@@ -233,7 +228,6 @@ fn router_with_states(
         .merge(jev_router)
         .merge(tailscale_router)
         .merge(update_router)
-        .merge(terminal_router)
         .merge(codex_mcp_router)
         .merge(grok_mcp_router)
 }

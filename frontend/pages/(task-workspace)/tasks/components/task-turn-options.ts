@@ -24,11 +24,14 @@ import { scopedStyle } from "#app/scoped-style.js";
 import { closestAcrossShadowRoots } from "#app/shadow-roots.js";
 import { cleanLogicalPath } from "../task-format.js";
 
+import secondaryButton from "#app/component-styles/secondary-button.css.js";
 import busySpin from "#app/pages/component-styles/busy-spin.css.js";
 import styles from "./task-turn-options.css.js";
 
-// What the Task or Section last ran under, as far as the turn options read it.
+// The owner's initial choices. A new Task may prefer an agent without binding
+// its conversation; an existing Task or Section supplies its last settings.
 export interface TurnOptionsSelection {
+  provider?: string;
   model?: string;
   effort?: string;
   fastMode?: boolean;
@@ -37,13 +40,15 @@ export interface TurnOptionsSelection {
 
 // What an owner hands the turn options. `provider` names the agent a Task
 // already belongs to; empty means a Task that does not exist yet, where every
-// agent's models are on offer.
+// agent's models are on offer. Handoff lets an existing Task browse other
+// agents without making their models eligible for its next turn.
 export interface TurnOptionsContext {
   cwd?: string;
   initialSelection?: TurnOptionsSelection;
   locked?: boolean;
   placement?: "above" | "below";
   provider?: string;
+  allowHandoff?: boolean;
   // The owner is taking voice input; a phone in portrait leaves the row to it.
   voiceInput?: boolean;
 }
@@ -69,6 +74,11 @@ export interface TurnOptionsSnapshot {
   permissionExplicit: boolean;
 }
 
+export interface TurnOptionsHandoffIntent {
+  provider: string;
+  opener: HTMLElement | null;
+}
+
 // A list that arrives quickly is never seen loading; only one still pending
 // after this long earns a spinner in the closed control.
 const LOADING_DELAY_MS = 180;
@@ -85,6 +95,7 @@ interface ResolvedContext {
   locked: boolean;
   placement: "above" | "below";
   provider: string;
+  allowHandoff: boolean;
   voiceInput: boolean;
 }
 
@@ -164,6 +175,7 @@ interface PermissionFace {
 export class CaffoldTaskTurnOptions extends CaffoldElement {
   static override styles = [
     scopedStyle(busySpin, ".task-picker-spinner"),
+    scopedStyle(secondaryButton, ".task-model-handoff-button"),
     styles,
   ];
 
@@ -173,6 +185,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     locked: false,
     placement: "below",
     provider: "",
+    allowHandoff: false,
     voiceInput: false,
   };
   private choice = createChoice();
@@ -256,6 +269,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
       locked: Boolean(context.locked),
       placement: context.placement === "above" ? "above" : "below",
       provider: (context.provider ?? this.context.provider).trim(),
+      allowHandoff: Boolean(context.allowHandoff ?? this.context.allowHandoff),
       voiceInput: Boolean(context.voiceInput),
     };
     const changed =
@@ -264,6 +278,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
       next.placement !== this.context.placement ||
       next.voiceInput !== this.context.voiceInput ||
       next.provider !== this.context.provider ||
+      next.allowHandoff !== this.context.allowHandoff ||
       !sameSelection(next.initialSelection, this.context.initialSelection);
     if (next.provider !== this.context.provider) {
       this.browsedProvider = "";
@@ -289,6 +304,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
       locked: Boolean(context.locked),
       placement: context.placement === "above" ? "above" : "below",
       provider: (context.provider ?? "").trim(),
+      allowHandoff: Boolean(context.allowHandoff),
       voiceInput: Boolean(context.voiceInput),
     };
     this.hidePopovers();
@@ -764,10 +780,16 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
   }
 
   private modelBrowser(offered: ModelOption[], model: ModelOption | null) {
-    const providers = [...new Set(offered.map((option) => option.provider))];
+    const providers = [
+      ...new Set(this.browsableModels().map((option) => option.provider)),
+    ];
     const provider = providers.includes(this.browsedProvider)
       ? this.browsedProvider
       : (model?.provider ?? providers[0]);
+    const handoff = Boolean(
+      this.context.provider && provider !== this.context.provider,
+    );
+    const label = PROVIDER_LABELS[provider] ?? provider;
     return html`
       <div class="task-model-browser">
         <section class="task-provider-options" aria-label="Providers">
@@ -779,6 +801,19 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
           )}</div>
         </section>
         <div class="task-provider-models">
+          ${
+            handoff
+              ? html`
+            <section class="task-model-handoff" aria-label=${`Continue with ${label}`}>
+              <h3>Continue with ${label}</h3>
+              <p>Start a new Task in the same directory. ${label} reads this conversation and the current files, then summarizes the situation.</p>
+              <button
+                ${this.hints.button({ id: `handoff:${provider}`, label: `Continue with ${label}`, action: ACTION_HINT_ACTION.BUTTON_ACTIVATE, badgeAtEnd: true })}
+                type="button" class="task-model-handoff-button"
+                data-turn-options-action="handoff" data-provider=${provider}
+              >${inlineIcon("ArrowRight", "", "task-model-handoff-icon")}<span>Continue with ${label}</span></button>
+            </section>`
+              : html`
           <section aria-label="Models">
             <p>Model</p>
             <div class="task-model-list">${repeat(
@@ -797,6 +832,8 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
                 )
               : nothing
           }</div>
+          `
+          }
         </div>
       </div>
     `;
@@ -817,6 +854,8 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     }
     if (type === "browse-provider") {
       this.browseProvider(dataset.provider ?? "");
+    } else if (type === "handoff") {
+      this.requestHandoff(dataset.provider ?? "");
     } else if (type === "select-model") {
       this.selectModel(dataset.model ?? "", dataset.provider);
     } else if (type === "select-effort") {
@@ -829,11 +868,35 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
   }
 
   private browseProvider(provider: string) {
-    if (!this.offeredModels().some((option) => option.provider === provider)) {
+    if (
+      !this.browsableModels().some((option) => option.provider === provider)
+    ) {
       return;
     }
     this.browsedProvider = provider;
     this.draw();
+  }
+
+  private requestHandoff(provider: string) {
+    if (
+      this.context.locked ||
+      !this.context.allowHandoff ||
+      !this.context.provider ||
+      provider === this.context.provider ||
+      !this.browsableModels().some((option) => option.provider === provider)
+    )
+      return;
+    this.hidePopovers();
+    this.dispatchEvent(
+      new CustomEvent<TurnOptionsHandoffIntent>(
+        "caffold:task-turn-options-handoff",
+        {
+          bubbles: true,
+          composed: true,
+          detail: { provider, opener: this.modelButton.value ?? null },
+        },
+      ),
+    );
   }
 
   // Picking the model on show, or one of its settings, makes the reasoning and
@@ -1018,13 +1081,25 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     return this.modelOptions.filter((option) => option.provider === provider);
   }
 
+  private browsableModels() {
+    return this.context.allowHandoff ? this.modelOptions : this.offeredModels();
+  }
+
+  private initialModels() {
+    const provider = this.context.initialSelection.provider;
+    return this.offeredModels().filter(
+      (option) => !provider || option.provider === provider,
+    );
+  }
+
   private selectedModel() {
     const offered = this.offeredModels();
+    const initial = this.initialModels();
     return (
       offered.find((option) => sameModel(option, this.choice.model)) ??
-      rememberedModel(offered, this.context.initialSelection.model) ??
-      offered.find((option) => option.isDefault) ??
-      offered[0] ??
+      rememberedModel(initial, this.context.initialSelection.model) ??
+      initial.find((option) => option.isDefault) ??
+      initial[0] ??
       null
     );
   }
@@ -1064,7 +1139,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     return Boolean(
       model &&
         rememberedModel(
-          this.offeredModels(),
+          this.initialModels(),
           this.context.initialSelection.model,
         ) === model,
     );
@@ -1213,7 +1288,7 @@ function sameSelection(
   right: TurnOptionsSelection,
 ) {
   return (
-    (["model", "effort", "permissionMode"] as const).every(
+    (["provider", "model", "effort", "permissionMode"] as const).every(
       (key) => (left[key] ?? "") === (right[key] ?? ""),
     ) && Boolean(left.fastMode) === Boolean(right.fastMode)
   );
@@ -1580,5 +1655,6 @@ declare global {
 
   interface HTMLElementEventMap {
     "caffold:task-turn-options-change": CustomEvent<TurnOptionsSnapshot>;
+    "caffold:task-turn-options-handoff": CustomEvent<TurnOptionsHandoffIntent>;
   }
 }

@@ -16,7 +16,7 @@ mod session;
 mod shell;
 mod snapshot;
 
-use std::{str::FromStr, sync::Arc};
+use std::{path::PathBuf, str::FromStr, sync::Arc};
 
 use axum::{
     Json, Router,
@@ -32,7 +32,9 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use super::error::ApiError;
+use crate::app::tasks::{sessions::TaskSessions, workspace_access::WorkspaceAccess};
 use crate::fs::RootedFs;
+use crate::task_store::TaskStore;
 use registry::{Attach, Registry};
 use session::Delivery;
 use shell::ShellCommand;
@@ -55,19 +57,14 @@ impl Terminals {
         }
     }
 
-    pub(super) fn router(&self, fs: Arc<RootedFs>) -> Router {
-        Router::new()
-            .route(
-                "/api/terminal",
-                post(open_terminal)
-                    .delete(kill_terminal)
-                    .layer(DefaultBodyLimit::max(4_096)),
-            )
-            .route("/api/terminal/socket", get(terminal_socket))
-            .with_state(TerminalState {
-                fs,
-                registry: self.registry.clone(),
-            })
+    #[cfg(test)]
+    fn router(&self, fs: Arc<RootedFs>) -> Router {
+        self.for_tasks().router(
+            fs.clone(),
+            TaskStore::memory().unwrap(),
+            TaskSessions::default(),
+            fs.root().join("managed"),
+        )
     }
 
     pub(super) fn for_tasks(&self) -> TaskTerminals {
@@ -83,13 +80,37 @@ impl Terminals {
     }
 }
 
-/// The terminal operation Task lifecycle code needs.
+/// The terminal operations owned by the Task application.
 #[derive(Clone)]
 pub(super) struct TaskTerminals {
     registry: Arc<Registry>,
 }
 
 impl TaskTerminals {
+    pub(super) fn router(
+        &self,
+        fs: Arc<RootedFs>,
+        store: TaskStore,
+        sessions: TaskSessions,
+        managed_root: PathBuf,
+    ) -> Router {
+        Router::new()
+            .route(
+                "/api/terminal",
+                post(open_terminal)
+                    .delete(kill_terminal)
+                    .layer(DefaultBodyLimit::max(4_096)),
+            )
+            .route("/api/terminal/socket", get(terminal_socket))
+            .with_state(TerminalState {
+                fs,
+                registry: self.registry.clone(),
+                store,
+                sessions,
+                managed_root,
+            })
+    }
+
     pub(super) fn close_section(&self, section_id: &str) {
         self.registry
             .close(&Subject::Section(section_id.to_string()));
@@ -131,6 +152,9 @@ impl TaskTerminals {
 struct TerminalState {
     fs: Arc<RootedFs>,
     registry: Arc<Registry>,
+    store: TaskStore,
+    sessions: TaskSessions,
+    managed_root: PathBuf,
 }
 
 /// Opens the subject's terminal unless it has one.
@@ -143,6 +167,27 @@ async fn open_terminal(
     let subject = Subject::from_request(request.task, request.section)?;
     let size = TerminalSize::from_request(request.cols, request.rows)?;
     let cwd = state.fs.absolute_directory_path(&request.cwd)?;
+    let _mutation = match &subject {
+        Subject::Task(id) => Some(state.sessions.reserve_mutation(id).await),
+        Subject::Section(_) => None,
+    };
+    if let Subject::Task(id) = &subject {
+        let fs = state.fs.clone();
+        let store = state.store.clone();
+        let id = id.clone();
+        let path = cwd.to_string_lossy().into_owned();
+        let root = state.managed_root.clone();
+        tokio::task::spawn_blocking(move || {
+            WorkspaceAccess::inspect(&fs, &store, &root, &id, &path)
+        })
+        .await
+        .map_err(|error| ApiError::Internal(error.to_string()))?
+        .require_write()
+        .map_err(|message| ApiError::Conflict {
+            code: "task_workspace_read_only",
+            message,
+        })?;
+    }
     state
         .registry
         .open(subject, &cwd, size)

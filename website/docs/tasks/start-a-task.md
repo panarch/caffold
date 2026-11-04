@@ -64,7 +64,9 @@ them with the worktree.
 
 Every model belongs to one agent: Codex, Claude Code, Grok, or Antigravity. The model you
 choose for a new Task decides which agent runs it, and the Task keeps that
-agent for its whole life. To work with another agent, start another Task.
+agent for its whole life. To continue the same files with another agent, open
+the model picker, choose that agent, then its **Continue with** button; see
+[Worktrees](worktrees.md#continue-with-another-agent).
 
 Between turns you can still change the model, among the same agent's models,
 and the reasoning level and speed the model offers. Whether the approval mode

@@ -9,6 +9,7 @@ use serde::Serialize;
 use tokio::sync::{Mutex as AsyncMutex, broadcast};
 
 mod file_links;
+mod recorded;
 
 use file_links::{TaskFileLink, TaskFileLinkResolver};
 
@@ -25,6 +26,7 @@ use super::{
     },
     runtime::{TaskAgent, TaskRuntime, TaskRuntimeSignal},
     sync::TaskSync,
+    workspace_access::WorkspaceAccess,
     worktrees::ManagedWorktrees,
 };
 use crate::agent::AgentError;
@@ -63,6 +65,7 @@ pub(in crate::app::tasks) struct DetailContext {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(in crate::app::tasks) struct TaskDetailResponse {
+    pub(in crate::app::tasks) workspace_access: Option<WorkspaceAccess>,
     pub(in crate::app::tasks) supports_steering: bool,
     pub(in crate::app::tasks) thread_id: String,
     pub(in crate::app::tasks) sync_state: TaskSyncState,
@@ -161,6 +164,7 @@ pub(in crate::app) struct TaskDetailSync {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(in crate::app) struct TaskDetailState {
+    workspace_access: Option<WorkspaceAccess>,
     supports_steering: bool,
     pub(in crate::app::tasks) thread_id: String,
     pub(in crate::app::tasks) revision: u64,
@@ -178,6 +182,7 @@ impl TaskDetailState {
     /// The part of a full answer that lies beside its conversation.
     fn of(detail: TaskDetailResponse) -> Self {
         Self {
+            workspace_access: detail.workspace_access,
             supports_steering: detail.supports_steering,
             thread_id: detail.thread_id,
             revision: detail.revision,
@@ -311,6 +316,10 @@ impl DetailContext {
         cursor: Option<&str>,
     ) -> Result<TaskDetailResponse, ApiError> {
         let cursor = cursor.map(str::trim).filter(|cursor| !cursor.is_empty());
+        let _mutation = self.sessions.reserve_mutation(thread_id).await;
+        if let Some(detail) = self.recorded_detail(thread_id, cursor).await? {
+            return Ok(detail);
+        }
         self.check_worktree(thread_id).await?;
         self.restore_managed_composer_settings(thread_id).await?;
         if let Some(cursor) = cursor {
@@ -380,6 +389,9 @@ impl DetailContext {
         thread_id: &str,
         cursor: Option<&str>,
     ) -> Result<TaskDetailResponse, ApiError> {
+        if let Some(detail) = self.recorded_detail(thread_id, cursor).await? {
+            return Ok(detail);
+        }
         self.check_worktree(thread_id).await?;
         self.restore_managed_composer_settings(thread_id).await?;
         let cursor = cursor.map(TaskDetailCursor::decode).unwrap_or_default();
@@ -452,6 +464,10 @@ impl DetailContext {
         &self,
         thread_id: &str,
     ) -> Result<(TaskDetailResponse, u64), ApiError> {
+        if let Some(detail) = self.recorded_detail(thread_id, None).await? {
+            let revision = detail.revision;
+            return Ok((detail, revision));
+        }
         self.check_worktree(thread_id).await?;
         let stored = self.store_get(thread_id).await?;
         let Some(snapshot) = self.sessions.snapshot(thread_id).await else {
@@ -476,6 +492,16 @@ impl DetailContext {
     }
 
     pub(in crate::app::tasks) async fn bootstrap(&self, thread_id: &str, baseline_revision: u64) {
+        let _mutation = self.sessions.reserve_mutation(thread_id).await;
+        match self.recorded_access(thread_id).await {
+            Ok(Some(_)) => return,
+            Ok(None) => {}
+            Err(error) => {
+                self.broadcast_error(thread_id, error.into_error_body())
+                    .await;
+                return;
+            }
+        }
         if let Err(error) = self.check_worktree(thread_id).await {
             self.broadcast_error(thread_id, error.into_error_body())
                 .await;
@@ -588,6 +614,7 @@ impl DetailContext {
             let reasoning_effort = session_reasoning_effort.or(current.reasoning_effort);
             let permission_mode = permission_mode.or(current.permission_mode);
             return Ok(TaskDetailResponse {
+                workspace_access: Some(self.inspect_workspace(&thread_id, &conversation.cwd).await),
                 supports_steering: provider.is_some_and(supports_steering),
                 thread_id,
                 sync_state: TaskSyncState::Ready,
@@ -780,6 +807,7 @@ pub(in crate::app::tasks) fn loading_detail(
     managed: Option<&ManagedThread>,
 ) -> TaskDetailResponse {
     TaskDetailResponse {
+        workspace_access: None,
         supports_steering: managed.is_some_and(|task| supports_steering(task.run_by.provider())),
         thread_id: thread_id.to_string(),
         sync_state: TaskSyncState::Loading,
@@ -840,6 +868,7 @@ fn opening_messages(
 /// a browser already shows.
 fn without_conversation(detail: &TaskDetailResponse) -> TaskDetailResponse {
     TaskDetailResponse {
+        workspace_access: detail.workspace_access.clone(),
         supports_steering: detail.supports_steering,
         thread_id: detail.thread_id.clone(),
         sync_state: detail.sync_state,
@@ -3554,6 +3583,7 @@ mod request_tests {
 
     fn readable_detail(thread_id: &str) -> TaskDetailResponse {
         TaskDetailResponse {
+            workspace_access: None,
             supports_steering: true,
             provider: Some(TaskProvider::Codex),
             thread_id: thread_id.to_string(),

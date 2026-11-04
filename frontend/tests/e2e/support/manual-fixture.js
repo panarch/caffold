@@ -704,6 +704,7 @@ function manualCodexStatus() {
 
 function detailFor(task, overrides = {}) {
   return {
+    workspaceAccess: { mode: "readWrite", ownerTaskId: task.threadId },
  supportsSteering:true,
     threadId: task.threadId,
     provider: "codex",

@@ -26,6 +26,7 @@ mod commands;
 mod conversation;
 mod fork;
 mod grok;
+mod handoff;
 mod list;
 mod membership;
 mod sections;
@@ -312,6 +313,7 @@ pub(super) fn router(state: TaskState) -> Router {
             "/api/antigravity/auth/callback",
             post(antigravity::callback).layer(DefaultBodyLimit::max(40 * 1024)),
         )
+        .route("/api/tasks/{thread_id}/handoff", post(handoff::create))
         .route("/api/agent/models", get(agent_models))
         .route("/api/agent/permissions", get(agent_permissions))
         .route(

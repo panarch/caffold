@@ -139,6 +139,14 @@ impl TaskRuntime {
                 let runtime = self.clone();
                 let connection = connection.clone();
                 async move {
+                    let _mutation = runtime.sessions.reserve_mutation(&managed.thread_id).await;
+                    if let Err(error) = runtime.require_workspace_write(&managed).await {
+                        eprintln!(
+                            "not reopening workspace for Task {}: {error}",
+                            managed.thread_id
+                        );
+                        return;
+                    }
                     let thread_id = managed.thread_id;
                     runtime
                         .sessions

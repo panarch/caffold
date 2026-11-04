@@ -106,6 +106,7 @@ const shadowRootStyles = new Map([
   ["pages/(task-workspace)/tasks/(detail)/(section)/layout.css", "caffold-section-detail"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/broken-delete-dialog.css", "caffold-broken-task-delete-dialog"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/force-archive-dialog.css", "caffold-task-force-archive-dialog"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/handoff-dialog.css", "caffold-task-handoff-dialog"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css", "caffold-task-command-dialog"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/tool-call-dialog.css", "caffold-task-tool-call-dialog"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css", "caffold-task-conversation"],
