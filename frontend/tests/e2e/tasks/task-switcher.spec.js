@@ -96,6 +96,27 @@ test("keeps the order it opened with while Tasks keep moving", { tag: "@server-c
   ]);
 });
 
+test("draws no unviewed completion on the Task open now", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const tasks = switcherTasks();
+  tasks[1].unseen = true;
+  await installSwitcherFixture(page, tasks);
+  await page.goto("/tasks/switcher_oldest");
+  await expect(page.locator("caffold-task-detail")).toBeVisible();
+
+  const dialog = await openSwitcher(page);
+  await expect(
+    dialog.locator('[data-thread-id="switcher_middle"] .task-switcher-row-unseen'),
+  ).toHaveCount(1);
+  await expect(
+    dialog.locator('[data-thread-id="switcher_oldest"] .task-switcher-row-unseen'),
+  ).toHaveCount(0);
+  await expect(
+    dialog.locator('[data-thread-id="switcher_oldest"] .task-switcher-row-time'),
+  ).toHaveCount(1);
+});
+
 test("keeps running spinner phases through updates and reopening", { tag: "@server-changes" }, async ({
   page,
 }) => {

@@ -3201,6 +3201,91 @@ test("keeps the Tasks list DOM stable while opening a managed task", { tag: "@se
     seenRequests: 1,
   });
 });
+
+test("keeps a seen Task seen when a list read taken before the seen mark answers after it", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page, {
+    sourceKey: "__taskListEventSource",
+    autoOpen: true,
+  });
+  await mockAgentModels(page);
+  const now = 1_767_300_000_000;
+  const listedTask = (threadId, title, recencyMs, unseen) => ({
+    id: threadId,
+    threadId,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title,
+    preview: `${title} preview`,
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: now,
+    updatedMs: recencyMs,
+    recencyMs,
+    lastCompletedMs: recencyMs,
+    lastEventSummary: `${title} summary`,
+    unseen,
+  });
+  const tasks = [
+    listedTask("thread_seen_finished", "Finished task", now + 200, true),
+    listedTask("thread_seen_other", "Other task", now + 100, false),
+  ];
+  // Each read answers with the list as it stood when the read arrived.
+  let holding = false;
+  const heldReads = [];
+  await page.route(/\/api\/tasks(?:\?|$)/, async (route) => {
+    const body = JSON.stringify(activeTaskProjection(tasks));
+    if (holding) {
+      await new Promise((release) => heldReads.push(release));
+    }
+    return route.fulfill({ contentType: "application/json", body });
+  });
+  await page.route(/\/api\/tasks\/thread_seen_finished\/seen$/, (route) =>
+    route.fulfill({ json: { ...tasks[0], unseen: false } }),
+  );
+  await page.route(/\/api\/tasks\/(thread_seen_finished|thread_seen_other)(?:\?|$)/, (route) => {
+    const threadId = new URL(route.request().url()).pathname.split("/").at(-1);
+    return route.fulfill({
+      json: {
+        threadId,
+        syncState: "ready",
+        revision: 1,
+        eventRevision: 1,
+        task: tasks.find((task) => task.threadId === threadId),
+        events: [],
+        eventsPage: { nextCursor: null },
+        eventsRange: { from: null, to: null },
+        pendingApprovals: [],
+      },
+    });
+  });
+
+  await page.goto("/tasks/thread_seen_finished");
+  await expect(page.locator("caffold-task-detail")).toBeVisible();
+  const finished = page.locator('.task-row[data-thread-id="thread_seen_finished"]');
+  await expect(finished).toBeVisible();
+
+  holding = true;
+  await page.evaluate(() => {
+    window.__taskListEventSource.emit("task-list-refresh", {});
+  });
+  await expect.poll(() => heldReads.length).toBe(1);
+  tasks[0].unseen = false;
+  await page.evaluate((updated) => {
+    window.__taskListEventSource.emit("task-updated", updated);
+  }, activeListTask(tasks[0]));
+  await page.locator('.task-row[data-thread-id="thread_seen_other"]').click();
+  await expect(page).toHaveURL("/tasks/thread_seen_other");
+
+  heldReads[0]();
+  await expect.poll(() => heldReads.length).toBe(2);
+  await expect(finished.locator(".task-unseen-complete")).toHaveCount(0);
+  holding = false;
+  heldReads[1]();
+});
+
 test("patches Task rows in place without reordering and preserves a running spinner", { tag: "@server-changes" }, async ({
   page,
 }) => {

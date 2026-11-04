@@ -24,10 +24,12 @@ export interface TaskSwitcherSelectDetail {
   recovery: boolean;
 }
 
-// The Active Tasks the navigator holds, and whether it has loaded them.
+// The Active Tasks the navigator holds, whether it has loaded them, and the
+// Task open now.
 export interface TaskSwitcherSnapshot {
   rows?: TaskWithSection[];
   loaded?: boolean;
+  selectedThreadId?: string;
 }
 
 /**
@@ -47,6 +49,7 @@ export class CaffoldTaskSwitcherDialog extends CaffoldElement {
   static override styles = styles;
 
   private tasksLoaded = true;
+  private selectedThreadId = "";
   // Thread IDs in the order taken when the dialog opened, and the ones that
   // were pinned then.
   private order: string[] = [];
@@ -72,12 +75,17 @@ export class CaffoldTaskSwitcherDialog extends CaffoldElement {
   }
 
   /** Show the given Tasks, pinned first, each part most recently finished first. */
-  open({ rows = [], loaded = true }: TaskSwitcherSnapshot = {}) {
+  open({
+    rows = [],
+    loaded = true,
+    selectedThreadId = "",
+  }: TaskSwitcherSnapshot = {}) {
     const dialog = this.dialog;
     if (!dialog || dialog.open) {
       return false;
     }
     this.tasksLoaded = loaded;
+    this.selectedThreadId = selectedThreadId;
     this.takeOrder(rows);
     this.draw();
     dialog.showModal();
@@ -104,12 +112,17 @@ export class CaffoldTaskSwitcherDialog extends CaffoldElement {
    * set the order is the first loaded one, because a dialog opened before the
    * Task list arrived has no order to protect yet.
    */
-  updateTasks({ rows = [], loaded = true }: TaskSwitcherSnapshot = {}) {
+  updateTasks({
+    rows = [],
+    loaded = true,
+    selectedThreadId = "",
+  }: TaskSwitcherSnapshot = {}) {
     if (!this.dialog?.open) {
       return false;
     }
     const wasLoaded = this.tasksLoaded;
     this.tasksLoaded = loaded;
+    this.selectedThreadId = selectedThreadId;
     if (!wasLoaded && loaded) {
       this.takeOrder(rows);
     } else {
@@ -240,7 +253,9 @@ export class CaffoldTaskSwitcherDialog extends CaffoldElement {
         <span class="task-switcher-row-context" title=${sectionName}
           >${sectionName}</span
         >
-        <span class="task-switcher-row-indicators">${rowMeta(task)}</span>
+        <span class="task-switcher-row-indicators"
+          >${rowMeta(task, threadId === this.selectedThreadId)}</span
+        >
       </button>
     </li>`;
   }
@@ -305,10 +320,11 @@ function rowLabel(title: string, sectionName: string) {
  * The one thing a row says about where its Task stands.
  *
  * This is the Task list's own cell: an unviewed completion outranks what the
- * Task is doing now, and a Task doing nothing says when it last finished.
+ * Task is doing now, and a Task doing nothing says when it last finished. The
+ * Task open now is the one being viewed, so it has no unviewed completion.
  */
-function rowMeta(task: ListedTask) {
-  if (task.unseen) {
+function rowMeta(task: ListedTask, open: boolean) {
+  if (task.unseen && !open) {
     return html`<span
       class="task-switcher-row-meta task-switcher-row-unseen"
       title="Completed - not viewed"

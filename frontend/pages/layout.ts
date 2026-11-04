@@ -797,10 +797,7 @@ export class CaffoldAppShell extends CaffoldElement {
   }: ForegroundRecoveryRequest) {
     const route = notificationActivationRoute(activationRoute);
     const currentRoute = parseRoute(window.location.href) ?? this.currentRoute;
-    if (
-      route &&
-      (!currentRoute?.threadId || currentRoute.threadId !== route.threadId)
-    ) {
+    if (route && (!currentRoute || !routeEquals(currentRoute, route))) {
       progress.activatingRoute();
       await this.applyRoute(route, { activation: true });
     }

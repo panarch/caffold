@@ -169,6 +169,26 @@ test("draws each row's title, Section, and the one thing it says about the Task"
   assert.match(drawn, /<caffold-task-status-chip class="task-switcher-row-meta task-switcher-row-status" \.task="" staggered><\/caffold-task-status-chip>/);
 });
 
+test("draws no unviewed completion on the Task open now", () => {
+  const switcher = openedSwitcher();
+  switcher.dialog.open = false;
+  const rows = [
+    entry("thread-open", { unseen: true, lastCompletedMs: 2_000 }),
+    entry("thread-other", { unseen: true, lastCompletedMs: 1_000 }),
+  ];
+  const row = (threadId) =>
+    html(switcher).match(new RegExp(`data-thread-id="${threadId}".*?</li>`))[0];
+
+  switcher.open({ rows, selectedThreadId: "thread-open" });
+  assert.doesNotMatch(row("thread-open"), /task-switcher-row-unseen/);
+  assert.match(row("thread-open"), /<time class="task-switcher-row-meta task-switcher-row-time"/);
+  assert.match(row("thread-other"), /task-switcher-row-unseen/);
+
+  switcher.updateTasks({ rows, selectedThreadId: "thread-other" });
+  assert.match(row("thread-open"), /task-switcher-row-unseen/);
+  assert.doesNotMatch(row("thread-other"), /task-switcher-row-unseen/);
+});
+
 test("takes no snapshot while it is closed", () => {
   const switcher = openedSwitcher();
   switcher.dialog.open = false;
