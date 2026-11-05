@@ -1032,6 +1032,12 @@ test("keeps bottom navigation responsive in Conversation and hides it throughout
       navigationFitsPane: true,
       detailFillsWorkspace: true,
     });
+    // The floating tabs end on the same line as the Composer beside them.
+    const tabsBox = await page.locator("caffold-task-workspace-navigation").boundingBox();
+    const composerBox = await page
+      .locator(".task-follow-up-form .task-composer-panel")
+      .boundingBox();
+    expect(tabsBox.y + tabsBox.height).toBeCloseTo(composerBox.y + composerBox.height, 1);
   }
 
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
@@ -1325,7 +1331,7 @@ async function workspaceNavigationGeometry(footer) {
     const style = getComputedStyle(element);
     const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
     return {
-      inset: rootFontSize * 0.5,
+      inset: rootFontSize * 0.625,
       position: style.position,
       footerLeft: box.left, footerTop: box.top, footerBottom: box.bottom, footerWidth: box.width,
       paneLeft: paneBox.left, paneBottom: paneBox.bottom, paneWidth: pane.clientWidth,

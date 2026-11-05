@@ -2723,7 +2723,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
       );
       const listRect = list.getBoundingClientRect();
       const navigationRect = navigation.getBoundingClientRect();
-      const inset = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.5;
+      const inset = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.625;
       return {
         besideTheList: navigation.parentElement === list.parentElement,
         listWidth: Math.round(listRect.width),

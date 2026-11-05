@@ -1516,7 +1516,7 @@ test("paired Notes size three equal floating tabs from the selected font and kee
               + Number.parseFloat(style.columnGap) + Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
           }));
           return {
-            inset: rootFontSize * 0.5,
+            inset: rootFontSize * 0.625,
             width: box.width, paneWidth: paneBox.width,
             neededWidth: largestContentWidth * 3 + frameWidth,
             buttonWidths: buttons.map((button) => button.getBoundingClientRect().width),
