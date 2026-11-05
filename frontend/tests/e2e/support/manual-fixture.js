@@ -1,5 +1,5 @@
 import { crc32, deflateSync } from "node:zlib";
-import { AGENT_CATALOG, agentPermissionModes } from "./agent-catalog-fixture.js";
+import { agentPermissionModes } from "./agent-catalog-fixture.js";
 import { mockCaffoldUpdate, mockCodexStatus, mockCodexUpdates } from "./browser-defaults.js";
 import {
   activeListTask,
@@ -152,13 +152,14 @@ export async function installManualDefaults(page) {
     );
   });
   await page.route("**/api/agent/models", (route) =>
-    route.fulfill({ json: {...AGENT_CATALOG,models:[...AGENT_CATALOG.models,{provider:"antigravity",model:"gemini-3.8-flash",displayName:"Gemini 3.8 Flash",isDefault:true,defaultEffort:"high",efforts:["low","medium","high"],supportsFastMode:false}]} }),
+    route.fulfill({ json: MANUAL_AGENT_CATALOG }),
   );
   await page.route("**/api/agent/permissions*", (route) => {
     const url = new URL(route.request().url());
     const modes = agentPermissionModes(
       url.searchParams.get("provider") ?? "",
       url.searchParams.get("model") ?? "",
+      MANUAL_AGENT_CATALOG,
     );
     return route.fulfill({ json: withAskJevFirst(modes) });
   });
@@ -175,6 +176,81 @@ export async function installManualDefaults(page) {
     route.fulfill({ json: mockCaffoldUpdate() }),
   );
 }
+
+// Current models as the agents listed them on 2026-11-05, one or two per
+// provider. The manual keeps its own list so the shared test catalog's
+// arbitrary samples never reach its images.
+const MANUAL_AGENT_CATALOG = {
+  models: [
+    {
+      provider: "codex",
+      model: "gpt-6.1-sol",
+      displayName: "GPT-6.1-Sol",
+      description: "Latest workhorse model for coding and everyday work.",
+      isDefault: true,
+      defaultEffort: "low",
+      efforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+      supportsFastMode: true,
+      supportsAutoMode: false,
+    },
+    {
+      provider: "codex",
+      model: "gpt-6-astra",
+      displayName: "GPT-6-Astra",
+      description: "Frontier intelligence for the most demanding work.",
+      isDefault: false,
+      defaultEffort: "medium",
+      efforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+      supportsFastMode: true,
+      supportsAutoMode: false,
+    },
+    {
+      provider: "claude",
+      model: "opus",
+      displayName: "Opus 5.5",
+      description: "For complex work and everyday tasks",
+      isDefault: true,
+      defaultEffort: null,
+      efforts: ["low", "medium", "high", "xhigh", "max"],
+      supportsFastMode: true,
+      supportsAutoMode: true,
+    },
+    {
+      provider: "claude",
+      model: "haiku",
+      displayName: "Haiku 5.5",
+      description: "Fastest for quick answers",
+      isDefault: false,
+      defaultEffort: null,
+      efforts: ["low", "medium", "high", "xhigh", "max"],
+      supportsFastMode: false,
+      supportsAutoMode: true,
+    },
+    {
+      provider: "grok",
+      model: "grok-4.7",
+      displayName: "Grok 4.7",
+      description: "SpaceXAI's latest frontier model",
+      isDefault: true,
+      defaultEffort: "xhigh",
+      efforts: ["xhigh", "high", "medium", "low"],
+      supportsFastMode: false,
+      supportsAutoMode: true,
+    },
+    {
+      provider: "antigravity",
+      model: "gemini-3.8-flash",
+      displayName: "Gemini 3.8 Flash",
+      description: null,
+      isDefault: true,
+      defaultEffort: "high",
+      efforts: ["low", "medium", "high"],
+      supportsFastMode: false,
+      supportsAutoMode: false,
+    },
+  ],
+  unavailable: [],
+};
 
 // The Tasks surface: the three Sections, two archived Tasks, each Task's
 // conversation, the dark theme Task's plan and changes, and voice input ready

@@ -436,7 +436,8 @@ shared Interface padding on each button. The selected font and widest item
 determine all three button widths; the column only limits the panel to its
 available width after insets and the master pane's end border, whose width
 `--task-workspace-master-pane-border-width` gives both. Window resizing does
-not stretch the panel.
+not stretch the panel. Its inset is the follow-up Composer's bottom padding, so
+the panel and a Composer beside it end on the same line.
 The layout owns the overlay clearance; each master-pane scroll owner consumes
 it as end padding and scroll padding. Notes passes it to shared File Tree and
 Markdown Preview through their optional `--file-tree-scroll-end-clearance` and

@@ -63,9 +63,9 @@ export const AGENT_CATALOG = {
   unavailable: [],
 };
 
-export function agentPermissionModes(provider, model) {
+export function agentPermissionModes(provider, model, catalog = AGENT_CATALOG) {
   if (provider === "claude") {
-    return claudePermissionModes(model);
+    return claudePermissionModes(model, catalog);
   }
   if (provider === "grok") {
     return GROK_PERMISSION_MODES;
@@ -121,8 +121,8 @@ const CODEX_PERMISSION_MODES = {
   ],
 };
 
-function claudePermissionModes(model) {
-  const auto = AGENT_CATALOG.models.some(
+function claudePermissionModes(model, catalog) {
+  const auto = catalog.models.some(
     (option) =>
       option.provider === "claude" &&
       option.model === model &&

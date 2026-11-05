@@ -1,6 +1,8 @@
 :host {
   --task-workspace-master-width: 380px;
-  --task-workspace-navigation-inset: var(--interface-space-4);
+  /* The follow-up Composer's bottom padding, so the floating tabs and a
+     Composer beside them end on the same line. */
+  --task-workspace-navigation-inset: var(--interface-space-5);
   --task-workspace-navigation-height: max(
     3rem,
     calc(var(--interface-compact-hit-size) + var(--interface-space-4) + 2px)
