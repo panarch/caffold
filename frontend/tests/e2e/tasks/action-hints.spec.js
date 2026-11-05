@@ -2040,7 +2040,7 @@ async function captureActionHintVisualState(page) {
         `Open ${workspaceModeNames[mode]}`;
       automaticTargets.set(label, target(control, [
         first("caffold-task-workspace"),
-        first(".task-workspace-master-pane"),
+        first(".task-workspace-master-detail"),
       ], false));
     }
     const workspace = first("caffold-task-workspace");

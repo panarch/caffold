@@ -8,23 +8,27 @@ the stable context for local work.
 
 The Task workspace is the only routed application workspace. It contains the
 Task navigator, Global New, Task/Section Detail, Notes, and Settings. The
-workspace navigation at the bottom of the navigation pane switches among Tasks,
-Notes, and Settings. Each returns to the screen it last showed, and browser Back
-leaves the current one for the previous one at its own depth. Choosing the one
-already shown keeps its route and brings its list back to the top, except
+workspace navigation switches among Tasks, Notes, and Settings. Each returns to
+the screen it last showed, and browser Back leaves the current one for the
+previous one at its own depth. Choosing the one already shown while an open
+screen fills its list's place returns to that list, where the screen's Back
+goes. Otherwise it keeps its route and brings its list back to the top, except
 while Notes is showing a pair. While a newer Caffold release exists, or this
 window has a new build ready to load, Settings and its About Caffold entry
 carry a small static green dot on the icon's top right, in the color of a
 Task's unseen-completion dot; their accessible names say which.
 
-At workspace widths up to 640px, the navigation fills a separate bottom bar.
-At wider widths, the same three labeled buttons float at the bottom left of
-the navigation pane. Its three equal buttons use the width needed by the
-widest icon and label with padding in the selected interface font. Widening
-the pane leaves that width unchanged. The content fills the pane's height, and
-its scroll area leaves enough space at the end to bring the last item above the
-floating panel. Action Hints omit items partly covered by the panel. Scrolling
-them clear and entering Action Hint mode again makes them available.
+At workspace widths up to 640px, the navigation fills a separate bar at the
+bottom of the workspace. The bar stays under an open Note or Settings page and
+is absent while Tasks shows anything other than its list. At wider widths, the
+same three labeled buttons float at the bottom left of the navigation pane and
+are hidden whenever the pane is. Its three equal buttons use the width needed
+by the widest icon and label with padding in the selected interface font.
+Widening the pane leaves that width unchanged. The content fills the pane's
+height, and its scroll area leaves enough space at the end to bring the last
+item above the floating panel. Action Hints omit items partly covered by the
+panel. Scrolling them clear and entering Action Hint mode again makes them
+available.
 
 Desktop reading surfaces may keep the Task navigator visible. Code surfaces
 use the available detail width. Foldable and phone layouts use the same

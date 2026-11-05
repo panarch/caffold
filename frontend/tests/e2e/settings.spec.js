@@ -180,6 +180,39 @@ test("choosing the Settings tab again brings its list back to the top", { tag: "
   await expect(page).toHaveURL("/settings");
 });
 
+test("choosing the Settings tab again over an open page returns to the list on a phone and keeps the page elsewhere", { tag: ["@desktop", "@phone"] }, async ({
+  page,
+}, testInfo) => {
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: viewport.width, height: 340 });
+  await page.goto("/settings");
+  await page.locator('button[data-settings-section="appearance"]').click();
+  await expect(page).toHaveURL("/settings/appearance");
+  const settingsTab = page.locator(
+    'caffold-task-workspace-navigation button[data-workspace-mode="settings"]',
+  );
+
+  if (testInfo.project.name === "phone") {
+    await settingsTab.click();
+    await expect(page).toHaveURL("/settings");
+    await expect(page.locator("caffold-settings-navigator")).toBeVisible();
+    // It goes where Back to settings goes, so the page is ahead of here.
+    await page.goForward();
+    await expect(page).toHaveURL("/settings/appearance");
+  } else {
+    const list = page.locator("caffold-settings-navigator > .settings-navigator-list");
+    const bottom = await list.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+      return element.scrollTop;
+    });
+    expect(bottom).toBeGreaterThan(0);
+    await settingsTab.click();
+    await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBe(0);
+    await expect(page).toHaveURL("/settings/appearance");
+    await expect(page.locator("caffold-settings-appearance-page")).toBeVisible();
+  }
+});
+
 test("keeps the Settings list's scroll and focus when its icons arrive", { tag: "@server-changes" }, async ({
   page,
 }) => {

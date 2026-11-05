@@ -352,7 +352,7 @@ test("structural shadows separate fixed regions from floating elevation", () => 
   ]);
   cssBlockMatching(taskWorkspace, ".task-workspace-master-pane", [
     /overflow: visible/,
-    /border-right: 1px solid var\(--border\)/,
+    /border-right: var\(--task-workspace-master-pane-border-width\) solid\s+var\(--border\)/,
   ]);
   assert.doesNotMatch(
     cssBlock(taskWorkspace, ".task-workspace-master-pane"),
