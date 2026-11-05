@@ -74,6 +74,10 @@ export interface RequestTasksRouteDetail {
   correction?: boolean;
 }
 
+export interface RequestWorkspaceRouteDetail {
+  route: ParsedRoute;
+}
+
 // The Navigation API as far as the shell and the workspace use it; TypeScript's
 // DOM types do not have it yet.
 declare global {
@@ -978,5 +982,6 @@ declare global {
 
   interface HTMLElementEventMap {
     "caffold:request-tasks-route": CustomEvent<RequestTasksRouteDetail>;
+    "caffold:request-workspace-route": CustomEvent<RequestWorkspaceRouteDetail>;
   }
 }

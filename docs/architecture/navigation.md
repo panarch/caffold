@@ -275,9 +275,11 @@ a tab returns to the depth it was left at. A tab that has not been visited
 opens the route its owner supplies: Tasks and Notes open their own home, and
 Settings opens its Codex page while blocked Codex operations need repair.
 
-Selecting the tab already shown requests no route. Its route stays, an open
-Task included, and the Task Workspace scrolls that tab's navigator back to the
-top.
+Selecting the tab already shown while a compact layout shows that tab's detail
+in place of its list requests the current route's parent, as Visible Back does,
+so the history rewinds the same way. Otherwise it requests no route. Its route
+stays, an open Task included, and the Task Workspace scrolls that tab's
+navigator back to the top; a Notes pair shown side by side stays as it is.
 
 ## History policy
 

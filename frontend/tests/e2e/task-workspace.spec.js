@@ -102,12 +102,14 @@ test("navigates Settings as responsive master-detail pages with browser history"
     const detailHeaderRect = detailHeader.getBoundingClientRect();
     const masterDetailRect = masterDetail.getBoundingClientRect();
     return {
-      ownedByList: navigationHost.parentElement === list,
+      besideThePanes: navigationHost.parentElement === masterDetail,
       position: getComputedStyle(navigationHost).position,
       contentEndsAboveNavigation:
         navigatorRect.bottom <= navigationRect.top + 1,
-      navigationEndsWithList:
-        Math.abs(navigationRect.bottom - listRect.bottom) <= 1,
+      navigationEndsWithWorkspace:
+        Math.abs(navigationRect.bottom - masterDetailRect.bottom) <= 1,
+      listEndsAtNavigation:
+        Math.abs(listRect.bottom - navigationRect.top) <= 1,
       detailFillsWorkspace:
         getComputedStyle(detail).display === "none" ||
         Math.abs(detailRect.height - masterDetailRect.height) <= 1,
@@ -120,10 +122,11 @@ test("navigates Settings as responsive master-detail pages with browser history"
     await taskWorkspace.locator(".settings-workspace-detail-header").elementHandle(),
   ]);
   expect(rootGeometry).toEqual({
-    ownedByList: true,
+    besideThePanes: true,
     position: testInfo.project.name === "phone" ? "static" : "absolute",
     contentEndsAboveNavigation: testInfo.project.name === "phone",
-    navigationEndsWithList: testInfo.project.name === "phone",
+    navigationEndsWithWorkspace: testInfo.project.name === "phone",
+    listEndsAtNavigation: testInfo.project.name === "phone",
     detailFillsWorkspace: true,
     settingsHeadersAlign: true,
   });
@@ -147,13 +150,20 @@ test("navigates Settings as responsive master-detail pages with browser history"
     await expect(appearance).toHaveAttribute("aria-current", "");
   }
 
+  const navigationHost = taskWorkspace.locator("caffold-task-workspace-navigation");
+  const listNavigationBox = await navigationHost.boundingBox();
   await appearance.click();
   await expect(page).toHaveURL("/settings/appearance");
   await expect(workspace).toHaveAttribute("data-settings-view", "detail");
   await expect(workspace.locator("caffold-settings-appearance-page")).toBeVisible();
   if (testInfo.project.name === "phone") {
     await expect(listPane).toBeHidden();
-    await expect(navigation).toBeHidden();
+    // The phone tabs stay where the list had them, below the page.
+    await expect(navigation).toBeVisible();
+    const pageNavigationBox = await navigationHost.boundingBox();
+    expect(pageNavigationBox).toEqual(listNavigationBox);
+    const detailBox = await detailPane.boundingBox();
+    expect(detailBox.y + detailBox.height).toBeCloseTo(pageNavigationBox.y, 1);
     const backToSettings = workspace.getByRole("button", {
       name: "Back to settings",
     });
@@ -198,9 +208,7 @@ test("navigates Settings as responsive master-detail pages with browser history"
   await page.goForward();
   await expect(page).toHaveURL("/settings/appearance");
   await expect(workspace.locator("caffold-settings-appearance-page")).toBeVisible();
-  if (testInfo.project.name === "phone") {
-    await expect(navigation).toBeHidden();
-  }
+  await expect(navigation).toBeVisible();
 
   await page.goto("/settings/codex");
   await expect(workspace.locator("caffold-settings-codex-page")).toBeVisible();
@@ -928,8 +936,8 @@ test("preserves Tasks and Settings DOM while hidden task updates arrive", { tag:
 
   const tasksButton = navigation.locator('button[data-workspace-mode="tasks"]');
   if (testInfo.project.name === "phone") {
-    await expect(navigation).toBeHidden();
-    await tasksButton.evaluate((button) => button.click());
+    await expect(navigation).toBeVisible();
+    await tasksButton.click();
   } else {
     await tasksButton.focus();
     await tasksButton.press("Enter");
@@ -975,13 +983,13 @@ test("keeps bottom navigation responsive in Conversation and hides it throughout
   const detail = page.locator("caffold-task-detail");
   expect(
     await navigation.evaluate(
-      (element, masterPane) => {
-        // The navigation draws in its own root, under its host in the pane.
+      (element, masterDetail) => {
+        // The navigation draws in its own root, under its host beside the panes.
         const host = element.getRootNode().host;
         return host?.matches("caffold-task-workspace-navigation") &&
-          host.parentElement === masterPane;
+          host.parentElement === masterDetail;
       },
-      await page.locator("caffold-task-workspace .task-workspace-master-pane").elementHandle(),
+      await page.locator("caffold-task-workspace .task-workspace-master-detail").elementHandle(),
     ),
   ).toBe(true);
   await expect(detail).toBeVisible();
@@ -1154,6 +1162,28 @@ test("keeps the full-width mobile tabs and floats them beyond the available-widt
   }
 });
 
+test("the floating workspace tabs leave with the navigation pane, while the phone tabs ignore a kept collapse", { tag: "@desktop" }, async ({ page }) => {
+  await page.goto("/settings/appearance");
+  const settingsPage = page.locator("caffold-settings-appearance-page");
+  const navigation = page.locator("caffold-task-workspace-navigation");
+  await expect(settingsPage).toBeVisible();
+  await expect(navigation).toBeVisible();
+
+  await page.setViewportSize({ width: 736, height: 800 });
+  await expect(settingsPage).toBeVisible();
+  await expect(navigation).toBeHidden();
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(navigation).toBeVisible();
+  await page.getByRole("button", { name: "Hide navigation pane" }).click();
+  await expect(page.locator("caffold-task-workspace .task-workspace-master-pane")).toBeHidden();
+  await expect(navigation).toBeHidden();
+
+  await page.setViewportSize({ width: 390, height: 800 });
+  await expect(settingsPage).toBeVisible();
+  await expect(navigation).toBeVisible();
+});
+
 test("the last Task stays above the floating tabs and can be opened", { tag: ["@desktop", "@foldable"] }, async ({ page }) => {
   await installEventSourceMock(page);
   const tasks = Array.from({ length: 40 }, (_, index) => ({
@@ -1287,8 +1317,8 @@ async function workspaceNavigationGeometry(footer) {
   return footer.evaluate((element) => {
     const group = element.shadowRoot.querySelector(".task-workspace-navigation");
     const buttons = [...group.querySelectorAll("button")];
-    const pane = element.parentElement;
-    const content = [...pane.children].find((child) => child !== element && getComputedStyle(child).display !== "none");
+    const pane = element.parentElement.querySelector(":scope > .task-workspace-master-pane");
+    const content = [...pane.children].find((child) => getComputedStyle(child).display !== "none");
     const box = element.getBoundingClientRect();
     const groupBox = group.getBoundingClientRect();
     const paneBox = pane.getBoundingClientRect();

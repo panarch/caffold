@@ -10,7 +10,12 @@ import {
 } from "#app/action-hints.js";
 import { type Health, restartClaudeRuntime } from "#app/api.js";
 import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
-import { routeDomain, routeTab, routeTarget } from "#app/navigation-routes.js";
+import {
+  parentRoute,
+  routeDomain,
+  routeTab,
+  routeTarget,
+} from "#app/navigation-routes.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
@@ -81,7 +86,10 @@ import { CaffoldElement } from "#app/caffold-element.js";
 import { scopedStyle } from "#app/scoped-style.js";
 import type { PaneResizeDetail } from "../../components/pane-resizer.js";
 import type { ParsedRoute } from "../../navigation-routes.js";
-import type { RequestTasksRouteDetail } from "../layout.js";
+import type {
+  RequestTasksRouteDetail,
+  RequestWorkspaceRouteDetail,
+} from "../layout.js";
 import type { CodexResetCreditConfirmedDetail } from "./codex-status/components/reset-credit-dialog.js";
 import type { WorkspaceNavigationIntentDetail } from "./components/navigation.js";
 import type { LiveConnectionReport } from "./live-updates.js";
@@ -519,7 +527,7 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
       hasActionHintLayoutBox(this.navigation)
         ? this.navigation.actionHintScope({
             scopeId: "workspace",
-            clipRoots: navigationClipRoots,
+            clipRoots: [this, this.masterDetail],
           })
         : null,
       resizerScope,
@@ -811,10 +819,6 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
               ${drawn(this.parts.of("notes-primary-slot"))}
               class="notes-primary-slot"
             ></div>
-            <caffold-task-workspace-navigation
-              ${drawn(this.parts.of("navigation"))}
-              @caffold:workspace-navigation-intent=${this.chooseTab}
-            ></caffold-task-workspace-navigation>
           </aside>
           <caffold-pane-resizer
             ${drawn(this.parts.of("master-resizer"))}
@@ -847,6 +851,10 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
               @caffold:settings-presentation-change=${this.presentationChange}
             ></caffold-settings-workspace>
           </div>
+          <caffold-task-workspace-navigation
+            ${drawn(this.parts.of("navigation"))}
+            @caffold:workspace-navigation-intent=${this.chooseTab}
+          ></caffold-task-workspace-navigation>
         </div>
       </section>
       <caffold-task-archived-delete-dialog
@@ -904,12 +912,32 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
   private chooseTab(event: CustomEvent<WorkspaceNavigationIntentDetail>) {
     event.stopPropagation();
     const tab = event.detail?.mode;
-    // Choosing the tab already shown keeps its route, an open Task included,
-    // and brings its list back to the top. A Notes pair keeps its hidden or
-    // choosing tree at the same position.
+    // Choosing the tab already shown returns to its list when the single pane
+    // shows an open screen in its place, where that screen's Back goes.
+    // Otherwise it keeps its route, an open Task included, and brings its
+    // list back to the top. A Notes pair keeps its hidden or choosing tree at
+    // the same position while both Notes show; the workspace width that
+    // decides that is a container query, so the detail pane says which.
     if (tab === this.mode) {
-      if (tab === "notes") {
-        if (!this.notesWorkspace.sideBySide()) {
+      const pairShown =
+        tab === "notes" &&
+        this.notesWorkspace.sideBySide() &&
+        this.detailPane.checkVisibility();
+      const listRoute =
+        this.detailOpen &&
+        !pairShown &&
+        !window.matchMedia(WORKSPACE_MASTER_DETAIL_MEDIA_QUERY).matches
+          ? parentRoute(this.route)
+          : null;
+      if (listRoute) {
+        this.dispatchEvent(
+          new CustomEvent<RequestWorkspaceRouteDetail>(
+            "caffold:request-workspace-route",
+            { bubbles: true, composed: true, detail: { route: listRoute } },
+          ),
+        );
+      } else if (tab === "notes") {
+        if (!pairShown) {
           this.notesNavigator.scrollToTop();
         }
       } else if (tab === "settings") {

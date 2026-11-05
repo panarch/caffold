@@ -767,14 +767,21 @@ test("a phone shows the tree, then one Note, and Back returns to the tree", { ta
 
   const masterPane = page.locator(".task-workspace-master-pane");
   const detailPane = page.locator(".task-workspace-detail-pane");
+  const navigation = page.locator("caffold-task-workspace-navigation");
   await expect(masterPane).toBeVisible();
   await expect(detailPane).toBeHidden();
+  const treeNavigationBox = await navigation.boundingBox();
   await treeEntry(page, "Inbox").click();
 
   await expect(page).toHaveURL(/\/notes\/inbox$/);
   await expect(masterPane).toBeHidden();
   await expect(detailPane).toBeVisible();
   await expect(notesTitle(page)).toHaveText("Inbox");
+  await expect(navigation).toBeVisible();
+  const noteNavigationBox = await navigation.boundingBox();
+  expect(noteNavigationBox).toEqual(treeNavigationBox);
+  const detailBox = await detailPane.boundingBox();
+  expect(detailBox.y + detailBox.height).toBeCloseTo(noteNavigationBox.y, 1);
   await captureReviewScreenshot(page, testInfo, "notes-phone-note");
 
   await primaryDocument(page).getByRole("button", { name: "Back to notes" }).click();
@@ -875,6 +882,103 @@ test("choosing the Notes tab again brings the tree back to the top", { tag: "@ph
   await expect.poll(() => scroller.evaluate((element) => element.scrollTop))
     .toBe(0);
   await expect(page).toHaveURL(/\/notes$/);
+});
+
+test("choosing the Notes tab again over an open Note returns to the tree on a phone and keeps the Note elsewhere", { tag: ["@desktop", "@phone"] }, async ({
+  page,
+}, testInfo) => {
+  await stubNotes(page, {
+    tree: {
+      directories: TREE.directories,
+      notes: [
+        ...TREE.notes,
+        ...Array.from({ length: 40 }, (_, index) => ({
+          id: `note-${index}`,
+          directoryId: null,
+          name: `Note ${String(index).padStart(2, "0")}`,
+          updatedAtMs: 1_000,
+        })),
+      ],
+    },
+  });
+  await page.goto("/notes");
+  await treeEntry(page, "Inbox").click();
+  await expect(page).toHaveURL(/\/notes\/inbox$/);
+  await expect(notesTitle(page)).toHaveText("Inbox");
+  const notesTab = page.locator(
+    'caffold-task-workspace-navigation button[data-workspace-mode="notes"]',
+  );
+
+  if (testInfo.project.name === "phone") {
+    await notesTab.click();
+    await expect(page).toHaveURL(/\/notes$/);
+    await expect(notesNavigator(page)).toBeVisible();
+    // It goes where Back to notes goes, so the Note is ahead of here.
+    await page.goForward();
+    await expect(page).toHaveURL(/\/notes\/inbox$/);
+    await expect(notesTitle(page)).toHaveText("Inbox");
+  } else {
+    const scroller = notesNavigator(page).locator(
+      ":scope > caffold-file-tree > .file-tree-scroll",
+    );
+    await expect(treeEntry(page, "Note 39")).toBeAttached();
+    const bottom = await scroller.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+      return element.scrollTop;
+    });
+    expect(bottom).toBeGreaterThan(0);
+    await notesTab.click();
+    await expect.poll(() => scroller.evaluate((element) => element.scrollTop))
+      .toBe(0);
+    await expect(page).toHaveURL(/\/notes\/inbox$/);
+    await expect(notesTitle(page)).toHaveText("Inbox");
+  }
+});
+
+test("choosing the Notes tab again over a pair returns to the tree on a phone and requests nothing beside the pair", { tag: ["@desktop", "@phone"] }, async ({
+  page,
+}, testInfo) => {
+  await stubNotes(page);
+  await page.goto("/notes/storage?beside=inbox");
+  await expect(documentPane(page, "primary").locator("caffold-markdown-preview h1")).toHaveText("Storage");
+  await page.evaluate(() => {
+    window.__workspaceRouteRequests = [];
+    for (const name of ["caffold:request-workspace-route", "caffold:request-workspace-tab"]) {
+      window.addEventListener(name, () => window.__workspaceRouteRequests.push(name), { capture: true });
+    }
+  });
+
+  const notesTab = page.locator(
+    'caffold-task-workspace-navigation button[data-workspace-mode="notes"]',
+  );
+
+  if (testInfo.project.name === "phone") {
+    await notesTab.click();
+    await expect(page).toHaveURL(/\/notes$/);
+    await expect(notesNavigator(page)).toBeVisible();
+  } else {
+    // A single-pane width and a master-detail width, both wide enough for the pair.
+    for (const width of [736, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      await expect(documentPane(page, "secondary")).toBeVisible();
+      await notesTab.click();
+      expect(await page.evaluate(() => window.__workspaceRouteRequests)).toEqual([]);
+      await expect(page).toHaveURL(/\/notes\/storage\?beside=inbox$/);
+      await expect(documentPane(page, "secondary").locator("caffold-markdown-preview h1")).toHaveText("Inbox");
+    }
+  }
+});
+
+test("a phone Note keeps the workspace tabs in Action Hint mode", { tag: "@phone" }, async ({
+  page,
+}) => {
+  await stubNotes(page);
+  await page.goto("/notes/inbox");
+  await expect(notesTitle(page)).toHaveText("Inbox");
+
+  const dialog = await enterActionHints(page);
+  await dialog.getByLabel(/Open Settings$/).click();
+  await expect(page).toHaveURL("/settings");
 });
 
 test("a Note URL survives reload and browser history", { tag: "@server-changes" }, async ({
@@ -1228,6 +1332,7 @@ test("a paired URL on phone retains the pair while showing only the primary and 
   await expect(documentPane(page, "primary").locator("caffold-markdown-preview h1")).toHaveText("Storage");
   await expect(documentPane(page, "secondary")).toBeHidden();
   await expect(notesNavigator(page)).toBeHidden();
+  await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   await documentPane(page, "primary").getByRole("button", { name: "Back to notes" }).click();
   await expect(page).toHaveURL(/\/notes$/);
   await expect(notesNavigator(page)).toBeVisible();
@@ -1397,7 +1502,7 @@ test("paired Notes size three equal floating tabs from the selected font and kee
         const geometry = await footer.evaluate((element, secondaryDocument) => {
           const buttons = [...element.shadowRoot.querySelectorAll("button")];
           const box = element.getBoundingClientRect();
-          const pane = element.parentElement;
+          const pane = element.parentElement.querySelector(":scope > .task-workspace-master-pane");
           const paneBox = pane.getBoundingClientRect();
           const primary = pane.querySelector("caffold-note-document").getBoundingClientRect();
           const secondary = secondaryDocument.getBoundingClientRect();

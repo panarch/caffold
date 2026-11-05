@@ -69,7 +69,12 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   assert.match(masterPane, /<caffold-task-navigator/);
   assert.match(masterPane, /<caffold-notes-navigator/);
   assert.match(masterPane, /<caffold-settings-navigator/);
-  assert.match(masterPane, /<caffold-task-workspace-navigation/);
+  assert.doesNotMatch(masterPane, /<caffold-task-workspace-navigation/);
+  assert.match(
+    workspace,
+    /<\/caffold-settings-workspace>\s*<\/div>\s*<caffold-task-workspace-navigation[\s\S]*?<\/caffold-task-workspace-navigation>\s*<\/div>\s*<\/section>/,
+    "workspace navigation follows the detail pane inside the master-detail grid",
+  );
   assert.doesNotMatch(masterPane, /<nav class="task-workspace-navigation"/);
   assert.match(workspaceNavigation, /<nav class="task-workspace-navigation"/);
   assert.match(workspaceNavigation, /mode: "tasks"/);

@@ -12,7 +12,7 @@ import {
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "./components/document.js";
 import { CaffoldElement } from "#app/caffold-element.js";
-import type { ParsedRoute } from "#app/navigation-routes.js";
+import type { RequestWorkspaceRouteDetail } from "../../layout.js";
 import type {
   CaffoldNoteDocument,
   NoteDocumentIntent,
@@ -34,10 +34,6 @@ import {
 } from "./tree.js";
 
 import styles from "./layout.css.js";
-
-export interface RequestWorkspaceRouteDetail {
-  route: ParsedRoute;
-}
 
 // A level with nothing to show yet is marked loading only once its read
 // outlasts this wait, so a quick read never flashes a loading row.
@@ -657,9 +653,5 @@ export class CaffoldNotesWorkspace extends CaffoldElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-notes-workspace": CaffoldNotesWorkspace;
-  }
-
-  interface HTMLElementEventMap {
-    "caffold:request-workspace-route": CustomEvent<RequestWorkspaceRouteDetail>;
   }
 }

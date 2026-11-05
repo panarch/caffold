@@ -423,13 +423,20 @@ response.
 
 ## Task Workspace
 
-Workspace navigation stays in a separate bottom row up to 640px of available
-workspace width. Above that boundary, the master pane places it as a bounded
-floating panel at its bottom left and gives content the full pane height.
+Workspace navigation belongs to the workspace, not to either pane: it is a child
+of the master-detail grid after the master and detail panes. Up to 640px of
+available workspace width it takes a separate bottom row of that grid under
+whichever pane is shown, and it is hidden only while Tasks has its detail open.
+Above that boundary, the layout places it as a bounded floating panel at the
+bottom left of the master pane's column and gives content the full pane
+height. As an absolutely positioned grid child, the panel takes that column as
+its containing block, and it is hidden whenever the master pane is.
 The panel uses intrinsic `max-content` width and three equal Grid tracks, with
 shared Interface padding on each button. The selected font and widest item
-determine all three button widths; the master pane only limits the panel to its
-available width after insets. Window resizing does not stretch the panel.
+determine all three button widths; the column only limits the panel to its
+available width after insets and the master pane's end border, whose width
+`--task-workspace-master-pane-border-width` gives both. Window resizing does
+not stretch the panel.
 The layout owns the overlay clearance; each master-pane scroll owner consumes
 it as end padding and scroll padding. Notes passes it to shared File Tree and
 Markdown Preview through their optional `--file-tree-scroll-end-clearance` and

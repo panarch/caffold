@@ -2718,14 +2718,14 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
     await expect(resizer).toHaveAttribute("aria-valuenow", "304");
     const resizedNavigationLayout = await tasksPage.evaluate((element) => {
       const list = element.shadowRoot.querySelector(".task-workspace-master-pane");
-      const navigation = list.querySelector(
-        "caffold-task-workspace-navigation",
+      const navigation = list.parentElement.querySelector(
+        ":scope > caffold-task-workspace-navigation",
       );
       const listRect = list.getBoundingClientRect();
       const navigationRect = navigation.getBoundingClientRect();
       const inset = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.5;
       return {
-        ownedByList: navigation.parentElement === list,
+        besideTheList: navigation.parentElement === list.parentElement,
         listWidth: Math.round(listRect.width),
         navigationFitsListContent:
           navigationRect.width <= list.clientWidth - 2 * inset + 1,
@@ -2736,7 +2736,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
       };
     });
     expect(resizedNavigationLayout).toEqual({
-      ownedByList: true,
+      besideTheList: true,
       listWidth: 304,
       navigationFitsListContent: true,
       navigationUsesLeftInset: true,
