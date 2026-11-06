@@ -475,6 +475,7 @@ const APP_SHELL_ASSETS = [
   "/assets/components/file-viewer/components/visual-diff/difference.js",
   "/assets/components/file-viewer/syntax-spans.js",
   "/assets/components/dom.js",
+  "/assets/components/page-anchor.js",
   "/assets/components/file-viewer.css.js",
   "/assets/components/file-viewer.js",
   "/assets/components/markdown-preview.css.js",

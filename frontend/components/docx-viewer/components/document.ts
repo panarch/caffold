@@ -67,7 +67,7 @@ class CaffoldDocxDocument extends CaffoldElement {
   }
 
   private generation = 0;
-  private pages: PageRecord[] | null = null;
+  private pageRecords: PageRecord[] | null = null;
   private widthObserver: ResizeObserver | null = null;
 
   override connectedCallback() {
@@ -109,8 +109,13 @@ class CaffoldDocxDocument extends CaffoldElement {
     }
   }
 
+  // A drawn document is fitted to the viewer's width before it says it is
+  // drawn, so its pages already have the size they are read at.
   override updated(changed: PropertyValues) {
     if (changed.has("renderState")) {
+      if (this.renderState === "docx") {
+        this.fitDrawnPages();
+      }
       this.dataset.renderState = this.renderState;
       this.dispatchEvent(
         new CustomEvent<DocumentRenderState>("caffold:docx-document-state", {
@@ -118,6 +123,11 @@ class CaffoldDocxDocument extends CaffoldElement {
         }),
       );
     }
+  }
+
+  // The document's pages in order, once it is drawn.
+  pages() {
+    return (this.pageRecords ?? []).map((page) => page.element);
   }
 
   private async open(generation: number, file: Blob | Promise<Blob>) {
@@ -131,7 +141,7 @@ class CaffoldDocxDocument extends CaffoldElement {
       if (!this.isCurrent(generation)) {
         return;
       }
-      await this.mountDocument(generation, nodes);
+      this.mountDocument(nodes);
     } catch (error) {
       // A fetch let go of is followed by another file or by nothing at all.
       if (
@@ -144,7 +154,7 @@ class CaffoldDocxDocument extends CaffoldElement {
     }
   }
 
-  private async mountDocument(generation: number, nodes: Node[]) {
+  private mountDocument(nodes: Node[]) {
     const content = window.document.createDocumentFragment();
     content.append(...nodes);
     withholdActiveContent(content);
@@ -152,12 +162,11 @@ class CaffoldDocxDocument extends CaffoldElement {
 
     this.content = content;
     this.renderState = "docx";
-    await this.updateComplete;
-    if (!this.isCurrent(generation)) {
-      return;
-    }
+  }
 
-    this.pages = Array.from(
+  private fitDrawnPages() {
+    const generation = this.generation;
+    this.pageRecords = Array.from(
       this.renderRoot.querySelectorAll<HTMLElement>("section.docx"),
       (element) => ({ element, width: 0 }),
     );
@@ -179,7 +188,7 @@ class CaffoldDocxDocument extends CaffoldElement {
     if (!available) {
       return;
     }
-    for (const page of this.pages ?? []) {
+    for (const page of this.pageRecords ?? []) {
       // Measured once, before any zoom applies.
       page.width ||= page.element.offsetWidth;
       page.element.style.zoom =
@@ -193,7 +202,7 @@ class CaffoldDocxDocument extends CaffoldElement {
     this.widthObserver?.disconnect();
     this.widthObserver = null;
     this.content = null;
-    this.pages = null;
+    this.pageRecords = null;
   }
 
   private isCurrent(generation: number) {

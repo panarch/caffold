@@ -146,6 +146,33 @@ function sheetTab(viewer, name) {
   return viewer.locator(".xlsx-viewer-tabs").getByRole("button", { name, exact: true });
 }
 
+// Where the shown sheet is scrolled to.
+function sheetScroll(viewer) {
+  return viewer.locator(".xlsx-viewer-sheet").evaluate((element) => ({
+    top: element.scrollTop,
+    left: element.scrollLeft,
+  }));
+}
+
+function scrollSheet(viewer, top, left) {
+  return viewer.locator(".xlsx-viewer-sheet").evaluate((element, place) => {
+    element.scrollTop = place.top;
+    element.scrollLeft = place.left;
+  }, { top, left });
+}
+
+// The Ledger cell drawn at the middle of the sheet's scrollport, which names
+// the part of the sheet on screen.
+function cellInView(viewer) {
+  return viewer.locator(".xlsx-viewer-sheet").evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const hit = element.getRootNode()
+      .elementsFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+      .find((candidate) => /^R\d+C\d+$/.test(candidate.textContent.trim()));
+    return hit?.textContent.trim() ?? null;
+  });
+}
+
 // The rectangle of a drawn cell or header, relative to the sheet's scrollport.
 function placement(viewer, locator) {
   return locator.evaluate((element) => {
@@ -351,6 +378,9 @@ test("switches sheets with the tabs and keeps the sheet when its file changes", 
   await expect(viewer.getByText("R1C1", { exact: true })).toBeVisible();
   await expect(viewer.getByText("Region", { exact: true })).toHaveCount(0);
   await waitForActionHintTarget(page, "Show sheet Summary");
+  // A few rows and a column in, so the changed first cell is still drawn.
+  await scrollSheet(viewer, 60, 40);
+  await expect.poll(() => sheetScroll(viewer)).toEqual({ top: 60, left: 40 });
 
   // The refresh below reports a change only to a file the navigator has listed
   // and selected.
@@ -367,6 +397,52 @@ test("switches sheets with the tabs and keeps the sheet when its file changes", 
 
   await expect(viewer.getByText("Revised", { exact: true })).toBeVisible();
   await expect(sheetTab(viewer, "Ledger")).toHaveAttribute("aria-pressed", "true");
+  expect(await sheetScroll(viewer)).toEqual({ top: 60, left: 40 });
+});
+
+test("returns to the sheet and the place it was reading after another surface", { tag: "@server-steady" }, async ({
+  page,
+}, testInfo) => {
+  const { taskReview } = await openDocument(page, testInfo);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const viewer = taskReview.locator("caffold-xlsx-viewer");
+  await expect(viewer.getByText("Region", { exact: true })).toBeVisible();
+  await sheetTab(viewer, "Ledger").click();
+  await expect(viewer.getByText("R1C1", { exact: true })).toBeVisible();
+  await scrollSheet(viewer, 3000, 600);
+  await expect.poll(() => cellInView(viewer)).toMatch(/^R1\d\dC\d+$/);
+  const cell = await cellInView(viewer);
+  const place = await sheetScroll(viewer);
+
+  await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
+  await expect(viewer).toBeHidden();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+
+  await expect(sheetTab(viewer, "Ledger")).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => cellInView(viewer)).toBe(cell);
+  expect(await sheetScroll(viewer)).toEqual(place);
+});
+
+test("returns each sheet to where it was scrolled as the tabs switch between them", { tag: "@server-steady" }, async ({
+  page,
+}, testInfo) => {
+  const { taskReview } = await openDocument(page, testInfo);
+  const viewer = taskReview.locator("caffold-xlsx-viewer");
+  await expect(viewer.getByText("Region", { exact: true })).toBeVisible();
+  await sheetTab(viewer, "Ledger").click();
+  await expect(viewer.getByText("R1C1", { exact: true })).toBeVisible();
+  await scrollSheet(viewer, 3000, 600);
+  await expect.poll(() => cellInView(viewer)).toMatch(/^R1\d\dC\d+$/);
+  const cell = await cellInView(viewer);
+  const place = await sheetScroll(viewer);
+
+  await sheetTab(viewer, "Summary").click();
+  await expect(viewer.getByText("Region", { exact: true })).toBeVisible();
+  expect(await sheetScroll(viewer)).toEqual({ top: 0, left: 0 });
+  await sheetTab(viewer, "Ledger").click();
+
+  await expect.poll(() => cellInView(viewer)).toBe(cell);
+  expect(await sheetScroll(viewer)).toEqual(place);
 });
 
 test("scrolls the sheet both ways and, with several sheets, the tabs sideways", { tag: "@server-steady" }, async ({

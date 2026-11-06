@@ -132,6 +132,41 @@ test("passes scrolling and Action Hints to the document viewer of its kind", () 
   }
 });
 
+test("names where the leaf it shows was last read", () => {
+  const scroll = { top: 40, left: 0 };
+  const anchor = { page: 2, fraction: 0.5 };
+  const workbook = { sheet: "Q2", scrolls: new Map() };
+  const leaf = (position) => ({ readingPosition: () => position });
+  for (const [state, children, expected] of [
+    [{ status: "file" }, { codeViewer: leaf(scroll) }, scroll],
+    [{ status: "diff" }, { diffViewer: leaf(scroll) }, scroll],
+    [{ status: "markdown" }, { preview: leaf(scroll) }, scroll],
+    [{ status: "document", document: { kind: "pdf" } }, { documentViewer: leaf(anchor) }, anchor],
+    [{ status: "document", document: { kind: "xlsx" } }, { documentViewer: leaf(workbook) }, workbook],
+    [{ status: "visual" }, { visualDiff: leaf(anchor) }, anchor],
+    [{ status: "image" }, {}, null],
+    [{ status: "loading" }, { codeViewer: leaf(scroll) }, null],
+  ]) {
+    assert.equal(viewerWith(state, children).readingPosition(), expected, state.status);
+  }
+});
+
+test("opens source, a diff, or Markdown at a scroll its owner kept, and ignores another kind of place", () => {
+  const owner = viewerWith({ status: "empty" });
+  owner.previewFiles = {};
+  owner.detailsPopover = { value: null };
+  const file = { path: "a.js", content: "a" };
+
+  owner.setFile(file, { position: { top: 40, left: 3 } });
+  assert.deepEqual(owner.state.position, { scroll: { top: 40, left: 3 }, line: undefined });
+
+  owner.setFile(file, { position: { page: 1, fraction: 0.5 } });
+  assert.deepEqual(owner.state.position, { scroll: null, line: undefined });
+
+  owner.setDiff({ path: "a.js", diff: "" }, { position: { top: 7, left: 0 } });
+  assert.deepEqual(owner.state.position, { scroll: { top: 7, left: 0 }, line: undefined });
+});
+
 // Load requests, the retained-content timer, and arriving states reach the
 // viewer separately; these cover every transition of that model.
 function retainingViewer(state) {
@@ -376,6 +411,20 @@ test("fetches a preview once, hands a document viewer that fetch, and keeps the 
   assert.equal(handed.length, 1);
 });
 
+test("hands the document viewer where the next file opens, and none for a file kept nowhere", async () => {
+  fileServer({ "p1.pdf": { text: "first", version: "v1" } });
+  const { host } = previewHost();
+  globalThis.window = { location: new URL(ORIGIN) };
+  const anchor = { page: 3, fraction: 0.2 };
+
+  host.setDocument({ kind: "pdf", path: "p1.pdf" }, { position: anchor });
+  assert.equal(host.documentPosition, anchor);
+  await until(() => host.previewFiles.file.phase === "shown");
+
+  host.setDocument({ kind: "pdf", path: "p1.pdf" });
+  assert.equal(host.documentPosition, null);
+});
+
 test("a recheck keeps a file the server answers with the same version", async () => {
   const server = fileServer({ "a2.pdf": { text: "first", version: "v1" } });
   const { host, handed } = previewHost();
@@ -582,6 +631,29 @@ test("Visual fetches each side once and asks again only for the working tree sid
   host.setVisual({ ...versions, before: null }, { presentation });
   assert.equal(handed.at(-1).before, null);
   assert.equal(host.previewFiles.before, undefined, "a side the change lacks is let go");
+});
+
+test("Visual opens a change where its owner says it was read, and a later load keeps the place", async () => {
+  fileServer({ "repo/v2.png": { text: "after", version: "v1", type: "image/png" } });
+  const { host } = previewHost("image");
+  globalThis.window = { location: new URL(ORIGIN) };
+  const handed = [];
+  Object.defineProperty(host, "visualDiffElement", {
+    get: () => ({ setComparison: (comparison) => handed.push(comparison) }),
+  });
+  const versions = { path: "repo/v2.png", before: null, after: { source: "workingTree" } };
+  const presentation = { title: "v2.png" };
+  const anchor = { page: 1, fraction: 0.3 };
+
+  host.setVisual(versions, { presentation, position: anchor });
+  assert.equal(handed.at(-1).position, anchor);
+  await until(() => host.previewFiles.after.phase === "shown");
+  assert.equal(handed.at(-1).position, undefined, "a side that arrives keeps the place");
+
+  host.setVisual(versions, { presentation, recheck: true });
+  assert.equal(handed.at(-1).position, undefined);
+  host.setVisual(versions, { presentation, position: { top: 4, left: 0 } });
+  assert.equal(handed.at(-1).position, null, "a place another kind of leaf kept opens at the top");
 });
 
 test("offers the change choices its owner names and hands a choice back", () => {

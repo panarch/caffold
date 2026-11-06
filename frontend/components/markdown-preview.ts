@@ -99,6 +99,9 @@ export class CaffoldMarkdownPreview extends CaffoldElement {
 
   private images: MarkdownImages | null = null;
   private pendingScroll: ScrollPosition | null = null;
+  // Where the preview was last read while it was drawn. A preview taken off
+  // the page reads 0, so it is kept as the person scrolls.
+  private readingScroll: ScrollPosition | null = null;
   private renderToken: symbol | null = null;
   private actionHintLinks: LinkRecord[] = [];
   private scrollSurfaceRecords: ScrollSurfaceRecord[] = [];
@@ -106,6 +109,13 @@ export class CaffoldMarkdownPreview extends CaffoldElement {
   private imageObserver: IntersectionObserver | null = null;
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly body = new DrawnRef<HTMLElement>(this);
+
+  constructor() {
+    super();
+    this.addEventListener("scroll", () => this.recordReading(), {
+      passive: true,
+    });
+  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -177,6 +187,10 @@ export class CaffoldMarkdownPreview extends CaffoldElement {
 
   getScrollState() {
     return { top: this.scrollTop, left: this.scrollLeft };
+  }
+
+  readingPosition() {
+    return this.readingScroll;
   }
 
   scrollSurfaceScope({
@@ -394,6 +408,7 @@ export class CaffoldMarkdownPreview extends CaffoldElement {
     this.performUpdate();
     this.pendingScroll = null;
     restoreScroll(this, scroll);
+    this.recordReading();
   }
 
   private startRender() {
@@ -419,10 +434,22 @@ export class CaffoldMarkdownPreview extends CaffoldElement {
       this.scrollSurfaceRecords = body ? collectScrollSurfaceRecords(body) : [];
       this.pendingScroll = null;
       restoreScroll(this, scroll);
+      this.recordReading();
       this.watchImages();
     } catch {
       parserPromise = null;
       this.renderPlainText(renderToken, scroll);
+    }
+  }
+
+  // A drawn preview set to where it already was sends no scroll, so it is
+  // read once it is drawn as well as when the person scrolls it.
+  private recordReading() {
+    if (
+      (this.renderState === "markdown" || this.renderState === "plain") &&
+      this.getClientRects().length
+    ) {
+      this.readingScroll = this.getScrollState();
     }
   }
 

@@ -95,6 +95,47 @@ async function expectPreviewSettled(taskReview) {
     .toBe(true);
 }
 
+// A document of blank US Letter pages, long enough to read well past its
+// first page at any width.
+function blankPages(count, comment = "") {
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${Array.from({ length: count }, (_, index) => `${index + 3} 0 R`).join(" ")}] /Count ${count} >>`,
+    ...Array.from({ length: count }, () =>
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] >>`),
+  ];
+  let body = "%PDF-1.4\n";
+  const offsets = objects.map((object, index) => {
+    const offset = body.length;
+    body += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    return offset;
+  });
+  const table = body.length;
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  body += offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("");
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${table}\n%%EOF\n`;
+  return Buffer.from(body + comment, "latin1");
+}
+
+// The page the viewer's top edge falls on, from 0, and how far into it, as a
+// share of its height in hundredths.
+function readingPlace(viewer) {
+  return viewer.evaluate((element) => {
+    const pages = [...element.shadowRoot.querySelectorAll(".pdf-viewer-page")];
+    const top = element.getBoundingClientRect().top;
+    const index = pages.findIndex((candidate) => candidate.getBoundingClientRect().bottom > top);
+    const box = pages[index].getBoundingClientRect();
+    return { page: index, fraction: Math.round(((top - box.top) / box.height) * 100) / 100 };
+  });
+}
+
+function scrollToPlace(viewer, page, fraction) {
+  return viewer.evaluate((element, [index, share]) => {
+    const box = element.shadowRoot.querySelectorAll(".pdf-viewer-page")[index].getBoundingClientRect();
+    element.scrollTop += box.top - element.getBoundingClientRect().top + share * box.height;
+  }, [page, fraction]);
+}
+
 async function markDrawnPage(viewer) {
   const canvas = viewer.locator(".pdf-viewer-page canvas").first();
   await expect(canvas).toBeVisible();
@@ -351,4 +392,91 @@ test("reports an unavailable PDF without replacing the review surface", { tag: "
   await expect(taskReview.getByRole("button", { name: "Preview", exact: true }))
     .toHaveAttribute("aria-pressed", "true");
   await expect(taskReview.locator("caffold-file-navigator")).toBeVisible();
+});
+
+test("returns to the page it was reading after another surface, at the same width or another", { tag: "@server-steady" }, async ({
+  page,
+}, testInfo) => {
+  await writeFile(documentPath(testInfo), blankPages(6));
+  const { taskReview } = await openDocument(page, testInfo);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const viewer = taskReview.locator("caffold-pdf-viewer");
+  await expect(viewer.locator(".pdf-viewer-page")).toHaveCount(6);
+  await scrollToPlace(viewer, 3, 0.4);
+  await expect.poll(() => readingPlace(viewer)).toEqual({ page: 3, fraction: 0.4 });
+  const wideTop = await viewer.evaluate((element) => element.scrollTop);
+
+  await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
+  await expect(viewer).toBeHidden();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await expect(viewer.locator(".pdf-viewer-page")).toHaveCount(6);
+  await expect.poll(() => readingPlace(viewer)).toEqual({ page: 3, fraction: 0.4 });
+
+  // A page narrower than its own width is shorter, so the same pixels would
+  // reach another page.
+  await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
+  await page.setViewportSize({ width: 560, height: 800 });
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await expect(viewer.locator(".pdf-viewer-page")).toHaveCount(6);
+  await expect.poll(() => readingPlace(viewer)).toEqual({ page: 3, fraction: 0.4 });
+  expect(await viewer.evaluate((element) => element.scrollTop)).toBeLessThan(wideTop - 100);
+});
+
+test("stays on the page it was reading when the document changes", { tag: "@server-changes" }, async ({
+  page,
+}, testInfo) => {
+  await writeFile(documentPath(testInfo), blankPages(6));
+  const { pattern } = documentRequests(page, testInfo);
+  const { taskReview } = await openDocument(page, testInfo);
+  const viewer = taskReview.locator("caffold-pdf-viewer");
+  const navigator = taskReview.locator("caffold-file-navigator");
+  // The refresh below reports a change only to a file the navigator has
+  // listed and selected.
+  await expect(
+    navigator.locator(`button[data-file-tree-path="src/${documentRoute(testInfo)}"]`),
+  ).toHaveAttribute("aria-current", "true");
+  await expect(viewer.locator(".pdf-viewer-page")).toHaveCount(6);
+  await scrollToPlace(viewer, 3, 0.4);
+  await expect.poll(() => readingPlace(viewer)).toEqual({ page: 3, fraction: 0.4 });
+  const drawnBefore = await markDrawnPage(viewer);
+
+  // A trailing comment changes the file without changing what it draws.
+  await writeFile(documentPath(testInfo), blankPages(6, "% replaced\n"));
+  const reread = page.waitForResponse(pattern);
+  await navigator.evaluate((element) => element.requestRefresh({ selected: true }));
+  await reread;
+
+  await expect(drawnBefore).toHaveCount(0);
+  await expect(viewer.locator(".pdf-viewer-page")).toHaveCount(6);
+  await expect.poll(() => readingPlace(viewer)).toEqual({ page: 3, fraction: 0.4 });
+});
+
+test("returns to the page it was reading in a document opened again after another", { tag: "@server-steady" }, async ({
+  page,
+}, testInfo) => {
+  await writeFile(documentPath(testInfo), blankPages(6));
+  await writeFile(documentPath(testInfo, "-second"), blankPages(2));
+  try {
+    const { taskReview } = await openDocument(page, testInfo);
+    const viewer = taskReview.locator("caffold-pdf-viewer");
+    const navigator = taskReview.locator("caffold-file-navigator");
+    await expect(viewer.locator(".pdf-viewer-page")).toHaveCount(6);
+    await scrollToPlace(viewer, 3, 0.4);
+    await expect.poll(() => readingPlace(viewer)).toEqual({ page: 3, fraction: 0.4 });
+
+    await navigator
+      .locator(`button[data-file-tree-path="src/${documentRoute(testInfo, "-second")}"]`)
+      .click();
+    await expect(viewer.locator(".pdf-viewer-page")).toHaveCount(2);
+    await expect.poll(() => readingPlace(viewer)).toEqual({ page: 0, fraction: expect.any(Number) });
+    expect(await viewer.evaluate((element) => element.scrollTop)).toBe(0);
+
+    await navigator
+      .locator(`button[data-file-tree-path="src/${documentRoute(testInfo)}"]`)
+      .click();
+    await expect(viewer.locator(".pdf-viewer-page")).toHaveCount(6);
+    await expect.poll(() => readingPlace(viewer)).toEqual({ page: 3, fraction: 0.4 });
+  } finally {
+    await rm(documentPath(testInfo, "-second"), { force: true });
+  }
 });

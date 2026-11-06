@@ -89,10 +89,11 @@ function documentPath(testInfo) {
   );
 }
 
-async function openDocument(page, testInfo, view = "preview") {
+async function openDocument(page, testInfo, view = "preview", { beforeOpen } = {}) {
   const { taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await beforeOpen?.();
   await page.goto(
     `/tasks/${taskScenario.threadId}/review?nav=files&view=${view}` +
       `&file=${encodeURIComponent(documentRoute(testInfo))}`,
@@ -104,6 +105,40 @@ test.beforeEach(async ({ page }, testInfo) => {
   await installBrowserDefaults(page);
   await writeFile(documentPath(testInfo), await presentationDeck(reviewDeck));
 });
+
+// Six slides of one line each, so the deck reads well past its first slide at
+// any width.
+function longDeck(label) {
+  return (presentation) => {
+    for (let index = 1; index <= 6; index += 1) {
+      presentation.addSlide().addText(`${label} ${index}`, { x: 1, y: 1, w: 6, h: 1 });
+    }
+  };
+}
+
+// The slide the viewer's top edge falls on, from 0, and how far into it, as a
+// share of its height in hundredths.
+function readingPlace(viewer) {
+  return viewer.evaluate((element) => {
+    const slides = [...element.shadowRoot.querySelector(".pptx-viewer-document").shadowRoot
+      .querySelectorAll(".pptx-viewer-slides > [data-slide-index]")];
+    const top = element.getBoundingClientRect().top;
+    const slide = slides.find((candidate) => candidate.getBoundingClientRect().bottom > top);
+    const box = slide.getBoundingClientRect();
+    return {
+      slide: Number(slide.dataset.slideIndex),
+      fraction: Math.round(((top - box.top) / box.height) * 100) / 100,
+    };
+  });
+}
+
+function scrollToPlace(viewer, slide, fraction) {
+  return viewer.evaluate((element, [index, share]) => {
+    const box = element.shadowRoot.querySelector(".pptx-viewer-document").shadowRoot
+      .querySelector(`[data-slide-index="${index}"]`).getBoundingClientRect();
+    element.scrollTop += box.top - element.getBoundingClientRect().top + share * box.height;
+  }, [slide, fraction]);
+}
 
 test.afterEach(async ({}, testInfo) => {
   await rm(documentPath(testInfo), { force: true });
@@ -327,4 +362,59 @@ test("reports an unavailable deck without replacing the review surface", { tag: 
   await expect(taskReview.getByRole("button", { name: "Preview", exact: true }))
     .toHaveAttribute("aria-pressed", "true");
   await expect(taskReview.locator("caffold-file-navigator")).toBeVisible();
+});
+
+test("returns to the slide it was reading after another surface, at the same width or another", { tag: "@server-steady" }, async ({
+  page,
+}, testInfo) => {
+  await writeFile(documentPath(testInfo), await presentationDeck(longDeck("Slide")));
+  const { taskReview } = await openDocument(page, testInfo);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const viewer = taskReview.locator("caffold-pptx-viewer");
+  await expect(viewer.getByText("Slide 1", { exact: true })).toBeVisible();
+  await scrollToPlace(viewer, 3, 0.4);
+  await expect.poll(() => readingPlace(viewer)).toEqual({ slide: 3, fraction: 0.4 });
+  const wideTop = await viewer.evaluate((element) => element.scrollTop);
+
+  await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
+  await expect(viewer).toBeHidden();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await expect(viewer.getByText("Slide 4", { exact: true })).toBeVisible();
+  await expect.poll(() => readingPlace(viewer)).toEqual({ slide: 3, fraction: 0.4 });
+
+  // Narrower slides are shorter, so the same pixels would reach another slide.
+  await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await expect(viewer.getByText("Slide 4", { exact: true })).toBeVisible();
+  await expect.poll(() => readingPlace(viewer)).toEqual({ slide: 3, fraction: 0.4 });
+  expect(await viewer.evaluate((element) => element.scrollTop)).toBeLessThan(wideTop - 100);
+});
+
+test("stays on the slide it was reading when the deck changes", { tag: "@server-changes" }, async ({
+  page,
+}, testInfo) => {
+  await writeFile(documentPath(testInfo), await presentationDeck(longDeck("Slide")));
+  const { taskReview } = await openDocument(page, testInfo, "preview", {
+    // When the working-tree status arrives it reloads the viewer, which reads
+    // the deck again if the navigator has listed it by then.
+    beforeOpen: () => page.route(/\/api\/git\/status(?:\?|$)/, () => {}),
+  });
+  const viewer = taskReview.locator("caffold-pptx-viewer");
+  const navigator = taskReview.locator("caffold-file-navigator");
+  // The refresh below reports a change only to a file the navigator has
+  // listed and selected.
+  await expect(
+    navigator.locator(`button[data-file-tree-path="src/${documentRoute(testInfo)}"]`),
+  ).toHaveAttribute("aria-current", "true");
+  await expect(viewer.getByText("Slide 1", { exact: true })).toBeVisible();
+  await scrollToPlace(viewer, 3, 0.4);
+  await expect.poll(() => readingPlace(viewer)).toEqual({ slide: 3, fraction: 0.4 });
+
+  await writeFile(documentPath(testInfo), await presentationDeck(longDeck("Revised")));
+  await navigator.evaluate((element) =>
+    element.requestRefresh({ selected: true, allDirectories: true }));
+
+  await expect(viewer.getByText("Revised 4", { exact: true })).toBeVisible();
+  await expect.poll(() => readingPlace(viewer)).toEqual({ slide: 3, fraction: 0.4 });
 });

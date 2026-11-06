@@ -819,6 +819,79 @@ test("keeps a Markdown Preview's reading position while it fetches its pictures 
   }
 });
 
+test("returns Source to the line it was reading after another surface", { tag: "@server-changes" }, async ({
+  page,
+}, testInfo) => {
+  const folder = `planner/source-return-${testInfo.project.name}-${testInfo.repeatEachIndex}`;
+  const folderPath = repositoryPath("frontend/tests/e2e/fixtures/home/src", folder);
+  await mkdir(folderPath, { recursive: true });
+  await writeFile(
+    `${folderPath}/guide.md`,
+    Array.from({ length: 300 }, (_, index) => `Line ${index + 1}`).join("\n"),
+  );
+  try {
+    const { tasksPage, shown: source } = await openGuide(page, folder, "source");
+    const lines = source.locator(".code-lines");
+    const firstLine = () => lines.evaluate((element) => {
+      const top = element.getBoundingClientRect().top;
+      return [...element.querySelectorAll(".code-row")]
+        .find((row) => row.getBoundingClientRect().bottom > top).dataset.lineNumber;
+    });
+    await lines.evaluate((element) => {
+      element.scrollTop = element.scrollHeight / 2;
+    });
+    await expect.poll(firstLine).not.toBe("1");
+    const line = await firstLine();
+    const top = await lines.evaluate((element) => element.scrollTop);
+
+    await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
+    await expect(source).toBeHidden();
+    await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+
+    await expect(source.locator(".code-row").first()).toBeVisible();
+    await expect.poll(firstLine).toBe(line);
+    expect(await lines.evaluate((element) => element.scrollTop)).toBe(top);
+  } finally {
+    await rm(folderPath, { recursive: true, force: true });
+  }
+});
+
+test("returns a Markdown Preview to where it was reading after another surface", { tag: "@server-changes" }, async ({
+  page,
+}, testInfo) => {
+  const folder = `planner/markdown-return-${testInfo.project.name}-${testInfo.repeatEachIndex}`;
+  const folderPath = repositoryPath("frontend/tests/e2e/fixtures/home/src", folder);
+  await mkdir(folderPath, { recursive: true });
+  await writeFile(
+    `${folderPath}/guide.md`,
+    Array.from({ length: 120 }, (_, index) => `Paragraph ${index + 1}.`).join("\n\n"),
+  );
+  try {
+    const { tasksPage, shown: preview } = await openGuide(page, folder, "preview");
+    // Where the 60th paragraph sits below the preview's top, once it is drawn.
+    const place = () => preview.evaluate((host) => {
+      const paragraph = [...host.shadowRoot.querySelectorAll("p")]
+        .find((element) => element.textContent === "Paragraph 60.");
+      return paragraph
+        ? Math.round(paragraph.getBoundingClientRect().top - host.getBoundingClientRect().top)
+        : null;
+    });
+    await preview.evaluate((element, offset) => {
+      element.scrollTop += offset;
+    }, (await place()) - 120);
+    expect(await place()).toBe(120);
+
+    await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
+    await expect(preview).toBeHidden();
+    await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+
+    await expect(preview).toHaveAttribute("data-render-state", "markdown");
+    await expect.poll(place).toBe(120);
+  } finally {
+    await rm(folderPath, { recursive: true, force: true });
+  }
+});
+
 test("puts a Markdown Preview picture's loading phrase on the text line, or in the middle of the place it holds", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
@@ -1218,6 +1291,14 @@ function imageRequests(page, name) {
 // file again when it arrives, so it is held until the file is drawn and its
 // redraw is over before the test goes on.
 async function openGuidePreview(page, folder) {
+  const { taskReview, shown } = await openGuide(page, folder, "preview");
+  return { taskReview, preview: shown };
+}
+
+// Opens a test's guide.md in `view` and waits until the working-tree status
+// that arrives after it has shown the file again, so nothing reads it anew
+// later on.
+async function openGuide(page, folder, view) {
   const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   const status = heldResponse();
@@ -1227,19 +1308,23 @@ async function openGuidePreview(page, folder) {
     await route.continue();
   });
   await page.goto(
-    `/tasks/${taskScenario.threadId}/review?nav=files&view=preview` +
+    `/tasks/${taskScenario.threadId}/review?nav=files&view=${view}` +
       `&file=${encodeURIComponent(`${folder}/guide.md`)}`,
   );
-  const preview = taskReview.locator("caffold-review-file-viewer caffold-markdown-preview");
-  await expect(preview).toHaveAttribute("data-render-state", "markdown");
   const viewer = taskReview.locator("caffold-review-file-viewer");
-  await markShownAgain(viewer, "setMarkdown");
+  const source = view === "source";
+  const shown = viewer.locator(source ? "caffold-code-viewer" : "caffold-markdown-preview");
+  const drawn = () => source
+    ? expect(shown.locator(".code-row").first()).toBeVisible()
+    : expect(shown).toHaveAttribute("data-render-state", "markdown");
+  await drawn();
+  await markShownAgain(viewer, source ? "setFile" : "setMarkdown");
   const statusArrived = page.waitForResponse(statusPattern);
   status.letThrough();
   await statusArrived;
   await expect(viewer).toHaveAttribute("data-shown-again", "");
-  await expect(preview).toHaveAttribute("data-render-state", "markdown");
-  return { taskReview, preview };
+  await drawn();
+  return { tasksPage, taskReview, shown };
 }
 
 // Marks the viewer once the Review hands it its file again through `method`.

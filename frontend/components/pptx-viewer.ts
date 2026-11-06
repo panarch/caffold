@@ -1,4 +1,4 @@
-import { html } from "lit";
+import { html, type PropertyValues } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import {
   emptyActionHintScope,
@@ -9,6 +9,11 @@ import { CaffoldElement } from "../caffold-element.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.js";
 import type { DocumentPreviewFile } from "./dom.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
+import {
+  type PageAnchor,
+  readPageAnchor,
+  scrollToPageAnchor,
+} from "./page-anchor.js";
 import "./pptx-viewer/components/document.js";
 
 import styles from "./pptx-viewer.css.js";
@@ -17,6 +22,10 @@ import styles from "./pptx-viewer.css.js";
 class CaffoldPptxViewer extends CaffoldElement {
   @property({ attribute: false })
   accessor file: DocumentPreviewFile | null = null;
+  // Where the next file handed over opens; a newer copy opens where this one
+  // was read.
+  @property({ attribute: false })
+  accessor position: PageAnchor | null = null;
 
   static override styles = styles;
 
@@ -24,6 +33,16 @@ class CaffoldPptxViewer extends CaffoldElement {
   private readonly document = new DrawnRef<
     HTMLElementTagNameMap["caffold-pptx-document"]
   >(this);
+  // Where the deck was last read while it was drawn. A viewer taken off the
+  // page reads 0, so it is kept as the person scrolls.
+  private readingAnchor: PageAnchor | null = null;
+
+  constructor() {
+    super();
+    this.addEventListener("scroll", () => this.recordReading(), {
+      passive: true,
+    });
+  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -49,6 +68,12 @@ class CaffoldPptxViewer extends CaffoldElement {
     ></caffold-pptx-document></div>`;
   }
 
+  override willUpdate(changed: PropertyValues) {
+    if (changed.has("file") && this.file && !this.file.newerCopy) {
+      this.readingAnchor = this.position;
+    }
+  }
+
   scrollSurfaceScope({
     label = "PowerPoint preview",
     ...pull
@@ -70,10 +95,31 @@ class CaffoldPptxViewer extends CaffoldElement {
     );
   }
 
+  readingPosition() {
+    return this.readingAnchor;
+  }
+
+  // The deck says it is drawn once every slide has its place, which is when
+  // the place it was read can be found again; the renderer then draws the
+  // slides near it.
   private onDocumentState(
     event: HTMLElementEventMap["caffold:pptx-document-state"],
   ) {
     this.dataset.renderState = event.detail;
+    if (event.detail === "pptx" && this.readingAnchor) {
+      scrollToPageAnchor(this, this.pages(), this.readingAnchor);
+    }
+  }
+
+  private recordReading() {
+    if (this.dataset.renderState === "pptx" && this.isConnected) {
+      this.readingAnchor =
+        readPageAnchor(this, this.pages()) ?? this.readingAnchor;
+    }
+  }
+
+  private pages() {
+    return this.document.value?.pages() ?? [];
   }
 }
 

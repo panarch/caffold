@@ -2276,6 +2276,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/components/dom.js"
         )))),
+        "components/page-anchor.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/page-anchor.js"
+        )))),
         "components/file-viewer.css.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/components/file-viewer.css.js"

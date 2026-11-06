@@ -53,12 +53,23 @@ interface VisibleSheet {
   index: number;
 }
 
+// Where a workbook was read: the sheet shown last, and where each sheet it
+// showed was scrolled to, by the sheet's name.
+export interface WorkbookPosition {
+  sheet: string;
+  scrolls: ReadonlyMap<string, { top: number; left: number }>;
+}
+
 let libraryPromise: Promise<SheetJs> | undefined;
 
 @customElement("caffold-xlsx-viewer")
 class CaffoldXlsxViewer extends CaffoldElement {
   @property({ attribute: false })
   accessor file: DocumentPreviewFile | null = null;
+  // Where the next file handed over opens; a newer copy opens where this one
+  // was read.
+  @property({ attribute: false })
+  accessor position: WorkbookPosition | null = null;
   @state()
   private accessor renderState: RenderState = "empty";
   @state()
@@ -68,6 +79,9 @@ class CaffoldXlsxViewer extends CaffoldElement {
 
   private generation = 0;
   private selectedSheetName: string | null = null;
+  // Where each sheet was last scrolled to while it was shown. A sheet taken
+  // off the page reads 0, so it is kept as the person scrolls.
+  private sheetScrolls = new Map<string, { top: number; left: number }>();
   private workbook: WorkbookModel | null = null;
   private columnName: (column: number) => string = (column) => `${column}`;
   private sheet: SheetModel | null = null;
@@ -120,7 +134,7 @@ class CaffoldXlsxViewer extends CaffoldElement {
                 })}
                 class="xlsx-viewer-sheet"
                 @scroll=${{
-                  handleEvent: () => this.scheduleWindow(this.generation),
+                  handleEvent: () => this.followSheetScroll(),
                   passive: true,
                 }}
               ><div ${drawn(this.space)} class="xlsx-viewer-space"></div></div>
@@ -156,13 +170,14 @@ class CaffoldXlsxViewer extends CaffoldElement {
 
   // A file handed over again before it is drawn replaces the one before it.
   // A newer copy of the file already shown keeps the sheet the person was
-  // reading.
+  // reading and where each sheet was scrolled to.
   override willUpdate(changed: PropertyValues) {
     if (!changed.has("file") || !this.file) {
       return;
     }
     if (!this.file.newerCopy) {
-      this.selectedSheetName = null;
+      this.selectedSheetName = this.position?.sheet ?? null;
+      this.sheetScrolls = new Map(this.position?.scrolls);
     }
     this.release();
     this.renderState = "loading";
@@ -180,6 +195,12 @@ class CaffoldXlsxViewer extends CaffoldElement {
     ...pull
   }: ScrollSurfacePull = {}) {
     return this.surfaces.scope({ ...pull, label });
+  }
+
+  readingPosition(): WorkbookPosition | null {
+    return this.selectedSheetName === null
+      ? null
+      : { sheet: this.selectedSheetName, scrolls: new Map(this.sheetScrolls) };
   }
 
   // The sheet tabs, which do what the owner's `button` action names, and the
@@ -306,8 +327,9 @@ class CaffoldXlsxViewer extends CaffoldElement {
     this.layoutSheet(this.sheet);
     const sheetport = this.sheetport.value;
     if (sheetport) {
-      sheetport.scrollTop = 0;
-      sheetport.scrollLeft = 0;
+      const scroll = this.sheetScrolls.get(sheet.name);
+      sheetport.scrollTop = scroll?.top ?? 0;
+      sheetport.scrollLeft = scroll?.left ?? 0;
     }
     this.renderedRange = null;
     this.drawWindow(this.sheet);
@@ -354,6 +376,21 @@ class CaffoldXlsxViewer extends CaffoldElement {
       this.layers.left,
       this.layers.main,
     );
+  }
+
+  private followSheetScroll() {
+    const sheetport = this.sheetport.value;
+    if (
+      this.renderState === "xlsx" &&
+      this.selectedSheetName !== null &&
+      sheetport?.getClientRects().length
+    ) {
+      this.sheetScrolls.set(this.selectedSheetName, {
+        top: sheetport.scrollTop,
+        left: sheetport.scrollLeft,
+      });
+    }
+    this.scheduleWindow(this.generation);
   }
 
   private scheduleWindow(generation: number) {

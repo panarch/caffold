@@ -1449,14 +1449,26 @@ that only draws:
   base, and lists what the working tree changes since it left that base,
   untracked files included, in the shared `caffold-git-compare-tree`;
 - `caffold-review-selected-file` decides what `caffold-review-file-viewer`
-  shows for the selected file and representation, loads it, and keeps each
-  view's reading position. A notice's action, such as View source, comes back
+  shows for the selected file and representation, loads it, and keeps where
+  each view was last read. A notice's action, such as View source, comes back
   from the viewer as `caffold:file-viewer-notice-action`, which it turns into
   a representation intent.
 
 Both changes components answer the selected file's change, its diff, and the
 versions its diff compares for the viewer, and raise intents for the route
 changes they ask for.
+
+A view's place is kept in the terms of the leaf that drew it: the scroll of
+source, a diff, or Markdown; for a PDF, Word document, PowerPoint deck, or
+Visual, whose pages and pictures follow the viewer's width, the page at the
+top and how far into it; and for a workbook, its last sheet and where each
+sheet was scrolled. A viewer taken off the page reads 0, so each leaf records
+its place as it is scrolled while it is drawn. The selected file takes the
+place from the viewer when another view follows and right before it reads the
+shown view again, as it does when Review comes back on screen, and hands it
+back when it shows that view; the file viewer gives it only to a leaf of the
+kind that recorded it. The places live with the cached Review, so a reload
+starts every file at its top. Git and GitHub hand no place back.
 
 Both scopes compare the working tree with a commit, their base: Working Tree
 with HEAD, or the empty tree before the first commit, and Branch with the merge
@@ -1518,8 +1530,9 @@ fetches a preview, a blob from `/api/git/blob` and the working tree file from
 `/api/image`, and hands both to `caffold-visual-diff`. Side by side draws them
 at one scale; Difference compares them pixel by pixel in a canvas and paints
 the pixels that changed. A side the viewer cannot fetch or draw reads as
-missing beside the other. The file viewer keeps which way Visual compares
-while files change. Commit and Compare have no representation axis of their
+missing beside the other. A place handed with a change is returned to once its
+pictures are drawn. The file viewer keeps which way Visual compares while
+files change. Commit and Compare have no representation axis of their
 own: they open each file in Diff or Visual by the same pairs and, for SVG,
 offer both in the viewer's header.
 
@@ -1576,8 +1589,13 @@ PDFs, Word documents, PowerPoint decks, and Excel workbooks share one document
 state in the file viewer, which mounts the viewer for the document's kind and
 hands it the file fetched from `/api/document`. That route answers each kind
 with its own content type, up to 100 MiB, and refuses any other extension. The
-viewer owns rendering, document lifetime, and local scroll, and keeps the open
-document until it is handed another file or a newer copy of this one.
+viewer owns rendering, document lifetime, and local scroll. It keeps the open
+document until it is handed another file or a newer copy of this one, or leaves
+the page, and opens a file at the place its owner hands with it and a newer
+copy where the one before it was read. It returns to that place once the pages
+have their sizes, which pdf.js page boxes and the PowerPoint renderer's slide
+places have before anything is drawn in them, and Word pages once they are
+fitted to the width.
 `caffold-pdf-viewer` imports its pinned pdf.js release at first use, hands it
 the fetched bytes rather than the address, and draws a page as it approaches
 the viewport.
@@ -1628,8 +1646,9 @@ computes the visible range and sizes the tracks of each drawn block; CSS cannot
 do either. Cell text is inserted as text and clipped at its cell's edge, and
 only http, https, and mailto cell links become links. A sheet is paper in every
 theme while its headers and the sheet tabs below it are Interface. Hidden
-sheets have no tab, and a newer copy of the same file keeps the sheet being
-read.
+sheets have no tab. The viewer keeps where each sheet was scrolled, so a sheet
+chosen again opens there, and a newer copy of the same file keeps the sheet
+being read and those places.
 
 A load request leaves the file viewer's shown content, header included, in
 place until the next state arrives, and only a wait longer than 180 ms turns it

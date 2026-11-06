@@ -128,6 +128,8 @@ test("shows an image's change as Visual, asking again on a background load", asy
       { path: "repo/logo.png", recheck: true },
     ],
   );
+  assert.equal(shown[0].position, null, "a first look opens where nothing was kept");
+  assert.equal("position" in shown[1], false, "a background load keeps the place being read");
   assert.equal(shown[0].presentation.title, "logo.png");
   assert.equal(shown[0].presentation.downloadPath, undefined, "a change offers no Download");
   assert.equal(owner.shownStateKey, "working:logo.png:visual");
@@ -200,7 +202,7 @@ test("keeps the position of a view it leaves and carries the line to another rep
     pendingLines: new Map(),
     viewer: {
       visibleLine: () => 42,
-      captureContentScroll: () => ({ top: 10 }),
+      readingPosition: () => ({ top: 10, left: 0 }),
     },
   };
   const source = {
@@ -211,7 +213,7 @@ test("keeps the position of a view it leaves and carries the line to another rep
 
   selectedFile.rememberPosition.call(owner, source);
   assert.deepEqual(owner.positions.get("working:a.js:diff"), {
-    scroll: { top: 10 },
+    reading: { top: 10, left: 0 },
     line: 42,
   });
   assert.equal(owner.pendingLines.get("working:a.js:source"), 42);
@@ -219,6 +221,28 @@ test("keeps the position of a view it leaves and carries the line to another rep
   owner.view = source;
   selectedFile.rememberPosition.call(owner, diffView("b.js"));
   assert.equal(owner.pendingLines.has("working:b.js:diff"), false);
+});
+
+test("keeps where the shown view was last read when it is read again, without the line on screen", () => {
+  const anchor = { page: 2, fraction: 0.4 };
+  const owner = {
+    view: diffView("deck.pptx"),
+    positions: new Map(),
+    pendingLines: new Map(),
+    viewer: {
+      visibleLine: () => assert.fail("a viewer just put back reads its first line"),
+      readingPosition: () => anchor,
+    },
+  };
+
+  selectedFile.rememberPosition.call(owner, diffView("deck.pptx"));
+  assert.equal(owner.positions.size, 0, "showing the same view again keeps what was kept");
+
+  selectedFile.rememberPosition.call(owner, diffView("deck.pptx"), { reread: true });
+  assert.deepEqual(owner.positions.get("working:deck.pptx:diff"), {
+    reading: anchor,
+    line: null,
+  });
 });
 
 test("keeps the reading position on a reread only while it shows the same view", () => {
