@@ -76,6 +76,10 @@
     color: var(--control-fg);
     cursor: pointer;
 
+    &[hidden] {
+      display: none;
+    }
+
     &::before {
       position: absolute;
       inset: var(--interface-compact-hit-outset);
@@ -171,4 +175,8 @@
   overflow-x: hidden;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+[hidden] {
+  display: none;
 }

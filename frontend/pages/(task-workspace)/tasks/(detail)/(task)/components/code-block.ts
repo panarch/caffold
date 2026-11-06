@@ -1,14 +1,21 @@
-import { html, nothing } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { mergeActionHintScopes } from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
 import { CaffoldElement } from "#app/caffold-element.js";
-import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
+import {
+  mergeScrollSurfaceScopes,
+  type ScrollSurfacePull,
+  ScrollSurfaces,
+} from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
+import "#components/mermaid-view.js";
+import type { CaffoldMermaidView } from "#components/mermaid-view.js";
 import type { MarkdownPreviewRequest } from "./markdown-preview-dialog.js";
 
 import styles from "./code-block.css.js";
@@ -24,14 +31,54 @@ type CopyState = "idle" | "copying" | "copied" | "failed";
 // and a command printed in their dialogs.
 @customElement("caffold-task-code-block")
 export class CaffoldTaskCodeBlock extends CaffoldElement {
+  private textValue = "";
+  get text() {
+    return this.textValue;
+  }
   @property({ attribute: false })
-  accessor text = "";
+  set text(value: string) {
+    if (this.textValue !== value) this.invalidatePendingCopy();
+    this.textValue = value;
+  }
+  private labelValue = "Plain text";
+  get label() {
+    return this.labelValue;
+  }
   @property({ attribute: false })
-  accessor label = "Plain text";
+  set label(value: string) {
+    if (this.labelValue.toLowerCase() !== value.toLowerCase())
+      this.showCode = false;
+    this.labelValue = value;
+  }
   @state()
   private accessor copyState: CopyState = "idle";
   @state()
   private accessor wrapped = false;
+
+  @state()
+  private accessor showCode = false;
+
+  private readonly mermaid = new DrawnRef<CaffoldMermaidView>(this);
+  private get isMermaid() {
+    return this.label.toLowerCase() === "mermaid";
+  }
+
+  override willUpdate(changed: PropertyValues) {
+    if (changed.has("showCode")) this.dispatchLayout("before");
+  }
+
+  override updated(changed: PropertyValues) {
+    if (changed.has("showCode")) this.dispatchLayout("after");
+  }
+
+  private dispatchLayout(phase: "before" | "after") {
+    this.dispatchEvent(
+      new CustomEvent(`caffold:mermaid-layout-${phase}`, {
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
 
   static override styles = styles;
 
@@ -64,6 +111,8 @@ export class CaffoldTaskCodeBlock extends CaffoldElement {
   override render() {
     const copy = copyPresentation(this.copyState);
     const name = copy.feedback || this.label;
+    const previewing = this.isMermaid && !this.showCode;
+    const toggleLabel = previewing ? "Show Mermaid code" : "Preview Mermaid";
     const wrapLabel = this.wrapped
       ? "Stop wrapping code lines"
       : "Wrap code lines";
@@ -98,7 +147,16 @@ export class CaffoldTaskCodeBlock extends CaffoldElement {
                 >${actionIcon("Eye")}</button>`
               : nothing
           }
-          <button
+          ${
+            this.isMermaid
+              ? html`<button
+            ${this.hints.button({ id: "mermaid-preview", label: toggleLabel, action: ACTION_HINT_ACTION.BUTTON_ACTIVATE })}
+            type="button" data-code-action="mermaid-preview" aria-label=${toggleLabel}
+            title=${toggleLabel} aria-pressed=${previewing} @click=${this.toggleMermaid}
+          >${actionIcon(previewing ? "Code" : "Eye")}</button>`
+              : nothing
+          }
+          <button ?hidden=${previewing}
             ${this.hints.button({
               id: "wrap",
               label: wrapLabel,
@@ -128,7 +186,14 @@ export class CaffoldTaskCodeBlock extends CaffoldElement {
           >${actionIcon(copyIcon(this.copyState))}</button>
         </div>
       </header>
-      <div
+      ${
+        this.isMermaid
+          ? html`<caffold-mermaid-view
+        ${drawn(this.mermaid)} .source=${this.text} .active=${previewing} ?hidden=${!previewing}
+      ></caffold-mermaid-view>`
+          : nothing
+      }
+      <div ?hidden=${previewing}
         ${this.surfaces.surface({
           id: "scroll",
           axes: ["horizontal"],
@@ -140,8 +205,7 @@ export class CaffoldTaskCodeBlock extends CaffoldElement {
     `;
   }
 
-  // The Markdown reports its height as soon as it has placed its blocks, so a
-  // block draws as it is handed its code.
+  // Markdown awaits the reactive update before reporting its new height.
   setContent(
     text: string,
     {
@@ -152,7 +216,6 @@ export class CaffoldTaskCodeBlock extends CaffoldElement {
     this.text = text;
     this.label = label;
     this.preserveLayout = preserveLayout;
-    this.performUpdate();
   }
 
   override firstUpdated() {
@@ -160,14 +223,27 @@ export class CaffoldTaskCodeBlock extends CaffoldElement {
   }
 
   actionHintScope(pull: ActionHintPull = {}) {
-    return this.hints.scope(pull);
+    return mergeActionHintScopes(
+      this.hints.scope(pull),
+      this.mermaid.value?.actionHintScope(pull),
+    );
   }
 
   scrollSurfaceScope({
     label = "Code block",
     ...pull
   }: ScrollSurfacePull = {}) {
-    return this.surfaces.scope({ ...pull, label });
+    return mergeScrollSurfaceScopes(
+      this.surfaces.scope({ ...pull, label }),
+      this.mermaid.value?.scrollSurfaceScope({
+        ...pull,
+        label: "Mermaid diagram",
+      }),
+    );
+  }
+
+  private toggleMermaid() {
+    this.showCode = !this.showCode;
   }
 
   private requestPreview() {

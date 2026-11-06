@@ -908,7 +908,7 @@ test("closes the plan document when a Note link in it opens the Note", { tag: "@
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);
   writeCurrentDocuments(workspace.absolutePath, {
-    plan: "# Linked plan\n\nRecord the outcome in [Storage decision](/notes/storage).\n",
+    plan: "# Linked plan\n\nRecord the outcome in [Storage decision](/notes/storage).\n\n```mermaid\nflowchart LR\nA[Plan] --> B[Review]\n```\n",
     checklist: "- [ ] Record the outcome\n",
   });
   await installTaskApiFixture(page);
@@ -929,6 +929,9 @@ test("closes the plan document when a Note link in it opens the Note", { tag: "@
   await planResponse;
   const dialog = currentPlan.locator("caffold-current-plan-document-dialog > dialog");
   await expect(dialog).toHaveAttribute("open", "");
+  const diagram = dialog.locator("caffold-mermaid-view");
+  await expect(diagram).toHaveAttribute("data-render-state", "ready");
+  await expect(diagram).toContainText("Review");
   const note = dialog.getByRole("link", { name: "Storage decision" });
   await expect(note).toHaveAttribute("href", "/notes/storage");
   await expect(note).not.toHaveAttribute("target", /.+/);

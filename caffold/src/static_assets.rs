@@ -30,6 +30,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "lit/decorators.js" => Some(js(include_str!(
             "../../frontend/node_modules/lit/decorators.js"
         ))),
+        "lit/static-html.js" => Some(js(include_str!(
+            "../../frontend/node_modules/lit/static-html.js"
+        ))),
+        "lit-html/static.js" => Some(js(include_str!(
+            "../../frontend/node_modules/lit-html/static.js"
+        ))),
         "lit/directives/keyed.js" => Some(js(include_str!(
             "../../frontend/node_modules/lit/directives/keyed.js"
         ))),
@@ -2292,6 +2298,20 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/components/markdown-preview.css.js"
         )))),
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/content.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/content.js"
+            ))))
+        }
+        "components/mermaid-view.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/mermaid-view.js"
+        )))),
+        "components/mermaid-view.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/mermaid-view.css.js"
+        )))),
         "components/markdown-preview.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/components/markdown-preview.js"
@@ -2655,6 +2675,7 @@ mod tests {
             "components/git-compare-tree.css",
             "components/loading-text.css",
             "components/markdown-preview.css",
+            "components/mermaid-view.css",
             "components/pane-resizer.css",
             "components/pdf-viewer.css",
             "components/pptx-viewer.css",

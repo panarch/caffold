@@ -268,9 +268,9 @@ function finalMarkdown(page) {
 async function seedPreviewTask(page, threadId, [firstMarkdown, ...laterMarkdown]) {
   const markdownFence = (markdown) => [
     "",
-    "```markdown",
+    "````markdown",
     ...markdown.slice(0, -1).split("\n"),
-    "```",
+    "````",
   ];
   const scenario = await installTaskLoopFixture(page, {
     threadId,
@@ -289,3 +289,14 @@ async function seedPreviewTask(page, threadId, [firstMarkdown, ...laterMarkdown]
   await expect(finalMarkdown(page)).toHaveAttribute("data-render-state", "markdown");
   return scenario;
 }
+
+
+test("renders Mermaid inside the Markdown dialog without opening a second dialog", { tag: "@server-steady" }, async ({ page }) => {
+  await seedPreviewTask(page, "thread_markdown_mermaid", ['# Diagram\n\n```mermaid\nflowchart LR\nA[Markdown dialog] --> B[SVG]\n```\n']);
+  await finalMarkdown(page).getByRole("button", { name: "Preview Markdown" }).click();
+  const dialog = page.locator("caffold-task-markdown-preview-dialog > dialog");
+  const diagram = dialog.locator("caffold-mermaid-view");
+  await expect(diagram).toHaveAttribute("data-render-state", "ready");
+  await expect(diagram).toContainText("Markdown dialog");
+  await expect(page.locator("dialog[open]")).toHaveCount(1);
+});

@@ -26,6 +26,7 @@ const shadowRootStyles = new Map([
   ["components/git-compare-tree.css", "caffold-git-compare-tree"],
   ["components/loading-text.css", "caffold-loading-text"],
   ["components/markdown-preview.css", "caffold-markdown-preview"],
+  ["components/mermaid-view.css", "caffold-mermaid-view"],
   ["components/pagination.css", "caffold-pagination"],
   ["components/pagination/components/button.css", "caffold-pagination-button"],
   ["components/pane-resizer.css", "caffold-pane-resizer"],

@@ -9,6 +9,7 @@ import {
   linkActionHintLabel,
   linkActionHintTarget,
   matchesLinkActionHintBinding,
+  mergeActionHintScopes,
 } from "../action-hint-scope.js";
 import type { ActionHintPull } from "../action-hints.js";
 import { imageUrl } from "../api.js";
@@ -24,6 +25,7 @@ import {
 import "./loading-text.js";
 import { CaffoldElement } from "../caffold-element.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
+import { CaffoldMermaidView } from "./mermaid-view.js";
 
 import styles from "./markdown-preview.css.js";
 
@@ -102,6 +104,7 @@ export class CaffoldMarkdownPreview extends CaffoldElement {
   // Where the preview was last read while it was drawn. A preview taken off
   // the page reads 0, so it is kept as the person scrolls.
   private readingScroll: ScrollPosition | null = null;
+  private diagrams: CaffoldMermaidView[] = [];
   private renderToken: symbol | null = null;
   private actionHintLinks: LinkRecord[] = [];
   private scrollSurfaceRecords: ScrollSurfaceRecord[] = [];
@@ -178,6 +181,15 @@ export class CaffoldMarkdownPreview extends CaffoldElement {
     const scroll = options.preserveScroll
       ? this.getScrollState()
       : (options.scroll ?? null);
+    if (
+      this.renderState === "markdown" &&
+      this.markdown === `${markdown ?? ""}` &&
+      JSON.stringify(this.images) === JSON.stringify(options.images ?? null)
+    ) {
+      this.watchImages();
+      if (scroll) restoreScroll(this, scroll);
+      return;
+    }
     this.markdown = `${markdown ?? ""}`;
     this.images = options.images ?? null;
     this.pendingScroll = scroll;
@@ -200,6 +212,13 @@ export class CaffoldMarkdownPreview extends CaffoldElement {
     const body = this.body.value;
     return mergeScrollSurfaceScopes(
       this.surfaces.scope({ ...pull, label }),
+      ...(this.diagrams ?? []).map((diagram, index) =>
+        diagram.scrollSurfaceScope({
+          ...pull,
+          scopeId: `${pull.scopeId}:mermaid:${index}`,
+          clipRoots: [this, ...(pull.clipRoots ?? [])],
+        }),
+      ),
       ...(this.renderState === "markdown" && body
         ? this.scrollSurfaceRecords
         : []
@@ -234,7 +253,7 @@ export class CaffoldMarkdownPreview extends CaffoldElement {
   actionHintScope(pull: ActionHintPull = {}): ActionHintScope {
     const body = this.body.value;
     const actionId = pull.actions?.link;
-    if (!actionId || !body || this.renderState !== "markdown") {
+    if (!body || this.renderState !== "markdown") {
       return emptyActionHintScope();
     }
     const tableScrollRoots: Element[] = [];
@@ -242,6 +261,7 @@ export class CaffoldMarkdownPreview extends CaffoldElement {
       ({ binding, control, ordinal }) => {
         const label = linkActionHintLabel(control);
         if (
+          !actionId ||
           !label ||
           !matchesLinkActionHintBinding(control, binding) ||
           !body.contains(control) ||
@@ -272,18 +292,28 @@ export class CaffoldMarkdownPreview extends CaffoldElement {
         ];
       },
     );
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [this, this.renderRoot],
-      scrollRoots: [this, ...new Set(tableScrollRoots)],
-    };
+    return mergeActionHintScopes(
+      {
+        blocked: false,
+        targets,
+        mutationRoots: [this, this.renderRoot],
+        scrollRoots: [this, ...new Set(tableScrollRoots)],
+      },
+      ...(this.diagrams ?? []).map((diagram, index) =>
+        diagram.actionHintScope({
+          ...pull,
+          scopeId: `${pull.scopeId}:mermaid:${index}`,
+          clipRoots: [this, ...(pull.clipRoots ?? [])],
+        }),
+      ),
+    );
   }
 
   // A released image loses its copy and goes back to loading, so the preview
   // fetches it again if it is shown again. An owner that hides the preview
   // releases them too.
   releaseImages() {
+    for (const diagram of this.diagrams ?? []) diagram.active = false;
     this.imageObserver?.disconnect();
     for (const [slot, record] of this.fetchedImages ?? []) {
       record.fetching.abort();
@@ -306,6 +336,7 @@ export class CaffoldMarkdownPreview extends CaffoldElement {
   }
 
   private watchImages() {
+    for (const diagram of this.diagrams ?? []) diagram.active = true;
     const slots =
       this.body.value?.querySelectorAll<HTMLElement>(
         ".markdown-preview-image",
@@ -391,6 +422,7 @@ export class CaffoldMarkdownPreview extends CaffoldElement {
 
   private renderPending() {
     this.releaseImages();
+    this.diagrams = [];
     this.actionHintLinks = [];
     this.scrollSurfaceRecords = [];
     this.renderedContent = null;
@@ -432,6 +464,9 @@ export class CaffoldMarkdownPreview extends CaffoldElement {
       const body = this.body.value;
       this.actionHintLinks = body ? collectActionHintLinks(body) : [];
       this.scrollSurfaceRecords = body ? collectScrollSurfaceRecords(body) : [];
+      this.diagrams = [
+        ...(body?.querySelectorAll("caffold-mermaid-view") ?? []),
+      ];
       this.pendingScroll = null;
       restoreScroll(this, scroll);
       this.recordReading();
@@ -501,8 +536,24 @@ async function markdownContent(
   const markup = await parse(source, { gfm: true, breaks: false });
   const template = document.createElement("template");
   template.innerHTML = `${markup ?? ""}`;
+  const diagrams = [...template.content.querySelectorAll("pre > code")].filter(
+    (code) =>
+      [...code.classList].some(
+        (label) => label.toLowerCase() === "language-mermaid",
+      ),
+  );
   sanitizeChildren(template.content, images);
   wrapTables(template.content);
+  for (const code of diagrams) {
+    if (
+      code.getRootNode() !== template.content ||
+      code.parentElement?.localName !== "pre"
+    )
+      continue;
+    const diagram = new CaffoldMermaidView();
+    diagram.source = code.textContent ?? "";
+    code.parentElement.replaceWith(diagram);
+  }
   return template.content;
 }
 

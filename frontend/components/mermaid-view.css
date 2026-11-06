@@ -1,0 +1,72 @@
+:host {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text);
+  background: var(--bg);
+}
+
+:host([hidden]),
+:host > [hidden] {
+  display: none;
+}
+
+:host > .diagram {
+  overflow-x: auto;
+  padding: var(--interface-space-5);
+  overscroll-behavior-x: contain;
+  user-select: text;
+
+  /* Keep Merman's natural layout readable on narrow screens. */
+  & > svg {
+    display: block;
+    width: auto;
+    height: auto;
+    max-width: none;
+  }
+}
+
+:host > :is(.status, .error) {
+  margin: 0;
+  padding: var(--interface-space-5);
+  font-family: var(--font-ui);
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+}
+
+:host > .error {
+  color: var(--muted);
+
+  & > p {
+    margin: 0;
+    padding: 0 0 var(--interface-space-3);
+  }
+
+  & > button {
+    min-height: var(--interface-compact-hit-size);
+    font: inherit;
+    color: var(--control-fg);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: var(--interface-space-2) var(--interface-space-4);
+    cursor: pointer;
+
+    &:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
+  }
+
+  & > .source {
+    overflow-x: auto;
+    font-family: var(--font-code);
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
+    white-space: pre;
+
+    & > code {
+      font: inherit;
+    }
+  }
+}

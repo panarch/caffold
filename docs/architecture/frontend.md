@@ -1308,10 +1308,26 @@ owns Wrap, Copy, and Preview. Code Block sits beside the dialogs under the Task
 Detail components because Markdown and two dialogs draw it: Markdown hands it
 each fence's code and name, and Tool Call Details and Command Output hand it
 the input, each text or JSON result piece, and the output, named JSON or Plain
-text, drawing new blocks each time they open. Preview appears only on a block
-named `markdown` or `md` and asks
-Task Detail to open its code-block Markdown preview dialog with the block's text
-at that moment, rendered through the shared Markdown Preview.
+text, drawing new blocks each time they open. A `markdown` or `md` block's
+Preview asks Task Detail to open its full-document Markdown preview dialog.
+A `mermaid` block opens in Preview inside the block and toggles to its original
+Code there. Copy always copies the original source. A streamed Markdown update
+retains the same fence's component and Code/Preview choice through Lit templates.
+
+The shared `caffold-mermaid-view` also renders Mermaid fences in Markdown
+Preview, including Notes, files, Current Plan and the Markdown dialog. It sends
+source, resolved theme and Conversation font settings to `POST /api/mermaid/render`
+and inserts only that response's SVG into its open Shadow DOM. Merman owns syntax,
+layout and normal SVG generation on the server. The view retains selectable text
+and native links, publishes its own link/retry Action Hints and horizontal Scroll
+surface, and displays the library's viewBox at natural size. Wide diagrams scroll.
+Code uses Code Appearance; feedback and controls use Interface Appearance.
+
+Each view retains one current SVG. Input or Appearance changes supersede pending
+requests; an unchanged input leaves the SVG DOM alone. Hiding or disconnecting a
+view cancels its fetch, and visibility restores or refreshes its current result.
+Errors show the source and Retry locally. Shared Markdown Preview deactivates
+its diagram children when its owner releases the preview.
 Assistant Message mounts its Copy control as a component of its own and
 hands it only the text to place on the clipboard. That component owns the
 button, the outcome it reports, and the timer that clears it. It copies the
@@ -2263,6 +2279,7 @@ frontend/
     |-- git-compare-browser.ts
     |-- git-compare-tree.ts
     |-- markdown-preview.ts
+    |-- mermaid-view.ts
     |-- pagination.ts
     |-- pagination/components/button.ts
     |-- pdf-viewer.ts

@@ -23,7 +23,9 @@ import {
 } from "#app/scroll-scope.js";
 import { closestAcrossShadowRoots } from "#app/shadow-roots.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
-import { CaffoldTaskCodeBlock } from "#tasks/(detail)/(task)/components/code-block.js";
+import "#tasks/(detail)/(task)/components/code-block.js";
+import type { CaffoldTaskCodeBlock } from "#tasks/(detail)/(task)/components/code-block.js";
+import { markdownContent } from "./markdown/content.js";
 
 import styles from "./markdown.css.js";
 
@@ -95,11 +97,19 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
   @state()
   accessor renderState: RenderState = "loading";
   @state()
-  private accessor renderedContent: DocumentFragment | null = null;
+  private accessor renderedContent: unknown = null;
 
   static override styles = styles;
 
   private renderToken: symbol | null = null;
+  private diagramScroll: ScrollContext | null = null;
+  private beforeDiagramLayout() {
+    this.diagramScroll = captureScrollContext(this);
+  }
+  private afterDiagramLayout() {
+    dispatchRendered(this, this.diagramScroll);
+    this.diagramScroll = null;
+  }
   private actionHintLinks: LinkRecord[] = [];
   private scrollSurfaceRecords: ScrollSurfaceRecord[] = [];
   private scrollCodeBlocks: CaffoldTaskCodeBlock[] = [];
@@ -114,7 +124,9 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
       changed.has("fileLinks") ||
       changed.has("codeBlockControls")
     ) {
-      this.startRender();
+      this.startRender(
+        changed.has("threadId") || changed.has("codeBlockControls"),
+      );
     }
   }
 
@@ -131,6 +143,8 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
     return html`<article
       ${drawn(this.bodyElement)}
       class="markdown-body"
+      @caffold:mermaid-layout-before=${this.beforeDiagramLayout}
+      @caffold:mermaid-layout-after=${this.afterDiagramLayout}
     >${content}</article>`;
   }
 
@@ -233,14 +247,15 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
     return mergeScrollSurfaceScopes(...nativeScopes, ...blockScopes);
   }
 
-  private startRender() {
+  private startRender(reset = false) {
     const renderToken = Symbol("task-markdown");
     this.renderToken = renderToken;
-    this.actionHintLinks = [];
-    this.scrollSurfaceRecords = [];
-    this.scrollCodeBlocks = [];
-    this.renderedContent = null;
-    this.renderState = "loading";
+    if (reset || this.renderState !== "markdown") {
+      this.actionHintLinks = [];
+      this.scrollSurfaceRecords = [];
+      this.scrollCodeBlocks = [];
+      this.renderState = "loading";
+    }
     void this.renderMarkdown(renderToken);
   }
 
@@ -269,32 +284,41 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
       sanitizeChildren(template.content, internalLinks);
       decorateCodeElements(template.content);
       wrapTables(template.content);
-      const blocks = mountCodeBlocks(
-        template.content,
-        this.codeBlockControls ? codeBlocks : [],
-      );
       const scrollContext = captureScrollContext(this);
-      this.renderedContent = template.content;
-      this.renderState = "markdown";
-      this.performUpdate();
-      // A block draws into a shadow root, which it can only make once it is in
-      // this document rather than the template's.
-      for (const { block, text, label } of blocks) {
-        block.setContent(text, {
-          label,
-          preserveLayout: (mutation) => this.mutateLayout(mutation),
-        });
+      const fences = new Map<Element, string>();
+      for (const { code, label } of codeBlocks) {
+        if (
+          code.getRootNode() === template.content &&
+          code.parentElement?.localName === "pre"
+        )
+          fences.set(code.parentElement, label);
       }
+      this.renderedContent = markdownContent(
+        template.content,
+        fences,
+        this.codeBlockControls,
+      );
+      this.renderState = "markdown";
+      await this.updateComplete;
+      if (this.renderToken !== renderToken) return;
       const body = this.body;
       if (!body) {
         return;
       }
       this.actionHintLinks = collectActionHintLinks(body);
-      this.scrollSurfaceRecords = collectNativeScrollSurfaceRecords(
-        body,
-        codeBlocks,
+      this.scrollSurfaceRecords = collectNativeScrollSurfaceRecords(body);
+      this.scrollCodeBlocks = [
+        ...body.querySelectorAll("caffold-task-code-block"),
+      ];
+      for (const block of this.scrollCodeBlocks)
+        block.setContent(block.text, {
+          label: block.label,
+          preserveLayout: (mutation) => this.mutateLayout(mutation),
+        });
+      await Promise.all(
+        this.scrollCodeBlocks.map((block) => block.updateComplete),
       );
-      this.scrollCodeBlocks = blocks.map(({ block }) => block);
+      if (this.renderToken !== renderToken) return;
       dispatchRendered(this, scrollContext);
     } catch {
       parserPromise = null;
@@ -340,11 +364,7 @@ function collectActionHintLinks(root: Element): LinkRecord[] {
 
 function collectNativeScrollSurfaceRecords(
   root: Element,
-  codeBlocks: CodeBlockSource[],
 ): ScrollSurfaceRecord[] {
-  const labels = new Map(
-    codeBlocks.map(({ code, label }) => [code.parentElement, label]),
-  );
   const ordinals = new Map<string, number>();
   return Array.from(
     root.querySelectorAll<HTMLElement>("pre, .markdown-table-scroll"),
@@ -358,7 +378,7 @@ function collectNativeScrollSurfaceRecords(
         ordinal,
         label:
           kind === "code"
-            ? `${labels.get(scrollport) || "Plain text"} code block ${ordinal}`
+            ? `${scrollport.dataset.fenceLabel || "Plain text"} code block ${ordinal}`
             : `Markdown table ${ordinal}`,
         scrollport,
       },
@@ -583,28 +603,6 @@ function collectCodeBlocks(parent: DocumentFragment): CodeBlockSource[] {
       code,
       label: fenceClass?.slice("language-".length) || "Plain text",
     };
-  });
-}
-
-// Each fenced block gets a code block in its `<pre>`'s place, which draws the
-// fence's code once it is in the document.
-function mountCodeBlocks(
-  parent: DocumentFragment,
-  candidates: CodeBlockSource[],
-) {
-  return candidates.flatMap(({ code, label }) => {
-    const pre = code.parentElement;
-    if (
-      code.getRootNode() !== parent ||
-      !(pre instanceof HTMLPreElement) ||
-      !pre.parentNode
-    ) {
-      return [];
-    }
-
-    const block = new CaffoldTaskCodeBlock();
-    pre.replaceWith(block);
-    return [{ block, text: code.textContent ?? "", label }];
   });
 }
 

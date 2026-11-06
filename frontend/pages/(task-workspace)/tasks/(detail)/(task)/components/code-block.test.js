@@ -56,7 +56,7 @@ test("draws the text it is given as code under its name", () => {
   );
 });
 
-test("takes Markdown's code, name, and place keeping, and draws at once", () => {
+test("takes Markdown's code, name, and place keeping for its reactive update", () => {
   const preserveLayout = () => {};
   let draws = 0;
   const owner = Object.create(codeBlock, Object.getOwnPropertyDescriptors({
@@ -72,7 +72,7 @@ test("takes Markdown's code, name, and place keeping, and draws at once", () => 
   assert.equal(owner.text, "fn main() {}\n");
   assert.equal(owner.label, "rust");
   assert.equal(owner.preserveLayout, preserveLayout);
-  assert.equal(draws, 1);
+  assert.equal(draws, 0);
 });
 
 test("requests a preview of the block text from its Preview button", () => {

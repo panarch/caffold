@@ -13,6 +13,7 @@ mod error;
 mod etag;
 mod jev;
 mod live_updates;
+mod mermaid;
 mod notes;
 mod shell;
 mod stall;
@@ -222,6 +223,7 @@ fn router_with_states(
     grok_mcp_router: Router,
 ) -> Router {
     shell_router
+        .merge(mermaid::router())
         .merge(workspace_router)
         .merge(tasks_router)
         .merge(voice_router)

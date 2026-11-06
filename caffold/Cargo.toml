@@ -34,6 +34,7 @@ gluesql = { git = "https://github.com/gluesql/gluesql.git", branch = "main", def
 hmac = "0.12.1"
 hound = "3.5.1"
 libc = "0.2.186"
+merman = "=0.9.3"
 notify = "8.2.0"
 percent-encoding = "2.3.2"
 pulldown-cmark = { version = "0.13.4", default-features = false }

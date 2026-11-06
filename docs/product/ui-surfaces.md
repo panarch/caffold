@@ -310,6 +310,11 @@ Conversation renders the canonical agent conversation as a review timeline:
 - interruption, failure, reconnect, completion, and unavailable states;
 - follow-up Start or Steer behavior derived from canonical conversation state.
 
+Mermaid fences in the agent's answer show an inline diagram by default. Their
+Code/Preview control switches between that diagram and the original Mermaid
+source; Copy copies the source. Markdown document previews also render Mermaid
+fences. A rendering error stays with its diagram and offers Retry and the source.
+
 Finished commands that ran one after another fold into one **Ran N commands**
 card that counts the failed and declined ones; opening it shows each command's
 row with its **View output**. The empty thinking an agent records around its

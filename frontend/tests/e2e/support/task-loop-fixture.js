@@ -822,7 +822,7 @@ export async function installTaskLoopFixture(
         const path = ".caffold/uploads/20270101-000000-seed/planner-layout.png";
         const uploaded = await fetch(
           `/api/tasks/${threadId}/uploads/20270101-000000-seed/planner-layout.png`,
-          { method: "PUT", body: await (await fetch(image)).blob() },
+          { method: "PUT", body: await (await fetch(image)).arrayBuffer() },
         );
         if (!uploaded.ok) {
           throw new Error(`task upload seed failed: ${uploaded.status}`);
