@@ -166,3 +166,33 @@ test("lets go of every image it fetched and puts each back to loading", (context
 function layoutElement(properties = {}) {
   return { getClientRects: () => [{}], ...properties };
 }
+
+test("records where it is read only while it is drawn on the page", () => {
+  const owner = elementStandIn(markdownPreview, {
+    renderState: "markdown",
+    readingScroll: null,
+    scrollTop: 640,
+    scrollLeft: 0,
+    getClientRects: () => [{}],
+  });
+
+  markdownPreview.recordReading.call(owner);
+  assert.deepEqual(owner.readingPosition(), { top: 640, left: 0 });
+
+  for (const change of [
+    { renderState: "loading", scrollTop: 0 },
+    { getClientRects: () => [], scrollTop: 0 },
+  ]) {
+    const stale = elementStandIn(markdownPreview, {
+      renderState: "markdown",
+      readingScroll: { top: 640, left: 0 },
+      scrollTop: 640,
+      scrollLeft: 0,
+      getClientRects: () => [{}],
+      ...change,
+    });
+    markdownPreview.recordReading.call(stale);
+    assert.deepEqual(stale.readingPosition(), { top: 640, left: 0 });
+  }
+});
+

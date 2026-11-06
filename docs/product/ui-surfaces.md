@@ -540,9 +540,14 @@ terminal without saying why. The shell's lifetime is defined in
 
 Switching among Integrated Review, Git, and GitHub may preserve selection,
 disclosure, and scroll within the same Task or Section. Returning to a surface
-reconciles current source state. Changing Task, Section, or repository context
-discards retained external context. The implementation contract is defined in
-[Frontend Architecture](../architecture/frontend.md).
+reconciles current source state. Integrated Review shows a file it returns to
+where it was last read, whether Review comes back on screen or the file is
+opened again: at the same scroll, at the same part of the same page, slide, or
+picture even at another width, or at the workbook's last sheet with each sheet
+where it was. A document that changes while it is read is drawn again at the
+same place. A reload starts every file at its top. Changing Task, Section, or
+repository context discards retained external context. The implementation
+contract is defined in [Frontend Architecture](../architecture/frontend.md).
 
 ## Notes
 

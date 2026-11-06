@@ -10,6 +10,11 @@ import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { formatBytes } from "../../dom.js";
 import { DrawnRef, drawn } from "../../drawn-refs.js";
 import "../../loading-text.js";
+import {
+  type PageAnchor,
+  readPageAnchor,
+  scrollToPageAnchor,
+} from "../../page-anchor.js";
 import "../../segmented-control.js";
 import type {
   CaffoldSegmentedControl,
@@ -105,6 +110,13 @@ export class CaffoldVisualDiff extends CaffoldElement {
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly stage = new DrawnRef<HTMLDivElement>(this);
   private readonly modeControl = new DrawnRef<CaffoldSegmentedControl>(this);
+  // Where the stage was last read, by the picture at its top, while its
+  // pictures were drawn. A stage taken off the page reads 0, so it is kept as
+  // the person scrolls.
+  private readingAnchor: PageAnchor | null = null;
+  // A place handed over is returned to once the pictures are drawn; until
+  // then the stage shows no picture to read.
+  private returnDue = false;
 
   override disconnectedCallback() {
     super.disconnectedCallback();
@@ -142,6 +154,7 @@ export class CaffoldVisualDiff extends CaffoldElement {
           clipRoots: () => [this, this.stage.value],
         })}
         class="visual-stage"
+        @scroll=${{ handleEvent: () => this.recordReading(), passive: true }}
       >
         ${
           !settled
@@ -161,12 +174,31 @@ export class CaffoldVisualDiff extends CaffoldElement {
       selected: this.mode,
       choices: MODES,
     });
+    const stage = this.stage.value;
+    const pictures = this.pictureBoxes();
+    if (this.returnDue && stage && pictures.length && this.readingAnchor) {
+      this.returnDue = false;
+      scrollToPageAnchor(stage, pictures, this.readingAnchor);
+    }
   }
 
   // The file viewer hands each side over as it is fetched, with the way they
   // are compared. A side fetched anew is decoded here, so both ways of
-  // comparing draw from one picture.
-  setComparison({ sides, mode }: { sides: VisualSides; mode: VisualMode }) {
+  // comparing draw from one picture. `position`, which the viewer's owner
+  // gives with a change it shows, is where that change opens.
+  setComparison({
+    sides,
+    mode,
+    position,
+  }: {
+    sides: VisualSides;
+    mode: VisualMode;
+    position?: PageAnchor | null;
+  }) {
+    if (position !== undefined) {
+      this.readingAnchor = position;
+      this.returnDue = position !== null;
+    }
     this.sides = sides;
     this.mode = mode;
     // A difference drawn from other pictures goes.
@@ -195,6 +227,10 @@ export class CaffoldVisualDiff extends CaffoldElement {
 
   scrollSurfaceScope({ label = "Visual", ...pull }: ScrollSurfacePull = {}) {
     return this.surfaces.scope({ ...pull, label });
+  }
+
+  readingPosition() {
+    return this.readingAnchor;
   }
 
   private renderSideBySide(views: SideView[]) {
@@ -425,6 +461,25 @@ export class CaffoldVisualDiff extends CaffoldElement {
       width,
       height,
     };
+  }
+
+  private recordReading() {
+    const stage = this.stage.value;
+    const pictures = this.pictureBoxes();
+    if (!this.returnDue && stage && pictures.length) {
+      this.readingAnchor =
+        readPageAnchor(stage, pictures) ?? this.readingAnchor;
+    }
+  }
+
+  // The drawn pictures in the stage, each with its caption: both sides, or
+  // the difference.
+  private pictureBoxes() {
+    return [
+      ...(this.stage.value?.querySelectorAll<HTMLElement>(
+        ":scope > .side-by-side > figure, :scope > .difference",
+      ) ?? []),
+    ];
   }
 
   private releaseDifference() {

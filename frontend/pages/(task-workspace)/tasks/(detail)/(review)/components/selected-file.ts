@@ -8,10 +8,10 @@ import { fileNameFromPath, imageTypeLabel } from "#components/dom.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/file-viewer.js";
 import { CaffoldElement } from "#app/caffold-element.js";
-import type { ScrollPosition } from "#components/file-viewer/components/code-viewer.js";
 import type {
   CaffoldReviewFileViewer,
   FileViewerNoticeActionDetail,
+  ReadingPosition,
 } from "#components/file-viewer.js";
 import {
   diffViewerPresentation,
@@ -30,7 +30,7 @@ export interface ReviewRepresentationIntentDetail {
 }
 
 interface ViewPosition {
-  scroll: ScrollPosition | null;
+  reading: ReadingPosition | null;
   line: number | null;
 }
 
@@ -90,7 +90,7 @@ export class CaffoldReviewSelectedFile extends CaffoldElement {
   // shown Working Tree or Branch changes say about it. `force` loads it even
   // when the viewer already holds something other than an empty or error state.
   show(view: ReviewView, { force = false }: { force?: boolean } = {}) {
-    this.rememberPosition(view);
+    this.rememberPosition(view, { reread: force });
     this.view = view;
     if (!view.path) {
       this.shownStateKey = "";
@@ -187,6 +187,7 @@ export class CaffoldReviewSelectedFile extends CaffoldElement {
       }
       return;
     }
+    const saved = this.positions.get(stateKey);
     if (content.kind === "document") {
       viewer.setDocument(
         {
@@ -196,7 +197,7 @@ export class CaffoldReviewSelectedFile extends CaffoldElement {
           size: view.entry?.size,
           modifiedMs: view.entry?.modifiedMs,
         },
-        { recheck: background },
+        { recheck: background, position: saved?.reading ?? null },
       );
       this.shownStateKey = stateKey;
       return;
@@ -216,11 +217,16 @@ export class CaffoldReviewSelectedFile extends CaffoldElement {
       return;
     }
     if (content.kind === "visual") {
-      await this.loadVisual(view, content.change, generation, background);
+      await this.loadVisual(
+        view,
+        content.change,
+        generation,
+        background,
+        saved?.reading ?? null,
+      );
       return;
     }
     const sourceLine = content.kind === "file" ? line : null;
-    const saved = this.positions.get(stateKey);
     const presentation =
       content.kind === "diff"
         ? this.diffPresentation(view, content.change)
@@ -232,7 +238,7 @@ export class CaffoldReviewSelectedFile extends CaffoldElement {
       ? { preserveScroll: true }
       : sourceLine
         ? { line: sourceLine }
-        : { scroll: saved?.scroll ?? null };
+        : { position: saved?.reading ?? null };
     try {
       if (content.kind === "diff") {
         const diff = await view.changes.readDiff?.();
@@ -277,12 +283,13 @@ export class CaffoldReviewSelectedFile extends CaffoldElement {
 
   // Visual reads which sides the change compares, then the viewer fetches
   // each side. A background load asks again whether the working tree side
-  // changed.
+  // changed and keeps the place being read.
   private async loadVisual(
     view: ReviewView,
     change: ReviewChange | null,
     generation: number,
     background: boolean,
+    position: ReadingPosition | null,
   ) {
     const viewer = this.viewer;
     const presentation = this.diffPresentation(view, change);
@@ -297,6 +304,7 @@ export class CaffoldReviewSelectedFile extends CaffoldElement {
       viewer.setVisual(versions, {
         recheck: background,
         presentation: this.diffPresentation(view, change, versions),
+        ...(background ? {} : { position }),
       });
       this.shownStateKey = view.stateKey;
     } catch (error) {
@@ -331,16 +339,32 @@ export class CaffoldReviewSelectedFile extends CaffoldElement {
     );
   }
 
-  // Leaving a view keeps its position for a later return. Switching only the
-  // representation of the same file carries the visible line to the new one.
-  private rememberPosition(nextView: ReviewView) {
+  // Leaving a view keeps its position for a later return, and so does reading
+  // the shown view again, as Review does when it comes back on screen. Each
+  // leaf keeps where it was last read, since a viewer back on the page reads
+  // 0; the visible line is read only from a viewer still on screen, when
+  // another view follows. Switching only the representation of the same file
+  // carries that line to the new one.
+  private rememberPosition(
+    nextView: ReviewView,
+    { reread = false }: { reread?: boolean } = {},
+  ) {
     const previous = this.view;
-    if (!previous?.path || previous.stateKey === nextView.stateKey) {
+    if (!previous?.path) {
+      return;
+    }
+    if (previous.stateKey === nextView.stateKey) {
+      if (reread) {
+        this.positions.set(previous.stateKey, {
+          reading: this.viewer.readingPosition(),
+          line: null,
+        });
+      }
       return;
     }
     const line = this.viewer.visibleLine();
     this.positions.set(previous.stateKey, {
-      scroll: this.viewer.captureContentScroll(),
+      reading: this.viewer.readingPosition(),
       line,
     });
     if (

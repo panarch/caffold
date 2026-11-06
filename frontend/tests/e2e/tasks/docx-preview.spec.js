@@ -129,6 +129,27 @@ test.beforeEach(async ({ page }, testInfo) => {
   await writeDocument(testInfo);
 });
 
+// The page the viewer's top edge falls on, from 0, and how far into it, as a
+// share of its height in hundredths.
+function readingPlace(viewer) {
+  return viewer.evaluate((element) => {
+    const pages = [...element.shadowRoot.querySelector("caffold-docx-document").shadowRoot
+      .querySelectorAll("section.docx")];
+    const top = element.getBoundingClientRect().top;
+    const index = pages.findIndex((candidate) => candidate.getBoundingClientRect().bottom > top);
+    const box = pages[index].getBoundingClientRect();
+    return { page: index, fraction: Math.round(((top - box.top) / box.height) * 100) / 100 };
+  });
+}
+
+function scrollToPlace(viewer, page, fraction) {
+  return viewer.evaluate((element, [index, share]) => {
+    const box = element.shadowRoot.querySelector("caffold-docx-document").shadowRoot
+      .querySelectorAll("section.docx")[index].getBoundingClientRect();
+    element.scrollTop += box.top - element.getBoundingClientRect().top + share * box.height;
+  }, [page, fraction]);
+}
+
 test.afterEach(async ({}, testInfo) => {
   await rm(documentPath(testInfo), { force: true });
 });
@@ -397,4 +418,66 @@ test("reports an unavailable document without replacing the review surface", { t
   await expect(taskReview.getByRole("button", { name: "Preview", exact: true }))
     .toHaveAttribute("aria-pressed", "true");
   await expect(taskReview.locator("caffold-file-navigator")).toBeVisible();
+});
+
+test("returns to the page it was reading after another surface, at the same width or another", { tag: "@server-steady" }, async ({
+  page,
+}, testInfo) => {
+  const { taskReview } = await openDocument(page, testInfo);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const viewer = taskReview.locator("caffold-docx-viewer");
+  await expect(viewer.getByText("Quarterly review")).toBeVisible();
+  await scrollToPlace(viewer, 2, 0.4);
+  await expect.poll(() => readingPlace(viewer)).toEqual({ page: 2, fraction: 0.4 });
+  const wideTop = await viewer.evaluate((element) => element.scrollTop);
+
+  await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
+  await expect(viewer).toBeHidden();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await expect(viewer).toHaveAttribute("data-render-state", "docx");
+  await expect.poll(() => readingPlace(viewer)).toEqual({ page: 2, fraction: 0.4 });
+
+  // A page zoomed down to a narrower viewer is shorter, so the same pixels
+  // would reach another page.
+  await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
+  await page.setViewportSize({ width: 560, height: 800 });
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await expect(viewer).toHaveAttribute("data-render-state", "docx");
+  await expect.poll(() => readingPlace(viewer)).toEqual({ page: 2, fraction: 0.4 });
+  expect(await viewer.evaluate((element) => element.scrollTop)).toBeLessThan(wideTop - 100);
+});
+
+test("stays on the page it was reading when the document changes", { tag: "@server-changes" }, async ({
+  page,
+}, testInfo) => {
+  const { pattern } = documentRequests(page, testInfo);
+  const { taskReview } = await openDocument(page, testInfo, "preview", {
+    // When the working-tree status arrives it reloads the viewer, which reads
+    // the document again if the navigator has listed it by then.
+    beforeOpen: () => page.route(/\/api\/git\/status(?:\?|$)/, () => {}),
+  });
+  const viewer = taskReview.locator("caffold-docx-viewer");
+  await expect(viewer.getByText("Quarterly review")).toBeVisible();
+  // The refresh below reports a change only to a file the navigator has listed
+  // and selected.
+  await expect(navigatorFile(taskReview, testInfo))
+    .toHaveAttribute("aria-current", "true");
+  await scrollToPlace(viewer, 2, 0.4);
+  await expect.poll(() => readingPlace(viewer)).toEqual({ page: 2, fraction: 0.4 });
+
+  await writeDocument(testInfo, "", {
+    ...REVIEW_DOCUMENT,
+    body: REVIEW_DOCUMENT.body.replace("Quarterly review", "Revised review"),
+  });
+  const reread = page.waitForRequest(pattern);
+  // Re-listing the directory is what publishes the new modification time, so
+  // the refresh has to cover the directories the navigator already loaded.
+  await taskReview
+    .locator("caffold-file-navigator")
+    .evaluate((navigator) =>
+      navigator.requestRefresh({ selected: true, allDirectories: true }));
+  await reread;
+
+  await expect(viewer.getByText("Revised review")).toHaveCount(1);
+  await expect.poll(() => readingPlace(viewer)).toEqual({ page: 2, fraction: 0.4 });
 });

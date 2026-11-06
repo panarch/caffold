@@ -49,6 +49,9 @@ export class CaffoldDiffViewer extends CaffoldElement {
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly table = new DrawnRef<HTMLDivElement>(this);
+  // Where the diff was last read while it was shown. A viewer taken off the
+  // page reads 0, so it is kept as the person scrolls.
+  private readingScroll: ScrollPosition | null = null;
 
   override render() {
     if (!this.diff) {
@@ -99,6 +102,7 @@ export class CaffoldDiffViewer extends CaffoldElement {
             clipRoots: () => [this, this.scrollport.value],
           })}
           class="diff-lines"
+          @scroll=${{ handleEvent: () => this.recordReading(), passive: true }}
           style="
             --diff-old-number-columns: ${oldDigits}ch;
             --diff-new-number-columns: ${newDigits}ch;
@@ -127,6 +131,10 @@ export class CaffoldDiffViewer extends CaffoldElement {
 
   getScrollState() {
     return this.captureScroll();
+  }
+
+  readingPosition() {
+    return this.readingScroll;
   }
 
   scrollSurfaceScope({ label = "File diff", ...pull }: ScrollSurfacePull = {}) {
@@ -207,13 +215,23 @@ export class CaffoldDiffViewer extends CaffoldElement {
     }
   }
 
+  // A place set to where the viewer already was moves nothing and so sends no
+  // scroll, so the place is read here as well.
   private restorePosition(position: ViewerPosition | null) {
     if (position?.scroll) {
       this.restoreScroll(position.scroll);
-      return;
+    } else {
+      this.restoreScroll({ top: 0, left: 0 });
+      this.scrollToLine(position?.line);
     }
-    this.restoreScroll({ top: 0, left: 0 });
-    this.scrollToLine(position?.line);
+    this.recordReading();
+  }
+
+  private recordReading() {
+    const scroller = this.scroller;
+    if (scroller?.getClientRects().length) {
+      this.readingScroll = this.captureScroll();
+    }
   }
 }
 

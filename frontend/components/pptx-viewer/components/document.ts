@@ -128,6 +128,16 @@ class CaffoldPptxDocument extends CaffoldElement {
     }
   }
 
+  // The deck's slides in order. The renderer lays out each slide's place at
+  // its size before it draws the slide.
+  pages() {
+    return [
+      ...(this.container?.querySelectorAll<HTMLElement>(
+        ":scope > [data-slide-index]",
+      ) ?? []),
+    ];
+  }
+
   // The links of the slides drawn now: anchors out of the deck, and the links
   // the renderer draws without an href, to another slide or on a whole shape.
   // They do what the owner's `link` action names.

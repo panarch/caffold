@@ -4,6 +4,11 @@ import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.js";
 import type { DocumentPreviewFile } from "./dom.js";
 import "./loading-text.js";
 import { CaffoldElement } from "../caffold-element.js";
+import {
+  type PageAnchor,
+  readPageAnchor,
+  scrollToPageAnchor,
+} from "./page-anchor.js";
 
 import styles from "./pdf-viewer.css.js";
 
@@ -66,6 +71,10 @@ let libraryPromise: Promise<PdfJs> | undefined;
 class CaffoldPdfViewer extends CaffoldElement {
   @property({ attribute: false })
   accessor file: DocumentPreviewFile | null = null;
+  // Where the next file handed over opens; a newer copy opens where this one
+  // was read.
+  @property({ attribute: false })
+  accessor position: PageAnchor | null = null;
   @state()
   private accessor renderState: RenderState = "empty";
   @state()
@@ -74,12 +83,22 @@ class CaffoldPdfViewer extends CaffoldElement {
   static override styles = styles;
 
   private generation = 0;
+  // Where the document was last read while it was drawn. A viewer taken off
+  // the page reads 0, so it is kept as the person scrolls.
+  private readingAnchor: PageAnchor | null = null;
   private visiblePages: Set<PageRecord> | null = null;
   private pageObserver: IntersectionObserver | null = null;
   private widthObserver: ResizeObserver | null = null;
   private loadingTask: PdfLoadingTask | null = null;
 
   private readonly surfaces = new ScrollSurfaces(this);
+
+  constructor() {
+    super();
+    this.addEventListener("scroll", () => this.recordReading(), {
+      passive: true,
+    });
+  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -119,6 +138,9 @@ class CaffoldPdfViewer extends CaffoldElement {
   // A file handed over again before it is drawn replaces the one before it.
   override willUpdate(changed: PropertyValues) {
     if (changed.has("file") && this.file) {
+      if (!this.file.newerCopy) {
+        this.readingAnchor = this.position;
+      }
       this.release();
       this.renderState = "loading";
       void this.open(this.generation, this.file.file);
@@ -136,6 +158,10 @@ class CaffoldPdfViewer extends CaffoldElement {
     ...pull
   }: ScrollSurfacePull = {}) {
     return this.surfaces.scope({ ...pull, label });
+  }
+
+  readingPosition() {
+    return this.readingAnchor;
   }
 
   private async open(generation: number, file: Blob | Promise<Blob>) {
@@ -204,6 +230,11 @@ class CaffoldPdfViewer extends CaffoldElement {
     await this.updateComplete;
     if (!this.isCurrent(generation)) {
       return;
+    }
+    // Each page's box has its size before it is drawn, so the place it was
+    // read can be found at once, and the pages near it are drawn first.
+    if (this.readingAnchor) {
+      scrollToPageAnchor(this, this.pageElements(), this.readingAnchor);
     }
 
     this.visiblePages = new Set();
@@ -292,6 +323,17 @@ class CaffoldPdfViewer extends CaffoldElement {
     }
     record.task = null;
     record.element.replaceChildren(canvas);
+  }
+
+  private recordReading() {
+    if (this.renderState === "pdf" && this.isConnected) {
+      this.readingAnchor =
+        readPageAnchor(this, this.pageElements()) ?? this.readingAnchor;
+    }
+  }
+
+  private pageElements() {
+    return (this.pages ?? []).map((record) => record.element);
   }
 
   private release() {

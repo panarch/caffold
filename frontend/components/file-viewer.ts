@@ -64,6 +64,7 @@ import { inlineIcon, warmIcons } from "./icons.js";
 import "./loading-text.js";
 import "./markdown-preview.js";
 import type { CaffoldMarkdownPreview } from "./markdown-preview.js";
+import type { PageAnchor } from "./page-anchor.js";
 import "./pdf-viewer.js";
 import "./pptx-viewer.js";
 import "./segmented-control.js";
@@ -76,6 +77,7 @@ import { returnPopoverFocus } from "#app/popover-focus.js";
 import { scopedStyle } from "#app/scoped-style.js";
 import { CaffoldElement } from "../caffold-element.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
+import type { WorkbookPosition } from "./xlsx-viewer.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
 import secondaryButton from "#app/component-styles/secondary-button.css.js";
@@ -85,33 +87,45 @@ import styles from "./file-viewer.css.js";
 // the loading state replaces it.
 const RETAINED_CONTENT_MS = 180;
 
-// A document preview hands its file to the viewer of its kind.
+// Where a view was last read, in the terms of the leaf that drew it: a
+// scroll position for source, a diff, or Markdown, the page at the top for a
+// paged document or Visual, and the sheets of a workbook. Its owner keeps one
+// for each view and hands it back when it shows the view again.
+export type ReadingPosition = ScrollPosition | PageAnchor | WorkbookPosition;
+
+// A document preview hands its file to the viewer of its kind, with where the
+// file opens.
 const DOCUMENT_VIEWERS: Record<
   DocumentPreviewKind,
   (
     file: DocumentPreviewFile | null,
+    position: ReadingPosition | null,
     viewer: DrawnRef<DocumentViewer>,
   ) => TemplateResult
 > = {
-  pdf: (file, viewer) =>
+  pdf: (file, position, viewer) =>
     html`<caffold-pdf-viewer
       ${drawn(viewer)}
       .file=${file}
+      .position=${pageAnchorIn(position)}
     ></caffold-pdf-viewer>`,
-  docx: (file, viewer) =>
+  docx: (file, position, viewer) =>
     html`<caffold-docx-viewer
       ${drawn(viewer)}
       .file=${file}
+      .position=${pageAnchorIn(position)}
     ></caffold-docx-viewer>`,
-  pptx: (file, viewer) =>
+  pptx: (file, position, viewer) =>
     html`<caffold-pptx-viewer
       ${drawn(viewer)}
       .file=${file}
+      .position=${pageAnchorIn(position)}
     ></caffold-pptx-viewer>`,
-  xlsx: (file, viewer) =>
+  xlsx: (file, position, viewer) =>
     html`<caffold-xlsx-viewer
       ${drawn(viewer)}
       .file=${file}
+      .position=${workbookIn(position)}
     ></caffold-xlsx-viewer>`,
 };
 
@@ -206,7 +220,15 @@ interface PreviewDocument extends ViewerSource {
 interface DocumentViewer extends HTMLElement {
   scrollSurfaceScope(pull: ScrollSurfacePull): ScrollSurfaceScope;
   actionHintScope?(pull: ActionHintPull): ActionHintScope;
+  readingPosition(): PageAnchor | WorkbookPosition | null;
 }
+
+// Where a newly shown file, diff, or Markdown preview opens. Besides what the
+// leaf itself is asked for, its owner may hand back where the view was last
+// read.
+type OpenOptions = ViewerPositionOptions & {
+  position?: ReadingPosition | null;
+};
 
 // The action a notice offers, which its owner carries out.
 export interface FileViewerNoticeActionDetail {
@@ -288,6 +310,9 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   private accessor imageSource = "";
   @state()
   private accessor documentFile: DocumentPreviewFile | null = null;
+  // Where the next document file handed to its viewer opens.
+  @state()
+  private accessor documentPosition: ReadingPosition | null = null;
   // How Visual compares the two sides; it stays while files change.
   @state()
   private accessor visualMode: VisualMode = "side";
@@ -631,6 +656,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
             ${header}
             ${DOCUMENT_VIEWERS[state.document.kind](
               this.documentFile,
+              this.documentPosition,
               this.documentViewer,
             )}
           </section>
@@ -709,7 +735,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     this.show();
   }
 
-  setFile(file: CodeFile & ViewerSource, options: ViewerPositionOptions = {}) {
+  setFile(file: CodeFile & ViewerSource, options: OpenOptions = {}) {
     this.cancelRetainedContent();
     this.state = {
       status: "file",
@@ -726,8 +752,9 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     file: ViewerSource & { content: string },
     {
       imageRoot = "",
-      ...options
-    }: ViewerPositionOptions & { imageRoot?: string } = {},
+      preserveScroll,
+      position,
+    }: OpenOptions & { imageRoot?: string } = {},
   ) {
     this.cancelRetainedContent();
     this.state = {
@@ -736,7 +763,8 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     };
     this.show();
     this.markdownPreview?.setMarkdown(file.content, {
-      ...options,
+      preserveScroll,
+      scroll: scrollIn(position),
       images: {
         folder: `${file.path ?? ""}`.split("/").slice(0, -1).join("/"),
         root: imageRoot,
@@ -782,13 +810,19 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   }
 
   // `recheck` says the file may have changed since it was fetched.
+  // `position` is where the document opens when its viewer is handed the
+  // file; a newer copy opens where the one before it was read.
   setDocument(
     previewDocument: PreviewDocument,
-    { recheck = false }: { recheck?: boolean } = {},
+    {
+      recheck = false,
+      position = null,
+    }: { recheck?: boolean; position?: ReadingPosition | null } = {},
   ) {
     this.cancelRetainedContent();
     const held = this.previewFiles.file;
     const previous = this.state;
+    this.documentPosition = position;
     this.state = {
       status: "document",
       document: previewDocument,
@@ -810,13 +844,19 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
 
   // Shows the two sides of a change as pictures. A side git keeps is fetched
   // once for its blob id; the working tree side is asked for again on
-  // `recheck`, as a preview is, since the file may have changed.
+  // `recheck`, as a preview is, since the file may have changed. `position`,
+  // when given, is where the change opens once its pictures are drawn.
   setVisual(
     versions: GitDiffVersions,
     {
       recheck = false,
       presentation,
-    }: { recheck?: boolean; presentation: ViewerPresentation },
+      position,
+    }: {
+      recheck?: boolean;
+      presentation: ViewerPresentation;
+      position?: ReadingPosition | null;
+    },
   ) {
     this.cancelRetainedContent();
     this.state = { status: "visual", presentation, versions };
@@ -838,7 +878,9 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
         this.recheckPreviewFile(slot);
       }
     }
-    this.drawVisualSides();
+    this.drawVisualSides(
+      position === undefined ? {} : { position: pageAnchorIn(position) },
+    );
   }
 
   // An owner without its own representation control names the change
@@ -852,7 +894,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
 
   setDiff(
     diff: FileDiff & ViewerDiff,
-    options: ViewerPositionOptions & { presentation?: ViewerPresentation } = {},
+    options: OpenOptions & { presentation?: ViewerPresentation } = {},
   ) {
     this.cancelRetainedContent();
     const { presentation = diffViewerPresentation(diff), ...viewerOptions } =
@@ -893,6 +935,25 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
       return viewer.getScrollState();
     }
     return this.preview.value?.getScrollState() ?? null;
+  }
+
+  // Where the content shown was last read while it was on screen, which
+  // `captureContentScroll` cannot tell once the viewer has left the page.
+  readingPosition(): ReadingPosition | null {
+    switch (this.state.status) {
+      case "file":
+        return this.codeViewer.value?.readingPosition() ?? null;
+      case "diff":
+        return this.diffViewer.value?.readingPosition() ?? null;
+      case "markdown":
+        return this.preview.value?.readingPosition() ?? null;
+      case "document":
+        return this.documentViewer.value?.readingPosition() ?? null;
+      case "visual":
+        return this.visualDiff.value?.readingPosition() ?? null;
+      default:
+        return null;
+    }
   }
 
   visibleLine() {
@@ -996,11 +1057,13 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     );
   }
 
-  // A file kept in place keeps where it is read; any other opens at its line
-  // or its top.
-  private nextPosition(options: ViewerPositionOptions): ViewerPosition {
+  // A file kept in place keeps where it is read; any other opens where its
+  // owner says it was last read, or else at its line or its top.
+  private nextPosition(options: OpenOptions): ViewerPosition {
     return {
-      scroll: options.preserveScroll ? this.captureContentScroll() : null,
+      scroll: options.preserveScroll
+        ? this.captureContentScroll()
+        : scrollIn(options.position),
       line: options.line,
     };
   }
@@ -1276,7 +1339,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   // Hands each side of the shown change to Visual as its file stands: on its
   // way, fetched, or failed, with the way they are compared. A side the
   // change does not have is absent.
-  private drawVisualSides() {
+  private drawVisualSides({ position }: { position?: PageAnchor | null } = {}) {
     const state = this.state;
     if (state.status !== "visual") {
       return;
@@ -1302,6 +1365,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     this.visualDiffElement?.setComparison({
       sides: { before: side("before"), after: side("after") },
       mode: this.visualMode,
+      position,
     });
   }
 
@@ -1318,6 +1382,20 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     this.performUpdate();
     return this.visualDiff.value;
   }
+}
+
+// A reading position for the leaf of each kind, or none when it was read by
+// another kind of leaf.
+function scrollIn(position: ReadingPosition | null | undefined) {
+  return position && "top" in position ? position : null;
+}
+
+function pageAnchorIn(position: ReadingPosition | null | undefined) {
+  return position && "page" in position ? position : null;
+}
+
+function workbookIn(position: ReadingPosition | null | undefined) {
+  return position && "sheet" in position ? position : null;
 }
 
 // Where a side of a change is fetched from: its blob, read through the

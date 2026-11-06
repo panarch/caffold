@@ -39,6 +39,54 @@ test("lets go of the document shown and opens the file it is handed", () => {
   assert.deepEqual(opened, [{ generation: 5, file }], "the document shown before is let go of first");
 });
 
+test("opens a file it is handed where its owner says it was read, and a newer copy where it was", () => {
+  const { owner } = drawingViewer();
+  const kept = { page: 2, fraction: 0.5 };
+  const read = { page: 4, fraction: 0.1 };
+  owner.readingAnchor = read;
+
+  owner.position = kept;
+  owner.file = { file: Promise.resolve(new Blob(["copy"])), newerCopy: true };
+  pdfViewer.willUpdate.call(owner, new Map([["file", null]]));
+  assert.equal(owner.readingAnchor, read);
+
+  owner.file = { file: Promise.resolve(new Blob(["other"])), newerCopy: false };
+  pdfViewer.willUpdate.call(owner, new Map([["file", null]]));
+  assert.equal(owner.readingAnchor, kept);
+
+  owner.position = null;
+  owner.file = { file: Promise.resolve(new Blob(["third"])), newerCopy: false };
+  pdfViewer.willUpdate.call(owner, new Map([["file", null]]));
+  assert.equal(owner.readingAnchor, null, "a file kept nowhere opens at its top");
+});
+
+test("records where the document is read only while it is drawn and on the page", () => {
+  // Two pages of 500 below 16 of padding, scrolled a quarter into the second.
+  const page = (offset) => ({
+    getBoundingClientRect: () => ({ top: offset - 641, bottom: offset - 641 + 500, height: 500 }),
+  });
+  const owner = {
+    renderState: "pdf",
+    isConnected: true,
+    readingAnchor: null,
+    pages: [{ element: page(16) }, { element: page(516) }],
+    getClientRects: () => [{}],
+    getBoundingClientRect: () => ({ top: 0 }),
+    pageElements() {
+      return pdfViewer.pageElements.call(this);
+    },
+  };
+
+  pdfViewer.recordReading.call(owner);
+  assert.deepEqual(owner.readingAnchor, { page: 1, fraction: 0.25 });
+
+  for (const change of [{ renderState: "loading" }, { isConnected: false }]) {
+    const stale = { ...owner, ...change, readingAnchor: null };
+    pdfViewer.recordReading.call(stale);
+    assert.equal(stale.readingAnchor, null);
+  }
+});
+
 test("cancels page renders and tears down the loading task when released", () => {
   const cancelled = [];
   const disconnected = [];

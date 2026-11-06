@@ -196,3 +196,64 @@ async function expectDrawn(image) {
   await expect(image).toHaveAttribute("src", /^blob:/);
   await expect.poll(() => image.evaluate((element) => element.complete && element.naturalWidth)).toBeGreaterThan(0);
 }
+
+test("returns stacked pictures to the one it was reading once they are drawn again", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  // Two tall pictures stack on a stage this narrow, and the stage scrolls.
+  const picture = [...pngBytes(200, 1200, () => [37, 99, 235, 255])];
+  await page.goto("/settings/files");
+  await page.evaluate(async (bytes) => {
+    await import("/assets/components/file-viewer/components/visual-diff.js");
+    const visual = document.createElement("caffold-visual-diff");
+    visual.id = "stacked-visual";
+    visual.style.cssText = "position: fixed; top: 80px; left: 1rem; width: 360px; height: 480px;";
+    document.body.append(visual);
+    // Each showing fetches the sides again, as the file viewer does.
+    window.stackedSides = () => {
+      const side = () => {
+        const blob = new Blob([new Uint8Array(bytes)], { type: "image/png" });
+        return { status: "fetched", url: URL.createObjectURL(blob), bytes: blob.size };
+      };
+      return { before: side(), after: side() };
+    };
+    visual.setComparison({ sides: window.stackedSides(), mode: "side" });
+  }, picture);
+  const visual = page.locator("#stacked-visual");
+  const stage = visual.locator(".visual-stage");
+  await expect(visual.locator('figure[data-side="after"] img')).toBeVisible();
+  // The picture the stage's top edge falls on, and how far into it, in
+  // hundredths of its height.
+  const readingPlace = () => stage.evaluate((element) => {
+    const figures = [...element.querySelectorAll("figure")];
+    const top = element.getBoundingClientRect().top;
+    const index = figures.findIndex((figure) => figure.getBoundingClientRect().bottom > top);
+    const box = figures[index]?.getBoundingClientRect();
+    return box
+      ? { picture: index, fraction: Math.round(((top - box.top) / box.height) * 100) / 100 }
+      : null;
+  });
+  await stage.evaluate((element) => {
+    const box = element.querySelector('figure[data-side="after"]').getBoundingClientRect();
+    element.scrollTop += box.top - element.getBoundingClientRect().top + 0.3 * box.height;
+  });
+  await expect.poll(readingPlace).toEqual({ picture: 1, fraction: 0.3 });
+
+  // A Review back on screen hands the place over with the change, and the
+  // sides arrive after it.
+  await visual.evaluate((element) => {
+    element.setComparison({
+      sides: { before: { status: "loading" }, after: { status: "loading" } },
+      mode: "side",
+      position: element.readingPosition(),
+    });
+  });
+  await expect(visual.getByText("Loading images...")).toBeVisible();
+  expect(await stage.evaluate((element) => element.scrollTop)).toBe(0);
+  await visual.evaluate((element) => {
+    element.setComparison({ sides: window.stackedSides(), mode: "side" });
+  });
+
+  await expect(visual.locator('figure[data-side="after"] img')).toBeVisible();
+  await expect.poll(readingPlace).toEqual({ picture: 1, fraction: 0.3 });
+});

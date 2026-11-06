@@ -104,6 +104,108 @@ test("starts another file at its first sheet", () => {
   assert.equal(owner.selectedSheetName, null);
 });
 
+test("opens a file it is handed at the sheet and places its owner kept for it", () => {
+  const { owner } = drawingViewer();
+  owner.sheetScrolls = new Map([["Q3", { top: 900, left: 0 }]]);
+  const scrolls = new Map([["Q2", { top: 40, left: 8 }]]);
+
+  owner.position = { sheet: "Q2", scrolls };
+  owner.file = { file: Promise.resolve(new Blob(["bytes"])), newerCopy: false };
+  xlsxViewer.willUpdate.call(owner, new Map([["file", null]]));
+
+  assert.equal(owner.selectedSheetName, "Q2");
+  assert.deepEqual([...owner.sheetScrolls], [["Q2", { top: 40, left: 8 }]]);
+  assert.notEqual(owner.sheetScrolls, scrolls, "the owner's copy stays as it was");
+});
+
+test("keeps where each sheet was scrolled for a newer copy of the same file", () => {
+  const { owner } = drawingViewer();
+  owner.sheetScrolls = new Map([["Q3", { top: 900, left: 120 }]]);
+
+  owner.position = { sheet: "Q1", scrolls: new Map() };
+  owner.file = { file: Promise.resolve(new Blob(["bytes"])), newerCopy: true };
+  xlsxViewer.willUpdate.call(owner, new Map([["file", null]]));
+
+  assert.equal(owner.selectedSheetName, "Q3");
+  assert.deepEqual([...owner.sheetScrolls], [["Q3", { top: 900, left: 120 }]]);
+});
+
+// A viewer with a workbook of two sheets, ready to show one.
+function sheetsViewer(sheetScrolls) {
+  const sheetport = { scrollTop: 0, scrollLeft: 0 };
+  const owner = {
+    generation: 2,
+    isConnected: true,
+    sheetScrolls,
+    selectedSheetName: null,
+    visibleSheets: [
+      { name: "Q1", hidden: false, index: 0 },
+      { name: "Q2", hidden: false, index: 1 },
+    ],
+    workbook: { sheet: (index) => ({ index }) },
+    sheetport: { value: sheetport },
+    sheetTabs: { value: { setSnapshot() {} } },
+    isCurrent: (generation) => generation === 2,
+    layoutSheet() {},
+    drawWindow() {},
+  };
+  return { owner, sheetport };
+}
+
+test("shows each sheet where it was scrolled, and a sheet not yet scrolled at its top", () => {
+  const { owner, sheetport } = sheetsViewer(
+    new Map([["Q1", { top: 300, left: 50 }]]),
+  );
+
+  xlsxViewer.showSheet.call(owner, 2, 0);
+  assert.deepEqual([sheetport.scrollTop, sheetport.scrollLeft], [300, 50]);
+
+  xlsxViewer.showSheet.call(owner, 2, 1);
+  assert.deepEqual([sheetport.scrollTop, sheetport.scrollLeft], [0, 0]);
+  assert.equal(owner.selectedSheetName, "Q2");
+});
+
+test("records where the shown sheet is scrolled only while the workbook is drawn", () => {
+  const sheetport = { scrollTop: 120, scrollLeft: 30, getClientRects: () => [{}] };
+  let windows = 0;
+  const owner = {
+    generation: 3,
+    renderState: "xlsx",
+    selectedSheetName: "Q1",
+    sheetScrolls: new Map(),
+    sheetport: { value: sheetport },
+    scheduleWindow: () => {
+      windows += 1;
+    },
+  };
+
+  xlsxViewer.followSheetScroll.call(owner);
+  assert.deepEqual(owner.sheetScrolls.get("Q1"), { top: 120, left: 30 });
+
+  owner.renderState = "loading";
+  sheetport.scrollTop = 0;
+  xlsxViewer.followSheetScroll.call(owner);
+  assert.deepEqual(owner.sheetScrolls.get("Q1"), { top: 120, left: 30 });
+  assert.equal(windows, 2, "each scroll still asks for the cells near the viewport");
+});
+
+test("names the sheet read last and where each sheet was, and nothing before a sheet is shown", () => {
+  const owner = {
+    selectedSheetName: "Q2",
+    sheetScrolls: new Map([["Q2", { top: 40, left: 8 }]]),
+  };
+
+  const position = xlsxViewer.readingPosition.call(owner);
+
+  assert.equal(position.sheet, "Q2");
+  assert.deepEqual([...position.scrolls], [["Q2", { top: 40, left: 8 }]]);
+  assert.notEqual(position.scrolls, owner.sheetScrolls, "later scrolling does not change it");
+  assert.equal(
+    xlsxViewer.readingPosition.call({ selectedSheetName: null, sheetScrolls: new Map() }),
+    null,
+  );
+});
+
 test("offers the drawn cells' links and the other sheets' tabs", () => {
   const report = cellLink("3:1", "https://example.com/report", "Report");
   const mail = cellLink("4:0", "mailto:team@example.com", "Team");

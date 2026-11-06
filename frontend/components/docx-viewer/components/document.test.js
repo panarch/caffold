@@ -33,12 +33,12 @@ function page(offsetWidth) {
   return { element: { offsetWidth, style: { zoom: "" } }, width: 0 };
 }
 
-function fittingViewer(clientWidth, pages) {
+function fittingViewer(clientWidth, pageRecords) {
   return {
     isConnected: true,
     generation: 2,
     clientWidth,
-    pages,
+    pageRecords,
     isCurrent(generation) {
       return docxDocument.isCurrent.call(this, generation);
     },
@@ -62,7 +62,7 @@ test("stops fitting the document when released", () => {
     generation: 2,
     widthObserver: { disconnect: () => events.push("disconnect") },
     content: {},
-    pages: [page(794)],
+    pageRecords: [page(794)],
   };
 
   docxDocument.release.call(owner);
@@ -71,7 +71,7 @@ test("stops fitting the document when released", () => {
   assert.equal(owner.generation, 3);
   assert.equal(owner.widthObserver, null);
   assert.equal(owner.content, null);
-  assert.equal(owner.pages, null);
+  assert.equal(owner.pageRecords, null);
 });
 
 test("treats a replaced generation or a detached viewer as stale", () => {
@@ -127,4 +127,35 @@ test("ignores a width change from a replaced generation", () => {
   docxDocument.fitPages.call(owner, 1);
 
   assert.equal(a4.element.style.zoom, "");
+});
+
+test("fits a drawn document's pages before it says the document is drawn", () => {
+  const order = [];
+  const owner = {
+    renderState: "docx",
+    dataset: {},
+    fitDrawnPages: () => order.push("fit"),
+    dispatchEvent: (event) => order.push(`${event.type}:${event.detail}`),
+  };
+
+  docxDocument.updated.call(owner, new Map([["renderState", "loading"]]));
+
+  assert.deepEqual(order, ["fit", "caffold:docx-document-state:docx"]);
+  assert.equal(owner.dataset.renderState, "docx");
+
+  order.length = 0;
+  owner.renderState = "loading";
+  docxDocument.updated.call(owner, new Map([["renderState", "docx"]]));
+  assert.deepEqual(order, ["caffold:docx-document-state:loading"]);
+});
+
+test("names the drawn pages in order, and none before the document is drawn", () => {
+  const first = page(794);
+  const second = page(794);
+
+  assert.deepEqual(
+    docxDocument.pages.call({ pageRecords: [first, second] }),
+    [first.element, second.element],
+  );
+  assert.deepEqual(docxDocument.pages.call({ pageRecords: null }), []);
 });

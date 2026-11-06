@@ -151,6 +151,21 @@ test("offers no links before the deck is drawn or without a link action", () => 
   }).targets, []);
 });
 
+test("names each slide's place in order, and none before the deck is drawn", () => {
+  const places = [{ dataset: { slideIndex: "0" } }, { dataset: { slideIndex: "1" } }];
+  const asked = [];
+  const container = {
+    querySelectorAll(selector) {
+      asked.push(selector);
+      return places;
+    },
+  };
+
+  assert.deepEqual(pptxDocument.pages.call({ container }), places);
+  assert.deepEqual(asked, [":scope > [data-slide-index]"], "only the list's own items");
+  assert.deepEqual(pptxDocument.pages.call({ container: null }), []);
+});
+
 test("stops watching slides and drawing them when released", () => {
   const events = [];
   const owner = {
