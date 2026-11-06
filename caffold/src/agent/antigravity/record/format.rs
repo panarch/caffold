@@ -1,6 +1,7 @@
-//! Only the native protobuf fields this reader consumes, pinned to the official
-//! Antigravity ACP 1.4.5 distribution. Tags come from trajectory_pb2/cortex_pb2
-//! and codeium_common_pb2; unknown optional fields remain with their owner.
+//! Native protobuf fields consumed by the read-only trajectory projection.
+//! Original tags come from trajectory_pb2/cortex_pb2/codeium_common_pb2;
+//! CLI 1.5.1's tool result fields are captured in the cli-steering fixture.
+//! Unknown optional fields remain with their native owner.
 //! This is a read-only schema, not a serializer for modifying native records.
 
 use prost::{Message, Oneof};
@@ -13,7 +14,10 @@ pub(super) struct Step {
     pub(super) status: i32,
     #[prost(message, optional, tag = "5")]
     pub(super) metadata: Option<StepMetadata>,
-    #[prost(oneof = "Payload", tags = "10, 14, 19, 20, 24, 28, 47, 98, 104, 127")]
+    #[prost(
+        oneof = "Payload",
+        tags = "10, 14, 19, 20, 24, 28, 47, 98, 104, 127, 140"
+    )]
     pub(super) payload: Option<Payload>,
 }
 
@@ -39,6 +43,8 @@ pub(super) enum Payload {
     GenerateImage(GenerateImage),
     #[prost(message, tag = "127")]
     ShellExec(ShellExec),
+    #[prost(message, tag = "140")]
+    NativeTool(NativeTool),
 }
 
 impl Payload {
@@ -54,6 +60,7 @@ impl Payload {
             Self::FileChange(_) => 86,
             Self::GenerateImage(_) => 91,
             Self::ShellExec(_) => 112,
+            Self::NativeTool(_) => 132,
         }
     }
 }
@@ -224,6 +231,20 @@ pub(super) struct McpTool {
     pub(super) result_string: String,
     /// Where the harness saved a result too large to keep in the step.
     #[prost(string, tag = "8")]
+    pub(super) result_uri: String,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(super) struct NativeTool {
+    #[prost(message, optional, tag = "2")]
+    pub(super) result: Option<NativeToolResult>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(super) struct NativeToolResult {
+    #[prost(string, tag = "1")]
+    pub(super) text: String,
+    #[prost(string, tag = "7")]
     pub(super) result_uri: String,
 }
 

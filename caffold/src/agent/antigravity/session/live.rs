@@ -31,6 +31,7 @@ pub(super) struct Live {
     pending_start: bool,
     live_turns: usize,
     total_usage: Option<TokenCount>,
+    prompts: BTreeMap<u64, String>,
 }
 
 impl Live {
@@ -46,6 +47,7 @@ impl Live {
             pending_start: false,
             live_turns: 0,
             total_usage: None,
+            prompts: BTreeMap::new(),
         }
     }
 
@@ -130,7 +132,95 @@ impl Live {
             self.chunk = None;
             self.tools.clear();
             self.pending_start = false;
+            self.prompts.clear();
         }
+    }
+
+    pub(super) fn track_prompt(&mut self, rpc: u64, item: &str) {
+        self.prompts.insert(rpc, item.into());
+    }
+
+    pub(super) fn active_turn(&self) -> Option<&str> {
+        self.active.as_deref()
+    }
+
+    pub(super) fn steer(
+        &mut self,
+        rpc: u64,
+        text: &str,
+        content: Vec<MessageContent>,
+    ) -> Result<ConversationItem, AntigravityError> {
+        let id = self.active.as_ref().ok_or(AntigravityError::InputGone)?;
+        let item = ConversationItem {
+            id: format!("{id}:prompt:{rpc}"),
+            observed_at_ms: Some(now_ms()),
+            status: ActivityStatus::Completed,
+            kind: ItemKind::UserMessage {
+                text: text.into(),
+                content,
+            },
+        };
+        self.turns[0].items.push(item.clone());
+        self.prompts.insert(rpc, item.id.clone());
+        self.chunk = None;
+        Ok(item)
+    }
+
+    pub(super) fn reject_steering(&mut self, rpc: u64) {
+        if let Some(id) = self.prompts.remove(&rpc) {
+            for turn in &mut self.turns {
+                turn.items.retain(|item| item.id != id);
+            }
+            self.chunk = None;
+        }
+    }
+
+    /// A prompt response may arrive while later prompts are still running.
+    pub(super) fn prompt_reply(
+        &mut self,
+        rpc: u64,
+        result: &Result<Value, AntigravityError>,
+        ended: bool,
+    ) -> Vec<SessionEventKind> {
+        let prompt = self.prompts.remove(&rpc);
+        let Some(id) = self.active.clone() else {
+            return vec![];
+        };
+        let mut events = Vec::new();
+        let turn = &mut self.turns[0];
+        if let Err(error) = result {
+            if let Some(item) = turn
+                .items
+                .iter_mut()
+                .find(|item| Some(&item.id) == prompt.as_ref())
+            {
+                item.status = ActivityStatus::Failed;
+                events.push(SessionEventKind::ItemChanged {
+                    turn_id: id.clone(),
+                    item: item.clone(),
+                    at_ms: now_ms(),
+                });
+            }
+            if !ended {
+                let item = ConversationItem {
+                    id: format!("{id}:failure:{rpc}"),
+                    observed_at_ms: Some(now_ms()),
+                    status: ActivityStatus::Failed,
+                    kind: ItemKind::Failure {
+                        text: error.to_string(),
+                    },
+                };
+                turn.items.push(item.clone());
+                events.push(SessionEventKind::ItemChanged {
+                    turn_id: id,
+                    item,
+                    at_ms: now_ms(),
+                });
+            }
+        } else if !ended {
+            events.extend(self.report_usage(&id, result));
+        }
+        events
     }
 
     pub(super) fn start_events(&mut self) -> Vec<SessionEventKind> {
@@ -289,6 +379,17 @@ impl Live {
         let Some((ended, mut events)) = self.end_active(result) else {
             return vec![];
         };
+        events.extend(self.report_usage(&ended.id, result));
+        events.push(SessionEventKind::TurnEnded { turn: ended });
+        events
+    }
+
+    fn report_usage(
+        &mut self,
+        id: &str,
+        result: &Result<Value, AntigravityError>,
+    ) -> Vec<SessionEventKind> {
+        let mut events = Vec::new();
         if let Ok(result) = result
             && let Some(usage) = turn_usage(&result["usage"])
             && let Some(total) = &mut self.total_usage
@@ -300,7 +401,7 @@ impl Live {
             total.output_tokens += usage.output_tokens;
             total.reasoning_output_tokens += usage.reasoning_output_tokens;
             events.push(SessionEventKind::UsageReported {
-                turn_id: ended.id.clone(),
+                turn_id: id.into(),
                 usage: TokenUsage {
                     total: total.clone(),
                     last: usage,
@@ -308,7 +409,6 @@ impl Live {
                 },
             });
         }
-        events.push(SessionEventKind::TurnEnded { turn: ended });
         events
     }
 
@@ -488,6 +588,7 @@ fn tool_item(
                     .map(str::to_string),
                 output: output["combinedOutput"]
                     .as_str()
+                    .or_else(|| output["output"].as_str())
                     .or_else(|| output.as_str())
                     .map(str::to_string),
                 exit_code: output["exitCode"]
@@ -515,21 +616,14 @@ fn tool_item(
     })
 }
 
-/// A tool call from the frames merged so far. An MCP call names its tool and
-/// server in `_meta.mcp` and carries its arguments twice in `rawInput`, spread
-/// out and once more under `arguments`; the latter is the shape the native
-/// record keeps. The server fills a finished call's `rawOutput` with the step's
-/// summary, such as "List notes", rather than what the tool returned, so the
-/// call has no result here; reading the native record brings the result.
+/// CLI 1.5.1 reports the tool's name and raw input, but no separate MCP server
+/// or result. Keep that reported input; the native record supplies full tool
+/// arguments and result text when the conversation is reconstructed.
 fn tool_call(value: &Value, title: String) -> ItemKind {
-    let mcp = &value["_meta"]["mcp"];
-    let input = match &value["rawInput"] {
-        input if mcp.is_object() && !input["arguments"].is_null() => &input["arguments"],
-        input => input,
-    };
+    let input = &value["rawInput"];
     ItemKind::ToolCall(ToolCall {
-        name: mcp["tool"].as_str().map_or(title, str::to_string),
-        server: mcp["server"].as_str().map(str::to_string),
+        name: value["name"].as_str().map_or(title, str::to_string),
+        server: None,
         input: (!input.is_null()).then(|| input.clone()),
         result: Vec::new(),
         duration_ms: None,
@@ -572,15 +666,16 @@ mod tests {
     }
 
     #[test]
-    fn an_mcp_call_shows_its_own_tool_server_and_arguments() {
+    fn a_cli_mcp_call_keeps_the_reported_name_and_input_without_inventing_a_server_or_result() {
         let mut live = Live::new(TurnPage::default());
         let turn = prompt(&mut live);
         live.update(&json!({
             "sessionUpdate":"tool_call", "toolCallId":"call_1", "kind":"other", "status":"pending",
             "title":"caffold_rename_current_task", "content":[],
-            "rawInput":{"arguments":{"name":"Greeting"}, "name":"Greeting"},
-            "_meta":{"mcp":{"tool":"rename_current_task", "server":"caffold"}, "is_mcp_tool_call":true, "prompt":"Renaming current task"}
-        })).unwrap();
+            "name":"mcp_caffold_rename_current_task",
+            "rawInput":{"toolSummary":"Rename current task"}
+        }))
+        .unwrap();
         let running = live.read_page(None, 8).unwrap().unwrap().turns[0].items[1].clone();
         live.update(&json!({
             "sessionUpdate":"tool_call_update", "toolCallId":"call_1", "status":"completed",
@@ -599,9 +694,9 @@ mod tests {
         assert_eq!(
             done.kind,
             ItemKind::ToolCall(ToolCall {
-                name: "rename_current_task".into(),
-                server: Some("caffold".into()),
-                input: Some(json!({"name":"Greeting"})),
+                name: "mcp_caffold_rename_current_task".into(),
+                server: None,
+                input: Some(json!({"toolSummary":"Rename current task"})),
                 result: Vec::new(),
                 duration_ms: None,
             })
@@ -688,7 +783,7 @@ mod tests {
         live.update(&json!({"sessionUpdate":"tool_call","toolCallId":"permission-frame","kind":"execute","title":"Run pwd","rawInput":{"command_line":"pwd","working_dir":"/tmp"},"status":"pending"})).unwrap();
         let (turn_id, item_id) = live.active_ids("permission-frame").unwrap();
         assert_eq!(turn_id, accepted.id);
-        live.update(&json!({"sessionUpdate":"tool_call_update","toolCallId":"permission-frame","status":"completed","rawOutput":{"combinedOutput":"/tmp\n","exitCode":0,"exit_code":0}})).unwrap();
+        live.update(&json!({"sessionUpdate":"tool_call_update","toolCallId":"permission-frame","status":"completed","rawOutput":{"output":"/tmp\n","exit_code":0}})).unwrap();
         for text in ["Done", "."] {
             live.update(&json!({"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":text}})).unwrap();
         }

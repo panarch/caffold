@@ -87,6 +87,9 @@ pub(super) fn apply_thread_settings(
     {
         state.permission_mode = read.permission_mode;
     }
+    if read.model.is_some() && read.model != state.model {
+        state.reasoning_effort = None;
+    }
     if read.model.is_some() {
         state.model = read.model;
     }
@@ -424,7 +427,28 @@ fn newer_thread_name(state: &SessionState, base_revision: u64) -> Option<Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::antigravity::AntigravityClient;
     use crate::app::tasks::sessions::test_support::*;
+
+    #[test]
+    fn a_different_native_model_does_not_inherit_the_previous_effort() {
+        let driver = AntigravityClient::uninstalled().driver();
+        let mut state = SessionState {
+            model: Some("thinking-model".into()),
+            reasoning_effort: Some("high".into()),
+            ..SessionState::default()
+        };
+        apply_thread_settings(
+            &mut state,
+            &driver,
+            &BTreeMap::from([
+                ("model".into(), Value::String("fixed-depth-model".into())),
+                ("reasoningEffort".into(), Value::Null),
+            ]),
+        );
+        assert_eq!(state.model.as_deref(), Some("fixed-depth-model"));
+        assert_eq!(state.reasoning_effort, None);
+    }
 
     /// What a Claude session reports about itself.
     fn claude_settings(mode: &str) -> BTreeMap<String, Value> {

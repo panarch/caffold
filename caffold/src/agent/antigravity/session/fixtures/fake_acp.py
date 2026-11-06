@@ -13,7 +13,7 @@ behavior = os.environ.get('ACP_FIXTURE_BEHAVIOR', 'pending')
 native = '63910fa2-b1ed-4e64-87b8-b9928c1d7015'
 options = [
     {'id': 'model', 'currentValue': 'fixture', 'options': [{'value': 'fixture', 'name': 'Fixture'}]},
-    {'id': 'thinking_level', 'currentValue': 'low', 'options': [{'value': 'low', 'name': 'Low'}]},
+    {'id': 'thought_level', 'currentValue': 'low', 'options': [{'value': 'low', 'name': 'Low'}]},
     {'id': 'mode', 'currentValue': 'default', 'options': [{'value': 'default', 'name': 'Default'}]},
 ]
 
@@ -54,16 +54,15 @@ for line in sys.stdin:
     log(frame)
     method = frame.get('method')
     if method == 'initialize':
-        result = {'protocolVersion': 1, 'agentInfo': {'version': '1.4.5'}, 'authMethods': [{'id': 'oauth-personal'}]}
+        result = {'protocolVersion': 1, 'agentInfo': {'version': '1.5.1'}, 'authMethods': [{'id': 'oauth-personal'}]}
     elif method == 'authenticate':
-        if os.environ.get('ACP_FIXTURE_BEHAVIOR') == 'auth-required':
-            print('https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A43123%2F&state=fixture-state', file=sys.stderr, flush=True)
-            continue
-        if os.environ.get('ACP_FIXTURE_BEHAVIOR') == 'auth-network-error':
-            emit({'jsonrpc': '2.0', 'id': frame['id'], 'error': {'code': -32603, 'message': 'network unavailable'}})
-            continue
-        result = {}
+        raise RuntimeError('Caffold must use cached CLI authentication')
     elif method == 'session/new':
+        if behavior in ('auth-required', 'auth-network-error'):
+            emit({'jsonrpc': '2.0', 'id': frame['id'], 'error': {
+                'code': -32000 if behavior == 'auth-required' else -32603,
+                'message': 'Authentication required' if behavior == 'auth-required' else 'network unavailable'}})
+            continue
         context(0)
         if behavior == 'context-invalid':
             for values in [{'used': 1200, 'size': 0}, {'size': 64000}, {'used': -1, 'size': 64000}]:
@@ -79,6 +78,11 @@ for line in sys.stdin:
                 option['currentValue'] = frame['params']['value']
         result = {'configOptions': options}
     elif method == 'session/prompt':
+        if pending is not None and behavior == 'steering-rejected':
+            emit({'jsonrpc': '2.0', 'id': frame['id'], 'error': {'code': -32603, 'message': "Can't add this prompt: the running prompt is waiting for a permission or question answer"}})
+            continue
+        if pending is not None and behavior == 'steering':
+            emit({'jsonrpc': '2.0', 'id': pending, 'result': {'stopReason': 'end_turn'}})
         pending = frame['id']
         context(1200)
         if behavior != 'startup':
@@ -94,7 +98,7 @@ for line in sys.stdin:
             threading.Thread(target=startup, daemon=True).start()
         if behavior in ('immediate', 'context'):
             finish()
-        elif behavior in ('gated', 'context-gated'):
+        elif behavior in ('gated', 'context-gated', 'steering', 'steering-rejected'):
             threading.Thread(target=gate, daemon=True).start()
         elif behavior in ('permission', 'question'):
             emit({'jsonrpc': '2.0', 'id': 991, 'method': 'session/request_permission', 'params': {

@@ -61,7 +61,6 @@ export interface ComposerContext {
   allowHandoff: boolean;
   requestError: string;
   turnActive: boolean;
-  supportsSteering: boolean;
   uploading: boolean;
   interrupting: boolean;
   interruptError: string;
@@ -216,7 +215,6 @@ export class CaffoldTaskComposer extends CaffoldElement {
     allowHandoff: false,
     requestError: "",
     turnActive: false,
-    supportsSteering: true,
     uploading: false,
     interrupting: false,
     interruptError: "",
@@ -336,7 +334,6 @@ export class CaffoldTaskComposer extends CaffoldElement {
       readOnly: Boolean(context.readOnly ?? this.context.readOnly),
       settingsLocked: Boolean(context.settingsLocked),
       turnActive: Boolean(context.turnActive),
-      supportsSteering: context.supportsSteering !== false,
       uploading: Boolean(context.uploading),
       interrupting: Boolean(context.interrupting),
       requestError: Object.hasOwn(context, "requestError")
@@ -623,9 +620,6 @@ export class CaffoldTaskComposer extends CaffoldElement {
     }
     if (this.context.interrupting) {
       return stop({ disabled: true, title: "Stopping current turn" });
-    }
-    if (this.context.turnActive && !this.context.supportsSteering) {
-      return stop();
     }
     if (hasDraft) {
       return send();
@@ -1539,7 +1533,6 @@ export class CaffoldTaskComposer extends CaffoldElement {
       this.activeSubmissionFor() ||
       this.context.disabled ||
       this.context.readOnly ||
-      (this.context.turnActive && !this.context.supportsSteering) ||
       !this.turnOptions()?.readyForSubmission() ||
       VOICE_BUSY_PHASES.has(this.voice.phase)
     ) {

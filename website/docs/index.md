@@ -127,7 +127,7 @@ The Grok CLI, with sessions that keep running while Caffold restarts.
 <div class="cf-agent" markdown>
 ### Antigravity
 
-The official ACP agent, installed and signed in from Caffold Settings.
+The installed Antigravity CLI, using its saved sign-in through ACP.
 </div>
 
 </div>

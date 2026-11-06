@@ -98,13 +98,6 @@ export function getAntigravityStatus({
     { signal },
   );
 }
-export function installAntigravity() {
-  return requestJson<AntigravityStatus>(
-    "/api/antigravity/install",
-    {},
-    { method: "POST" },
-  );
-}
 export function refreshAntigravity() {
   return requestJson<AntigravityStatus>(
     "/api/antigravity/refresh",
@@ -119,34 +112,6 @@ export function restartAntigravityRuntime() {
     { method: "POST", timeoutMs: 180_000 },
   );
 }
-export function signInAntigravity() {
-  return requestJson<AntigravityStatus>(
-    "/api/antigravity/auth/login",
-    {},
-    { method: "POST" },
-  );
-}
-export function signOutAntigravity() {
-  return requestJson<AntigravityStatus>(
-    "/api/antigravity/auth/logout",
-    {},
-    { method: "POST" },
-  );
-}
-export function completeAntigravityAuth(requestId: string, url: string) {
-  return requestJson<AntigravityStatus>(
-    "/api/antigravity/auth/callback",
-    {},
-    { method: "POST", body: { requestId, url } },
-  );
-}
-export function cancelAntigravityAuth(requestId: string) {
-  return requestJson<AntigravityStatus>(
-    "/api/antigravity/auth/cancel",
-    {},
-    { method: "POST", body: { requestId } },
-  );
-}
 export interface AntigravityStatus {
   runtime: {
     restarting: boolean;
@@ -158,28 +123,19 @@ export interface AntigravityStatus {
     error: string | null;
   };
   installation: {
-    phase: "idle" | "downloading" | "verifying" | "extracting" | "publishing";
-    supported: boolean;
-    version: string;
+    ready: boolean;
+    version: string | null;
+    minimumVersion: string;
     installed: boolean | null;
     executable: string | null;
     error: string | null;
   };
   auth: {
-    phase:
-      | "idle"
-      | "starting"
-      | "awaitingCallback"
-      | "completing"
-      | "signingOut";
-    requestId: string | null;
-    authorizationUrl: string | null;
     verified: {
       authenticated: boolean;
       tier: { id: string; name: string } | null;
       verifiedAtMs: number;
     } | null;
-    error: string | null;
   };
   usage: {
     windows: Array<{
@@ -1872,7 +1828,6 @@ export interface TaskDetail {
     reason?: string;
     ownerTaskId?: string;
   } | null;
-  supportsSteering?: boolean;
   threadId?: string;
   task: Task | null;
   events?: TaskEvent[];

@@ -62,8 +62,8 @@ implemented outer lifecycle.
    native MCP integration. This remains model-followed behavior rather than a
    completion gate.
 8. Repository and worktree context is derived from the Task's current cwd.
-9. Every prompt uses the same agent. Steering is available only when that
-   agent supports it; Antigravity waits for its current request to finish.
+9. Every prompt uses the same agent. All four agents support steering.
+   Antigravity requires a pending permission to be answered or the turn stopped first.
    The Task cannot switch agents in place.
 10. Approvals, completion, interruption, and failures remain visible in the
    agent-owned conversation projected into Caffold.

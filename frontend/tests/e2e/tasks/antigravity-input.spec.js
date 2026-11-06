@@ -47,7 +47,6 @@ async function setup(page) {
     ...taskDetailFixture({ model: "gemini-3.8-flash", reasoningEffort: "low" }),
     provider: "antigravity",
     permissionMode: "default",
-    supportsSteering: false,
   };
   await page.route("**/api/tasks/thread-1", (route) =>
     route.fulfill({ json: detail }),
@@ -100,25 +99,29 @@ test("ordinary optimistic prompt and uploads stay visible before the request ret
   }
 });
 
-test("non-steering capability keeps Stop actionable while preserving the next draft", { tag: "@all-viewports" }, async ({ page }, info) => {
+test("running Antigravity accepts steering and keeps Stop available when the draft is empty", { tag: "@all-viewports" }, async ({ page }, info) => {
   const { detail, composer, prompt } = await setup(page);
   const running = { ...detail, task: taskDetailFixture({ running: true }).task, revision: 2, eventRevision: 2 };
-  let requests = 0, stops = 0;
-  await page.route("**/api/tasks/thread-1/prompts", route => { requests++; return route.fulfill({ json: {} }); });
+  const sent = [];
+  let stops = 0;
+  await routeTaskUploads(page);
+  await page.route("**/api/tasks/thread-1/prompts", route => {
+    sent.push(route.request().postDataJSON());
+    return route.fulfill({ json: { threadId: "thread-1", turnId: "acp:display:turn", userMessageId: "acp:display:turn:prompt:2", steered: true } });
+  });
   await page.route("**/api/tasks/thread-1/interrupt", route => { stops++; return route.fulfill({ json: {} }); });
   await page.evaluate(state => window.__caffoldTaskSse.source(state.threadId).emit("task-state", state), running);
-  await prompt.fill("My next draft");
-  await pasteImage(prompt);
   const primary = composer.locator(".task-primary-action-button");
   await expect(primary).toHaveAttribute("aria-label", "Stop current turn");
+  await prompt.fill("Include this in the running work");
+  await pasteImage(prompt);
+  await expect(primary).toHaveAttribute("aria-label", "Send prompt");
   await prompt.press("Enter");
-  await expect(prompt).toHaveValue("My next draft");
-  expect(requests).toBe(0);
+  await expect.poll(() => sent.length).toBe(1);
+  await expect(prompt).toHaveValue("");
+  await expect(composer.locator(".task-composer-attachment")).toHaveCount(0);
+  await expect(primary).toHaveAttribute("aria-label", "Stop current turn");
+  await captureReviewScreenshot(page, info, "antigravity-steering");
   await primary.click();
   await expect.poll(() => stops).toBe(1);
-  await captureReviewScreenshot(page, info, "antigravity-stop-draft");
-  await page.evaluate(state => window.__caffoldTaskSse.source(state.threadId).emit("task-state", state), { ...detail, revision: 3, eventRevision: 3 });
-  await expect(primary).toHaveAttribute("aria-label", "Send prompt");
-  await expect(prompt).toHaveValue("My next draft");
-  await expect(composer.locator(".task-composer-attachment")).toHaveCount(1);
 });

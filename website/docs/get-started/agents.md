@@ -5,8 +5,7 @@ models of every agent
 Caffold can reach.
 
 Caffold uses each agent's own sign-in. It never reads or stores your agent
-credentials. Codex, Claude Code, and Grok are installed separately;
-Antigravity ACP is installed from Caffold Settings.
+credentials. Install and sign in to each agent separately on the Mac.
 
 ## Codex
 
@@ -61,28 +60,19 @@ Caffold found, and the signed-in account.
 
 ## Antigravity
 
-Open **Settings → Antigravity** and choose **Install Antigravity**. Caffold
-installs the supported official ACP agent on the Mac; the separate `agy` CLI
-is not required and its sign-in is separate.
+Install [Antigravity CLI](https://antigravity.google/docs/cli/) `1.5.1` or newer.
+Caffold finds `agy` on its executable search path or at `~/.local/bin/agy`.
 
-1. Choose **Refresh** to check an existing ACP sign-in. If sign-in is needed,
-   choose **Sign in**.
-2. When **Continue with Google** appears, open it on the device you are using
-   and finish Google sign-in.
-3. Copy the complete final URL from the browser's address bar, even if its
-   localhost page cannot open. Paste it into **Google completion URL** in
-   Caffold and choose **Finish sign-in**.
-4. Choose **Refresh** to load the account quota and offer its models in New Task.
+1. Run `agy` in a terminal on the Mac running Caffold and finish the CLI's sign-in.
+2. Open **Settings → Antigravity** to check the installed version, account,
+   plan, quota and models. **Refresh** repeats the check.
+3. Choose an Antigravity model in New Task.
 
-The page shows the last verified sign-in and the plan Google reported. Leaving
-Settings does not cancel a sign-in in progress; **Cancel sign-in** does.
-**Sign out** stops this Caffold installation's Antigravity Tasks and clears the
-ACP sign-in shared with other local ACP clients.
+Caffold shares the CLI's saved sign-in. Manage that sign-in in the CLI.
 
-![Antigravity installation, verified Google plan, and model catalog](../assets/screenshots/settings-antigravity-desktop.png)
+![Antigravity CLI and observed Google account plan](../assets/screenshots/settings-antigravity-desktop.png)
 
-Antigravity accepts the next input after its current request finishes. You can
-keep editing the next draft while it works and use Stop; steering is not
-available.
+You can send more instructions while Antigravity works. Answer a pending
+permission, or stop the turn, before sending another prompt.
 
 Next, [run your first Task](first-task.md).

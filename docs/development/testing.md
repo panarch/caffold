@@ -78,7 +78,7 @@ one records where it runs from and what it needs:
 | `cargo test -p caffold-runner --test live -- --ignored` | repository root | authenticated Claude CLI | that Claude still returns an unanswered permission request to a client that reattaches, with model usage |
 | `cargo test -p caffold --test claude_live -- --ignored --test-threads=1` | repository root | authenticated Claude CLI | what a person sees when the backend is replaced or the runner is killed under a working Claude Task, that each permission decision does what it says, that the agent reaches the tool Caffold serves it, and that the installation reports its status, with model usage |
 | `cargo test -p caffold --lib -- agent::grok` | repository root | Rust test toolchain | the Grok driver against a scripted leader that answers as `grok 1.0.30` did: creation, turns, approvals, history, worktree moves, reconnection, and the Settings report, without an installed Grok |
-| `cargo test -p caffold --test antigravity_live -- --ignored --test-threads=1` | repository root | authenticated macOS arm64 ACP installation | official package, cached Google sign-in, native history, permissions and backend replacement; the prompt scenario consumes model usage |
+| `cargo test -p caffold --test antigravity_live cli_ -- --ignored --test-threads=1` | repository root | installed Antigravity CLI 1.5.1 or newer with saved sign-in | CLI discovery, shared authentication, native history, steering, permissions and backend replacement; prompt scenarios consume model usage |
 | `cargo test -p caffold --lib voice -- --ignored --list` | repository root | Rust test toolchain | discover the voice live checks; a transcription check needs a Whisper model file or a provider API key and a speech recording, and the Grok key check needs only internet access |
 | `node --test docs/tests/*.test.mjs` | repository root | Node | documentation index, links, entrypoints, and this command index |
 | `node --test scripts/tests/*.test.mjs` | repository root | Node | release version tooling |
@@ -396,31 +396,33 @@ installation does. Such a run starts Caffold's Grok leader on
 
 ## Antigravity compatibility and live tests
 
-The deterministic suite covers the pinned native record reader, ACP input and
-approval state, runner replay, and remote callback validation. Browser cases
+The deterministic suite covers native record fixtures, CLI discovery, ACP input
+and approval state, runner replay, model options and structured quota reports. Browser cases
 are `settings-antigravity.spec.js` and `tasks/antigravity-input.spec.js`.
 
-On an authenticated macOS arm64 host, build both shipped binaries before the
+On a Mac with the CLI installed and signed in, build both shipped binaries before the
 opt-in public HTTP checks:
 
 ```sh
 cargo build -p caffold -p caffold-runner
-cargo test -p caffold --test antigravity_live official_install_auth_catalog_and_empty_task_lifecycle -- --ignored --nocapture
-cargo test -p caffold --test antigravity_live native_prompt_permission_survives_display_reconstruction -- --ignored --nocapture
+cargo test -p caffold --test antigravity_live cli_ -- --ignored --nocapture --test-threads=1
 ```
 
-The first downloads and verifies the official pinned ACP release, uses cached
-personal Google authentication, reads model choices, and creates/archives/
-restores/deletes an empty Task without model prompts. It also replaces the
-AGY runner over HTTP, checks process isolation and preserved authentication, and
-reopens the same native conversation. The second spends one
-short prompt and checks native permissions, backend process replacement and
-exact-ID history, plus context retention across active and idle backend
-replacement. Neither signs out or copies credentials. Complete Google
-sign-in in Settings first; a missing cached sign-in cancels the test's job.
+The catalog scenario uses saved CLI authentication, reads model choices and
+zero-turn headless usage, and creates/archives/restores/deletes an empty Task.
+It replaces the AGY runner over HTTP, checks process isolation and preserved
+authentication, and reopens the same native conversation. Prompt scenarios use
+explicit Gemini Flash with low effort. They cover native permissions, multiple
+steering inputs, cancellation, bypass entry/exit and backend replacement against
+one exact native ID. Context is checked when the native session reports it;
+an absent observation remains unknown. A separate empty-HOME scenario checks
+the native authentication-required error without starting OAuth. The test
+launcher isolates native conversation files while the authenticated scenarios
+use the CLI's real HOME for saved sign-in. None signs out or copies credentials.
+Complete sign-in in the CLI before running them.
 Each test reports its temporary evidence directory and retains bindings on
 failure so cleanup can use exact native IDs. A passing deterministic suite does
-not establish these official package, account or native runtime boundaries.
+not establish these installed CLI, account or native runtime boundaries.
 
 ## Voice provider checks
 

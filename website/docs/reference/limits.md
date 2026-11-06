@@ -13,7 +13,7 @@ lists what is planned.
   [Continue with another agent](../tasks/worktrees.md#continue-with-another-agent)
   opens a separate Task at the same files. A feature one
   agent offers may not exist in another; forking supports Codex, Claude, and Grok; Antigravity is excluded.
-  Antigravity supports Stop and editable drafts during work, but no steering.
+  Antigravity requires a pending permission to be answered or the turn stopped before another prompt.
 - **No code editor, and one terminal per Task.** Ask the agent to change
   files, or edit them in the [terminal](../tasks/terminal.md). A terminal
   appears in place of the conversation, not beside it, and closes when Caffold

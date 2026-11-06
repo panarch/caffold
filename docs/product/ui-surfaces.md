@@ -359,10 +359,11 @@ identity hands it to the canonical conversation. A definitive rejection
 restores text, attachments and selected options for retry. An unknown outcome
 stays visibly unconfirmed and is not resent automatically.
 
-The Task's steering capability controls input during work. Antigravity keeps
-Stop available with an editable next draft and attachments, and permits the
-next prompt when the current request ends. A late response does not erase
-newer choices, text, files or focus.
+Every agent accepts steering during work through the common Composer. With an
+empty draft, its primary action stops the turn; with text or attachments, it
+sends into that turn. Readonly, transport, submission and stopping restrictions
+still apply. A native permission can reject an additional prompt until it is
+answered. A late response does not erase newer choices, text, files or focus.
 
 The follow-up model picker offers other agents for an available writable
 workspace. Browsing another agent shows a short explanation and a **Continue
@@ -651,8 +652,8 @@ Settings includes:
   as the leader confirms it, the leader on Caffold's socket with its own
   build, and the state of Caffold's connection, with a **Refresh** action;
   opening the page starts no leader, session, or turn;
-- Antigravity with official agent installation, explicit Google sign-in and
-  last verified plan, remote completion-URL handoff, cancellation/sign-out and
+- Antigravity with installed CLI path, version and readiness, CLI sign-in guidance,
+  last observed account and plan, and
   one refresh of account, quota and model choices on page entry or **Refresh**;
   entry observes an already running job without starting another, and status
   reads alone start no native job. **Runtime** shows the runner process and

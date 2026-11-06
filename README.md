@@ -99,7 +99,7 @@ running Caffold, and reachable for remote use.
 2. Follow the conversation and answer the agent's approval requests while it
    works.
 3. Read the result, command and test output, changed files, and actual diff.
-4. Type or dictate the next instruction, steer a supported active turn, or return later
+4. Type or dictate the next instruction, steer an active turn, or return later
    and continue the same Task.
 
 For longer turns, each browser can opt in to system notifications under
@@ -121,8 +121,8 @@ in to at least one supported agent:
 - Claude Code `2.1.259` or newer, available as `claude` on the app's `PATH`; or
 - the Grok CLI `1.0.30` or newer, available as `grok` on the app's `PATH` or
   at `~/.grok/bin/grok` or `~/.local/bin/grok`; or
-- Antigravity ACP, installed and signed in from **Settings → Antigravity**.
-  Its separate CLI is not required.
+- Antigravity CLI `1.5.1` or newer, available as `agy` on the app's `PATH`
+  or at `~/.local/bin/agy`, installed and signed in separately.
 
 Any of them may be installed, and Caffold will offer the models it can reach.
 [Set up your agents](website/docs/get-started/agents.md) in the user manual has
@@ -165,8 +165,7 @@ Agent support is built in rather than loaded as a runtime plugin. Caffold
 drives the four built-in agents, and each Task keeps its agent.
 [Continue with another agent](docs/product/workflows.md#continue-with-another-agent)
 opens a separate Task at the same files.
-Antigravity does not support steering: drafts remain editable during work,
-and Stop remains available.
+All four agents support steering while a turn runs.
 
 Its Git and GitHub views are deliberately review-oriented. Caffold does not
 provide a full editor, and it does not expose stage, commit, checkout, merge,

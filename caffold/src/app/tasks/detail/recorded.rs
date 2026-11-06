@@ -130,7 +130,6 @@ impl DetailContext {
         detail.workspace_access = Some(access);
         detail.task = Some(record);
         detail.sync_state = TaskSyncState::Ready;
-        detail.supports_steering = false;
         detail.history_loading = false;
         let (events, links) = self
             .file_links

@@ -147,7 +147,6 @@ pub(crate) enum RecoveryEvent {
         seq: u64,
         body: RecoveryOutput,
     },
-    Stderr(String),
     ProtocolFailure(String),
 }
 
@@ -820,7 +819,8 @@ impl Wire {
         let mut sessions = self.sessions.lock().expect("sessions lock");
         if let Some(SessionSink::Recovery(sender)) = sessions.get(&event.s) {
             let recovery_event = match recovery_event(event) {
-                Ok(event) => event,
+                Ok(Some(event)) => event,
+                Ok(None) => return,
                 Err(message) => RecoveryEvent::ProtocolFailure(message),
             };
             let _ = sender.send(recovery_event);
@@ -887,11 +887,12 @@ impl Wire {
     }
 }
 
-fn recovery_event(event: WireEvent) -> Result<RecoveryEvent, String> {
+fn recovery_event(event: WireEvent) -> Result<Option<RecoveryEvent>, String> {
     if event.t == EventKind::Stderr {
+        // Recovery clients consume protocol state, not native diagnostic text.
         return event
             .line
-            .map(RecoveryEvent::Stderr)
+            .map(|_| None)
             .ok_or_else(|| "recovery diagnostic has no line".to_string());
     }
     let incarnation = event
@@ -916,11 +917,11 @@ fn recovery_event(event: WireEvent) -> Result<RecoveryEvent, String> {
         ),
         EventKind::Stderr => unreachable!("handled above"),
     };
-    Ok(RecoveryEvent::Output {
+    Ok(Some(RecoveryEvent::Output {
         incarnation,
         seq,
         body,
-    })
+    }))
 }
 
 /// Where the runner executable is.

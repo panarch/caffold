@@ -1,4 +1,4 @@
-//! Consistent read-only snapshots of the pinned native SQLite trajectory.
+//! Consistent read-only snapshots of the CLI's native SQLite trajectory.
 //!
 //! Native primary keys order items; execution_id groups turns and executor
 //! metadata ends them. ACP request IDs and arrival order never enter this read.
@@ -590,7 +590,7 @@ pub(super) mod fixture {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::{ActivityStatus, TurnStatus};
+    use crate::agent::{ActivityStatus, ToolResultPart, TurnStatus};
     use fixture::{FixtureData, hex};
     use format::Payload;
     use std::{env, os::unix::fs::symlink};
@@ -625,6 +625,35 @@ mod tests {
             self.connection.as_ref().unwrap()
         }
     }
+    #[test]
+    fn cli_151_records_group_steering_and_keep_native_tool_results() {
+        let fixture = NativeFixture::new(include_str!("record/fixtures/cli-steering.json"));
+        let snapshot = fixture.records().read(fixture.session(), None, 8).unwrap();
+        assert_eq!(snapshot.page.turns.len(), 3);
+        let steered = &snapshot.page.turns[2];
+        assert_eq!(steered.id, "0035b6a0-e4d3-4b96-9018-3d4cb11bb9b4");
+        assert_eq!(steered.status, TurnStatus::Completed);
+        let prompts = steered
+            .items
+            .iter()
+            .filter_map(|item| match &item.kind {
+                ItemKind::UserMessage { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(prompts.len(), 3);
+        assert!(prompts[1].contains("STEER_ONE"));
+        assert!(prompts[2].contains("STEER_TWO"));
+        assert!(
+            steered
+                .items
+                .iter()
+                .any(|item| matches!(&item.kind, ItemKind::ToolCall(tool)
+            if tool.name.contains("checkpoint") && tool.result.iter().any(|part| matches!(part,
+                ToolResultPart::Text(text) if text == "Checkpoint released successfully."))))
+        );
+    }
+
     #[test]
     fn native_tools_cancel_and_usage_keep_their_execution_and_item_keys() {
         let fixture = NativeFixture::new(include_str!("record/fixtures/lifecycle.json"));

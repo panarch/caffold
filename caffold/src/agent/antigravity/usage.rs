@@ -1,7 +1,8 @@
-//! Quota windows reported by the pinned agent's model-free /usage command.
+//! Model-free quota query owned by the CLI's headless command.
 use super::AntigravityError;
-use chrono::NaiveDateTime;
-use serde::Serialize;
+use chrono::DateTime;
+use serde::{Deserialize, Serialize};
+use std::{path::Path, process::Stdio, time::Duration};
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub(super) struct UsageStatus {
@@ -25,6 +26,33 @@ enum Period {
     Weekly,
 }
 
+#[derive(Deserialize)]
+struct Report {
+    status: String,
+    num_turns: u64,
+    command: NativeCommand,
+}
+#[derive(Deserialize)]
+struct NativeCommand {
+    name: String,
+    data: Quota,
+}
+#[derive(Deserialize)]
+struct Quota {
+    groups: Vec<Group>,
+}
+#[derive(Deserialize)]
+struct Group {
+    name: String,
+    buckets: Vec<Bucket>,
+}
+#[derive(Deserialize)]
+struct Bucket {
+    window: String,
+    remaining_fraction: f64,
+    reset_time: String,
+}
+
 impl UsageStatus {
     pub(super) fn from_result(result: Result<Self, AntigravityError>) -> Self {
         result.unwrap_or_else(|error| Self {
@@ -33,62 +61,73 @@ impl UsageStatus {
         })
     }
 
-    pub(super) fn from_report(report: &str) -> Result<Self, AntigravityError> {
-        let (_, quota) = report
-            .split_once("### Quota Limits\n")
-            .ok_or_else(|| invalid("native /usage did not return its quota section"))?;
-        let mut group = "";
+    pub(super) async fn read(executable: &Path, cwd: &str) -> Result<Self, AntigravityError> {
+        let output = tokio::time::timeout(
+            Duration::from_secs(30),
+            tokio::process::Command::new(executable)
+                .args([
+                    "--print",
+                    "/usage",
+                    "--output-format",
+                    "json",
+                    "--print-timeout",
+                    "20s",
+                ])
+                .current_dir(cwd)
+                .stdin(Stdio::null())
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await
+        .map_err(|_| invalid("native usage read timed out"))?
+        .map_err(|error| AntigravityError::Unreachable(error.to_string()))?;
+        if !output.status.success() {
+            return Err(invalid(
+                "agy --print /usage failed; check CLI authentication and retry",
+            ));
+        }
+        Self::from_report(&output.stdout)
+    }
+
+    fn from_report(bytes: &[u8]) -> Result<Self, AntigravityError> {
+        let report: Report = serde_json::from_slice(bytes)
+            .map_err(|error| invalid(&format!("invalid native usage report: {error}")))?;
+        if report.status != "SUCCESS" || report.num_turns != 0 || report.command.name != "usage" {
+            return Err(invalid(
+                "native usage was not a successful model-free command",
+            ));
+        }
         let mut windows = Vec::new();
-        for line in quota.lines() {
-            if line.starts_with("### ") {
-                break;
+        for group in report.command.data.groups {
+            if group.name.is_empty() {
+                return Err(invalid("native quota group is empty"));
             }
-            if let Some(label) = line
-                .strip_prefix("- **")
-                .and_then(|line| line.strip_suffix("**"))
-            {
-                group = label;
-                continue;
-            }
-            let Some((label, value)) = line
-                .strip_prefix("  - **")
-                .and_then(|line| line.split_once(":** "))
-            else {
-                continue; // Group membership and plan prose are not quota windows.
-            };
-            let period = match label {
-                "Five Hour Limit Remaining" => Period::FiveHours,
-                "Weekly Limit Remaining" => Period::Weekly,
-                label if !group.is_empty() && label == format!("{group} Weekly Limit") => {
-                    Period::Weekly
+            for bucket in group.buckets {
+                let period = match bucket.window.as_str() {
+                    "5h" => Period::FiveHours,
+                    "weekly" => Period::Weekly,
+                    _ => continue,
+                };
+                if !bucket.remaining_fraction.is_finite()
+                    || !(0.0..=1.0).contains(&bucket.remaining_fraction)
+                {
+                    return Err(invalid("native quota remaining fraction is invalid"));
                 }
-                _ => continue,
-            };
-            let (remaining, reset) = value
-                .split_once("% remaining (resets ")
-                .ok_or_else(|| invalid("native quota window has an unsupported format"))?;
-            let remaining: f64 = remaining
-                .parse()
-                .map_err(|_| invalid("native quota percentage is invalid"))?;
-            if group.is_empty() || !remaining.is_finite() || !(0.0..=100.0).contains(&remaining) {
-                return Err(invalid("native quota group or percentage is invalid"));
+                let resets_at = DateTime::parse_from_rfc3339(&bucket.reset_time)
+                    .map_err(|_| invalid("native quota reset time is invalid"))?
+                    .to_rfc3339();
+                windows.push(UsageWindow {
+                    group: match group.name.as_str() {
+                        "Gemini Models" => "Gemini",
+                        "Claude and GPT models" => "Claude / GPT",
+                        other => other,
+                    }
+                    .into(),
+                    period,
+                    percent: (1.0 - bucket.remaining_fraction) * 100.0,
+                    resets_at,
+                });
             }
-            let reset = reset
-                .strip_suffix(')')
-                .ok_or_else(|| invalid("native quota reset time is invalid"))?;
-            let reset = NaiveDateTime::parse_from_str(reset, "%b %d, %Y, %H:%M UTC")
-                .map_err(|_| invalid("native quota reset time is invalid"))?;
-            windows.push(UsageWindow {
-                group: match group {
-                    "Gemini Models" => "Gemini",
-                    "Claude and GPT models" => "Claude / GPT",
-                    other => other,
-                }
-                .into(),
-                period,
-                percent: 100.0 - remaining,
-                resets_at: reset.and_utc().to_rfc3339(),
-            });
         }
         if windows.is_empty() {
             return Err(invalid("Antigravity did not report quota windows"));
@@ -99,7 +138,6 @@ impl UsageStatus {
         })
     }
 }
-
 fn invalid(message: &str) -> AntigravityError {
     AntigravityError::Protocol(message.into())
 }
@@ -107,44 +145,56 @@ fn invalid(message: &str) -> AntigravityError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::{Value, json};
 
-    #[test]
-    fn native_groups_windows_and_utc_resets_are_structured_without_report_prose() {
-        let report = "### Session Usage\n- no usage\n\n### Quota Limits\n- **Gemini Models**\n  - *(Models within this group: Gemini Flash, Gemini Pro)*\n  - **Weekly Limit Remaining:** 99% remaining (resets Nov 07, 2026, 08:50 UTC)\n  - **Five Hour Limit Remaining:** 98.5% remaining (resets Nov 01, 2026, 08:24 UTC)\n- **Claude and GPT models**\n  - **Weekly Limit Remaining:** 100% remaining (resets Nov 08, 2026, 05:30 UTC)\n- **Gemini 4 Argon**\n  - *(For paid Pro plans, Argon quota is separate.)*\n  - **Gemini 4 Argon Weekly Limit:** 99% remaining (resets Nov 07, 2026, 03:18 UTC)\n";
-        let usage = UsageStatus::from_report(report).unwrap();
-        assert_eq!(usage.windows.len(), 4);
-        assert_eq!(usage.windows[0].group, "Gemini");
-        assert_eq!(usage.windows[0].period, Period::Weekly);
-        assert_eq!(usage.windows[0].percent, 1.0);
-        assert_eq!(usage.windows[0].resets_at, "2026-11-07T08:50:00+00:00");
-        assert_eq!(usage.windows[1].period, Period::FiveHours);
-        assert_eq!(usage.windows[1].percent, 1.5);
-        assert_eq!(usage.windows[2].group, "Claude / GPT");
-        assert_eq!(usage.windows[2].percent, 0.0);
-        assert_eq!(usage.windows[3].group, "Gemini 4 Argon");
+    fn report() -> Value {
+        json!({"status":"SUCCESS","num_turns":0,"command":{"name":"usage","data":{"groups":[
+            {"name":"Gemini Models","buckets":[
+                {"window":"weekly","remaining_fraction":0.75,"reset_time":"2026-11-07T08:50:32Z"},
+                {"window":"5h","remaining_fraction":1.0,"reset_time":"2026-11-06T09:33:37Z"}
+            ]}
+        ]}}})
     }
 
     #[test]
-    fn missing_or_invalid_quota_is_unavailable_never_zero_usage() {
-        for value in [
-            "101% remaining (resets Nov 07, 2026, 08:50 UTC)",
-            "NaN% remaining (resets Nov 07, 2026, 08:50 UTC)",
-            "99% remaining (resets unknown)",
-            "unavailable",
+    fn native_structured_quota_is_used_without_parsing_display_text() {
+        let usage = UsageStatus::from_report(&serde_json::to_vec(&report()).unwrap()).unwrap();
+        assert_eq!(usage.windows.len(), 2);
+        assert_eq!(usage.windows[0].group, "Gemini");
+        assert_eq!(usage.windows[0].period, Period::Weekly);
+        assert_eq!(usage.windows[0].percent, 25.0);
+        assert_eq!(usage.windows[0].resets_at, "2026-11-07T08:50:32+00:00");
+        assert_eq!(usage.windows[1].period, Period::FiveHours);
+        assert_eq!(usage.windows[1].percent, 0.0);
+    }
+
+    #[test]
+    fn model_answers_missing_quota_and_invalid_native_values_are_unavailable() {
+        for (pointer, value) in [
+            ("/num_turns", json!(1)),
+            ("/status", json!("ERROR")),
+            ("/command/name", json!("prompt")),
+            ("/command/data/groups", json!([])),
+            (
+                "/command/data/groups/0/buckets/0/remaining_fraction",
+                json!(1.1),
+            ),
+            (
+                "/command/data/groups/0/buckets/0/reset_time",
+                json!("unknown"),
+            ),
         ] {
-            let report = format!(
-                "### Quota Limits\n- **Gemini Models**\n  - **Weekly Limit Remaining:** {value}\n"
-            );
-            let status = UsageStatus::from_result(UsageStatus::from_report(&report));
-            assert!(status.windows.is_empty());
-            assert!(status.error.is_some());
+            let mut report = report();
+            *report.pointer_mut(pointer).unwrap() = value;
+            let status = UsageStatus::from_result(UsageStatus::from_report(
+                &serde_json::to_vec(&report).unwrap(),
+            ));
+            assert!(status.windows.is_empty(), "{pointer}");
+            assert!(status.error.is_some(), "{pointer}");
         }
-        for report in [
-            "unexpected",
-            "### Quota Limits\n- data not available yet",
-            "### Quota Limits\n- **Gemini Models**\n  - **Unknown Limit:** 99%",
-        ] {
-            assert!(UsageStatus::from_report(report).is_err());
-        }
+        assert!(matches!(
+            UsageStatus::from_report(b"model response"),
+            Err(AntigravityError::Protocol(_))
+        ));
     }
 }

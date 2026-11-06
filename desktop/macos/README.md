@@ -72,7 +72,8 @@ documents backup, shutdown, health verification, and rollback behavior.
     augmented `PATH`; or
   - the Grok CLI `1.0.30` or newer, available as `grok` on that `PATH` or at
     `~/.grok/bin/grok` or `~/.local/bin/grok`; or
-  - Antigravity ACP, installed and signed in through **Settings → Antigravity**
+  - Antigravity CLI `1.5.1` or newer, available as `agy` on that `PATH` or at
+    `~/.local/bin/agy`, with sign-in completed in the CLI
 - Git
 - GitHub CLI for GitHub views
 - Tailscale for private remote access

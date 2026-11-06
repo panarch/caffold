@@ -50,6 +50,8 @@ such a mode.
 
 - The next turn always runs under the mode the Composer shows.
 - In a Codex, Claude Code, or Antigravity Task you can change the mode between turns.
+- Antigravity's **Bypass permissions** skips native permission prompts.
+  Entering or leaving it restarts the idle CLI session and resumes the same conversation.
 - A Grok Task fixes its mode when its conversation starts. Its Composer shows
   the mode but cannot change it; start a new Task to use another mode.
 

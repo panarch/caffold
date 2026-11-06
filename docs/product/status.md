@@ -30,9 +30,9 @@ boundaries.
 - native Grok CLI integration, through a leader process Caffold starts for
   itself that holds sessions and running turns across backend replacement,
   with worktree moves carried out by forking the session;
-- native Antigravity ACP integration with Settings installation, Google sign-in,
+- native Antigravity CLI integration through ACP, shared CLI sign-in,
   account model discovery, and runner recovery across backend replacement;
-- shared prompts, supported active-turn steering, interruption, command and permission
+- shared prompts, active-turn steering, interruption, command and permission
   approvals, file and image attachments, model/effort/permission choices, and
   voice input in the Conversation surface;
 - an optional provider-neutral Markdown current plan in each Task working
@@ -76,8 +76,8 @@ boundaries.
 
 - Codex, Claude Code, Grok, and Antigravity are the complete built-in agent set. Caffold
   has no runtime agent plugin registry. Antigravity is a fixed ACP integration.
-- Antigravity supports follow-up input between requests and interruption, with
-  editable drafts during work; it does not offer steering.
+- Antigravity requires a pending native permission to be answered or the turn
+  stopped before it accepts another prompt.
 - A Task belongs to one agent. It cannot switch agents in place.
 - The agents do not share one synthetic runtime. Codex owns its app-server
   threads; Claude owns its transcript and CLI behavior; Grok's leader owns its
@@ -123,7 +123,7 @@ The current product supports these flows:
 
 1. Start a Task from Global New or a managed Section's fixed directory, choose
    an available Codex, Claude, Grok, or Antigravity model, and see live repository/worktree context.
-2. Continue, steer where supported, interrupt, and approve real work through the selected
+2. Continue, steer, interrupt, and approve real work through the selected
    agent's native runtime without changing the Task's agent.
 3. Reconnect the Caffold backend to an active Codex daemon thread, a
    runner-held Claude session, a leader-held Grok session, or a runner-held

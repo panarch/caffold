@@ -59,7 +59,6 @@ unicode-segmentation = "1.13.3"
 uuid = { version = "1.23.4", features = ["v4", "v7"] }
 url = "2.5.8"
 web-push-native = { version = "0.5.0", default-features = false, features = ["vapid"] }
-zip = { version = "=8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 whisper-rs = { version = "0.16.0", features = ["tracing_backend"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

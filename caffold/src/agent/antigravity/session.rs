@@ -21,8 +21,8 @@ use super::{
     record::{Records, Snapshot},
 };
 use crate::agent::{
-    ApprovalDecision, ApprovalOutcome, ApprovalRequest, MessageContent, SessionEvent,
-    SessionEventKind, ThreadActiveFlag, ThreadStatus, Turn, TurnPage,
+    ApprovalDecision, ApprovalOutcome, ApprovalRequest, ConversationItem, MessageContent,
+    SessionEvent, SessionEventKind, ThreadActiveFlag, ThreadStatus, Turn, TurnPage,
     http_mcp::CAFFOLD_MCP_BINDING_HEADER,
     runner::{
         RecoveryEvent, RecoveryEvents, RecoveryFrames, RecoveryOutput, RunnerClient, RunnerError,
@@ -83,7 +83,6 @@ struct State {
     failure: Option<AntigravityError>,
     retired: bool,
     live: Option<Live>,
-    report: Option<String>,
 }
 
 impl Session {
@@ -93,6 +92,7 @@ impl Session {
         mcp_binding: String,
         spawn: SpawnRequest,
         environment: Arc<Environment>,
+        bypass: bool,
     ) -> Result<Arc<Self>, AntigravityError> {
         let attached = environment
             .runner
@@ -102,7 +102,7 @@ impl Session {
         let snapshot = attached.snapshot;
         let starting = snapshot.session.spawned && snapshot.checkpoint.is_empty();
         let mut checkpoint = if snapshot.checkpoint.is_empty() {
-            Checkpoint::new(task_id.clone(), mcp_binding, binding)
+            Checkpoint::new(task_id.clone(), mcp_binding, binding, bypass)
         } else {
             let checkpoint: Checkpoint =
                 serde_json::from_str(&snapshot.checkpoint).map_err(|e| {
@@ -113,9 +113,7 @@ impl Session {
         };
         // A reservation persisted by an earlier configuration request is not a
         // prompt enqueue. Only the runner's atomic accepted checkpoint is one.
-        if !checkpoint.input.was_accepted()
-            && let Some(id) = checkpoint.input.rpc()
-        {
+        for id in checkpoint.input.unaccepted() {
             checkpoint.input.finish(id);
             checkpoint.pending.remove(&id);
         }
@@ -143,7 +141,6 @@ impl Session {
                 failure: None,
                 retired: false,
                 live: None,
-                report: None,
             }),
             outbound: Mutex::new(()),
             changed: Notify::new(),
@@ -177,14 +174,6 @@ impl Session {
         if !self.state.lock().await.checkpoint.initialized {
             self.rpc(Purpose::Initialize, "initialize", protocol::initialize())
                 .await?;
-        }
-        if !self.state.lock().await.checkpoint.authenticated {
-            self.rpc(
-                Purpose::Authenticate,
-                "authenticate",
-                json!({"methodId":"oauth-personal"}),
-            )
-            .await?;
         }
         let binding = self.state.lock().await.checkpoint.binding.clone();
         if !self.state.lock().await.checkpoint.loaded {
@@ -246,16 +235,9 @@ impl Session {
         }
         let mut state = self.state.lock().await;
         state.phase.transition(ConnectionEvent::Prepared)?;
-        self.environment
-            .authentication
-            .observe(
-                state
-                    .checkpoint
-                    .account
-                    .clone()
-                    .unwrap_or_else(Verified::recovered),
-            )
-            .await;
+        if let Some(account) = state.checkpoint.account.clone() {
+            self.environment.authentication.observe(account).await;
+        }
         self.publish_input(&mut state);
         Ok(())
     }
@@ -378,7 +360,7 @@ impl Session {
                 None => state.checkpoint.next_id()?,
             };
             if let Some(id) = reserved
-                && state.checkpoint.input.rpc() != Some(id)
+                && !state.checkpoint.input.contains(id)
             {
                 return Err(AntigravityError::Protocol(
                     "input reservation no longer belongs to this request".into(),
@@ -487,8 +469,8 @@ impl Session {
     pub(super) async fn release_reservation(&self, id: u64) {
         let mut state = self.state.lock().await;
         if state.phase == Phase::Ready
-            && state.checkpoint.input.rpc() == Some(id)
-            && !state.checkpoint.input.was_accepted()
+            && state.checkpoint.input.contains(id)
+            && !state.checkpoint.input.accepted_rpc(id)
         {
             state.checkpoint.input.finish(id);
             self.publish_input(&mut state);
@@ -526,6 +508,11 @@ impl Session {
                     live
                 })
                 .begin(text, display_content);
+            state
+                .live
+                .as_mut()
+                .expect("prompt display owner")
+                .track_prompt(id, &turn.items[0].id);
             (native_id, turn)
         };
         let sent = self
@@ -552,22 +539,82 @@ impl Session {
         Ok(turn)
     }
 
-    pub(super) async fn usage(&self) -> Result<String, AntigravityError> {
-        let id = self.reserve().await?;
-        self.state.lock().await.report = Some(String::new());
-        let native = self.binding().await?.native_id;
-        let reply = self
+    pub(super) async fn steer(
+        &self,
+        expected: &str,
+        content: Value,
+        text: &str,
+        display: Vec<MessageContent>,
+    ) -> Result<ConversationItem, AntigravityError> {
+        let (id, native, item) = {
+            let mut state = self.state.lock().await;
+            if state.phase != Phase::Ready {
+                return Err(AntigravityError::Unreachable(
+                    "connection is not ready".into(),
+                ));
+            }
+            if state.live.as_ref().and_then(Live::active_turn) != Some(expected) {
+                return Err(AntigravityError::InputGone);
+            }
+            if !state.checkpoint.approvals.is_empty() {
+                return Err(AntigravityError::InputRejected("Answer the pending permission or question, or stop the turn before sending another prompt".into()));
+            }
+            let native = state
+                .checkpoint
+                .binding
+                .as_ref()
+                .ok_or_else(|| AntigravityError::Protocol("missing native session".into()))?
+                .native_id
+                .clone();
+            let id = state.checkpoint.next_id()?;
+            state.checkpoint.input.steer(id)?;
+            let item = state
+                .live
+                .as_mut()
+                .ok_or(AntigravityError::InputGone)?
+                .steer(id, text, display)?;
+            (id, native, item)
+        };
+        match self
             .request(
                 Purpose::Prompt,
                 "session/prompt",
-                json!({"sessionId":native,"prompt":[{"type":"text","text":"/usage"}]}),
+                json!({"sessionId":native,"prompt":content}),
                 Some(id),
             )
-            .await?;
-        tokio::time::timeout(Duration::from_secs(30), Self::answer(reply))
             .await
-            .map_err(|_| AntigravityError::Unreachable("native usage read timed out".into()))??;
-        Ok(self.state.lock().await.report.take().unwrap_or_default())
+        {
+            Ok(reply) => {
+                // Order acceptance against native rejection so a late receipt
+                // cannot overwrite the failed item published by the reader.
+                let state = self.state.lock().await;
+                if let Some(Err(error)) = reply.borrow().clone() {
+                    return Err(error);
+                }
+                self.publish(vec![SessionEventKind::ItemChanged {
+                    turn_id: expected.into(),
+                    item: item.clone(),
+                    at_ms: item.observed_at_ms.unwrap_or(0),
+                }]);
+                drop(state);
+                let _ = self.cancel_if_due().await;
+                Ok(item)
+            }
+            Err(error) => {
+                if !matches!(error, AntigravityError::DispatchUnknown(_)) {
+                    let mut state = self.state.lock().await;
+                    if let Some(live) = &mut state.live {
+                        live.reject_steering(id);
+                    }
+                    if state.checkpoint.input.operation(state.phase) == InputOperation::Idle
+                        && let Some(live) = &mut state.live
+                    {
+                        self.publish(live.finish(&Err(error.clone())));
+                    }
+                }
+                Err(error)
+            }
+        }
     }
 
     pub(super) async fn live_page(
@@ -689,6 +736,9 @@ impl Session {
     pub(super) async fn observation(&self) -> InputObservation {
         self.state.lock().await.observation.clone()
     }
+    pub(super) async fn bypass(&self) -> bool {
+        self.state.lock().await.checkpoint.bypass
+    }
     pub(super) async fn reviewed(&self) -> bool {
         self.state.lock().await.checkpoint.reviewed
     }
@@ -715,8 +765,19 @@ impl Session {
     }
 
     pub(super) async fn close(&self) -> Result<(), AntigravityError> {
+        self.close_inner(false).await
+    }
+
+    pub(super) async fn close_idle(&self) -> Result<(), AntigravityError> {
+        self.close_inner(true).await
+    }
+
+    async fn close_inner(&self, idle: bool) -> Result<(), AntigravityError> {
         {
             let mut state = self.state.lock().await;
+            if idle && state.checkpoint.input.operation(state.phase) != InputOperation::Idle {
+                return Err(AntigravityError::InputBusy);
+            }
             if state.phase == Phase::Absent {
                 return Ok(());
             }
@@ -833,6 +894,9 @@ impl Session {
                 "native session closed".into(),
             ))));
         }
+        state.replies.clear();
+        state.checkpoint.pending.clear();
+        state.checkpoint.input = state::Input::Idle;
     }
 }
 
@@ -906,11 +970,7 @@ mod tests {
             let (events, _) = broadcast::channel(256);
             fs::create_dir(directory.path().join("records")).unwrap();
             let environment = Arc::new(Environment {
-                authentication: Authentication::new(
-                    directory.path().into(),
-                    directory.path().join("native"),
-                    RunnerClient::at_socket(socket.clone()),
-                ),
+                authentication: Authentication::default(),
                 runner: RunnerClient::at_socket(socket),
                 bindings: Bindings::new(directory.path().join("bindings")),
                 records: Records::new(directory.path().join("records")),
@@ -954,6 +1014,7 @@ mod tests {
                 new_binding_value(),
                 self.spawn.clone(),
                 self.environment.clone(),
+                false,
             )
             .await
             .unwrap();
@@ -1234,6 +1295,7 @@ mod tests {
                         new_binding_value(),
                         harness.spawn.clone(),
                         harness.environment.clone(),
+                        false,
                     )
                     .await
                     .unwrap();
@@ -1245,9 +1307,9 @@ mod tests {
                     let status =
                         serde_json::to_value(harness.environment.authentication.status().await)
                             .unwrap();
-                    assert_eq!(status["phase"], "idle");
-                    assert!(status["requestId"].is_null());
-                    assert!(status["authorizationUrl"].is_null());
+                    assert!(status.get("phase").is_none());
+                    assert!(status.get("requestId").is_none());
+                    assert!(status.get("authorizationUrl").is_none());
                     if behavior == "auth-required" {
                         assert_eq!(status["verified"]["authenticated"], false);
                     } else {
@@ -1260,13 +1322,112 @@ mod tests {
                         !harness
                             .calls()
                             .iter()
-                            .any(|frame| frame["method"] == "session/new")
+                            .any(|frame| frame["method"] == "authenticate")
                     );
                     session.close().await.unwrap();
                     harness.stop().await;
                 }
             })
             .await;
+    }
+
+    #[tokio::test]
+    async fn an_idle_only_close_cannot_terminate_pending_input_or_change_launch_permissions() {
+        LocalSet::new()
+            .run_until(async {
+                let harness = Harness::start("gated").await;
+                let session = Session::attach(
+                    harness.task.clone(),
+                    None,
+                    new_binding_value(),
+                    harness.spawn.clone(),
+                    harness.environment.clone(),
+                    true,
+                )
+                .await
+                .unwrap();
+                session.prepare(&harness.spawn.cwd, true).await.unwrap();
+                let id = session.reserve().await.unwrap();
+                session
+                    .test_prompt(id, json!([{"type":"text","text":"first"}]))
+                    .await
+                    .unwrap();
+                assert!(matches!(
+                    session.close_idle().await,
+                    Err(AntigravityError::InputBusy)
+                ));
+                assert!(session.bypass().await);
+                assert_eq!(
+                    session.observation().await.operation,
+                    InputOperation::Pending
+                );
+                fs::write(harness.directory.path().join("finish"), "go").unwrap();
+                finished(&session).await;
+                let reattached = restored(&harness, &session).await;
+                assert!(
+                    reattached.bypass().await,
+                    "the same child keeps its actual launch flag"
+                );
+                reattached.close_idle().await.unwrap();
+                harness.stop().await;
+            })
+            .await;
+    }
+
+    #[tokio::test]
+    async fn steering_keeps_the_turn_running_after_earlier_prompt_responses() {
+        LocalSet::new().run_until(async {
+            let harness = Harness::start("steering").await;
+            let mut events = harness.environment.events.subscribe();
+            let session = harness.open().await;
+            let id = session.reserve().await.unwrap();
+            session.test_prompt(id, json!([{"type":"text","text":"first"}])).await.unwrap();
+            let turn = session.live_page(None, 8).await.unwrap().unwrap().turns[0].id.clone();
+            for text in ["second", "third"] {
+                session.steer(&turn, json!([{"type":"text","text":text}]), text,
+                    vec![MessageContent::Text { text: text.into() }]).await.unwrap();
+            }
+            assert_eq!(session.observation().await.operation, InputOperation::Pending);
+            let page = session.live_page(None, 8).await.unwrap().unwrap();
+            assert_eq!(page.turns[0].status, TurnStatus::InProgress);
+            assert_eq!(page.turns[0].items.iter().filter(|item| matches!(item.kind, crate::agent::ItemKind::UserMessage { .. })).count(), 3);
+            while let Ok(event) = events.try_recv() {
+                assert!(!matches!(event, AntigravityRuntimeEvent::Session(event) if matches!(event.kind, SessionEventKind::TurnEnded { .. })));
+            }
+            fs::write(harness.directory.path().join("finish"), "go").unwrap();
+            finished(&session).await;
+            assert_eq!(session.live_page(None, 8).await.unwrap().unwrap().turns[0].status, TurnStatus::Completed);
+            assert!(matches!(session.steer(&turn, json!([]), "late", vec![]).await, Err(AntigravityError::InputGone)));
+            assert_eq!(harness.calls().iter().filter(|frame| frame["method"] == "session/prompt").count(), 3);
+            session.close().await.unwrap();
+            harness.stop().await;
+        }).await;
+    }
+
+    #[tokio::test]
+    async fn a_native_steering_rejection_does_not_end_the_original_request() {
+        LocalSet::new().run_until(async {
+            let harness = Harness::start("steering-rejected").await;
+            let session = harness.open().await;
+            let id = session.reserve().await.unwrap();
+            session.test_prompt(id, json!([{"type":"text","text":"first"}])).await.unwrap();
+            let turn = session.live_page(None, 8).await.unwrap().unwrap().turns[0].id.clone();
+            let result = session.steer(&turn, json!([{"type":"text","text":"second"}]), "second", vec![]).await;
+            if let Err(error) = result { assert!(matches!(error, AntigravityError::Rpc { code: -32603, .. })); }
+            tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    let page = session.live_page(None, 8).await.unwrap().unwrap();
+                    if page.turns[0].items.iter().any(|item| matches!(&item.kind, crate::agent::ItemKind::Failure { text } if text.contains("permission or question"))) { break; }
+                    tokio::task::yield_now().await;
+                }
+            }).await.unwrap();
+            assert_eq!(session.observation().await.operation, InputOperation::Pending);
+            fs::write(harness.directory.path().join("finish"), "go").unwrap();
+            finished(&session).await;
+            assert_eq!(session.live_page(None, 8).await.unwrap().unwrap().turns[0].status, TurnStatus::Completed);
+            session.close().await.unwrap();
+            harness.stop().await;
+        }).await;
     }
 
     #[tokio::test]
@@ -1366,7 +1527,6 @@ mod tests {
                 );
                 for method in [
                     "initialize",
-                    "authenticate",
                     "session/new",
                     "session/prompt",
                     "session/cancel",

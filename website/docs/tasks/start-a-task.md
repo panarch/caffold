@@ -28,7 +28,7 @@ agent, for example `Rename this task to Dark theme`.
 ## Attach files
 
 Every Composer takes files: New Task, a Task's next prompt, and a prompt you
-send into a running turn that supports steering. Attach up to ten files of up
+send into a running turn. Attach up to ten files of up
 to 5 GB each:
 
 - choose **Attach files**, the paper clip, and pick them;

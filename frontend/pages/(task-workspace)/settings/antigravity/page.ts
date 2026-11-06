@@ -1,6 +1,5 @@
 import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
-import { live } from "lit/directives/live.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -9,14 +8,9 @@ import {
 } from "#app/action-hints.js";
 import {
   type AntigravityStatus,
-  cancelAntigravityAuth,
-  completeAntigravityAuth,
   getAntigravityStatus,
-  installAntigravity,
   refreshAntigravity,
   restartAntigravityRuntime,
-  signInAntigravity,
-  signOutAntigravity,
 } from "#app/api.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
@@ -40,7 +34,6 @@ export class CaffoldSettingsAntigravityPage extends CaffoldElement {
   @state() private accessor status: AntigravityStatus | null = null;
   @state() private accessor error = "";
   @state() private accessor loading = false;
-  @state() private accessor callback = "";
   @state() private accessor restartMessage = "";
   private readonly runtime = new DrawnRef<CaffoldSettingsRuntime>(this);
   private readonly refreshButton = new DrawnRef<CaffoldSettingsRefreshButton>(
@@ -70,10 +63,9 @@ export class CaffoldSettingsAntigravityPage extends CaffoldElement {
     this.reading = null;
     this.clearPoll();
     this.loading = false;
-    this.callback = "";
     this.restartMessage = "";
     this.runtime.value?.close();
-    // The native job survives browser navigation, including the Google tab.
+    // An accepted refresh or restart survives browser navigation.
   }
   override disconnectedCallback() {
     super.disconnectedCallback();
@@ -109,9 +101,7 @@ export class CaffoldSettingsAntigravityPage extends CaffoldElement {
     if (
       refreshOnEntry &&
       read === this.readGeneration &&
-      status?.installation.installed === true &&
-      status.installation.phase === "idle" &&
-      status.auth.phase === "idle" &&
+      status?.installation.ready === true &&
       !status.refreshing &&
       !status.runtime.restarting
     ) {
@@ -126,21 +116,19 @@ export class CaffoldSettingsAntigravityPage extends CaffoldElement {
     const verified = auth?.verified;
     const installed = installation?.installed === true;
     const request = this.control === "requesting";
-    const installBusy = installation?.phase !== "idle";
-    const authBusy = auth?.phase !== "idle";
     const locked =
       request || !status || status.refreshing || status.runtime.restarting;
     return html`<div class="settings-content-scroll" ${drawn(this.scrollport)} ${this.surfaces.surface({ id: "scroll", clipRoots: () => [this, this.scrollport.value] })}>
       <div class="settings-content-section">
         <header>
           <div>
-            <p>Run Antigravity Tasks with Google's official ACP agent.</p>
+            <p>Run Antigravity Tasks with the installed Antigravity CLI.</p>
             <a class="settings-service-status"
               ${this.hints.link({ id: "service-status", action: ACTION_HINT_ACTION.LINK_OPEN })}
               href="https://aistudio.google.com/status" target="_blank" rel="noreferrer">Service status</a>
           </div>
           <caffold-settings-refresh-button ${drawn(this.refreshButton)}
-            .refreshing=${this.loading || request || status?.refreshing === true} .disabled=${request || status?.refreshing === true || status?.runtime.restarting === true || (status !== null && (installBusy || authBusy))}
+            .refreshing=${this.loading || request || status?.refreshing === true} .disabled=${request || status?.refreshing === true || status?.runtime.restarting === true}
             @caffold:settings-refresh-intent=${() => this.run(refreshAntigravity)}
           ></caffold-settings-refresh-button>
         </header>
@@ -149,22 +137,20 @@ export class CaffoldSettingsAntigravityPage extends CaffoldElement {
           <caffold-settings-detail-list .rows=${this.usageRows()}></caffold-settings-detail-list>
           <p class="problem" role="status" ?hidden=${!status?.usage?.error}>${status?.usage?.error}</p>
         </section>
-        <section aria-labelledby="agy-install-title"><h3 id="agy-install-title">Agent</h3>
+        <section aria-labelledby="agy-install-title"><h3 id="agy-install-title">CLI</h3>
           <caffold-settings-detail-list .rows=${[
             { key: "version", label: "Version", value: installation?.version },
             {
               key: "installation",
               label: "Installation",
               value: installation
-                ? installation.phase !== "idle"
-                  ? phaseLabel(installation.phase)
-                  : installation.installed === null
-                    ? "Unavailable"
+                ? installation.installed === null
+                  ? "Unavailable"
+                  : installation.ready
+                    ? "Ready"
                     : installed
-                      ? "Installed"
-                      : installation.supported
-                        ? "Not installed"
-                        : "Requires macOS on Apple silicon"
+                      ? "Update required"
+                      : "Not installed"
                 : undefined,
             },
             {
@@ -175,7 +161,7 @@ export class CaffoldSettingsAntigravityPage extends CaffoldElement {
             },
           ]}></caffold-settings-detail-list>
           <p class="problem" ?hidden=${!installation?.error}>${installation?.error}</p>
-          <div class="actions">${!installed && installation?.supported ? this.button("install", "Install Antigravity", locked || installBusy, () => this.run(installAntigravity)) : nothing}</div>
+          ${installation && !installation.ready ? html`<p>Install Antigravity CLI ${installation.minimumVersion} or newer and make <code>agy</code> available on PATH. Refresh after installation or update.</p>` : nothing}
         </section>
         <section aria-labelledby="agy-account-title"><h3 id="agy-account-title">Google account</h3>
           <caffold-settings-detail-list .rows=${[
@@ -183,13 +169,11 @@ export class CaffoldSettingsAntigravityPage extends CaffoldElement {
               key: "auth",
               label: "Authentication",
               value: auth
-                ? auth.phase !== "idle"
-                  ? phaseLabel(auth.phase)
-                  : verified
-                    ? verified.authenticated
-                      ? "Signed in"
-                      : "Signed out"
-                    : "Not checked"
+                ? verified
+                  ? verified.authenticated
+                    ? "Signed in"
+                    : "Sign in with CLI"
+                  : "Not checked"
                 : undefined,
             },
             {
@@ -202,35 +186,7 @@ export class CaffoldSettingsAntigravityPage extends CaffoldElement {
                 : undefined,
             },
           ]}></caffold-settings-detail-list>
-          <p>Uses Antigravity ACP's Google sign-in on this server, separately from the CLI.</p>
-          <div class="actions">
-            ${!verified?.authenticated ? this.button("sign-in", "Sign in", locked || !installed || installBusy || authBusy, () => this.run(signInAntigravity)) : nothing}
-            ${verified?.authenticated ? this.button("sign-out", "Sign out", locked || !installed || authBusy, () => this.run(signOutAntigravity)) : nothing}
-            ${auth?.requestId && authBusy ? this.button("cancel-auth", "Cancel sign-in", request || auth.phase === "signingOut", () => this.run(() => cancelAntigravityAuth(auth.requestId as string))) : nothing}
-          </div>
-          ${
-            auth?.phase === "awaitingCallback" && auth.authorizationUrl
-              ? html`
-            <div class="handoff">
-              <a ${this.hints.link({ id: "google-sign-in", action: ACTION_HINT_ACTION.LINK_OPEN })} href=${auth.authorizationUrl} target="_blank" rel="noreferrer">Continue with Google</a>
-              <p>After Google finishes, copy the complete URL from the browser's address bar, even if the localhost page cannot open. Paste it here to finish signing in on this server.</p>
-              <label for="agy-callback">Google completion URL</label>
-              <input ${this.hints.textbox({ id: "callback", label: "Google completion URL", action: ACTION_HINT_ACTION.CONTROL_TEXTBOX_FOCUS })} id="agy-callback" type="password" autocomplete="off" spellcheck="false" .value=${live(this.callback)} ?disabled=${request} @input=${(
-                event: Event,
-              ) => {
-                this.callback = (event.target as HTMLInputElement).value;
-              }} @keydown=${(event: KeyboardEvent) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  void this.finishAuth();
-                }
-              }}>
-              <div class="actions">${this.button("complete-auth", "Finish sign-in", request || !this.callback.trim(), () => this.finishAuth())}</div>
-            </div>`
-              : nothing
-          }
-          <p class="problem" role="status" ?hidden=${!auth?.error}>${auth?.error}</p>
-          <p>Signing out stops Antigravity Tasks on this server and clears the ACP sign-in shared with other local ACP clients.</p>
+          <p>Uses the CLI's saved authentication. Run <code>agy</code> in a terminal on this server to sign in, then refresh.</p>
         </section>
         <section aria-labelledby="agy-model-title"><h3 id="agy-model-title">Models</h3>
           <caffold-settings-detail-list .rows=${[{ key: "models", label: "Catalog", value: status ? (status.refreshing ? "Refreshing…" : status.modelsError ? "Unavailable" : status.modelsAvailable ? "Available" : "Not yet loaded") : undefined }]}></caffold-settings-detail-list>
@@ -239,7 +195,7 @@ export class CaffoldSettingsAntigravityPage extends CaffoldElement {
         <section aria-label="Runtime">
           <caffold-settings-runtime ${drawn(this.runtime)} .agentName=${"Antigravity"}
             .description=${"Restarting stops the runner and every Antigravity session it holds. Conversations resume from their files as their Tasks are opened."}
-            .rows=${this.runtimeRows()} .disabled=${locked || installBusy || authBusy}
+            .rows=${this.runtimeRows()} .disabled=${locked}
             .restarting=${status?.runtime.restarting === true || (request && this.requestAction === restartAntigravityRuntime)}
             .message=${this.restartMessage}
             @caffold:runtime-restart-confirmed=${() => this.run(restartAntigravityRuntime, "Antigravity runner restarted.")}
@@ -346,14 +302,6 @@ export class CaffoldSettingsAntigravityPage extends CaffoldElement {
     }));
   }
 
-  private button(
-    id: string,
-    label: string,
-    disabled: boolean,
-    action: () => unknown,
-  ) {
-    return html`<button ${this.hints.button({ id, label, action: ACTION_HINT_ACTION.BUTTON_ACTIVATE })} type="button" data-action=${id} ?disabled=${disabled} @click=${action}>${label}</button>`;
-  }
   private transition(intent: Intent) {
     const next: Partial<Record<Control, Partial<Record<Intent, Control>>>> = {
       inactive: { activate: "ready" },
@@ -393,19 +341,7 @@ export class CaffoldSettingsAntigravityPage extends CaffoldElement {
       }
     }
   }
-  private finishAuth() {
-    const id = this.status?.auth.requestId;
-    const url = this.callback.trim();
-    if (!id || !url || this.control !== "ready") return;
-    this.callback = "";
-    return this.run(() => completeAntigravityAuth(id, url));
-  }
   private accept(status: AntigravityStatus) {
-    if (
-      status.auth.requestId !== this.status?.auth.requestId ||
-      status.auth.phase !== "awaitingCallback"
-    )
-      this.callback = "";
     this.status = status;
   }
   private schedulePoll() {
@@ -417,12 +353,7 @@ export class CaffoldSettingsAntigravityPage extends CaffoldElement {
       document.visibilityState === "hidden"
     )
       return;
-    if (
-      status.installation.phase !== "idle" ||
-      status.auth.phase !== "idle" ||
-      status.refreshing ||
-      status.runtime.restarting
-    )
+    if (status.refreshing || status.runtime.restarting)
       this.poll = setTimeout(() => {
         void this.reconcile();
       }, 1000);
@@ -447,22 +378,6 @@ function usageWindowValue(
   return `${percent} · resets ${reset}`;
 }
 
-function phaseLabel(phase: string) {
-  return (
-    (
-      {
-        downloading: "Downloading…",
-        verifying: "Verifying…",
-        extracting: "Extracting…",
-        publishing: "Installing…",
-        starting: "Starting sign-in…",
-        awaitingCallback: "Waiting for Google…",
-        completing: "Finishing sign-in…",
-        signingOut: "Signing out…",
-      } as Record<string, string>
-    )[phase] ?? phase
-  );
-}
 function message(error: unknown) {
   return error instanceof Error
     ? error.message

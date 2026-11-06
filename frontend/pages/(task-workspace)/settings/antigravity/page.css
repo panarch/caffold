@@ -51,61 +51,15 @@ header p {
   margin: 0;
   font-size: var(--settings-page-description-size);
 }
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--interface-space-3);
-  margin-top: var(--interface-space-4);
-}
-button {
-  flex: 0 0 auto;
-  width: fit-content;
-  max-width: 100%;
-  min-height: var(--interface-control-hit-size);
-  padding: var(--interface-space-2) var(--interface-space-4);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--settings-small-text-size);
-  overflow-wrap: anywhere;
-  cursor: pointer;
-}
-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-button:focus-visible,
-input:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
-}
-.handoff {
-  display: grid;
-  gap: var(--interface-space-3);
-  min-width: 0;
-  margin-top: var(--interface-space-6);
 }
 a {
   color: var(--text);
   width: fit-content;
   max-width: 100%;
   overflow-wrap: anywhere;
-}
-input {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  padding: var(--interface-space-3);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--settings-small-text-size);
 }
 .problem {
   color: var(--danger);

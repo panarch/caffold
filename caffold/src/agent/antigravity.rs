@@ -1,4 +1,4 @@
-//! Google's pinned Antigravity ACP harness and its native conversation record.
+//! Antigravity CLI's ACP connection and its native conversation record.
 //!
 //! ACP owns requests, permissions and settings; the native SQLite trajectory
 //! owns persisted history. Fresh prompts use disposable driver-owned display
@@ -22,12 +22,12 @@ use super::history::RecordedPage;
 use super::http_mcp::{TaskMcpBindings, new_binding_value};
 use super::runner::RunnerClient;
 use super::{
-    ApprovalDecision, ApprovalOutcome, ApprovalRequest, Conversation, ItemKind, MessageContent,
-    SessionEvent, ThreadStatus, TokenCount, Turn, TurnPage, TurnState, TurnStatus,
+    ApprovalDecision, ApprovalOutcome, ApprovalRequest, Conversation, ConversationItem, ItemKind,
+    MessageContent, SessionEvent, ThreadStatus, TokenCount, Turn, TurnPage, TurnState, TurnStatus,
 };
 use authentication::{AuthStatus, Authentication};
 use binding::{Binding, Bindings};
-use installation::{InstallationStatus, Installer};
+use installation::{Cli, InstallationStatus};
 use notify::RecommendedWatcher;
 use record::Records;
 use runtime::RuntimeStatus;
@@ -66,7 +66,6 @@ pub(crate) struct AntigravityClient {
 
 struct Inner {
     data: PathBuf,
-    native_home: PathBuf,
     runner: RunnerClient,
     bindings: Bindings,
     records: Records,
@@ -79,7 +78,7 @@ struct Inner {
     runtime_gate: RwLock<()>,
     usage: Mutex<UsageStatus>,
     catalog_error: Mutex<Option<String>>,
-    installer: Installer,
+    cli: Cli,
     authentication: Authentication,
 }
 #[derive(Default)]
@@ -102,7 +101,7 @@ impl Drop for RecordWatcher {
 impl AntigravityClient {
     pub(crate) async fn introspect(&self) -> AntigravityStatus {
         AntigravityStatus {
-            installation: self.inner.installer.status().await,
+            installation: self.inner.cli.status().await,
             auth: self.inner.authentication.status().await,
             usage: self.inner.usage.lock().await.clone(),
             refreshing: self.inner.refresh_job.try_lock().is_err(),
@@ -111,52 +110,16 @@ impl AntigravityClient {
             models_error: self.inner.catalog_error.lock().await.clone(),
         }
     }
-    pub(crate) async fn install(&self) -> Result<(), AntigravityError> {
-        self.inner.installer.start().await
-    }
-    pub(crate) async fn sign_in(&self) -> Result<(), AntigravityError> {
-        let _runtime = self.runtime_access()?;
-        let _refresh = self.inner.refresh_job.try_lock().map_err(|_| {
-            AntigravityError::Protocol("wait for the Settings refresh to finish".into())
-        })?;
-        self.inner.authentication.start(false).await
-    }
-    pub(crate) async fn sign_out(&self) -> Result<(), AntigravityError> {
-        let _runtime = self.runtime_access()?;
-        let _refresh = self.inner.refresh_job.try_lock().map_err(|_| {
-            AntigravityError::Protocol("wait for the Settings refresh to finish".into())
-        })?;
-        self.inner.authentication.start(true).await
-    }
-    pub(crate) async fn complete_auth(&self, id: Uuid, url: &str) -> Result<(), AntigravityError> {
-        self.inner.authentication.callback(id, url).await
-    }
-    pub(crate) async fn cancel_auth(&self, id: Uuid) -> Result<(), AntigravityError> {
-        self.inner.authentication.cancel(Some(id)).await
-    }
     #[cfg(test)]
     pub(crate) fn uninstalled() -> Self {
         let root = env::temp_dir().join(format!("caffold-agy-test-{}", Uuid::new_v4()));
         Self::at_paths(&root, root.join("native-home"))
     }
     pub(crate) fn in_data_dir(data: &Path) -> Self {
-        let native_home = match env::var_os("GEMINI_HOME") {
-            Some(value) => {
-                let path = PathBuf::from(value);
-                if let Ok(suffix) = path.strip_prefix("~") {
-                    env::var_os("HOME")
-                        .map(PathBuf::from)
-                        .unwrap_or_else(|| data.into())
-                        .join(suffix)
-                } else {
-                    path
-                }
-            }
-            None => env::var_os("HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| data.into())
-                .join(".gemini"),
-        };
+        let native_home = env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| data.into())
+            .join(".gemini");
         Self::at_paths(data, native_home)
     }
     fn at_paths(data: &Path, native_home: PathBuf) -> Self {
@@ -168,13 +131,17 @@ impl AntigravityClient {
             Err(error) => (None, Some(error.to_string())),
         };
         let runner = RunnerClient::at_socket(data.join("runner.sock"));
-        let installer = Installer::new(data.clone());
-        let authentication = Authentication::new(data.clone(), native_home.clone(), runner.clone());
+        #[cfg(not(test))]
+        let cli = Cli::default();
+        #[cfg(test)]
+        let cli = Cli {
+            executable: Some(native_home.join("bin/agy")),
+        };
+        let authentication = Authentication::default();
         Self {
             inner: Arc::new(Inner {
                 runner,
-                records: Records::new(native_home.join("antigravity-acp/conversations")),
-                native_home,
+                records: Records::new(native_home.join("antigravity-cli/conversations")),
                 data,
                 bindings,
                 events,
@@ -186,7 +153,7 @@ impl AntigravityClient {
                 runtime_gate: RwLock::new(()),
                 usage: Mutex::new(UsageStatus::default()),
                 catalog_error: Mutex::new(catalog_error),
-                installer,
+                cli,
                 authentication,
             }),
         }
@@ -241,7 +208,6 @@ impl AntigravityClient {
     }
     /// Backend shutdown releases observation only. The runner owns its children.
     pub(crate) async fn stop(&self) {
-        let _ = self.inner.authentication.cancel(None).await;
         for slot in self.inner.sessions.lock().await.values() {
             let mut slot = slot.lock().await;
             slot.watcher.take();
@@ -280,7 +246,7 @@ impl AntigravityClient {
         cwd: Option<&str>,
         first: bool,
     ) -> Result<Arc<Session>, AntigravityError> {
-        self.open_for(task, cwd, first, true).await
+        self.open_for(task, cwd, first, true, false).await
     }
 
     async fn open_for(
@@ -289,11 +255,9 @@ impl AntigravityClient {
         cwd: Option<&str>,
         first: bool,
         observe: bool,
+        bypass: bool,
     ) -> Result<Arc<Session>, AntigravityError> {
         let _runtime = self.runtime_access()?;
-        if observe {
-            self.inner.authentication.allow_work().await?;
-        }
         let slot = self.slot(task).await?;
         let mut slot = slot.lock().await;
         if let Some(session) = &slot.session {
@@ -316,6 +280,10 @@ impl AntigravityClient {
             Err(error) => return Err(error),
         };
         let reconstructed = binding.is_some();
+        if reconstructed {
+            // Never ask the CLI to recreate a missing legacy conversation.
+            self.read_snapshot(task, None, 1).await?;
+        }
         let cwd = cwd
             .map(str::to_string)
             .or_else(|| binding.as_ref().map(|binding| binding.cwd.clone()))
@@ -361,17 +329,19 @@ impl AntigravityClient {
                 mcp_endpoint: String::new(),
             })
         };
-        let executable = installation::executable(&self.inner.data)?;
+        let executable = self.inner.cli.executable().await?;
+        let mut argv = vec![
+            executable.display().to_string(),
+            "acp".into(),
+            "--process-per-session".into(),
+        ];
+        if bypass {
+            argv.push("--dangerously-skip-permissions".into());
+        }
         let spawn = caffold_runner::protocol::SpawnRequest {
-            argv: vec![executable.display().to_string()],
+            argv,
             cwd: cwd.clone(),
-            env: BTreeMap::from([
-                ("BROWSER".into(), "/usr/bin/true".into()),
-                (
-                    "GEMINI_HOME".into(),
-                    self.inner.native_home.display().to_string(),
-                ),
-            ]),
+            env: BTreeMap::new(),
         };
         let session = match Session::attach(
             task.into(),
@@ -379,6 +349,7 @@ impl AntigravityClient {
             token.clone(),
             spawn.clone(),
             environment.clone(),
+            bypass,
         )
         .await
         {
@@ -394,7 +365,7 @@ impl AntigravityClient {
                     Err(AntigravityError::ConversationGone(_)) if first => None,
                     Err(error) => return Err(error),
                 };
-                Session::attach(task.into(), binding, token, spawn, environment).await?
+                Session::attach(task.into(), binding, token, spawn, environment, bypass).await?
             }
             Err(error) => return Err(error),
         };
@@ -443,7 +414,15 @@ impl AntigravityClient {
     ) -> Result<StartedConversation, AntigravityError> {
         let task = Uuid::new_v4().to_string();
         let result = async {
-            let session = self.open(&task, Some(cwd), true).await?;
+            let session = self
+                .open_for(
+                    &task,
+                    Some(cwd),
+                    true,
+                    true,
+                    options.permission_mode.as_deref() == Some(settings::BYPASS),
+                )
+                .await?;
             let applied = self.apply_options(&session, options).await?;
             let conversation = self.read_conversation(&task, ThreadStatus::Idle).await?;
             Ok(StartedConversation {
@@ -498,6 +477,18 @@ impl AntigravityClient {
                 self.move_directory(task, cwd).await?;
                 session = self.open(task, None, false).await?;
             }
+            if let Some(mode) = &options.permission_mode {
+                let bypass = mode == settings::BYPASS;
+                if session.bypass().await != bypass {
+                    self.close_session(task, true).await?;
+                    session = self.open_for(task, None, false, true, bypass).await?;
+                    if session.bypass().await != bypass {
+                        return Err(AntigravityError::Protocol(
+                            "native permission launch did not change".into(),
+                        ));
+                    }
+                }
+            }
             let baseline = self.read_snapshot(task, None, 8).await?;
             Ok::<_, AntigravityError>((session, baseline))
         }
@@ -540,6 +531,33 @@ impl AntigravityClient {
                 Err(input_rejected(error))
             }
         }
+    }
+
+    pub(crate) async fn steer_turn(
+        &self,
+        task: &str,
+        turn: &str,
+        text: &str,
+        images: &[PromptImage],
+    ) -> Result<ConversationItem, AntigravityError> {
+        let session = self.open(task, None, false).await?;
+        let mut content = Vec::new();
+        let mut display = Vec::new();
+        if !text.is_empty() {
+            content.push(json!({"type":"text","text":text}));
+            display.push(MessageContent::Text { text: text.into() });
+        }
+        use base64::Engine as _;
+        for image in images {
+            let bytes = tokio::fs::read(&image.path).await.map_err(|error| {
+                AntigravityError::InputRejected(format!("could not read prompt image: {error}"))
+            })?;
+            content.push(json!({"type":"image","mimeType":image.media_type,"data":base64::engine::general_purpose::STANDARD.encode(bytes)}));
+            display.push(MessageContent::LocalImage {
+                path: image.path.clone(),
+            });
+        }
+        session.steer(turn, json!(content), text, display).await
     }
 
     pub(crate) async fn interrupt(&self, task: &str) -> Result<(), AntigravityError> {
@@ -677,11 +695,19 @@ impl AntigravityClient {
     }
 
     pub(crate) async fn close_conversation(&self, task: &str) -> Result<(), AntigravityError> {
+        self.close_session(task, false).await
+    }
+
+    async fn close_session(&self, task: &str, idle: bool) -> Result<(), AntigravityError> {
         let _runtime = self.runtime_access()?;
         let slot = self.slot(task).await?;
         let mut slot = slot.lock().await;
         if let Some(session) = &slot.session {
-            session.close().await?;
+            if idle {
+                session.close_idle().await?;
+            } else {
+                session.close().await?;
+            }
             session.retire().await;
         } else {
             self.inner
@@ -929,14 +955,12 @@ pub(crate) enum AntigravityRuntimeEvent {
 pub(crate) enum AntigravityError {
     #[error("Antigravity did not accept this input: {0}")]
     InputRejected(String),
-    #[error("Install Antigravity in Settings before using it")]
+    #[error("Install Antigravity CLI 1.5.1 or newer and make agy available on PATH")]
     NotInstalled,
     #[error("Antigravity installation error: {0}")]
     Installation(String),
-    #[error("Sign in to Antigravity in Settings")]
+    #[error("Run agy in a terminal and sign in, then refresh Antigravity Settings")]
     SignInRequired,
-    #[error("Antigravity authentication error: {0}")]
-    Authentication(String),
     #[error("Antigravity is unavailable: {0}")]
     Unreachable(String),
     #[error("Antigravity process ended: {0}")]
@@ -949,8 +973,10 @@ pub(crate) enum AntigravityError {
     ConversationGone(String),
     #[error("Antigravity RPC {code}: {message}")]
     Rpc { code: i64, message: String },
-    #[error("Antigravity already has an unresolved input request")]
+    #[error("Antigravity cannot accept this input while starting or stopping")]
     InputBusy,
+    #[error("The Antigravity turn has ended")]
+    InputGone,
     #[error("Antigravity input acceptance is unknown: {0}")]
     DispatchUnknown(String),
     #[error("Antigravity binding error: {0}")]
@@ -962,6 +988,7 @@ impl From<AntigravityError> for AgentError {
         match error {
             AntigravityError::InputRejected(message) => Self::Failed(message),
             AntigravityError::ConversationGone(message) => Self::ConversationGone(message),
+            AntigravityError::InputGone => Self::TurnGone("The Antigravity turn has ended".into()),
             AntigravityError::InputBusy => {
                 Self::TurnRunning("Antigravity already has an unresolved input request".into())
             }
@@ -975,7 +1002,12 @@ impl From<AntigravityError> for AgentError {
 }
 
 fn input_rejected(error: AntigravityError) -> AntigravityError {
-    AntigravityError::InputRejected(error.to_string())
+    match error {
+        AntigravityError::InputBusy
+        | AntigravityError::InputGone
+        | AntigravityError::DispatchUnknown(_) => error,
+        other => AntigravityError::InputRejected(other.to_string()),
+    }
 }
 
 #[cfg(test)]
@@ -988,7 +1020,7 @@ mod tests {
     async fn recorded_history_reads_bundled_sqlite_without_a_runner_or_installed_harness() {
         let data = tempfile::tempdir().unwrap();
         let home = tempfile::tempdir().unwrap();
-        let records = home.path().join("antigravity-acp/conversations");
+        let records = home.path().join("antigravity-cli/conversations");
         fs::create_dir_all(&records).unwrap();
         let fixture =
             record::fixture::parse(include_str!("antigravity/record/fixtures/single-turn.json"));
@@ -1031,6 +1063,35 @@ mod tests {
         );
         assert_eq!(before, fs::read(path).unwrap());
         assert!(client.read_recorded_history("missing", None).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn a_missing_cli_record_does_not_recreate_or_move_a_legacy_conversation() {
+        let data = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let legacy = home.path().join("antigravity-acp/conversations");
+        fs::create_dir_all(&legacy).unwrap();
+        let native = Uuid::new_v4().to_string();
+        let record = legacy.join(format!("{native}.db"));
+        fs::write(&record, b"untouched legacy record").unwrap();
+        let client = AntigravityClient::at_paths(data.path(), home.path().to_path_buf());
+        let task = Uuid::new_v4().to_string();
+        let binding = Binding {
+            version: 1,
+            task_id: task.clone(),
+            native_id: native.clone(),
+            cwd: data.path().display().to_string(),
+            mcp_binding: new_binding_value(),
+        };
+        client.inner.bindings.write(&binding).unwrap();
+        assert!(matches!(
+            client.open(&task, None, false).await,
+            Err(AntigravityError::ConversationGone(_))
+        ));
+        assert_eq!(client.binding(&task).await.unwrap().native_id, native);
+        assert_eq!(fs::read(record).unwrap(), b"untouched legacy record");
+        assert!(!home.path().join("antigravity-cli").exists());
+        assert!(!client.inner.data.join("runner.sock").exists());
     }
 
     #[tokio::test]

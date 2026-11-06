@@ -59,11 +59,6 @@ impl TaskSessions {
         })?;
 
         if matches!(thread.status, ThreadStatus::Active { .. }) {
-            if !driver.supports_steering() {
-                return Err(AgentError::TurnRunning(
-                    "This agent does not support input while it is working".into(),
-                ));
-            }
             let turn_id = if let Some(turn_id) = current.active_turn_id {
                 turn_id
             } else {
@@ -166,6 +161,11 @@ impl TaskSessions {
         }
         if options.permission_mode.is_some() {
             state.permission_mode = options.permission_mode;
+        }
+        // Effort belongs to the selected model. A different model without an
+        // effort choice must not inherit the previous model's value.
+        if options.model.is_some() && options.model != state.model {
+            state.reasoning_effort = None;
         }
         if options.model.is_some() {
             state.model = options.model;
@@ -270,6 +270,43 @@ impl TaskSessions {
 mod tests {
     use super::*;
     use crate::app::tasks::sessions::test_support::*;
+
+    #[tokio::test]
+    async fn an_applied_model_change_clears_effort_while_unspecified_options_keep_it() {
+        for model in [None, Some("fixed-depth-model")] {
+            let sessions = TaskSessions::default();
+            let entry = sessions.entry("thread-1").await;
+            {
+                let mut state = entry.state.lock().await;
+                state.generation = 1;
+                state.model = Some("thinking-model".into());
+                state.reasoning_effort = Some("high".into());
+            }
+            sessions
+                .record_turn_started(
+                    1,
+                    "thread-1",
+                    None,
+                    "next",
+                    turn("turn-1", TurnStatus::InProgress),
+                    TurnOptions {
+                        model: model.map(str::to_owned),
+                        ..TurnOptions::default()
+                    },
+                )
+                .await
+                .unwrap();
+            let state = sessions.snapshot("thread-1").await.unwrap();
+            assert_eq!(
+                state.model.as_deref(),
+                Some(model.unwrap_or("thinking-model"))
+            );
+            assert_eq!(
+                state.reasoning_effort.as_deref(),
+                if model.is_some() { None } else { Some("high") }
+            );
+        }
+    }
 
     #[tokio::test]
     async fn accepted_steering_retains_the_runtime_after_its_request_ends() {
