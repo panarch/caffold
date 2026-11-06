@@ -70,10 +70,13 @@ test("Notifications lists every subscribed browser", { tag: "@desktop" }, async 
   await captureReviewScreenshot(page, testInfo, "settings-notifications");
 });
 
-test("Antigravity Settings shows its official installation and verified Google sign-in",{tag:"@desktop"},async({page},testInfo)=>{
+test("Antigravity Settings shows the installed CLI and shared account",{tag:"@desktop"},async({page},testInfo)=>{
   await installManualAntigravity(page);
   await page.goto("/settings/antigravity");
   const owner=page.locator("caffold-settings-antigravity-page");
+  await expect(owner).toContainText("1.5.1");
+  await expect(owner).toContainText("/Users/alex/.local/bin/agy");
+  await expect(owner.getByRole("button",{name:"Sign in",exact:true})).toHaveCount(0);
   await expect(owner).toContainText("Google AI Pro");
   await expect(owner).toContainText("Signed in");
   await expect(owner.getByRole("button",{name:"Refresh",exact:true})).toBeEnabled();

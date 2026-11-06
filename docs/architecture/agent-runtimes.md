@@ -170,7 +170,7 @@ retains the binding for retry. None of these paths deletes a Git branch.
 
 | Boundary | Codex | Claude Code | Grok | Antigravity |
 | --- | --- | --- | --- | --- |
-| Native surface | Experimental v2 app-server protocol | CLI stream-json plus bidirectional control protocol | Leader socket with stdio agent bridges speaking JSON-RPC in ACP's shape plus `_x.ai` extensions | Official pinned ACP 1.4.5 |
+| Native surface | Experimental v2 app-server protocol | CLI stream-json plus bidirectional control protocol | Leader socket with stdio agent bridges speaking JSON-RPC in ACP's shape plus `_x.ai` extensions | Installed Antigravity CLI 1.5.1 or newer, through ACP |
 | Long-lived process | User-global app-server daemon | One Caffold runner per data directory, with one `claude` child per live session | One `grok agent leader` Caffold starts on its own socket and leaves running | Dedicated Caffold runner, one ACP child per Task |
 | Caffold transport | Disposable proxy child and JSON-RPC/WebSocket connection | Unix-socket runner connection carrying raw newline-delimited frames to child stdio | One `grok agent … stdio` bridge child per backend, multiplexing every Grok session | Opaque recoverable stdio over Unix socket |
 | Conversation history | App-server thread and paged turns | Claude-owned JSONL transcript read tolerantly by Caffold | Leader-owned session record, read in turn windows | Read-only native SQLite trajectory |
@@ -180,7 +180,7 @@ retains the binding for retry. None of these paths deletes a Git branch.
 | Session instruction carrier | Caffold MCP `initialize` result `instructions` | Initialize `appendSystemPrompt` on fresh and resumed sessions | `_meta.rules` on a new session and the MCP `initialize` instructions on every load | Native system prompt append on new/load |
 | Prompt pictures | A `localImage` input naming the uploaded file, which Codex opens | A base64 image block the driver reads from the uploaded file | An ACP image block the driver reads from the uploaded file | ACP image bytes from validated upload |
 | Context usage | `thread/tokenUsage/updated`: the last model request's `totalTokens` against `modelContextWindow`, on every request and again when a thread is resumed | `get_context_usage` after every assistant message the agent streams outside a subagent, after every result, and when an existing conversation's session is opened: the last response's input, cached or not, against `maxTokens`, as Claude's own status line counts it | `_x.ai/session/info`: `context.used` against `context.total`, or the model list's window, on every load and after every turn | Native `usage_update`: `used` against `size`, including load and replay; last report restored for the same ACP child |
-| Readiness | Typed, blocking installation and app-server readiness | Diagnostic status; an attempted operation reports its own failure | Diagnostic status; an attempted operation reports its own failure | Explicit installation/auth/catalog in Settings |
+| Readiness | Typed, blocking installation and app-server readiness | Diagnostic status; an attempted operation reports its own failure | Diagnostic status; an attempted operation reports its own failure | Installed CLI readiness, account and catalog observations in Settings |
 | Idle release | A thread subscription may be dropped when no viewer, request, or runtime lease remains | The session stays attached; detaching and immediately reattaching is not a free operation | The session stays loaded on the bridge; the leader is not asked to unload | Keeps the native child; observer can detach |
 
 The table describes ownership, not a feature score. Every driver supports the
@@ -413,11 +413,12 @@ listening.
 
 ## Antigravity lifecycle
 
-Caffold installs official Antigravity ACP 1.4.5 for macOS arm64 after verifying
-its pinned archive checksum. The separate `agy` CLI is not part of this path.
-The driver initializes as Caffold, authenticates with `oauth-personal`, and
-uses native new/load/config/prompt/cancel methods. Settings status and model
-menu reads do not install, authenticate, or create native sessions.
+Caffold discovers the installed `agy` CLI on PATH or at `~/.local/bin/agy`,
+requires version 1.5.1 or newer, and checks the ACP initialization version and
+protocol. It launches `agy acp --process-per-session`, which supports the
+Task-bound HTTP MCP server. It uses the CLI's saved authentication and native
+new/load/config/prompt/cancel methods. Settings status and model menu reads
+do not install software, authenticate, or create native sessions.
 
 A dedicated `caffold-runner` instance manages one ACP child per Task. It uses
 the runner's opaque checkpoint and bounded output journal, including unacked
@@ -428,20 +429,24 @@ automatically resent after an unknown enqueue result. Runner replacement loses
 this memory and ends its children; reopening uses the retained native record.
 The Settings runtime report reads that instance's socket without starting it,
 distinguishing a missing listener from a failed inspection. Explicit restart
-excludes session open/close and Settings refresh, rejects an active authentication
-job, closes held sessions and pending approvals through the driver's normal close
+excludes session open/close and Settings refresh, closes held sessions and pending
+approvals through the driver's normal close
 boundary, and starts the installed runner binary. The driver discards its old
 observers and display views and publishes native history. Google credentials,
 bindings and native files remain. The accepted HTTP operation completes even if
 the browser leaves; other providers' runner instances are independent.
 
 The driver binding stores only Task UUID, native session UUID, cwd and the
-Task-bound HTTP MCP header. `GEMINI_HOME` selects the native home, defaulting to
-`~/.gemini`. Persisted history comes from
-`antigravity-acp/conversations/<uuid>.db` through a read-only bundled SQLite
-transaction. Its pinned protobuf reader uses native execution IDs for turns
+Task-bound HTTP MCP header. Production leaves the CLI's storage defaults alone.
+Persisted history comes from `~/.gemini/antigravity-cli/conversations/<uuid>.db`
+through a read-only bundled SQLite transaction. Its reviewed protobuf reader,
+covered by native fixtures including CLI 1.5.1, uses native execution IDs for turns
 and trajectory UUID plus native step index for items, with separate thought
 and message facets. Pagination covers whole turns.
+Old standalone ACP data is neither migrated nor deleted. A Task whose exact
+native record is absent is unavailable; opening it never creates a substitute
+conversation. After upgrading this integration, use the existing runtime restart
+to end children from the old executable and discard their incompatible checkpoints.
 
 Fresh prompts return ordinary `StartedTurn` identities from a driver-owned
 in-memory display conversation. ACP chunks, exact tool-call updates, permission
@@ -473,24 +478,39 @@ ordinary context event. A fresh child inherits no context observation; absent
 reports and unknown windows stay unknown. No timer or synthetic prompt queries
 context, and cumulative token cost does not supply a context estimate.
 
-The private Idle/Pending/Stopping slot tracks the outgoing RPC while connection
-phases separately control availability. Stop can precede SDK startup; the
-pinned server's early-cancel limitation makes the driver wait for an actual
-SDK thought/tool update or permission callback before enqueuing cancel. Only
-the prompt result releases the slot. The driver does not support steering or
-infer background work. Workspace helper skills created by the native harness
+The private Idle/Pending/Stopping input state tracks all pending prompt RPCs;
+connection phases separately control availability. An active prompt accepts
+steering through another `session/prompt` in the same native session. An earlier
+RPC response settles only that request; the last response releases input.
+Pending native permissions reject steering, including a permission that arrives
+after Caffold checks admission. Caffold adds no queue or automatic resend.
+Stop can precede SDK startup; CLI 1.5.1's observed early-cancel limitation makes
+the driver wait for a native thought/tool update or permission callback before
+enqueuing cancel. Workspace helper skills created by the native harness
 remain ordinary files for Git review and archive checks.
 
-Model, thinking level and permission choices come from native config options.
+Model, optional `thought_level`, and ordinary permission choices come from
+native config options. Models without thought options expose no effort picker
+and do not inherit the previous model's cached effort.
+Changing the model precedes reading or applying that model's options. The old
+catalog version is invalidated; legacy mode and effort values are not translated.
+The explicit dangerous `bypassPermissions` choice launches the CLI with
+`--dangerously-skip-permissions`. Entering or leaving bypass closes an idle child
+and loads the same native UUID with the new argv. Ordinary modes use native
+config; **Ask Jev first** uses `default` without the bypass flag. The actual
+launch flag stays in the same child's control checkpoint because native mode
+still reports `default` under bypass.
 A Settings entry or explicit Refresh opens one muted temporary session, reads
-account authentication, the native `/usage` quota report and model-specific
+account authentication and model-specific
 choices without model prompts, then closes its writer and deletes its exact
-files and binding. The backend owns this job across browser navigation and
-excludes concurrent refresh or authentication actions. The AGY driver parses
-quota groups, periods, percentages used and UTC reset times; the browser only
+files and binding. The same refresh runs `agy --print /usage --output-format json`
+for the structured quota report with zero model turns; `/usage` sent as an ACP
+prompt would consume model usage. The backend owns this job across browser
+navigation and excludes concurrent refresh and runtime restart. The driver reads
+quota groups, periods, remaining fractions and UTC reset times; the browser only
 formats these values in its ordinary detail list. Entry first reads status and
-starts one refresh only when installation is complete and no installation,
-authentication, refresh or runtime restart is running. Observing an existing job does not
+starts one refresh only when the CLI is ready and no refresh or runtime restart
+is running. Observing an existing job does not
 start another refresh. Between turns, a changed cwd closes and loads the same
 native UUID in the destination before accepting input; it does not fork.
 Session instructions use `_meta.antigravity.systemPrompt.append` on new/load,
@@ -498,18 +518,13 @@ with the first-Task naming instruction only on creation. The native structured
 question tool is disabled; an unexpected reserved question request receives an
 unsupported-method error directing normal chat, never a fabricated user answer.
 
-Google sign-in runs in a separate authentication-only child. The official
-credential store owns secrets. The Settings handoff exposes the original Google
-URL and accepts only that job's exact loopback callback and state once. It does
-not copy CLI tokens or keep an application credential vault. Successful Task
-authentication and same-child recovery report normalized account observations
-to the same Settings owner. Passive status reads never launch OAuth. Refresh
-ends when native authentication requires Google sign-in, recording that result
-without publishing a handoff. Only explicit Sign in starts the handoff; generic
-transport or protocol failures do not become signed-out observations.
-Sign-out first
-stops this installation's ACP children, then invokes native logout; the personal
-ACP credential store can be shared by other local ACP clients.
+Users sign in and out in the CLI. Caffold has no login/logout API, callback
+handoff, authentication job or credential vault. Successful native new/load and
+same-child recovery report account observations to Settings. The native
+authentication-required error records a signed-out observation and directs the
+user to the CLI; generic transport or protocol failures leave authentication
+unknown or at its last observation. Refresh and Task startup never call
+`authenticate` or request an OAuth flow.
 
 ## Conversation and event ownership
 
@@ -549,12 +564,12 @@ duration, and an MCP call with its server; its other item kinds are other
 work. Claude names an MCP tool after its server and reports no server apart
 from it. Grok reports an MCP call's server once the call ends, and a call's
 result arrives with its raw output; content sent before that describes the
-call. Antigravity's live view reads a call's input from `rawInput`, and an MCP
-call's tool, server, and arguments from `_meta.mcp` and `rawInput.arguments`;
-the server fills a finished call's `rawOutput` with the step's summary rather
-than the tool's output, so a live call has no result. Its native record keeps
-the arguments of every step that records a tool call, but a result only as an
-MCP step's text, a viewed file's content, or an error step's message; a step
+call. Antigravity CLI 1.5.1 reports a tool's `name` and `rawInput`; its live MCP
+updates expose a summary, with no separate server or result. Command updates
+can carry `rawOutput.output` and `exit_code`. Its native record keeps
+the arguments of every step that records a tool call, including CLI 1.5.1's
+generic tool steps and their text results. Older native step kinds retain MCP
+text, viewed file content and errors; a step
 that records no tool call is other work.
 A Claude `thinking` block that carries text is the agent's
 progress note between tool calls and reads as an agent message; an empty one
@@ -898,7 +913,7 @@ copied transcript.
 
 Caffold currently compiles support for Codex, Claude, Grok, and Antigravity. It does not
 discover drivers or load provider code at runtime. Its Antigravity ACP
-integration is pinned and reviewed with the native reader. This closed set is an
+integration has a minimum CLI version and is reviewed with the native reader. This closed set is an
 intentional safety and review boundary: adding an agent requires source,
 protocol fixtures, lifecycle and approval behavior, compatibility checks, UI
 decisions, and tests in the same repository.
@@ -928,7 +943,7 @@ caffold/src/agent/claude.rs             Claude entry point and live session stat
 caffold/src/agent/claude/               protocol, transcript, settings, tools, instruction carrier, runner client
 caffold/src/agent/grok.rs               Grok entry point, sessions, MCP carrier, and the Settings report
 caffold/src/agent/grok/                 leader transport, protocol, binding, history, translation, worktree switch
-caffold/src/agent/antigravity.rs        ACP client, native history, installation and authentication
+caffold/src/agent/antigravity.rs        CLI ACP client, native history and account observations
 caffold/src/agent/antigravity/          private protocol, input/checkpoint, record reader, binding, settings and setup owners
 caffold/src/agent/http_mcp.rs           HTTP MCP framing, tool catalog, and signing key shared by HTTP MCP agents
 caffold/src/agent/notes_tools.rs        Notes tool catalog and argument checks shared by every agent

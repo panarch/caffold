@@ -121,7 +121,8 @@ or end, and every reread of canonical history reach them as a full `task-sync`,
 and conversation items as `task-event` deltas. Task List takes its row from
 either publication.
 
-Task state includes `supportsSteering`. Prompt HTTP responses carry
+All drivers implement steering; Task state has no separate steering capability.
+Prompt HTTP responses carry
 `threadId`, `turnId`, `userMessageId` and the steer result. The browser uses
 that exact accepted identity to hand its optimistic message to the ordinary
 conversation projection.

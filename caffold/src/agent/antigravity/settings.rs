@@ -2,7 +2,7 @@
 //! catalog refresh; they never start OAuth or create a native session.
 use super::{
     AntigravityClient, AntigravityError, ModelOption, PermissionModes, Session, TurnOptions,
-    installation, protocol, usage::UsageStatus,
+    protocol, usage::UsageStatus,
 };
 use crate::agent::driver::{PermissionModeOption, REVIEWED_PERMISSION_MODE, TurnRejected, bounded};
 use serde::{Deserialize, Serialize};
@@ -15,6 +15,8 @@ use std::{
     path::Path,
 };
 use uuid::Uuid;
+
+pub(super) const BYPASS: &str = "bypassPermissions";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,7 +31,7 @@ struct CatalogModel {
     id: String,
     name: String,
     is_default: bool,
-    thinking: protocol::ConfigOption,
+    thinking: Option<protocol::ConfigOption>,
 }
 
 impl AntigravityClient {
@@ -46,11 +48,14 @@ impl AntigravityClient {
                 display_name: model.name.clone(),
                 description: None,
                 is_default: model.is_default,
-                default_effort: Some(model.thinking.current_value.clone()),
+                default_effort: model
+                    .thinking
+                    .as_ref()
+                    .map(|option| option.current_value.clone()),
                 efforts: model
                     .thinking
-                    .options
                     .iter()
+                    .flat_map(|option| &option.options)
                     .map(|choice| choice.value.clone())
                     .collect(),
                 supports_fast_mode: false,
@@ -76,8 +81,13 @@ impl AntigravityClient {
                     description: choice.description.clone().unwrap_or_default(),
                     allowed: true,
                     unavailable_reason: None,
-                    dangerous: choice.value == "yolo",
+                    dangerous: false,
                 })
+                .chain(std::iter::once(PermissionModeOption {
+                    mode: BYPASS.into(), label: "Bypass permissions".into(),
+                    description: "Skip all native permission prompts. Restarts the idle CLI session when changed.".into(),
+                    allowed: true, unavailable_reason: None, dangerous: true,
+                }))
                 .collect(),
         })
     }
@@ -144,18 +154,33 @@ impl AntigravityClient {
         if let Some(mode) = &options.permission_mode {
             let reviewed = mode == REVIEWED_PERMISSION_MODE;
             session
-                .configure(protocol::MODE, if reviewed { "default" } else { mode })
+                .configure(
+                    protocol::MODE,
+                    if reviewed || mode == BYPASS {
+                        "default"
+                    } else {
+                        mode
+                    },
+                )
                 .await?;
             session.set_reviewed(reviewed).await;
         }
-        settings(&session.options().await, session.reviewed().await)
+        settings(
+            &session.options().await,
+            session.reviewed().await,
+            session.bypass().await,
+        )
     }
     pub(crate) async fn settings_of(
         &self,
         task: &str,
     ) -> Result<BTreeMap<String, Value>, AntigravityError> {
         let session = self.current(task).await?;
-        let options = settings(&session.options().await, session.reviewed().await)?;
+        let options = settings(
+            &session.options().await,
+            session.reviewed().await,
+            session.bypass().await,
+        )?;
         Ok(BTreeMap::from([
             ("model".into(), serde_json::json!(options.model)),
             ("reasoningEffort".into(), serde_json::json!(options.effort)),
@@ -171,24 +196,21 @@ impl AntigravityClient {
         let _job = self.inner.refresh_job.try_lock().map_err(|_| {
             AntigravityError::Protocol("a Settings refresh is already running".into())
         })?;
-        self.inner.authentication.allow_refresh().await?;
-        match installation::executable(&self.inner.data) {
-            Ok(_) => {}
+        let executable = match self.inner.cli.executable().await {
+            Ok(path) => path,
             Err(AntigravityError::NotInstalled) => return Ok(()),
             Err(error) => return Err(error),
-        }
-        let task = Uuid::new_v4().to_string();
-        let (mut catalog, mut usage) = match self.open_for(&task, Some(cwd), false, false).await {
-            Ok(session) => {
-                let usage = session
-                    .usage()
-                    .await
-                    .and_then(|report| UsageStatus::from_report(&report));
-                let catalog = Catalog::inspect(&session).await;
-                (catalog, usage)
-            }
-            Err(error) => (Err(error.clone()), Err(error)),
         };
+        let task = Uuid::new_v4().to_string();
+        let (mut catalog, mut usage) =
+            match self.open_for(&task, Some(cwd), false, false, false).await {
+                Ok(session) => {
+                    let usage = UsageStatus::read(&executable, cwd).await;
+                    let catalog = Catalog::inspect(&session).await;
+                    (catalog, usage)
+                }
+                Err(error) => (Err(error.clone()), Err(error)),
+            };
         // A single explicit probe owns both reads. Cleanup failure cannot be
         // reported as a completed refresh; retain its exact binding for retry.
         if let Err(error) = self.erase(&task).await {
@@ -215,6 +237,7 @@ impl AntigravityClient {
 fn settings(
     options: &[protocol::ConfigOption],
     reviewed: bool,
+    bypass: bool,
 ) -> Result<TurnOptions, AntigravityError> {
     Ok(TurnOptions {
         model: Some(
@@ -222,13 +245,14 @@ fn settings(
                 .current_value
                 .clone(),
         ),
-        effort: Some(
-            protocol::config(options, protocol::THINKING)?
-                .current_value
-                .clone(),
-        ),
+        effort: options
+            .iter()
+            .find(|option| option.id == protocol::THINKING)
+            .map(|option| option.current_value.clone()),
         fast_mode: false,
-        permission_mode: Some(if reviewed {
+        permission_mode: Some(if bypass {
+            BYPASS.into()
+        } else if reviewed {
             REVIEWED_PERMISSION_MODE.into()
         } else {
             protocol::config(options, protocol::MODE)?
@@ -250,11 +274,14 @@ impl Catalog {
                 id: choice.value.clone(),
                 name: choice.name.clone(),
                 is_default: choice.value == model.current_value,
-                thinking: protocol::config(&options, protocol::THINKING)?.clone(),
+                thinking: options
+                    .iter()
+                    .find(|option| option.id == protocol::THINKING)
+                    .cloned(),
             });
         }
         let catalog = Self {
-            version: 1,
+            version: 2,
             models,
             modes,
         };
@@ -293,20 +320,25 @@ impl Catalog {
         }
         let catalog: Self = serde_json::from_slice(&bytes)
             .map_err(|e| AntigravityError::Protocol(e.to_string()))?;
+        if catalog.version != 2 {
+            return Ok(None);
+        }
         catalog.validate()?;
         Ok(Some(catalog))
     }
     fn validate(&self) -> Result<(), AntigravityError> {
-        if self.version != 1
+        if self.version != 2
             || self.models.is_empty()
             || self.models.iter().filter(|model| model.is_default).count() != 1
             || self.models.iter().any(|model| {
                 model.id.is_empty()
-                    || !model
-                        .thinking
-                        .options
-                        .iter()
-                        .any(|choice| choice.value == model.thinking.current_value)
+                    || model.thinking.as_ref().is_some_and(|thinking| {
+                        thinking.id != protocol::THINKING
+                            || !thinking
+                                .options
+                                .iter()
+                                .any(|choice| choice.value == thinking.current_value)
+                    })
             })
             || !self
                 .modes
@@ -358,15 +390,13 @@ mod tests {
     use super::*;
     use std::os::unix::fs::symlink;
     fn catalog() -> Catalog {
-        serde_json::from_value(serde_json::json!({"version":1,"models":[{"id":"native-model","name":"Native model","isDefault":true,"thinking":{"id":"thinking_level","currentValue":"low","options":[{"value":"low","name":"Low"},{"value":"high","name":"High"}]}}],"modes":{"id":"mode","currentValue":"default","options":[{"value":"default","name":"Default"},{"value":"yolo","name":"Yolo"}]}})).unwrap()
+        serde_json::from_value(serde_json::json!({"version":2,"models":[{"id":"native-model","name":"Native model","isDefault":true,"thinking":{"id":"thought_level","currentValue":"low","options":[{"value":"low","name":"Low"},{"value":"high","name":"High"}]}}],"modes":{"id":"mode","currentValue":"default","options":[{"value":"default","name":"Default"},{"value":"accept-edits","name":"Accept edits"}]}})).unwrap()
     }
     #[tokio::test]
-    async fn one_refresh_owner_excludes_auth_actions_and_releases_after_inspection() {
+    async fn one_refresh_owner_releases_after_inspection() {
         let client = AntigravityClient::uninstalled();
         let job = client.inner.refresh_job.lock().await;
         assert!(client.refresh_settings(".").await.is_err());
-        assert!(client.sign_in().await.is_err());
-        assert!(client.sign_out().await.is_err());
         assert!(client.introspect().await.refreshing);
         drop(job);
         client.refresh_settings(".").await.unwrap();
@@ -439,7 +469,7 @@ mod tests {
                 .unwrap()
                 .options
                 .iter()
-                .any(|mode| mode.mode == "yolo" && mode.dangerous)
+                .any(|mode| mode.mode == BYPASS && mode.dangerous)
         );
     }
     #[test]
@@ -457,5 +487,80 @@ mod tests {
         fs::remove_file(&path).unwrap();
         symlink("/etc/hosts", &path).unwrap();
         assert!(Catalog::read(root.path()).is_err());
+    }
+
+    #[tokio::test]
+    async fn models_without_thought_options_have_no_effort_and_old_choices_are_not_translated() {
+        let client = AntigravityClient::uninstalled();
+        let mut native = catalog();
+        native.models[0].thinking = None;
+        native.validate().unwrap();
+        *client.inner.catalog.lock().await = Some(native);
+        let models = client.models().await.unwrap();
+        assert!(models[0].efforts.is_empty());
+        assert_eq!(models[0].default_effort, None);
+        let options = TurnOptions {
+            model: Some("native-model".into()),
+            effort: Some("low".into()),
+            fast_mode: false,
+            permission_mode: None,
+        };
+        assert!(matches!(
+            client.accept_options(&options).await,
+            Err(TurnRejected::Effort)
+        ));
+        for mode in ["auto_edit", "yolo"] {
+            assert!(matches!(
+                client
+                    .accept_options(&TurnOptions {
+                        effort: None,
+                        permission_mode: Some(mode.into()),
+                        ..options.clone()
+                    })
+                    .await,
+                Err(TurnRejected::Unavailable(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn cli_catalog_discards_the_old_version_and_reports_launch_permissions() {
+        let root = tempfile::tempdir().unwrap();
+        let mut old = catalog();
+        old.version = 1;
+        old.models[0].thinking.as_mut().unwrap().id = "thinking_level".into();
+        old.write(root.path()).unwrap();
+        assert!(Catalog::read(root.path()).unwrap().is_none());
+        let native = catalog();
+        let options = vec![
+            protocol::ConfigOption {
+                id: protocol::MODEL.into(),
+                current_value: "native-model".into(),
+                options: vec![],
+            },
+            native.modes,
+        ];
+        assert_eq!(settings(&options, false, false).unwrap().effort, None);
+        assert_eq!(
+            settings(&options, false, false)
+                .unwrap()
+                .permission_mode
+                .as_deref(),
+            Some("default")
+        );
+        assert_eq!(
+            settings(&options, true, false)
+                .unwrap()
+                .permission_mode
+                .as_deref(),
+            Some(REVIEWED_PERMISSION_MODE)
+        );
+        assert_eq!(
+            settings(&options, true, true)
+                .unwrap()
+                .permission_mode
+                .as_deref(),
+            Some(BYPASS)
+        );
     }
 }

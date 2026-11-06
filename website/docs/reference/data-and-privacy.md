@@ -34,9 +34,8 @@ only in these cases:
   [Notifications](../get-started/notifications.md).
 - **GitHub** views read Issues and Pull Requests through the GitHub CLI on the
   Mac.
-- **Antigravity setup** downloads its official ACP release from Google and
-  uses Google sign-in. Codes pass once through the exact local callback;
-  credentials stay in the official ACP store on the Mac.
+- **Antigravity** uses the installed CLI's saved Google sign-in.
+  Its credentials stay in the CLI's store on the Mac; sign in and out in the CLI.
 - **Update checks**: the menu-bar app asks GitHub for the newest Caffold
   release, and **Settings → Codex** asks OpenAI for the newest Codex release
   when you open it.

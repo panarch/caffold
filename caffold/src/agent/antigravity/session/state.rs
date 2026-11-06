@@ -6,7 +6,7 @@ use super::{InputOperation, Verified};
 use crate::agent::{ContextUsage, SessionEventKind, http_mcp::valid_binding};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,22 +32,29 @@ pub(super) enum ConnectionEvent {
 pub(super) enum Input {
     Idle,
     Pending {
-        rpc: u64,
-        accepted: bool,
-        native_started: bool,
+        run: PendingInput,
     },
     Stopping {
-        rpc: u64,
-        accepted: bool,
-        native_started: bool,
+        run: PendingInput,
         cancel_accepted: bool,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(super) struct PendingInput {
+    anchor: u64,
+    requests: Vec<InputRequest>,
+    native_started: bool,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct InputRequest {
+    rpc: u64,
+    accepted: bool,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "method", rename_all = "camelCase")]
 pub(super) enum Purpose {
     Initialize,
-    Authenticate,
     New { cwd: String, first: bool },
     Load { native_id: String, cwd: String },
     Configure { id: String, value: String },
@@ -61,7 +68,6 @@ pub(super) struct Checkpoint {
     pub(super) binding: Option<Binding>,
     pub(super) mcp_binding: String,
     pub(super) initialized: bool,
-    pub(super) authenticated: bool,
     #[serde(default)]
     pub(super) account: Option<Verified>,
     /// Last native context report, valid only for this runner child.
@@ -76,6 +82,7 @@ pub(super) struct Checkpoint {
     pub(super) approvals: BTreeMap<String, Value>,
     pub(super) responses: BTreeMap<String, Value>,
     pub(super) reviewed: bool,
+    pub(super) bypass: bool,
 }
 
 /// Native counts, independent of disposable display turns and cumulative cost.
@@ -130,83 +137,118 @@ impl Phase {
     }
 }
 impl Input {
+    fn run(&self) -> Option<&PendingInput> {
+        match self {
+            Self::Idle => None,
+            Self::Pending { run } | Self::Stopping { run, .. } => Some(run),
+        }
+    }
+    fn run_mut(&mut self) -> Option<&mut PendingInput> {
+        match self {
+            Self::Idle => None,
+            Self::Pending { run } | Self::Stopping { run, .. } => Some(run),
+        }
+    }
     pub(super) fn begin(&mut self, rpc: u64) -> Result<(), AntigravityError> {
         if !matches!(self, Self::Idle) {
             return Err(AntigravityError::InputBusy);
         }
         *self = Self::Pending {
-            rpc,
-            accepted: false,
-            native_started: false,
+            run: PendingInput {
+                anchor: rpc,
+                requests: vec![InputRequest {
+                    rpc,
+                    accepted: false,
+                }],
+                native_started: false,
+            },
         };
         Ok(())
     }
-    pub(super) fn accepted(&mut self, rpc: u64) -> bool {
+    pub(super) fn steer(&mut self, rpc: u64) -> Result<(), AntigravityError> {
         match self {
-            Self::Pending {
-                rpc: current,
-                accepted,
-                ..
+            Self::Pending { run } => {
+                run.requests.push(InputRequest {
+                    rpc,
+                    accepted: false,
+                });
+                Ok(())
             }
-            | Self::Stopping {
-                rpc: current,
-                accepted,
-                ..
-            } if *current == rpc => {
-                *accepted = true;
-                true
-            }
-            _ => false,
+            Self::Idle => Err(AntigravityError::InputGone),
+            Self::Stopping { .. } => Err(AntigravityError::InputBusy),
         }
+    }
+    pub(super) fn contains(&self, rpc: u64) -> bool {
+        self.run()
+            .is_some_and(|run| run.requests.iter().any(|request| request.rpc == rpc))
+    }
+    pub(super) fn accepted(&mut self, rpc: u64) -> bool {
+        let Some(accepted) = self.run_mut().and_then(|run| {
+            run.requests
+                .iter_mut()
+                .find(|request| request.rpc == rpc)
+                .map(|request| &mut request.accepted)
+        }) else {
+            return false;
+        };
+        *accepted = true;
+        true
+    }
+    pub(super) fn accepted_rpc(&self, rpc: u64) -> bool {
+        self.run()
+            .and_then(|run| {
+                run.requests
+                    .iter()
+                    .find(|request| request.rpc == rpc)
+                    .map(|request| &request.accepted)
+            })
+            .copied()
+            .unwrap_or(false)
+    }
+    pub(super) fn unaccepted(&self) -> Vec<u64> {
+        self.run()
+            .into_iter()
+            .flat_map(|run| &run.requests)
+            .filter_map(|request| (!request.accepted).then_some(request.rpc))
+            .collect()
     }
     pub(super) fn stop(&mut self) -> bool {
-        match *self {
-            Self::Pending {
-                rpc,
-                accepted,
-                native_started,
-            } => {
-                *self = Self::Stopping {
-                    rpc,
-                    accepted,
-                    native_started,
-                    cancel_accepted: false,
-                };
-                true
-            }
-            Self::Idle | Self::Stopping { .. } => false,
+        if !matches!(self, Self::Pending { .. }) {
+            return false;
         }
+        let Self::Pending { run } = std::mem::replace(self, Self::Idle) else {
+            unreachable!()
+        };
+        *self = Self::Stopping {
+            run,
+            cancel_accepted: false,
+        };
+        true
     }
-    /// Pinned ACP ignores cancel while the SDK agent is still starting.
-    /// Only its live SDK tool/thought updates or permission callback prove
-    /// readiness; message text, timestamps and native item matching do not.
+    /// CLI 1.5.1 can ignore cancel before its SDK agent starts. A live SDK
+    /// tool/thought update or permission callback proves readiness.
     pub(super) fn native_started(&mut self) {
-        match self {
-            Self::Pending { native_started, .. } | Self::Stopping { native_started, .. } => {
-                *native_started = true
-            }
-            Self::Idle => {}
+        if let Some(run) = self.run_mut() {
+            run.native_started = true;
         }
     }
     pub(super) fn cancel_due(&self) -> Option<u64> {
         match self {
             Self::Stopping {
-                rpc,
-                accepted: true,
-                native_started: true,
+                run,
                 cancel_accepted: false,
-            } => Some(*rpc),
+            } if run.native_started && run.requests.iter().any(|request| request.accepted) => {
+                Some(run.anchor)
+            }
             _ => None,
         }
     }
     pub(super) fn cancel_accepted(&mut self, rpc: u64) -> bool {
         match self {
             Self::Stopping {
-                rpc: current,
-                accepted: true,
+                run,
                 cancel_accepted,
-                ..
-            } if *current == rpc => {
+            } if run.anchor == rpc => {
                 *cancel_accepted = true;
                 true
             }
@@ -214,35 +256,29 @@ impl Input {
         }
     }
     pub(super) fn cancel_refused(&mut self, rpc: u64) -> bool {
-        match *self {
-            Self::Stopping {
-                rpc: current,
-                accepted,
-                native_started,
-                cancel_accepted: false,
-            } if current == rpc => {
-                *self = Self::Pending {
-                    rpc,
-                    accepted,
-                    native_started,
-                };
-                true
-            }
-            _ => false,
+        if !matches!(self, Self::Stopping { run, cancel_accepted: false } if run.anchor == rpc) {
+            return false;
         }
+        let Self::Stopping { run, .. } = std::mem::replace(self, Self::Idle) else {
+            unreachable!()
+        };
+        *self = Self::Pending { run };
+        true
     }
+    /// Only the last exact prompt response ends the running input group.
     pub(super) fn finish(&mut self, rpc: u64) -> bool {
-        if self.rpc() != Some(rpc) {
+        let Some(run) = self.run_mut() else {
+            return false;
+        };
+        let Some(index) = run.requests.iter().position(|request| request.rpc == rpc) else {
+            return false;
+        };
+        run.requests.remove(index);
+        if !run.requests.is_empty() {
             return false;
         }
         *self = Self::Idle;
         true
-    }
-    pub(super) fn rpc(&self) -> Option<u64> {
-        match self {
-            Self::Idle => None,
-            Self::Pending { rpc, .. } | Self::Stopping { rpc, .. } => Some(*rpc),
-        }
     }
     pub(super) fn operation(&self, phase: Phase) -> InputOperation {
         if phase != Phase::Ready {
@@ -255,10 +291,12 @@ impl Input {
         }
     }
     pub(super) fn was_accepted(&self) -> bool {
-        matches!(
-            self,
-            Self::Pending { accepted: true, .. } | Self::Stopping { accepted: true, .. }
-        )
+        self.run()
+            .is_some_and(|run| run.requests.iter().any(|request| request.accepted))
+    }
+    #[cfg(test)]
+    pub(super) fn rpc(&self) -> Option<u64> {
+        self.run().map(|run| run.anchor)
     }
 }
 impl Checkpoint {
@@ -269,7 +307,7 @@ impl Checkpoint {
     ) -> Result<(), AntigravityError> {
         let invalid =
             || AntigravityError::Protocol("invalid or foreign recovery checkpoint".into());
-        if self.version != 1
+        if self.version != 2
             || self.context.is_some_and(|context| context.size == 0)
             || self.task_id != task
             || self.next_rpc == 0
@@ -277,19 +315,31 @@ impl Checkpoint {
                 .pending
                 .keys()
                 .any(|id| *id == 0 || *id >= self.next_rpc)
-            || (self.authenticated && !self.initialized)
-            || (self.loaded && (!self.authenticated || self.binding.is_none()))
+            || (self.loaded && (!self.initialized || self.binding.is_none()))
             || self
                 .pending
                 .iter()
-                .any(|(id, purpose)| *purpose == Purpose::Prompt && self.input.rpc() != Some(*id))
+                .any(|(id, purpose)| *purpose == Purpose::Prompt && !self.input.contains(*id))
         {
             return Err(invalid());
         }
-        if let Some(id) = self.input.rpc()
-            && (id == 0
-                || id >= self.next_rpc
-                || (self.input.was_accepted() && self.pending.get(&id) != Some(&Purpose::Prompt)))
+        if let Some(run) = self.input.run()
+            && (run.anchor == 0
+                || run.anchor >= self.next_rpc
+                || run.requests.is_empty()
+                || run
+                    .requests
+                    .iter()
+                    .map(|request| request.rpc)
+                    .collect::<BTreeSet<_>>()
+                    .len()
+                    != run.requests.len()
+                || run.requests.iter().any(|request| {
+                    request.rpc == 0
+                        || request.rpc >= self.next_rpc
+                        || (request.accepted
+                            && self.pending.get(&request.rpc) != Some(&Purpose::Prompt))
+                }))
         {
             return Err(invalid());
         }
@@ -319,14 +369,18 @@ impl Checkpoint {
         }
         Ok(())
     }
-    pub(super) fn new(task_id: String, mcp_binding: String, binding: Option<Binding>) -> Self {
+    pub(super) fn new(
+        task_id: String,
+        mcp_binding: String,
+        binding: Option<Binding>,
+        bypass: bool,
+    ) -> Self {
         Self {
-            version: 1,
+            version: 2,
             task_id,
             binding,
             mcp_binding,
             initialized: false,
-            authenticated: false,
             account: None,
             context: None,
             loaded: false,
@@ -337,6 +391,7 @@ impl Checkpoint {
             approvals: BTreeMap::new(),
             responses: BTreeMap::new(),
             reviewed: false,
+            bypass,
         }
     }
     pub(super) fn next_id(&mut self) -> Result<u64, AntigravityError> {
@@ -386,7 +441,7 @@ mod tests {
     #[test]
     fn checkpoints_without_context_stay_unknown_and_zero_windows_are_invalid() {
         let task = Uuid::new_v4().to_string();
-        let checkpoint = Checkpoint::new(task.clone(), new_binding_value(), None);
+        let checkpoint = Checkpoint::new(task.clone(), new_binding_value(), None, false);
         let mut encoded = serde_json::to_value(checkpoint).unwrap();
         encoded.as_object_mut().unwrap().remove("context");
         let mut restored: Checkpoint = serde_json::from_value(encoded).unwrap();
@@ -401,7 +456,7 @@ mod tests {
     #[test]
     fn checkpoint_rejects_foreign_bindings_and_inconsistent_accepted_inputs() {
         let task = Uuid::new_v4().to_string();
-        let mut checkpoint = Checkpoint::new(task.clone(), new_binding_value(), None);
+        let mut checkpoint = Checkpoint::new(task.clone(), new_binding_value(), None, false);
         checkpoint.validate(&task, None).unwrap();
         assert!(
             checkpoint
@@ -424,6 +479,38 @@ mod tests {
         assert!(input.finish(17));
         assert!(!input.accepted(17));
         assert_eq!(input, Input::Idle);
+    }
+
+    #[test]
+    fn steering_replies_drain_exact_requests_and_keep_one_cancel_owner() {
+        let mut input = Input::Idle;
+        assert!(matches!(input.steer(1), Err(AntigravityError::InputGone)));
+        input.begin(1).unwrap();
+        input.accepted(1);
+        input.steer(2).unwrap();
+        input.accepted(2);
+        input.steer(3).unwrap();
+        input.accepted(3);
+        assert!(!input.finish(1));
+        assert!(!input.contains(1));
+        assert_eq!(input.operation(Phase::Ready), InputOperation::Pending);
+        input.native_started();
+        assert!(input.stop());
+        assert!(matches!(input.steer(4), Err(AntigravityError::InputBusy)));
+        assert_eq!(input.cancel_due(), Some(1));
+        input.cancel_accepted(1);
+        assert!(!input.finish(3));
+        assert_eq!(input.cancel_due(), None);
+        assert!(input.finish(2));
+        assert_eq!(input, Input::Idle);
+        input.begin(4).unwrap();
+        input.accepted(4);
+        input.native_started();
+        assert_eq!(
+            input.cancel_due(),
+            None,
+            "Stop must not leak to the next input"
+        );
     }
     #[test]
     fn stop_before_acceptance_waits_then_cancels_once_without_finishing_input() {

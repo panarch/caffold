@@ -233,9 +233,13 @@ test("returns stacked pictures to the one it was reading once they are drawn aga
       ? { picture: index, fraction: Math.round(((top - box.top) / box.height) * 100) / 100 }
       : null;
   });
-  await stage.evaluate((element) => {
+  await stage.evaluate(async (element) => {
+    // The leaf records its position in the scroll event, after scrollTop
+    // changes. Wait for that event before asking it for the saved position.
+    const scrolled = new Promise(resolve => element.addEventListener("scroll", resolve, { once: true }));
     const box = element.querySelector('figure[data-side="after"]').getBoundingClientRect();
     element.scrollTop += box.top - element.getBoundingClientRect().top + 0.3 * box.height;
+    await scrolled;
   });
   await expect.poll(readingPlace).toEqual({ picture: 1, fraction: 0.3 });
 

@@ -1,4 +1,4 @@
-//! ACP 1.4.5 DTOs and the native instruction carriers Caffold actually uses.
+//! ACP DTOs and the native instruction carriers Caffold actually uses.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -6,9 +6,8 @@ use serde_json::{Value, json};
 use super::AntigravityError;
 use crate::agent::{CAFFOLD_CLARIFICATION_FEEDBACK, CAFFOLD_SESSION_INSTRUCTIONS};
 
-pub(super) const VERSION: &str = "1.4.5";
 pub(super) const MODEL: &str = "model";
-pub(super) const THINKING: &str = "thinking_level";
+pub(super) const THINKING: &str = "thought_level";
 pub(super) const MODE: &str = "mode";
 
 const FIRST_TURN: &str = "On the first ordinary user request, use the Caffold MCP server's rename_current_task tool to give this Task a concise name for that work. Do this once, then continue the user's request.";

@@ -1,22 +1,11 @@
 //! Apply native RPC control, then acknowledge the exact contiguous runner prefix.
 use super::*;
-use crate::agent::antigravity::{authentication::authorization_url, record};
+use crate::agent::antigravity::{installation, record};
 
 impl Session {
     pub(super) async fn read(self: Arc<Self>, mut events: RecoveryEvents) {
         while let Some(event) = events.next().await {
-            let reauthentication =
-                matches!(&event,RecoveryEvent::Stderr(line) if authorization_url(line).is_some());
             let result = match event {
-                RecoveryEvent::Stderr(line) => {
-                    // Native stderr may contain OAuth URLs/codes. Runtime
-                    // reauthentication belongs in Settings, never diagnostics.
-                    if authorization_url(&line).is_some() {
-                        Err(AntigravityError::SignInRequired)
-                    } else {
-                        Ok(())
-                    }
-                }
                 RecoveryEvent::ProtocolFailure(message) => Err(AntigravityError::Protocol(message)),
                 RecoveryEvent::Output {
                     incarnation,
@@ -31,17 +20,7 @@ impl Session {
                         return;
                     }
                 }
-                if reauthentication {
-                    self.environment.authentication.require_sign_in().await;
-                }
                 self.lost(error).await;
-                if reauthentication {
-                    let _ = self
-                        .environment
-                        .runner
-                        .close_recoverable(&self.task_id)
-                        .await;
-                }
                 return;
             }
         }
@@ -169,19 +148,6 @@ impl Session {
                     state.checkpoint.context = Some(context);
                     self.publish_context(&state);
                 }
-                if let Some(report) = state.report.as_mut()
-                    && update["sessionUpdate"].as_str() == Some("agent_message_chunk")
-                    && update["content"]["type"].as_str() == Some("text")
-                {
-                    let text = protocol::required_string(&update["content"], "text")?;
-                    if report.len() + text.len() > 64 * 1024 {
-                        return Err(AntigravityError::Protocol(
-                            "native usage report exceeds its limit".into(),
-                        ));
-                    }
-                    report.push_str(text);
-                }
-
                 if let Some(live) = state.live.as_mut() {
                     self.publish(live.start_events());
                     self.publish(live.update(update)?);
@@ -259,24 +225,16 @@ impl Session {
         if let Ok(value) = &result {
             match &purpose {
                 Purpose::Initialize => {
-                    if value.get("protocolVersion").and_then(Value::as_u64) != Some(1)
-                        || value.pointer("/agentInfo/version").and_then(Value::as_str)
-                            != Some(protocol::VERSION)
-                    {
+                    if value.get("protocolVersion").and_then(Value::as_u64) != Some(1) {
                         return Err(AntigravityError::Protocol(
                             "unsupported native ACP protocol".into(),
                         ));
                     }
+                    installation::check_version(protocol::required_string(
+                        &value["agentInfo"],
+                        "version",
+                    )?)?;
                     state.checkpoint.initialized = true;
-                }
-                Purpose::Authenticate => {
-                    state.checkpoint.authenticated = true;
-                    let account = Verified::from_result(true, value);
-                    self.environment
-                        .authentication
-                        .observe(account.clone())
-                        .await;
-                    state.checkpoint.account = Some(account);
                 }
                 Purpose::New { cwd, .. } | Purpose::Load { cwd, .. } => {
                     let (native_id, options) = match &purpose {
@@ -312,6 +270,12 @@ impl Session {
                     state.checkpoint.binding = Some(binding);
                     state.checkpoint.options = options;
                     state.checkpoint.loaded = true;
+                    let account = Verified::from_result(true, value);
+                    self.environment
+                        .authentication
+                        .observe(account.clone())
+                        .await;
+                    state.checkpoint.account = Some(account);
                 }
                 Purpose::Configure { .. } => {
                     let config: protocol::ConfigResult = serde_json::from_value(value.clone())
@@ -321,11 +285,24 @@ impl Session {
                 Purpose::Prompt => {}
             }
         }
+        let result = match result {
+            Err(AntigravityError::Rpc { code: -32000, .. }) => {
+                self.environment.authentication.require_sign_in().await;
+                Err(AntigravityError::SignInRequired)
+            }
+            result => result,
+        };
         state.checkpoint.pending.remove(&id);
         if let Some(reply) = state.replies.remove(&id) {
             reply.send_replace(Some(result.clone()));
         }
-        if purpose == Purpose::Prompt && state.checkpoint.input.finish(id) {
+        let ended = purpose == Purpose::Prompt && state.checkpoint.input.finish(id);
+        if purpose == Purpose::Prompt
+            && let Some(live) = state.live.as_mut()
+        {
+            self.publish(live.prompt_reply(id, &result, ended));
+        }
+        if ended {
             // A continued turn ends with the native record read now: the
             // frozen turn takes any end it records, and its usage total
             // replaces the running one.

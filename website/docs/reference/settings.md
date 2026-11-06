@@ -78,12 +78,12 @@ not use a second credit for it.
 
 ## Antigravity
 
-Install the official ACP agent and manage Google sign-in here. Opening this
+Check the installed CLI and its saved sign-in here. Opening this
 page checks the installation, account, plan, quota, and available models once
-when the agent is installed and no setup, refresh or runtime restart is running.
+when the CLI is ready and no refresh or runtime restart is running.
 The header **Refresh** repeats that check
-using the existing ACP sign-in, without sending a model prompt. If Google
-requires authentication, choose **Sign in** to begin it. Usage lists each
+using the CLI's saved sign-in, without sending a model prompt. If sign-in is
+needed, run `agy` in a terminal on the Mac and complete it there. Usage lists each
 reported model group and period as a percentage used with the reset time in
 your local timezone. **Service status** opens Google AI Studio status.
 
@@ -94,9 +94,9 @@ remain; open a Task to resume its conversation.
 
 ![Antigravity runtime status and restart control](../assets/screenshots/settings-antigravity-runtime-desktop.png)
 
-Installation, sign-in, refresh and restart progress update while the page is shown.
-Follow [Set up Antigravity](../get-started/agents.md#antigravity) for the remote
-Google completion-URL steps.
+Refresh and restart progress update while the page is shown.
+Follow [Set up Antigravity](../get-started/agents.md#antigravity) for installation
+and sign-in steps.
 
 ## About Caffold
 

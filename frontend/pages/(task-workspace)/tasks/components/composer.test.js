@@ -330,7 +330,6 @@ function composerHost(properties = {}) {
         allowHandoff: false,
         requestError: "",
         turnActive: false,
-        supportsSteering: true,
         uploading: false,
         interrupting: false,
         interruptError: "",

@@ -64,7 +64,6 @@ impl AntigravityClient {
                 "wait for the Antigravity runtime operation to finish".into(),
             )
         })?;
-        self.inner.authentication.allow_refresh().await?;
         let slots: Vec<_> = self
             .inner
             .sessions
@@ -163,12 +162,10 @@ mod tests {
         let replace = owner.inner.runtime_gate.write().await;
         assert!(owner.runtime_status().await.restarting);
         assert!(owner.restart_runtime().await.is_err());
-        assert!(owner.sign_in().await.is_err());
-        assert!(owner.sign_out().await.is_err());
         assert!(owner.refresh_settings("/tmp").await.is_err());
         assert!(
             owner
-                .open_for("task", Some("/tmp"), false, false)
+                .open_for("task", Some("/tmp"), false, false, false)
                 .await
                 .is_err()
         );

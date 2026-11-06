@@ -9,7 +9,7 @@ installation beyond a browser; they connect to this Mac.
 - [Homebrew](https://brew.sh/), which installs and updates Caffold.
 - Git, for repository and worktree features.
 - At least one coding agent installed and signed in on the Mac: Codex, Claude
-  Code, or Grok; or install and sign in to Antigravity from Caffold Settings.
+  Code, Grok, or Antigravity.
   [Set up your agents](agents.md) lists the supported versions and steps.
 
 Optional:

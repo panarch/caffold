@@ -442,7 +442,7 @@ Current rules:
 
 ## Antigravity Execution Approvals
 
-The pinned ACP agent asks with `session/request_permission`. Caffold preserves
+The CLI's ACP agent asks with `session/request_permission`. Caffold preserves
 the original child incarnation and RPC ID separately from native record keys.
 Fresh prompts attach approvals to the driver display turn and exact tool-call
 ID. After reconstruction, approvals without a native association keep empty
@@ -460,8 +460,7 @@ Structured questions are disabled through the native configuration; an
 unexpected reserved question callback receives clarification feedback as an
 unsupported-method error, not a user decision.
 
-Antigravity installation, personal Google credential ownership, exact callback
-handoff and sign-out scope belong to
+Antigravity CLI discovery and shared Google credential ownership belong to
 [Agent Runtimes](agent-runtimes.md#antigravity-lifecycle).
 
 ## Git Mutations

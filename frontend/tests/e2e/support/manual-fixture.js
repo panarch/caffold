@@ -781,7 +781,6 @@ function manualCodexStatus() {
 function detailFor(task, overrides = {}) {
   return {
     workspaceAccess: { mode: "readWrite", ownerTaskId: task.threadId },
- supportsSteering:true,
     threadId: task.threadId,
     provider: "codex",
     syncState: "ready",
@@ -1421,8 +1420,8 @@ const NOTES = {
 export async function installManualAntigravity(page) {
   await page.route("**/api/antigravity/{status,refresh}",route=>route.fulfill({json:{
     runtime:{restarting:false,running:true,pid:4301,version:"0.7.2",sessions:2,idleTimeoutSecs:600,error:null},
-    installation:{phase:"idle",supported:true,version:"1.4.5",installed:true,executable:"/Users/alex/Library/Application Support/Caffold/data/antigravity/versions/1.4.5/agy_acp_server.par",error:null},
-    auth:{phase:"idle",requestId:null,authorizationUrl:null,verified:{authenticated:true,tier:{id:"g1-pro-tier",name:"Google AI Pro"},verifiedAtMs:MANUAL_NOW},error:null},
+    installation:{ready:true,version:"1.5.1",minimumVersion:"1.5.1",installed:true,executable:"/Users/alex/.local/bin/agy",error:null},
+    auth:{verified:{authenticated:true,tier:{id:"g1-pro-tier",name:"Google AI Pro"},verifiedAtMs:MANUAL_NOW}},
     usage:{windows:[
       {group:"Gemini",period:"weekly",percent:9,resetsAt:"2026-11-07T08:50:00Z"},
       {group:"Gemini",period:"fiveHours",percent:3,resetsAt:"2026-11-01T08:24:00Z"},

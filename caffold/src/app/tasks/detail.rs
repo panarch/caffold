@@ -66,7 +66,6 @@ pub(in crate::app::tasks) struct DetailContext {
 #[serde(rename_all = "camelCase")]
 pub(in crate::app::tasks) struct TaskDetailResponse {
     pub(in crate::app::tasks) workspace_access: Option<WorkspaceAccess>,
-    pub(in crate::app::tasks) supports_steering: bool,
     pub(in crate::app::tasks) thread_id: String,
     pub(in crate::app::tasks) sync_state: TaskSyncState,
     pub(in crate::app::tasks) revision: u64,
@@ -165,7 +164,6 @@ pub(in crate::app) struct TaskDetailSync {
 #[serde(rename_all = "camelCase")]
 pub(in crate::app) struct TaskDetailState {
     workspace_access: Option<WorkspaceAccess>,
-    supports_steering: bool,
     pub(in crate::app::tasks) thread_id: String,
     pub(in crate::app::tasks) revision: u64,
     pub(in crate::app::tasks) task: Option<TaskRecord>,
@@ -183,7 +181,6 @@ impl TaskDetailState {
     fn of(detail: TaskDetailResponse) -> Self {
         Self {
             workspace_access: detail.workspace_access,
-            supports_steering: detail.supports_steering,
             thread_id: detail.thread_id,
             revision: detail.revision,
             task: detail.task,
@@ -610,12 +607,15 @@ impl DetailContext {
             let (projected_events, file_links) = self.file_links.project_task(&task, &events).await;
             events = projected_events;
             let provider = Some(current.run_by.provider());
+            let reasoning_effort = if session_model.is_some() {
+                session_reasoning_effort
+            } else {
+                session_reasoning_effort.or(current.reasoning_effort)
+            };
             let model = session_model.or(current.model);
-            let reasoning_effort = session_reasoning_effort.or(current.reasoning_effort);
             let permission_mode = permission_mode.or(current.permission_mode);
             return Ok(TaskDetailResponse {
                 workspace_access: Some(self.inspect_workspace(&thread_id, &conversation.cwd).await),
-                supports_steering: provider.is_some_and(supports_steering),
                 thread_id,
                 sync_state: TaskSyncState::Ready,
                 revision,
@@ -808,7 +808,6 @@ pub(in crate::app::tasks) fn loading_detail(
 ) -> TaskDetailResponse {
     TaskDetailResponse {
         workspace_access: None,
-        supports_steering: managed.is_some_and(|task| supports_steering(task.run_by.provider())),
         thread_id: thread_id.to_string(),
         sync_state: TaskSyncState::Loading,
         revision,
@@ -869,7 +868,6 @@ fn opening_messages(
 fn without_conversation(detail: &TaskDetailResponse) -> TaskDetailResponse {
     TaskDetailResponse {
         workspace_access: detail.workspace_access.clone(),
-        supports_steering: detail.supports_steering,
         thread_id: detail.thread_id.clone(),
         sync_state: detail.sync_state,
         revision: detail.revision,
@@ -889,13 +887,6 @@ fn without_conversation(detail: &TaskDetailResponse) -> TaskDetailResponse {
         reasoning_effort: detail.reasoning_effort.clone(),
         fast_mode: detail.fast_mode,
         context: detail.context,
-    }
-}
-
-fn supports_steering(provider: TaskProvider) -> bool {
-    match provider {
-        TaskProvider::Codex | TaskProvider::Claude | TaskProvider::Grok => true,
-        TaskProvider::Antigravity => false,
     }
 }
 
@@ -1597,63 +1588,66 @@ mod request_tests {
 
     #[tokio::test]
     async fn canonical_resume_refreshes_cached_model_settings() {
-        let root = tempfile::tempdir().unwrap();
-        let thread_id = "thread-canonical-model-settings";
-        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
-            "thread/resume",
-            json!({
-                "cwd": root.path().display().to_string(),
-                "thread": {
-                    "id": thread_id,
-                    "preview": "Canonical model settings",
-                    "status": { "type": "idle" },
+        for effort in [Some("medium"), None] {
+            let root = tempfile::tempdir().unwrap();
+            let thread_id = "thread-canonical-model-settings";
+            let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+                "thread/resume",
+                json!({
                     "cwd": root.path().display().to_string(),
-                    "createdAt": 1.0,
-                    "updatedAt": 2.0,
-                    "turns": []
-                },
-                "model": "gpt-5.6-luna",
-                "reasoningEffort": "medium",
-                "serviceTier": null,
-                "initialTurnsPage": {
-                    "data": [],
-                    "nextCursor": null,
-                    "backwardsCursor": null
-                }
-            }),
-        )]);
-        let state =
-            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        manage_test_thread(&state, thread_id, root.path()).await;
-        test_store_update_composer_settings(
-            &state,
-            thread_id,
-            Some("gpt-5.6-sol"),
-            Some("xhigh"),
-            true,
-            None,
-        )
-        .await
-        .unwrap();
-
-        let snapshot = state
-            .task_sessions
-            .ensure_subscribed(&client.driver(), 1, thread_id)
-            .await
-            .unwrap();
-        let detail = state
-            .detail
-            .assemble_snapshot(snapshot, None, TaskDetailCursor::default())
+                    "thread": {
+                        "id": thread_id,
+                        "preview": "Canonical model settings",
+                        "status": { "type": "idle" },
+                        "cwd": root.path().display().to_string(),
+                        "createdAt": 1.0,
+                        "updatedAt": 2.0,
+                        "turns": []
+                    },
+                    "model": "gpt-5.6-luna",
+                    "reasoningEffort": effort,
+                    "serviceTier": null,
+                    "initialTurnsPage": {
+                        "data": [],
+                        "nextCursor": null,
+                        "backwardsCursor": null
+                    }
+                }),
+            )]);
+            let state =
+                task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone())
+                    .await;
+            manage_test_thread(&state, thread_id, root.path()).await;
+            test_store_update_composer_settings(
+                &state,
+                thread_id,
+                Some("gpt-5.6-sol"),
+                Some("xhigh"),
+                true,
+                None,
+            )
             .await
             .unwrap();
 
-        assert_eq!(detail.model.as_deref(), Some("gpt-5.6-luna"));
-        assert_eq!(detail.reasoning_effort.as_deref(), Some("medium"));
-        assert!(!detail.fast_mode);
-        let stored = test_store_get(&state, thread_id).await.unwrap().unwrap();
-        assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
-        assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
-        assert!(stored.fast_mode);
+            let snapshot = state
+                .task_sessions
+                .ensure_subscribed(&client.driver(), 1, thread_id)
+                .await
+                .unwrap();
+            let detail = state
+                .detail
+                .assemble_snapshot(snapshot, None, TaskDetailCursor::default())
+                .await
+                .unwrap();
+
+            assert_eq!(detail.model.as_deref(), Some("gpt-5.6-luna"));
+            assert_eq!(detail.reasoning_effort.as_deref(), effort);
+            assert!(!detail.fast_mode);
+            let stored = test_store_get(&state, thread_id).await.unwrap().unwrap();
+            assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
+            assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
+            assert!(stored.fast_mode);
+        }
     }
 
     #[tokio::test]
@@ -3584,7 +3578,6 @@ mod request_tests {
     fn readable_detail(thread_id: &str) -> TaskDetailResponse {
         TaskDetailResponse {
             workspace_access: None,
-            supports_steering: true,
             provider: Some(TaskProvider::Codex),
             thread_id: thread_id.to_string(),
             sync_state: TaskSyncState::Ready,

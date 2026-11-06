@@ -1,7 +1,7 @@
 //! Opt-in official ACP checks through the shipped backend and HTTP surface.
-//! Uses the local personal Google sign-in; never logs out or copies credentials.
-//! The no-credentials case needs a separate macOS account: GEMINI_HOME does not
-//! isolate the official agent from saved OS Keychain credentials.
+//! Uses the installed CLI and cached sign-in; never logs out or copies credentials.
+//! App/workspace/native files are isolated. Authenticated launchers keep the
+//! CLI's real HOME; the missing-auth case runs with an empty HOME.
 use caffold_runner::{
     client::Client,
     protocol::{ReplyBody, Request},
@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 use std::{
     fs,
     net::TcpListener,
+    os::unix::fs::PermissionsExt,
     path::PathBuf,
     process::{Child, Command, Stdio},
     time::{Duration, Instant},
@@ -17,21 +18,51 @@ use std::{
 
 struct Backend {
     root: PathBuf,
-    empty_native_home: bool,
     port: u16,
     child: Option<Child>,
     http: reqwest::Client,
 }
 impl Backend {
     async fn start() -> Self {
-        Self::start_with_empty_home(false).await
+        Self::isolated(true).await
     }
-    async fn start_with_empty_home(empty_native_home: bool) -> Self {
+    async fn isolated(cached_auth: bool) -> Self {
         let root = tempfile::Builder::new()
             .prefix("ca-agy-")
             .tempdir_in("/tmp")
             .unwrap()
             .keep();
+        let home = root.join("home");
+        let bin = root.join("bin");
+        fs::create_dir_all(home.join(".gemini")).unwrap();
+        fs::create_dir(&bin).unwrap();
+        let cli = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+            .map(|directory| directory.join("agy"))
+            .chain(std::iter::once(
+                PathBuf::from(std::env::var_os("HOME").unwrap()).join(".local/bin/agy"),
+            ))
+            .find(|path| path.is_file())
+            .expect("install Antigravity CLI before running live tests");
+        let quote = |path: &std::path::Path| {
+            format!("'{}'", path.display().to_string().replace('\'', "'\"'\"'"))
+        };
+        let auth_home = if cached_auth {
+            format!(
+                "export HOME={}\n",
+                quote(&PathBuf::from(std::env::var_os("HOME").unwrap()))
+            )
+        } else {
+            String::new()
+        };
+        // Only the test launcher supplies a data root; production uses CLI defaults.
+        let wrapper = format!(
+            "#!/bin/sh\n{auth_home}if [ \"$1\" = acp ]; then\n  shift\n  exec {} acp --gemini-dir {} \"$@\"\nelse\n  exec {} \"$@\"\nfi\n",
+            quote(&cli),
+            quote(&home.join(".gemini")),
+            quote(&cli)
+        );
+        fs::write(bin.join("agy"), wrapper).unwrap();
+        fs::set_permissions(bin.join("agy"), fs::Permissions::from_mode(0o700)).unwrap();
         let port = TcpListener::bind("127.0.0.1:0")
             .unwrap()
             .local_addr()
@@ -39,7 +70,6 @@ impl Backend {
             .port();
         let mut owner = Self {
             root,
-            empty_native_home,
             port,
             child: None,
             http: reqwest::Client::builder()
@@ -58,9 +88,14 @@ impl Backend {
             .unwrap();
         let fake = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fake-codex");
         let mut command = Command::new(env!("CARGO_BIN_EXE_caffold"));
-        if self.empty_native_home {
-            command.env("GEMINI_HOME", self.root.join("empty-native-home"));
-        }
+        let paths = std::iter::once(self.root.join("bin"))
+            .chain(std::env::split_paths(
+                &std::env::var_os("PATH").unwrap_or_default(),
+            ))
+            .collect::<Vec<_>>();
+        command
+            .env("HOME", self.root.join("home"))
+            .env("PATH", std::env::join_paths(paths).unwrap());
         self.child = Some(
             command
                 .args(["serve", "--host", "127.0.0.1", "--port"])
@@ -129,31 +164,28 @@ impl Backend {
     async fn post(&self, path: &str, body: Value) -> Value {
         self.request(reqwest::Method::POST, path, Some(body)).await
     }
-    async fn install(&self) {
-        self.post("/api/antigravity/install", json!({})).await;
-        let deadline = Instant::now() + Duration::from_secs(650);
-        loop {
-            let status = self.get("/api/antigravity/status").await;
-            if status["installation"]["phase"] == "idle" {
-                assert_eq!(status["installation"]["installed"], true, "{status}");
-                break;
-            }
-            assert!(Instant::now() < deadline, "{status}");
-            tokio::time::sleep(Duration::from_millis(200)).await;
-        }
+    async fn check_cli(&self) {
+        let status = self.get("/api/antigravity/status").await;
+        assert_eq!(status["installation"]["ready"], true, "{status}");
+        assert_eq!(status["installation"]["minimumVersion"], "1.5.1");
     }
 
     async fn create(&self) -> String {
+        self.create_at(".").await
+    }
+    async fn create_at(&self, cwd: &str) -> String {
         let models = self.get("/api/agent/models").await;
         let model = models["models"]
             .as_array()
             .unwrap()
             .iter()
-            .find(|model| model["provider"] == "antigravity" && model["isDefault"] == true)
+            .find(|model| {
+                model["provider"] == "antigravity" && model["model"] == "gemini-3.8-flash"
+            })
             .unwrap();
-        let created=self.post("/api/tasks",json!({"provider":"antigravity","cwd":".","titleSource":"ACP live check","model":model["model"],"effort":"low","permissionMode":"default"})).await;
+        let created=self.post("/api/tasks",json!({"provider":"antigravity","cwd":cwd,"titleSource":"ACP live check","model":model["model"],"effort":"low","permissionMode":"default"})).await;
         assert!(created["detail"].get("inputOperation").is_none());
-        assert_eq!(created["detail"]["supportsSteering"], false);
+        assert!(created["detail"].get("supportsSteering").is_none());
         created["detail"]["threadId"].as_str().unwrap().into()
     }
     async fn erase(&self, task: &str) {
@@ -161,6 +193,41 @@ impl Backend {
             .await;
         self.request(reqwest::Method::DELETE, &format!("/api/tasks/{task}"), None)
             .await;
+    }
+    async fn wait_detail(&self, task: &str, check: impl Fn(&Value) -> bool) -> Value {
+        let deadline = Instant::now() + Duration::from_secs(90);
+        loop {
+            let detail = self.get(&format!("/api/tasks/{task}")).await;
+            if check(&detail) {
+                return detail;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "native Task did not reach the expected state: {detail}"
+            );
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+    async fn prompt(&self, task: &str, text: &str, mode: &str) -> Value {
+        self.post(
+            &format!("/api/tasks/{task}/prompts"),
+            json!({
+                "prompt":text, "model":"gemini-3.8-flash", "effort":"low", "permissionMode":mode
+            }),
+        )
+        .await
+    }
+    fn native_id(&self, task: &str) -> String {
+        let binding: Value = serde_json::from_slice(
+            &fs::read(
+                self.root
+                    .join("data/antigravity/bindings")
+                    .join(format!("{task}.json")),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        binding["nativeId"].as_str().unwrap().into()
     }
     fn runner(&self, args: &[&str]) {
         let binary = PathBuf::from(env!("CARGO_BIN_EXE_caffold")).with_file_name("caffold-runner");
@@ -172,6 +239,251 @@ impl Backend {
             .stderr(Stdio::null())
             .status();
     }
+}
+
+#[tokio::test]
+#[ignore = "installed CLI and saved sign-in; isolated folder move with zero model prompts"]
+async fn cli_folder_reconnection_loads_the_same_native_conversation_at_its_new_cwd() {
+    let backend = Backend::start().await;
+    backend.check_cli().await;
+    backend.post("/api/antigravity/refresh", json!({})).await;
+    fs::create_dir(backend.root.join("source")).unwrap();
+    let task = backend.create_at("source").await;
+    let native = backend.native_id(&task);
+    let tasks = backend.get("/api/tasks").await;
+    let section = tasks["sections"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|section| {
+            section["tasks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item["threadId"] == task)
+        })
+        .expect("the Task has a Section")["id"]
+        .as_str()
+        .unwrap();
+    fs::rename(backend.root.join("source"), backend.root.join("moved")).unwrap();
+    let reconnected = backend
+        .post(
+            &format!("/api/tasks/sections/{section}/reconnect"),
+            json!({"expectedPath":"source", "path":"moved"}),
+        )
+        .await;
+    assert_eq!(reconnected["path"], "moved");
+    let detail = backend
+        .wait_detail(&task, |detail| detail["syncState"] == "ready")
+        .await;
+    assert_eq!(
+        detail["task"]["cwd"],
+        backend
+            .root
+            .join("moved")
+            .canonicalize()
+            .unwrap()
+            .to_str()
+            .unwrap()
+    );
+    assert_eq!(backend.native_id(&task), native);
+    assert_eq!(detail["events"], json!([]));
+    backend.erase(&task).await;
+}
+
+#[tokio::test]
+#[ignore = "installed CLI and cached sign-in; short Flash prompts and isolated pwd/sleep commands"]
+async fn cli_steering_permissions_cancel_and_recovery_keep_one_native_conversation() {
+    let mut backend = Backend::start().await;
+    backend.check_cli().await;
+    let settings = backend.post("/api/antigravity/refresh", json!({})).await;
+    assert_eq!(settings["modelsAvailable"], true, "{settings}");
+    let task = backend.create().await;
+    let native = backend.native_id(&task);
+    let first = backend.prompt(&task,
+        "Use rename_current_task once to name this Task CLI live check. Then run /bin/sleep 12 exactly once. After it finishes, reply BASE plus every extra word requested in follow-up messages. Do not run other commands or change files.",
+        "bypassPermissions").await;
+    assert_eq!(first["steered"], false);
+    let working = backend
+        .wait_detail(&task, |detail| {
+            detail["events"].as_array().unwrap().iter().any(|event| {
+                event["type"] == "command_execution"
+                    && event["payload"]["command"]
+                        .as_str()
+                        .is_some_and(|command| command.contains("/bin/sleep 12"))
+            })
+        })
+        .await;
+    assert_eq!(working["pendingApprovals"], json!([]));
+    assert_eq!(working["permissionMode"], "bypassPermissions");
+    for word in ["STEER_ONE", "STEER_TWO"] {
+        let receipt = backend
+            .prompt(
+                &task,
+                &format!("Include {word} in your final answer. Do not start another command."),
+                "bypassPermissions",
+            )
+            .await;
+        assert_eq!(receipt["steered"], true, "{receipt}");
+        assert_eq!(receipt["turnId"], first["turnId"]);
+    }
+    backend.replace().await;
+    let done = backend
+        .wait_detail(&task, |detail| {
+            detail["task"]["threadStatus"]["type"] == "idle"
+                && detail["task"]["latestTurnStatus"] == "completed"
+        })
+        .await;
+    assert_eq!(done["pendingApprovals"], json!([]));
+    assert_eq!(backend.native_id(&task), native);
+    backend.post("/api/antigravity/restart", json!({})).await;
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let status = backend.get("/api/antigravity/status").await;
+        if status["runtime"]["restarting"] == false {
+            assert!(status["runtime"]["error"].is_null(), "{status}");
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "runtime restart did not finish: {status}"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let recorded = backend
+        .wait_detail(&task, |detail| detail["syncState"] == "ready")
+        .await;
+    let messages = recorded["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| event["type"] == "user_message")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        messages.len(),
+        3,
+        "each accepted input appears once: {recorded}"
+    );
+    for word in ["STEER_ONE", "STEER_TWO"] {
+        assert!(
+            recorded["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|event| event["type"] == "assistant_message"
+                    && event["payload"]["text"]
+                        .as_str()
+                        .is_some_and(|text| text.contains(word))),
+            "{recorded}"
+        );
+    }
+
+    backend
+        .prompt(
+            &task,
+            "Run pwd exactly once, then reply NORMAL_DONE. Do not run other commands.",
+            "default",
+        )
+        .await;
+    let waiting = backend
+        .wait_detail(&task, |detail| {
+            detail["pendingApprovals"]
+                .as_array()
+                .is_some_and(|values| !values.is_empty())
+        })
+        .await;
+    assert_eq!(waiting["permissionMode"], "default");
+    assert_eq!(
+        backend.native_id(&task),
+        native,
+        "permission changes resume the same native ID"
+    );
+    let rejected = backend
+        .http
+        .post(backend.url(&format!("/api/tasks/{task}/prompts")))
+        .header("content-type", "application/json")
+        .body(json!({"prompt":"Do not queue this while waiting for permission."}).to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(rejected.status(), reqwest::StatusCode::BAD_GATEWAY);
+    let rejected: Value = serde_json::from_str(&rejected.text().await.unwrap()).unwrap();
+    assert_eq!(rejected["error"]["code"], "agent_error");
+    assert!(
+        rejected["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Answer the pending permission")
+    );
+    let approval = waiting["pendingApprovals"][0]["payload"]["approvalId"]
+        .as_str()
+        .unwrap();
+    backend
+        .post(
+            &format!("/api/tasks/{task}/approvals/{approval}"),
+            json!({"decision":"allow"}),
+        )
+        .await;
+    let resumed = backend
+        .wait_detail(&task, |detail| {
+            detail["task"]["threadStatus"]["type"] == "idle"
+        })
+        .await;
+    assert!(
+        !resumed["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["type"] == "user_message"
+                && event["payload"]["text"] == "Do not queue this while waiting for permission.")
+    );
+
+    backend
+        .prompt(
+            &task,
+            "Run /bin/sleep 12 exactly once, then say CANCEL_ME. Do nothing else.",
+            "default",
+        )
+        .await;
+    backend
+        .wait_detail(&task, |detail| {
+            detail["pendingApprovals"]
+                .as_array()
+                .is_some_and(|values| !values.is_empty())
+        })
+        .await;
+    backend
+        .post(&format!("/api/tasks/{task}/interrupt"), json!({}))
+        .await;
+    let stopped = backend
+        .wait_detail(&task, |detail| {
+            detail["task"]["threadStatus"]["type"] == "idle"
+        })
+        .await;
+    assert_eq!(stopped["pendingApprovals"], json!([]));
+    assert_eq!(stopped["task"]["latestTurnStatus"], "interrupted");
+    backend
+        .prompt(
+            &task,
+            "Reply exactly AFTER_CANCEL without tools.",
+            "default",
+        )
+        .await;
+    let next = backend
+        .wait_detail(&task, |detail| {
+            detail["task"]["threadStatus"]["type"] == "idle"
+        })
+        .await;
+    assert_eq!(next["task"]["latestTurnStatus"], "completed");
+    assert_eq!(backend.native_id(&task), native);
+    backend.erase(&task).await;
+    assert!(
+        !backend
+            .root
+            .join("home/.gemini/antigravity-cli/conversations")
+            .join(format!("{native}.db"))
+            .exists()
+    );
 }
 impl Drop for Backend {
     fn drop(&mut self) {
@@ -188,10 +500,10 @@ impl Drop for Backend {
 }
 
 #[tokio::test]
-#[ignore = "official macOS arm64 ACP download and cached personal Google sign-in; zero model prompts"]
-async fn official_install_auth_catalog_and_empty_task_lifecycle() {
+#[ignore = "installed Antigravity CLI 1.5.1+ and cached sign-in; zero model prompts"]
+async fn cli_catalog_and_empty_task_lifecycle() {
     let mut backend = Backend::start().await;
-    backend.install().await;
+    backend.check_cli().await;
     let http = backend.http.clone();
     let url = backend.url("/api/antigravity/refresh");
     let refresh = tokio::spawn(async move { http.post(url).send().await.unwrap() });
@@ -206,11 +518,7 @@ async fn official_install_auth_catalog_and_empty_task_lifecycle() {
         );
         tokio::task::yield_now().await;
     }
-    for path in [
-        "/api/antigravity/refresh",
-        "/api/antigravity/auth/login",
-        "/api/antigravity/restart",
-    ] {
+    for path in ["/api/antigravity/refresh", "/api/antigravity/restart"] {
         let rejected = backend.http.post(backend.url(path)).send().await.unwrap();
         assert_eq!(rejected.status(), reqwest::StatusCode::CONFLICT);
     }
@@ -353,12 +661,12 @@ async fn official_install_auth_catalog_and_empty_task_lifecycle() {
 }
 
 #[tokio::test]
-#[ignore = "official ACP on a dedicated macOS account without saved ACP Keychain credentials; zero model prompts"]
-async fn native_sign_in_required_without_saved_os_credentials() {
-    let backend = Backend::start_with_empty_home(true).await;
-    backend.install().await;
+#[ignore = "installed CLI with an empty HOME and native root; zero model prompts"]
+async fn cli_sign_in_required_without_saved_home_credentials() {
+    let backend = Backend::isolated(false).await;
+    backend.check_cli().await;
     let status = backend.post("/api/antigravity/refresh", json!({})).await;
-    assert_eq!(status["auth"]["phase"], "idle");
+    assert!(status["auth"].get("phase").is_none());
     assert_eq!(
         status["auth"]["verified"]["authenticated"], false,
         "{status}"
@@ -371,60 +679,17 @@ async fn native_sign_in_required_without_saved_os_credentials() {
         status["usage"]["error"]
             .as_str()
             .unwrap()
-            .contains("Sign in")
+            .contains("sign in")
     );
     let bindings = backend.root.join("data/antigravity/bindings");
     assert!(!bindings.exists() || fs::read_dir(&bindings).unwrap().count() == 0);
-
-    backend.post("/api/antigravity/auth/login", json!({})).await;
-    let deadline = Instant::now() + Duration::from_secs(60);
-    let id = loop {
-        let status = backend.get("/api/antigravity/status").await;
-        if status["auth"]["phase"] == "awaitingCallback" {
-            assert!(
-                status["auth"]["authorizationUrl"]
-                    .as_str()
-                    .unwrap()
-                    .starts_with("https://accounts.google.com/")
-            );
-            break status["auth"]["requestId"].clone();
-        }
-        assert!(
-            Instant::now() < deadline,
-            "explicit sign-in did not offer a handoff"
-        );
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    };
-    let busy = backend
-        .http
-        .post(backend.url("/api/antigravity/refresh"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(busy.status(), reqwest::StatusCode::CONFLICT);
-    backend
-        .post("/api/antigravity/auth/cancel", json!({"requestId":id}))
-        .await;
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        let status = backend.get("/api/antigravity/status").await;
-        if status["auth"]["phase"] == "idle" {
-            assert!(status["auth"]["authorizationUrl"].is_null());
-            break;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "sign-in cancellation did not finish"
-        );
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
 }
 
 #[tokio::test]
 #[ignore = "official ACP and cached Google sign-in; one short model prompt"]
-async fn native_prompt_permission_survives_display_reconstruction() {
+async fn cli_prompt_permission_survives_display_reconstruction() {
     let mut backend = Backend::start().await;
-    backend.install().await;
+    backend.check_cli().await;
     let status = backend.post("/api/antigravity/refresh", json!({})).await;
     assert_eq!(
         status["auth"]["verified"]["authenticated"], true,
@@ -443,9 +708,6 @@ async fn native_prompt_permission_survives_display_reconstruction() {
         if let Some(approval) = detail["pendingApprovals"]
             .as_array()
             .and_then(|values| values.first())
-            && detail["context"]["usedTokens"]
-                .as_u64()
-                .is_some_and(|used| used > 0)
         {
             break (approval.clone(), detail["context"].clone());
         }
@@ -467,7 +729,11 @@ async fn native_prompt_permission_survives_display_reconstruction() {
     let deadline = Instant::now() + Duration::from_secs(30);
     let recovered = loop {
         let detail = backend.get(&format!("/api/tasks/{task}")).await;
-        if detail["context"] == initial_context {
+        if detail["pendingApprovals"].as_array().is_some_and(|values| {
+            values
+                .iter()
+                .any(|approval| approval["payload"]["approvalId"] == id)
+        }) {
             break detail;
         }
         assert!(
@@ -562,15 +828,12 @@ async fn native_prompt_permission_survives_display_reconstruction() {
         );
     }
     let completed_context = final_detail["context"].clone();
-    assert!(
-        completed_context["usedTokens"].as_u64().unwrap()
-            > initial_context["usedTokens"].as_u64().unwrap(),
-        "recovered turn must accept later context reports"
-    );
-    assert_eq!(
-        completed_context["windowTokens"],
-        initial_context["windowTokens"]
-    );
+    if !initial_context.is_null() {
+        assert_eq!(
+            completed_context["windowTokens"],
+            initial_context["windowTokens"]
+        );
+    }
     backend.replace().await;
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {

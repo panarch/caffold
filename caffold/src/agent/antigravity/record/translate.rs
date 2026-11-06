@@ -275,6 +275,16 @@ pub(super) fn turn(
                 let result = nonempty(&file.content).map(ToolResultPart::Text);
                 items.push(item("", step_work(step, metadata, result), activity));
             }
+            Some(Payload::NativeTool(tool)) => {
+                let result = tool
+                    .result
+                    .as_ref()
+                    .and_then(|result| {
+                        nonempty(&result.text).or_else(|| nonempty(&result.result_uri))
+                    })
+                    .map(ToolResultPart::Text);
+                items.push(item("", step_work(step, metadata, result), activity));
+            }
             Some(Payload::ErrorMessage(error)) => {
                 let result = error_text(error).map(ToolResultPart::Text);
                 items.push(item("", step_work(step, metadata, result), activity));

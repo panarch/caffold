@@ -443,13 +443,6 @@ fn image_paths(images: &[PromptImage]) -> Vec<String> {
 }
 
 impl Driver {
-    pub(crate) fn supports_steering(&self) -> bool {
-        match self {
-            Self::Codex(_) | Self::Claude(_) | Self::Grok(_) => true,
-            Self::Antigravity(_) => false,
-        }
-    }
-
     pub(crate) async fn accept_turn_options(
         &self,
         options: &TurnOptions,
@@ -733,9 +726,9 @@ impl Driver {
         images: &[PromptImage],
     ) -> Result<ConversationItem, AgentError> {
         match self {
-            Self::Antigravity(_) => Err(AgentError::Failed(
-                "Antigravity does not support steering a running request".into(),
-            )),
+            Self::Antigravity(client) => Ok(client
+                .steer_turn(conversation_id, turn_id, prompt, images)
+                .await?),
             Self::Codex(client) => {
                 let paths = image_paths(images);
                 let steered = client

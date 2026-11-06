@@ -305,14 +305,6 @@ pub(super) fn router(state: TaskState) -> Router {
         .route("/api/antigravity/status", get(antigravity::status))
         .route("/api/antigravity/restart", post(antigravity::restart))
         .route("/api/antigravity/refresh", post(antigravity::refresh))
-        .route("/api/antigravity/install", post(antigravity::install))
-        .route("/api/antigravity/auth/login", post(antigravity::login))
-        .route("/api/antigravity/auth/logout", post(antigravity::logout))
-        .route("/api/antigravity/auth/cancel", post(antigravity::cancel))
-        .route(
-            "/api/antigravity/auth/callback",
-            post(antigravity::callback).layer(DefaultBodyLimit::max(40 * 1024)),
-        )
         .route("/api/tasks/{thread_id}/handoff", post(handoff::create))
         .route("/api/agent/models", get(agent_models))
         .route("/api/agent/permissions", get(agent_permissions))

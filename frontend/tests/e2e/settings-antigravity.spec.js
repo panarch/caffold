@@ -4,132 +4,44 @@ import { captureReviewScreenshot } from "./support/task-fixtures.js";
 import {
   activateActionHint,
   actionHintDialog,
-  workspaceTargets,
 } from "./support/action-hints.js";
 
 const base = () => ({
   runtime: { restarting: false, running: true, pid: 4301, version: "0.7.2", sessions: 2, idleTimeoutSecs: 600, error: null },
   installation: {
-    phase: "idle",
-    supported: true,
-    version: "1.4.5",
-    installed: true,
-    executable:
-      "/Users/server/Library/Application Support/Caffold/data/antigravity/versions/1.4.5/agy_acp_server.par",
-    error: null,
+    ready: true, version: "1.5.1", minimumVersion: "1.5.1", installed: true,
+    executable: "/Users/server/.local/bin/agy", error: null,
   },
-  auth: {
-    phase: "idle",
-    requestId: null,
-    authorizationUrl: null,
-    verified: null,
-    error: null,
-  },
+  auth: { verified: null },
   usage: { windows: [], error: null },
   refreshing: false,
   modelsAvailable: false,
   modelsError: null,
 });
 
-test(
-  "remote Google handoff keeps its job across navigation and exposes keyboard actions",
-  { tag: "@all-viewports" },
-  async ({ page }, info) => {
-    await installBrowserDefaults(page);
-    let status = base(),
-      actions = [],
-      callbacks = [];
-    await page.route("**/api/antigravity/**", async (route) => {
-      const path = new URL(route.request().url()).pathname;
-      if (route.request().method() === "GET")
-        return route.fulfill({ json: status });
-      actions.push(path);
-      if (path.endsWith("/login"))
-        status = {
-          ...status,
-          auth: {
-            ...status.auth,
-            phase: "awaitingCallback",
-            requestId: "fixture-login",
-            authorizationUrl:
-              "https://accounts.google.com/o/oauth2/auth?state=fixture&redirect_uri=http%3A%2F%2F127.0.0.1%3A43123%2F",
-          },
-        };
-      if (path.endsWith("/callback")) {
-        callbacks.push(route.request().postDataJSON());
-        status = {
-          ...status,
-          auth: {
-            phase: "idle",
-            requestId: null,
-            authorizationUrl: null,
-            verified: {
-              authenticated: true,
-              tier: { id: "g1-pro-tier", name: "Google AI Pro" },
-              verifiedAtMs: 1234,
-            },
-            error: null,
-          },
-        };
-      }
-      if (path.endsWith("/refresh"))
-        status = { ...status, modelsAvailable: true };
-      return route.fulfill({ json: status });
-    });
-    await page.goto("/settings/antigravity");
-    const owner = page.locator("caffold-settings-antigravity-page");
-    await expect(owner).toBeVisible();
-    await expect(owner).toContainText("Not checked");
-    await expect.poll(() => actions).toEqual(["/api/antigravity/refresh"]);
-    await expect(owner.getByRole("link", { name: "Service status" })).toHaveAttribute("href", "https://aistudio.google.com/status");
-    await expect(owner.getByRole("button", { name: "Sign out", exact: true })).toHaveCount(0);
-    await owner
-      .getByRole("button", { name: "Sign in", exact: true })
-      .scrollIntoViewIfNeeded();
-    await activateActionHint(page, "Sign in");
-    await expect(
-      owner.getByRole("link", { name: "Continue with Google" }),
-    ).toHaveAttribute("target", "_blank");
-    await page.goto("/settings/appearance");
-    await page.goto("/settings/antigravity");
-    await expect(
-      owner.getByLabel("Google completion URL", { exact: true }),
-    ).toBeVisible();
-    await owner
-      .getByLabel("Google completion URL", { exact: true })
-      .scrollIntoViewIfNeeded();
-    const targets = await workspaceTargets(page, "settings:antigravity:");
-    expect(targets.map((t) => t[1])).toContain("Google completion URL");
-    await captureReviewScreenshot(page, info, "antigravity-remote-login");
-    await owner
-      .getByLabel("Google completion URL", { exact: true })
-      .fill("http://127.0.0.1:43123/?state=fixture&code=fixture-only");
-    await owner
-      .getByRole("button", { name: "Finish sign-in", exact: true })
-      .click();
-    await expect(owner).toContainText("Google AI Pro");
-    await expect(owner.getByRole("button", { name: "Sign in", exact: true })).toHaveCount(0);
-    await expect(owner.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
-    expect(callbacks).toEqual([
-      {
-        requestId: "fixture-login",
-        url: "http://127.0.0.1:43123/?state=fixture&code=fixture-only",
-      },
-    ]);
-    expect(actions.filter((a) => a.endsWith("/cancel"))).toEqual([]);
-    await owner
-      .getByRole("button", { name: "Refresh", exact: true })
-      .click();
-    await expect(owner).toContainText("Available");
-    await captureReviewScreenshot(page, info, "antigravity-settings");
-    await expect(owner.locator(".settings-content-scroll")).toHaveJSProperty(
-      "scrollWidth",
-      await owner
-        .locator(".settings-content-scroll")
-        .evaluate((e) => e.clientWidth),
-    );
-  },
-);
+test("CLI authentication is observed without app login or installation controls", { tag: "@all-viewports" }, async ({ page }, info) => {
+  await installBrowserDefaults(page);
+  const status = base();
+  const actions = [];
+  await page.route("**/api/antigravity/**", route => {
+    if (route.request().method() === "POST") actions.push(new URL(route.request().url()).pathname);
+    return route.fulfill({ json: status });
+  });
+  await page.goto("/settings/antigravity");
+  const owner = page.locator("caffold-settings-antigravity-page");
+  await expect(owner).toContainText("Not checked");
+  await expect(owner).toContainText("CLI's saved authentication");
+  await expect(owner).toContainText("/Users/server/.local/bin/agy");
+  await expect(owner.getByRole("button", { name: /Sign in|Sign out|Install Antigravity|Finish sign-in|Cancel sign-in/ })).toHaveCount(0);
+  await expect(owner.getByRole("textbox")).toHaveCount(0);
+  await expect.poll(() => actions).toEqual(["/api/antigravity/refresh"]);
+  status.auth.verified = { authenticated: true, tier: { id: "pro", name: "Google AI Pro" }, verifiedAtMs: 1234 };
+  await activateActionHint(page, "Refresh");
+  await expect(owner).toContainText("Signed in");
+  await expect(owner).toContainText("Google AI Pro");
+  await expect.poll(() => actions).toEqual(["/api/antigravity/refresh", "/api/antigravity/refresh"]);
+  await captureReviewScreenshot(page, info, "antigravity-cli-settings");
+});
 
 test(
   "unknown installation inspection and long errors stay unavailable",
@@ -138,6 +50,7 @@ test(
     await installBrowserDefaults(page);
     const status = base();
     status.installation.installed = null;
+    status.installation.ready = false;
     status.installation.executable = null;
     status.installation.error =
       "Could not inspect /Users/server/Library/Application Support/" +
@@ -151,7 +64,7 @@ test(
     await expect(owner).toContainText("Unavailable");
     await expect(
       owner.getByRole("button", { name: "Sign in", exact: true }),
-    ).toBeDisabled();
+    ).toHaveCount(0);
     await captureReviewScreenshot(page, info, "antigravity-inspection-error");
     expect(
       await owner
@@ -225,7 +138,7 @@ test("one refresh updates native quota and the official icon uses existing theme
   expect(filters[0]).not.toEqual(filters[1]);
 });
 
-test("refresh requiring login offers explicit sign-in and preserves a running refresh across navigation", { tag: "@server-changes" }, async ({ page }) => {
+test("refresh requiring login directs the user to the CLI and preserves a running refresh across navigation", { tag: "@server-changes" }, async ({ page }) => {
   await installBrowserDefaults(page);
   let status = base();
   let finishRefresh;
@@ -248,10 +161,10 @@ test("refresh requiring login offers explicit sign-in and preserves a running re
   await page.goto("/settings/appearance");
   await page.goto("/settings/antigravity");
   await expect(owner.getByRole("button", { name: /Refresh/ })).toBeDisabled();
-  status = { ...status, refreshing: false, auth: { ...status.auth, verified: { authenticated: false, tier: null, verifiedAtMs: 2 } }, usage: { windows: [], error: "Sign in to Antigravity in Settings" }, modelsError: "Sign in to Antigravity in Settings" };
+  status = { ...status, refreshing: false, auth: { ...status.auth, verified: { authenticated: false, tier: null, verifiedAtMs: 2 } }, usage: { windows: [], error: "Run agy in a terminal and sign in" }, modelsError: "Run agy in a terminal and sign in" };
   finishRefresh();
-  await expect(owner).toContainText("Signed out");
-  await expect(owner.getByRole("button", { name: "Sign in", exact: true })).toBeEnabled();
+  await expect(owner).toContainText("Sign in with CLI");
+  await expect(owner.getByRole("button", { name: "Sign in", exact: true })).toHaveCount(0);
   await expect(owner.getByRole("link", { name: "Continue with Google" })).toHaveCount(0);
   await expect.poll(() => actions).toEqual(["/api/antigravity/refresh"]);
 });
@@ -309,14 +222,14 @@ test("leaving during the entry inspection cannot start a late refresh", { tag: "
 });
 
 for (const installation of [
-  { installed: false, phase: "idle", label: "Not installed" },
-  { installed: true, phase: "downloading", label: "Downloading…" },
+  { installed: false, label: "Not installed" },
+  { installed: true, label: "Update required" },
 ]) {
   test(`entry does not refresh while installation is ${installation.label}`, { tag: "@server-steady" }, async ({ page }) => {
     await installBrowserDefaults(page);
     await page.clock.install();
     const status = base();
-    Object.assign(status.installation, { installed: installation.installed, phase: installation.phase });
+    Object.assign(status.installation, { installed: installation.installed, ready: false });
     const actions = [];
     await page.route("**/api/antigravity/**", route => {
       if (route.request().method() !== "GET") actions.push(new URL(route.request().url()).pathname);
@@ -429,7 +342,7 @@ test("AGY runtime matches Claude and confirms restart through the modal keyboard
 test("AGY runtime failure stays actionable without claiming a replacement", { tag: "@server-steady" }, async ({ page }) => {
   await installBrowserDefaults(page);
   await page.route("**/api/antigravity/**", route => new URL(route.request().url()).pathname.endsWith("/restart")
-    ? route.fulfill({ status: 409, json: { error: { code: "antigravity_action_failed", message: "wait for the authentication action to finish" } } })
+    ? route.fulfill({ status: 409, json: { error: { code: "antigravity_action_failed", message: "wait for the Settings refresh to finish" } } })
     : route.fulfill({ json: base() }));
   await page.goto("/settings/antigravity");
   const owner = page.locator("caffold-settings-antigravity-page");
@@ -437,7 +350,7 @@ test("AGY runtime failure stays actionable without claiming a replacement", { ta
   await expect(restart).toBeEnabled();
   await restart.click();
   await page.getByRole("dialog", { name: "Restart Antigravity runtime?" }).getByRole("button", { name: "Restart Antigravity" }).click();
-  await expect(owner).toContainText("wait for the authentication action to finish");
+  await expect(owner).toContainText("wait for the Settings refresh to finish");
   await expect(owner).toContainText("Running · pid 4301");
   await expect(owner).not.toContainText("runner restarted.");
   await expect(restart).toBeEnabled();

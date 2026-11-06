@@ -43,7 +43,7 @@ impl Session {
             }
         }
         let tool = protocol::required_string(&params["toolCall"], "toolCallId")?;
-        // This reserved ID is emitted by pinned 1.4.5's _ask_user_handler.
+        // The native question callback uses this reserved tool-call ID.
         // Titles, labels and prompt text never classify a permission request.
         if is_question(tool) {
             return self
