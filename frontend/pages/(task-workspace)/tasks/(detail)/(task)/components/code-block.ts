@@ -10,12 +10,14 @@ import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import type { MarkdownPreviewRequest } from "./markdown-preview-dialog.js";
+import type { MermaidPreviewRequest } from "./mermaid-preview-dialog.js";
 
 import styles from "./code-block.css.js";
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
 const MARKDOWN_FENCE_LABELS = new Set(["markdown", "md"]);
 const PREVIEW_LABEL = "Preview Markdown";
+const MERMAID_PREVIEW_LABEL = "Preview Mermaid";
 
 type CopyState = "idle" | "copying" | "copied" | "failed";
 
@@ -67,6 +69,7 @@ export class CaffoldTaskCodeBlock extends CaffoldElement {
     const wrapLabel = this.wrapped
       ? "Stop wrapping code lines"
       : "Wrap code lines";
+    const language = this.label.toLowerCase();
     return html`
       <header class="code-block-header">
         <span
@@ -82,7 +85,7 @@ export class CaffoldTaskCodeBlock extends CaffoldElement {
         >${copy.feedback}</span>
         <div class="code-block-actions">
           ${
-            MARKDOWN_FENCE_LABELS.has(this.label.toLowerCase())
+            MARKDOWN_FENCE_LABELS.has(language)
               ? html`<button
                   ${drawn(this.previewButton)}
                   ${this.hints.button({
@@ -96,7 +99,21 @@ export class CaffoldTaskCodeBlock extends CaffoldElement {
                   title=${PREVIEW_LABEL}
                   @click=${this.requestPreview}
                 >${actionIcon("Eye")}</button>`
-              : nothing
+              : language === "mermaid"
+                ? html`<button
+                    ${drawn(this.previewButton)}
+                    ${this.hints.button({
+                      id: "preview",
+                      label: MERMAID_PREVIEW_LABEL,
+                      action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                    })}
+                    type="button"
+                    data-code-action="preview"
+                    aria-label=${MERMAID_PREVIEW_LABEL}
+                    title=${MERMAID_PREVIEW_LABEL}
+                    @click=${this.requestMermaidPreview}
+                  >${actionIcon("Eye")}</button>`
+                : nothing
           }
           <button
             ${this.hints.button({
@@ -182,6 +199,23 @@ export class CaffoldTaskCodeBlock extends CaffoldElement {
           bubbles: true,
           composed: true,
           detail: { markdown: this.text, opener },
+        },
+      ),
+    );
+  }
+
+  private requestMermaidPreview() {
+    const opener = this.previewButton.value;
+    if (!opener) {
+      return;
+    }
+    this.dispatchEvent(
+      new CustomEvent<MermaidPreviewRequest>(
+        "caffold:task-mermaid-preview-intent",
+        {
+          bubbles: true,
+          composed: true,
+          detail: { source: this.text, opener },
         },
       ),
     );
@@ -295,5 +329,6 @@ declare global {
 
   interface HTMLElementEventMap {
     "caffold:task-markdown-preview-intent": CustomEvent<MarkdownPreviewRequest>;
+    "caffold:task-mermaid-preview-intent": CustomEvent<MermaidPreviewRequest>;
   }
 }

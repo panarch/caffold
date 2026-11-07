@@ -310,6 +310,12 @@ Conversation renders the canonical agent conversation as a review timeline:
 - interruption, failure, reconnect, completion, and unavailable states;
 - follow-up Start or Steer behavior derived from canonical conversation state.
 
+A `mermaid` code block in the agent's answer offers **Preview Mermaid** beside
+its Wrap and Copy. It opens a dialog with the diagram drawn from the block's
+source in the conversation's theme, typeface, and text size, while the block
+keeps showing the source that Copy copies. When the diagram cannot be drawn, the
+dialog shows the reason with the source and Retry.
+
 Finished commands that ran one after another fold into one **Ran N commands**
 card that counts the failed and declined ones; opening it shows each command's
 row with its **View output**. The empty thinking an agent records around its

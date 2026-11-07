@@ -96,6 +96,11 @@ import type {
   CaffoldTaskMarkdownPreviewDialog,
   MarkdownPreviewRequest,
 } from "./components/markdown-preview-dialog.js";
+import "./components/mermaid-preview-dialog.js";
+import type {
+  CaffoldTaskMermaidPreviewDialog,
+  MermaidPreviewRequest,
+} from "./components/mermaid-preview-dialog.js";
 import "./components/permission-instructions-dialog.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import { scopedStyle } from "#app/scoped-style.js";
@@ -343,6 +348,8 @@ export class CaffoldTaskDetail extends CaffoldElement {
   );
   private readonly markdownPreviewDialog =
     new DrawnRef<CaffoldTaskMarkdownPreviewDialog>(this);
+  private readonly mermaidPreviewDialog =
+    new DrawnRef<CaffoldTaskMermaidPreviewDialog>(this);
   private readonly permissionInstructionsDialog =
     new DrawnRef<CaffoldTaskPermissionInstructionsDialog>(this);
   private readonly currentPlanComponent = new DrawnRef<CaffoldTaskCurrentPlan>(
@@ -561,6 +568,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
     this.commandDialog.value?.dismiss();
     this.toolCallDialog.value?.dismiss();
     this.markdownPreviewDialog.value?.dismiss();
+    this.mermaidPreviewDialog.value?.dismiss();
     this.permissionInstructionsDialog.value?.dismiss();
   }
 
@@ -665,6 +673,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       this.commandDialog.value?.keyboardNavigationContexts() ?? [],
       this.toolCallDialog.value?.keyboardNavigationContexts() ?? [],
       this.markdownPreviewDialog.value?.keyboardNavigationContexts() ?? [],
+      this.mermaidPreviewDialog.value?.keyboardNavigationContexts() ?? [],
       this.permissionInstructionsDialog.value?.keyboardNavigationContexts() ??
         [],
     );
@@ -1948,6 +1957,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
     this.commandDialog.value?.setThreadId(this.selectedThreadId);
     this.toolCallDialog.value?.setThreadId(this.selectedThreadId);
     this.markdownPreviewDialog.value?.setThreadId(this.selectedThreadId);
+    this.mermaidPreviewDialog.value?.setThreadId(this.selectedThreadId);
     this.permissionInstructionsDialog.value?.setThreadId(this.selectedThreadId);
     const absence = this.detailSession.absence;
     if (absence) {
@@ -2339,6 +2349,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
             ${drawn(this.conversationComponent)}
             @caffold:task-conversation-intent=${this.conversationIntent}
             @caffold:task-markdown-preview-intent=${this.previewMarkdown}
+            @caffold:task-mermaid-preview-intent=${this.previewMermaid}
           ></caffold-task-conversation>
           <caffold-task-command-dialog
             ${drawn(this.commandDialog)}
@@ -2349,6 +2360,9 @@ export class CaffoldTaskDetail extends CaffoldElement {
           <caffold-task-markdown-preview-dialog
             ${drawn(this.markdownPreviewDialog)}
           ></caffold-task-markdown-preview-dialog>
+          <caffold-task-mermaid-preview-dialog
+            ${drawn(this.mermaidPreviewDialog)}
+          ></caffold-task-mermaid-preview-dialog>
           <caffold-task-permission-instructions-dialog
             ${drawn(this.permissionInstructionsDialog)}
             @caffold:task-detail-intent=${this.permissionIntent}
@@ -2564,6 +2578,11 @@ export class CaffoldTaskDetail extends CaffoldElement {
   private previewMarkdown(event: CustomEvent<MarkdownPreviewRequest>) {
     event.stopPropagation();
     this.markdownPreviewDialog.value?.openMarkdown(event.detail);
+  }
+
+  private previewMermaid(event: CustomEvent<MermaidPreviewRequest>) {
+    event.stopPropagation();
+    this.mermaidPreviewDialog.value?.openMermaid(event.detail);
   }
 
   private permissionIntent(event: CustomEvent<TaskRequestFailedIntent>) {

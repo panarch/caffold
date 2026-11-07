@@ -1706,6 +1706,30 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.js"
             ))))
         }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog.css.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog.css.js"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog.js"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog/components/mermaid-diagram.css.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog/components/mermaid-diagram.css.js"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog/components/mermaid-diagram.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog/components/mermaid-diagram.js"
+            ))))
+        }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.css.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
@@ -3408,6 +3432,14 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.js",
                 b"caffold-task-markdown-preview-dialog".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog.js",
+                b"caffold-task-mermaid-preview-dialog".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog/components/mermaid-diagram.js",
+                b"caffold-task-mermaid-diagram".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.js",

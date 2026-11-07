@@ -18,7 +18,7 @@ export interface ActionHintTarget {
   label: string;
   invalidationOwner: Element;
   controlKind: ActionHintControlKind;
-  control: HTMLElement;
+  control: HTMLElement | SVGAElement;
   anchor: Element;
   clipRoots: Element[];
   occlusionRoots?: Element[];
@@ -39,7 +39,7 @@ interface ActionHintTargetOptions {
   actionId: string;
   label: string;
   invalidationOwner: Element;
-  control: HTMLElement;
+  control: HTMLElement | SVGAElement;
   anchor?: Element;
   clipRoots: Element[];
 }
@@ -116,7 +116,10 @@ export function captureLinkActionHintBinding(
   control: Element,
 ): LinkActionHintBinding {
   return Object.freeze({
-    href: control.getAttribute("href"),
+    href:
+      control.getAttribute("href") ??
+      control.getAttributeNS?.("http://www.w3.org/1999/xlink", "href") ??
+      null,
     target: control.getAttribute("target"),
     rel: control.getAttribute("rel"),
   });
@@ -128,7 +131,7 @@ export function matchesLinkActionHintBinding(
 ) {
   return Boolean(
     binding &&
-      control.getAttribute("href") === binding.href &&
+      captureLinkActionHintBinding(control).href === binding.href &&
       control.getAttribute("target") === binding.target &&
       control.getAttribute("rel") === binding.rel,
   );
@@ -437,7 +440,15 @@ function focusAndClickActionHintTarget(
     ...target,
     activate: () => {
       options.control.focus({ preventScroll: true });
-      options.control.click();
+      if ("click" in options.control) options.control.click();
+      else
+        options.control.dispatchEvent(
+          new MouseEvent("click", {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+          }),
+        );
     },
   };
 }

@@ -918,8 +918,18 @@ function normalizeDescriptors(targets: unknown) {
       }) ||
       (target?.controlKind === "link" && !activationKey) ||
       !(target?.invalidationOwner instanceof Element) ||
-      !(target?.control instanceof HTMLElement) ||
-      !(target?.anchor instanceof HTMLElement) ||
+      !(
+        target?.control instanceof HTMLElement ||
+        (target?.controlKind === "link" &&
+          typeof SVGAElement !== "undefined" &&
+          target?.control instanceof SVGAElement)
+      ) ||
+      !(
+        target?.anchor instanceof HTMLElement ||
+        (target?.controlKind === "link" &&
+          typeof SVGElement !== "undefined" &&
+          target?.anchor instanceof SVGElement)
+      ) ||
       typeof target?.activate !== "function"
     ) {
       return null;

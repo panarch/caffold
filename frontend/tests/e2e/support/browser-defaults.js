@@ -6,7 +6,7 @@ import { installTaskSseControllerInBrowser } from "./task-sse-fixture.js";
 // The suite runs the real libraries the app loads from jsDelivr rather than
 // stand-ins: a document or terminal that fails to render produces no fallback
 // content to assert against.
-const CDN_PACKAGES = ["pdfjs-dist", "@aiden0z/pptx-renderer", "@xterm/xterm", "@xterm/addon-fit"].map(
+const CDN_PACKAGES = ["pdfjs-dist", "@aiden0z/pptx-renderer", "mermaid", "@xterm/xterm", "@xterm/addon-fit"].map(
   (name) => ({
     root: installedPackageRoot(name),
     prefix: `${cdnPackageUrl(name)}/`,

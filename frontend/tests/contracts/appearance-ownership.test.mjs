@@ -40,6 +40,7 @@ const codeOwners = new Set([
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/tool-call.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/code-block.css",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog/components/mermaid-diagram.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css",
   "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.css",
   "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css",
@@ -63,6 +64,7 @@ const typefaceOwners = new Set([
   "keyboard-navigation/components/selector.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/code-block.css",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog/components/mermaid-diagram.css",
   "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.css",
   "pages/(task-workspace)/settings/appearance/page.css",
   "styles.css",
@@ -867,6 +869,11 @@ test("icon-only controls use square slots from their semantic control tier", () 
       "--interface-control-hit-size",
     ],
     [
+      "pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog.css",
+      ".task-mermaid-preview-close",
+      "--interface-control-hit-size",
+    ],
+    [
       "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
       ".task-image-preview-close",
       "--interface-control-hit-size",
@@ -1074,6 +1081,11 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
     [
       "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.css",
       ".task-markdown-preview-close::before",
+      "--interface-control-hit-outset",
+    ],
+    [
+      "pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog.css",
+      ".task-mermaid-preview-close::before",
       "--interface-control-hit-outset",
     ],
     [

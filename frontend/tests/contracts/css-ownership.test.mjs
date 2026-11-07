@@ -128,6 +128,8 @@ const shadowRootStyles = new Map([
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.css", "caffold-task-current-plan"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.css", "caffold-current-plan-document-dialog"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.css", "caffold-task-markdown-preview-dialog"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog.css", "caffold-task-mermaid-preview-dialog"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog/components/mermaid-diagram.css", "caffold-task-mermaid-diagram"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.css", "caffold-task-permission-instructions-dialog"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css", "caffold-task-detail-summary"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css", "caffold-task-detail-info"],

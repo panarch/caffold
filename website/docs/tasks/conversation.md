@@ -25,6 +25,15 @@ for.
 **View output** on a command opens its full output. **View details** on a tool
 call shows what the agent passed the tool and what came back.
 
+## Read a diagram
+
+A Mermaid code block in the agent's answer has a **Preview Mermaid** button.
+Choose it to open the diagram in a dialog, and scroll the dialog to read a large
+diagram. **Copy code** on the block copies the Mermaid source.
+
+If the diagram cannot be drawn, the dialog shows why, with the source. Choose
+**Retry** to try again.
+
 ## Copy an answer
 
 Every message from the agent has a **Copy message** button, which copies the

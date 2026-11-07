@@ -732,11 +732,12 @@ do not enumerate or reach through descendant DOM. A retained pane with no
 layout box is omitted before merge, so its hidden mutation and scroll
 dependencies cannot invalidate the visible pane's session.
 
-The twelve registered Task Workspace product dialogs follow the same
+The thirteen registered Task Workspace product dialogs follow the same
 owner-first contract: Codex restart, Codex update, Claude restart,
 archived-task deletion, Task switcher, image preview, Conversation fork,
-command output, tool call details, code-block Markdown preview, Current Plan
-document, and GitHub Task Start. Every currently visible and enabled button has
+command output, tool call details, code-block Markdown preview, code-block
+Mermaid preview, Current Plan document, and GitHub Task Start. Every currently
+visible and enabled button has
 an owner declaration, without semantic deduplication, and controls owned by a
 direct child compose through the same public scope interface. Fork additionally
 declares its Thread-ID textbox, while the Task Start issue child declares its
@@ -892,15 +893,17 @@ retained Assistant Message,
 Thinking, active Command, expanded Work Details, tool-output, and approval
 command scopes. Collapsed disclosures publish no inner surface.
 
-Six registered product dialogs publish their exact parent surface:
+Seven registered product dialogs publish their exact parent surface:
 Conversation fork body, command-output body, tool-call-details body, code-block
-Markdown preview, Current Plan Markdown preview, and Task Start body. Command
+Markdown preview, code-block Mermaid diagram, Current Plan Markdown preview,
+and Task Start body. Command
 Output and Tool Call Details additionally merge the scope of each Code Block
 they show, under the names their output, input, and result pieces go by, and
 publish the `pre` of a note that stands where there is no output or input or
 a result piece is binary; the code-block
 and Current Plan Markdown previews delegate the shared preview's code and table
-scopes; and Pull Task Start merges its base/head relationship `dl`. A modal may
+scopes; the Mermaid diagram adds the source it shows when Mermaid cannot draw
+it; and Pull Task Start merges its base/head relationship `dl`. A modal may
 therefore select among parent and nested surfaces. Each
 registered popover continues to publish only its own root as an optional
 surface. Composer textareas, control strips, native editable internals,
@@ -1073,7 +1076,8 @@ Archive, or an archived or missing Task clears that fallback identity.
 
 `caffold-task-detail` is the canonical owner of the selected Task
 snapshot and live event application, Conversation, Command dialog, Tool call
-details dialog, code-block Markdown preview dialog, current-plan strip,
+details dialog, code-block Markdown and Mermaid preview dialogs, current-plan
+strip,
 follow-up Composer, and Task mutations. It publishes a subject snapshot upward; it does not mount Integrated
 Review, Git, GitHub, or their Summary controls.
 
@@ -1309,9 +1313,28 @@ Detail components because Markdown and two dialogs draw it: Markdown hands it
 each fence's code and name, and Tool Call Details and Command Output hand it
 the input, each text or JSON result piece, and the output, named JSON or Plain
 text, drawing new blocks each time they open. Preview appears only on a block
-named `markdown` or `md` and asks
-Task Detail to open its code-block Markdown preview dialog with the block's text
-at that moment, rendered through the shared Markdown Preview.
+named `markdown`, `md`, or `mermaid`. A Markdown block asks Task Detail to open
+its code-block Markdown preview dialog with the block's text at that moment,
+rendered through the shared Markdown Preview; a Mermaid block asks it to open
+its code-block Mermaid preview dialog with the block's source at that moment.
+
+The Mermaid preview dialog has the Markdown preview dialog's frame. Its own
+diagram component draws the source in the browser with the official Mermaid
+library, a pinned release imported from jsDelivr at first use, at Mermaid's
+default strict security level. Mermaid keeps one page-wide configuration, so the
+component applies the resolved theme, the UI typeface, and the Conversation text
+size right before each render and runs renders one at a time. It waits for that
+typeface to load first, since Mermaid sizes each label by drawing it. The
+component sizes the SVG to its viewBox, so the diagram shows at its natural size
+and scrolls inside the dialog. It keeps one current SVG: a closed dialog keeps
+the result for the same source and appearance, and a changed theme or setting
+draws again while the dialog is open. Mermaid cannot stop a render, so one that
+finishes after its source, appearance, or dialog changed is dropped. When
+Mermaid cannot read the source or the library cannot be fetched, the dialog
+shows the reason, the source, and Retry. The browser keeps a failed module
+address failed for the page, so Retry asks for the library under a new address.
+Diagram links keep their native behavior and publish Action Hints.
+
 Assistant Message mounts its Copy control as a component of its own and
 hands it only the text to place on the clipboard. That component owns the
 button, the outcome it reports, and the timer that clears it. It copies the
@@ -2489,8 +2512,8 @@ of both even though they come from `frontend/node_modules`, a TypeScript
 module is listed at the `.js` path it is served at, and a stylesheet a module
 imports is listed at the `.css.js` path of its module, and at its own path too
 only when the document also loads it. pdf.js,
-docx-preview, pptx-renderer, SheetJS, and xterm.js with its fit addon are the
-exceptions:
+docx-preview, pptx-renderer, SheetJS, Mermaid, and xterm.js with its fit addon
+are the exceptions:
 their owners import pinned releases at first use, and the browser suite answers
 those URLs from the same versions in `node_modules`. SheetJS comes from its own
 CDN, which publishes its current releases there rather than on npm, and the
