@@ -1,0 +1,77 @@
+:host {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  color: var(--text);
+}
+
+:host([hidden]) {
+  display: none;
+}
+
+:host > .body {
+  & > [hidden] {
+    display: none;
+  }
+
+  /* The inset belongs to the diagram's own box, so a wide diagram keeps it
+     at both ends of its scroll. */
+  & > .diagram {
+    width: max-content;
+    margin-inline: auto;
+    padding: clamp(1rem, 3vw, 2rem);
+    user-select: text;
+
+    & > svg {
+      display: block;
+    }
+  }
+
+  & > :is(.status, .error) {
+    margin: 0;
+    padding: clamp(1rem, 3vw, 2rem);
+    font-family: var(--font-ui);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & > .error {
+    color: var(--muted);
+
+    & > p {
+      margin: 0;
+      padding: 0 0 var(--interface-space-3);
+      white-space: pre-wrap;
+    }
+
+    & > button {
+      min-height: var(--interface-compact-hit-size);
+      font: inherit;
+      color: var(--control-fg);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: var(--interface-space-2) var(--interface-space-4);
+      cursor: pointer;
+
+      &:focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 2px;
+      }
+    }
+
+    & > .source {
+      overflow-x: auto;
+      font-family: var(--font-code);
+      font-size: var(--code-font-size);
+      line-height: var(--code-line-height);
+      white-space: pre;
+
+      & > code {
+        font: inherit;
+      }
+    }
+  }
+}

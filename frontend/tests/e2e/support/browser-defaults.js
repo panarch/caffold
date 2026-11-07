@@ -6,7 +6,7 @@ import { installTaskSseControllerInBrowser } from "./task-sse-fixture.js";
 // The suite runs the real libraries the app loads from jsDelivr rather than
 // stand-ins: a document or terminal that fails to render produces no fallback
 // content to assert against.
-const CDN_PACKAGES = ["pdfjs-dist", "@aiden0z/pptx-renderer", "@xterm/xterm", "@xterm/addon-fit"].map(
+const CDN_PACKAGES = ["pdfjs-dist", "@aiden0z/pptx-renderer", "mermaid", "@xterm/xterm", "@xterm/addon-fit"].map(
   (name) => ({
     root: installedPackageRoot(name),
     prefix: `${cdnPackageUrl(name)}/`,
@@ -358,9 +358,9 @@ export async function installExternalModuleDefaults(page) {
           const markdownBlocks = (source) => {
             const blocks = [];
             let current = [];
-            let fenced = 0;
+            let fenced = false;
             for (const line of source.split("\\n")) {
-              const fence = line.match(/^\\x60{3,}/)?.[0].length ?? 0;
+              const fence = line.startsWith("\\x60\\x60\\x60");
               if (fence && !fenced && current.length) {
                 blocks.push(current.join("\\n"));
                 current = [];
@@ -373,12 +373,12 @@ export async function installExternalModuleDefaults(page) {
                 continue;
               }
               current.push(line);
-              if (fence && !fenced) {
-                fenced = fence;
-              } else if (fence >= fenced && fenced && line.trim() === "\\x60".repeat(fence)) {
-                fenced = 0;
-                blocks.push(current.join("\\n"));
-                current = [];
+              if (fence) {
+                fenced = !fenced;
+                if (!fenced) {
+                  blocks.push(current.join("\\n"));
+                  current = [];
+                }
               }
             }
             if (current.length) {
@@ -399,14 +399,11 @@ export async function installExternalModuleDefaults(page) {
                 const block = escapeHtml(sourceBlock);
                 if (block.startsWith("\\x60\\x60\\x60")) {
                   const lines = block.split("\\n");
-                  const fenceLength = lines[0].match(/^\\x60+/)[0].length;
-                  const language = lines[0].slice(fenceLength).trim().split(/\\s+/, 1)[0];
+                  const language = lines[0].slice(3).trim().split(/\\s+/, 1)[0];
                   const languageClass = language
                     ? ' class="language-' + language + '"'
                     : '';
-                  const closing = lines.at(-1).trim();
-                  const closed = closing.length >= fenceLength && [...closing].every((character) => character === "\\x60");
-                  const code = lines.slice(1, closed ? -1 : undefined).join("\\n");
+                  const code = lines.slice(1, -1).join("\\n");
                   return '<pre><code' + languageClass + '>' + code + (code ? "\\n" : "") + '</code></pre>';
                 }
                 const heading = block.match(/^(#{1,6}) (.+)$/);
@@ -497,7 +494,6 @@ export async function installExternalModuleDefaults(page) {
         export const ClipboardPaste = [["path", { d: "M11 14h10" }], ["path", { d: "M16 4h2a2 2 0 0 1 2 2v1.344" }], ["path", { d: "m17 18 4-4-4-4" }], ["path", { d: "M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 1.793-1.113" }], ["rect", { x: "8", y: "2", width: "8", height: "4", rx: "1" }]];
         export const Copy = [["rect", { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2" }], ["path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" }]];
         export const CornerDownRight = [["path", { d: "m15 10 5 5-5 5" }], ["path", { d: "M4 4v7a4 4 0 0 0 4 4h12" }]];
-        export const Code = [["path", { d: "m16 18 6-6-6-6M8 6l-6 6 6 6" }]];
         export const Eye = [["path", { d: "M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" }], ["circle", { cx: "12", cy: "12", r: "3" }]];
         export const ChevronDown = [["path", { d: "m6 9 6 6 6-6" }]];
         export const Download = [["path", { d: "M12 15V3" }], ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }], ["path", { d: "m7 10 5 5 5-5" }]];

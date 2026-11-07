@@ -1809,12 +1809,3 @@ test("floating navigation shadows scale with the interface and theme and disappe
   await expect(navigation).toBeVisible();
   await expect(navigation).toHaveCSS("box-shadow", "none");
 });
-
-
-test("renders Mermaid in a Note through the shared preview", { tag: "@server-steady" }, async ({ page }) => {
-  await stubNotes(page, { notes: { ...NOTES, storage: note("storage", { content: '# Diagram note\n\n```mermaid\nflowchart TD\nA[한글 Note] --> B[Preview]\n```' }) } });
-  await page.goto("/notes/storage");
-  const diagram = primaryDocument(page).locator("caffold-mermaid-view");
-  await expect(diagram).toHaveAttribute("data-render-state", "ready");
-  await expect(diagram).toContainText("한글 Note");
-});

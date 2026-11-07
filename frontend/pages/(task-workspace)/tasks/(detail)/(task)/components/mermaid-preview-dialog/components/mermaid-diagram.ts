@@ -10,24 +10,25 @@ import {
   linkActionHintTarget,
   matchesLinkActionHintBinding,
   mergeActionHintScopes,
-} from "../action-hint-scope.js";
+} from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "../action-hints.js";
-import { CaffoldElement } from "../caffold-element.js";
-import { UI_TYPEFACE_PRESETS } from "../fonts.js";
-import { reportOriginReachable } from "../origin-reachability.js";
-import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.js";
-import { getSettings } from "../settings.js";
-import { getThemeState } from "../theme.js";
+} from "#app/action-hints.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { UI_TYPEFACE_PRESETS } from "#app/fonts.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
+import { getSettings } from "#app/settings.js";
+import { getThemeState } from "#app/theme.js";
 
-import styles from "./mermaid-view.css.js";
+import styles from "./mermaid-diagram.css.js";
+
+const MERMAID_VERSION = "12.3.0";
+const MERMAID_IMPORT = `https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_VERSION}/dist/mermaid.esm.min.mjs`;
 
 interface RenderRequest {
   key: string;
-  controller: AbortController;
 }
 type RenderState =
   | { kind: "inactive"; result: SvgResult | null }
@@ -42,14 +43,20 @@ interface SvgResult {
   key: string;
   svg: string;
 }
+interface Appearance {
+  theme: string;
+  fontFamily: string;
+  fontSize: number;
+}
 
-// The server's generated SVG is the only markup inserted here. Merman owns
-// Mermaid parsing and SVG generation; this component owns presentation and
-// request lifetime, including a retained result while Code is selected.
-@customElement("caffold-mermaid-view")
-export class CaffoldMermaidView extends CaffoldElement {
+// Mermaid's SVG is the only markup inserted here. Mermaid owns parsing,
+// layout, and SVG generation in this browser, so labels are measured in the
+// fonts they are drawn with; this component owns presentation and render
+// lifetime, including a retained result while its dialog is closed.
+@customElement("caffold-task-mermaid-diagram")
+export class CaffoldTaskMermaidDiagram extends CaffoldElement {
   private sourceValue = "";
-  private activeValue = true;
+  private activeValue = false;
   get source() {
     return this.sourceValue;
   }
@@ -79,9 +86,6 @@ export class CaffoldMermaidView extends CaffoldElement {
     binding: LinkActionHintBinding;
   }[] = [];
   private drawnSvg: Element | null = null;
-  private displayed = false;
-  private observer: ResizeObserver | null = null;
-  private visibilityFrame: number | null = null;
   private readonly hints = new ActionHints(this, { clipRoots: () => [this] });
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly appearanceChanged = () => this.transition({ type: "input" });
@@ -92,23 +96,7 @@ export class CaffoldMermaidView extends CaffoldElement {
     super.connectedCallback();
     window.addEventListener("caffold:theme-change", this.appearanceChanged);
     window.addEventListener("caffold:settings-change", this.appearanceChanged);
-    this.observer = new ResizeObserver(() => {
-      if (
-        this.visibilityFrame !== null ||
-        this.displayed === this.getClientRects().length > 0
-      )
-        return;
-      // Starting a request draws its status and changes this observed box.
-      // Leave ResizeObserver delivery before asking Lit to draw that change.
-      this.visibilityFrame = requestAnimationFrame(() => {
-        this.visibilityFrame = null;
-        const displayed = this.getClientRects().length > 0;
-        if (this.displayed === displayed) return;
-        this.displayed = displayed;
-        this.transition({ type: "input" });
-      });
-    });
-    this.observer.observe(this);
+    this.transition({ type: "input" });
   }
 
   override disconnectedCallback() {
@@ -118,65 +106,45 @@ export class CaffoldMermaidView extends CaffoldElement {
       "caffold:settings-change",
       this.appearanceChanged,
     );
-    this.observer?.disconnect();
-    this.observer = null;
-    if (this.visibilityFrame !== null)
-      cancelAnimationFrame(this.visibilityFrame);
-    this.visibilityFrame = null;
-    this.displayed = false;
     this.transition({ type: "input" });
-  }
-
-  override willUpdate() {
-    this.dispatchEvent(
-      new CustomEvent("caffold:mermaid-layout-before", {
-        bubbles: true,
-        composed: true,
-      }),
-    );
   }
 
   override updated() {
     this.dataset.renderState = this.renderState.kind;
     const svg = this.renderRoot.querySelector(".diagram > svg");
-    if (svg !== this.drawnSvg) {
-      this.drawnSvg = svg;
-      if (svg instanceof SVGSVGElement) {
-        const { width, height } = svg.viewBox.baseVal;
-        // Display the library's layout at its natural size. A narrow host
-        // scrolls instead of scaling every label down to fit its width.
-        svg.style.width = `${width}px`;
-        svg.style.height = `${height}px`;
-        svg.style.maxWidth = "none";
-      }
-      this.links = [
-        ...(svg?.querySelectorAll<HTMLAnchorElement | SVGAElement>("a") ?? []),
-      ].map((control) => ({
-        control,
-        binding: captureLinkActionHintBinding(control),
-      }));
+    if (svg === this.drawnSvg) return;
+    this.drawnSvg = svg;
+    if (svg instanceof SVGSVGElement) {
+      const { width, height } = svg.viewBox.baseVal;
+      // Display the library's layout at its natural size. A narrow dialog
+      // scrolls instead of scaling every label down to fit its width.
+      svg.style.width = `${width}px`;
+      svg.style.height = `${height}px`;
+      svg.style.maxWidth = "none";
     }
-    this.dispatchEvent(
-      new CustomEvent("caffold:mermaid-layout-after", {
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    this.links = [
+      ...(svg?.querySelectorAll<HTMLAnchorElement | SVGAElement>("a") ?? []),
+    ].map((control) => ({
+      control,
+      binding: captureLinkActionHintBinding(control),
+    }));
   }
 
   override render() {
     const result =
       "result" in this.renderState ? this.renderState.result : null;
-    return html`
+    return html`<div
+      class="body"
+      ${this.surfaces.surface({
+        id: "scroll",
+        axes: ["vertical", "horizontal"],
+        scrollport: () => this,
+        clipRoots: () => [this],
+      })}
+    >
       <div
         class="diagram"
         ?hidden=${!result}
-        ${this.surfaces.surface({
-          id: "diagram",
-          axes: ["horizontal"],
-          when: this.renderState.kind === "ready",
-          clipRoots: () => [this],
-        })}
       >${result ? unsafeHTML(result.svg) : nothing}</div>
       ${
         this.renderState.kind === "pending"
@@ -210,11 +178,11 @@ export class CaffoldMermaidView extends CaffoldElement {
           `
           : nothing
       }
-    `;
+    </div>`;
   }
 
   actionHintScope(pull: ActionHintPull = {}) {
-    if (!this.active || !this.displayed) return emptyActionHintScope();
+    if (!this.active) return emptyActionHintScope();
     return mergeActionHintScopes(this.hints.scope(pull), {
       blocked: false,
       targets: this.links.flatMap(({ control, binding }, index) => {
@@ -237,7 +205,7 @@ export class CaffoldMermaidView extends CaffoldElement {
         ];
       }),
       mutationRoots: [this, this.renderRoot],
-      scrollRoots: [...this.renderRoot.querySelectorAll(".diagram")],
+      scrollRoots: [this],
     });
   }
   scrollSurfaceScope(pull: ScrollSurfacePull = {}) {
@@ -247,8 +215,9 @@ export class CaffoldMermaidView extends CaffoldElement {
   // Full control graph: inactive -> inactive/pending/ready; pending ->
   // inactive/pending/ready/error; ready -> inactive/pending/ready;
   // error -> inactive/pending/error. A completion is accepted only by the
-  // pending request that started it. Same-key input is a no-op; Retry alone
-  // restarts an active error. The current ready artifact survives hiding.
+  // pending request that started it, since Mermaid cannot stop a render.
+  // Same-key input is a no-op; Retry alone restarts an active error. The
+  // current ready artifact survives deactivation.
   private transition(event: RenderEvent) {
     const previous = this.renderState;
     if (event.type === "complete" || event.type === "failed") {
@@ -264,23 +233,17 @@ export class CaffoldMermaidView extends CaffoldElement {
       return;
     }
     const settings = getSettings();
-    const key = JSON.stringify({
-      source: this.source,
+    const appearance: Appearance = {
       theme: getThemeState().resolvedTheme,
       fontFamily: UI_TYPEFACE_PRESETS[settings.uiTypefacePreset].stack,
       fontSize: settings.conversationTextPx,
-    });
+    };
+    const key = JSON.stringify({ source: this.source, ...appearance });
     const result =
       "result" in previous && previous.result?.key === key
         ? previous.result
         : null;
-    if (
-      !this.isConnected ||
-      !this.active ||
-      !this.displayed ||
-      !this.source.trim()
-    ) {
-      if (previous.kind === "pending") previous.request.controller.abort();
+    if (!this.isConnected || !this.active || !this.source.trim()) {
       if (previous.kind !== "inactive" || previous.result !== result)
         this.renderState = { kind: "inactive", result };
       return;
@@ -297,38 +260,20 @@ export class CaffoldMermaidView extends CaffoldElement {
     )
       return;
     if (event.type === "retry" && previous.kind !== "error") return;
-    if (previous.kind === "pending") previous.request.controller.abort();
-    const request = { key, controller: new AbortController() };
+    const request = { key };
     this.renderState = { kind: "pending", request };
-    void fetch("/api/mermaid/render", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: key,
-      signal: request.controller.signal,
-    })
-      .then(async (response) => {
-        reportOriginReachable();
-        if (!response.ok) {
-          const body = await response.json().catch(() => null);
-          throw new Error(
-            body?.error?.message ||
-              `Diagram request failed (HTTP ${response.status}).`,
-          );
-        }
-        return response.text();
-      })
-      .then(
-        (svg) => this.transition({ type: "complete", request, svg }),
-        (error: unknown) =>
-          this.transition({
-            type: "failed",
-            request,
-            message:
-              error instanceof Error
-                ? error.message
-                : "Diagram rendering failed.",
-          }),
-      );
+    renderSvg(this.source, appearance).then(
+      (svg) => this.transition({ type: "complete", request, svg }),
+      (error: unknown) =>
+        this.transition({
+          type: "failed",
+          request,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Diagram rendering failed.",
+        }),
+    );
   }
 
   private retry() {
@@ -336,8 +281,64 @@ export class CaffoldMermaidView extends CaffoldElement {
   }
 }
 
+interface MermaidLibrary {
+  initialize(config: Record<string, unknown>): void;
+  render(id: string, source: string): Promise<{ svg: string }>;
+}
+
+let library: Promise<MermaidLibrary> | null = null;
+let libraryFailures = 0;
+let renders: Promise<unknown> = Promise.resolve();
+let renderCount = 0;
+
+// Mermaid keeps one page-wide configuration, so each render applies its
+// own theme and fonts directly before drawing, one render after another.
+function renderSvg(source: string, appearance: Appearance) {
+  const rendered = renders.then(async () => {
+    const mermaid = await loadLibrary();
+    // Mermaid sizes each label by drawing it, so a font that arrives later
+    // would leave its box too narrow.
+    await document.fonts
+      .load(`${appearance.fontSize}px ${appearance.fontFamily}`, source)
+      .catch(() => undefined);
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: appearance.theme === "dark" ? "dark" : "default",
+      fontFamily: appearance.fontFamily,
+      themeVariables: {
+        fontFamily: appearance.fontFamily,
+        fontSize: `${appearance.fontSize}px`,
+      },
+      suppressErrorRendering: true,
+    });
+    renderCount += 1;
+    const { svg } = await mermaid.render(
+      `caffold-mermaid-${renderCount}`,
+      source,
+    );
+    return svg;
+  });
+  renders = rendered.catch(() => undefined);
+  return rendered;
+}
+
+// A failed module address stays failed for the page, so a later attempt
+// asks for the library under a new address.
+function loadLibrary() {
+  const attempt = libraryFailures ? `#retry-${libraryFailures}` : "";
+  library ??= import(`${MERMAID_IMPORT}${attempt}`).then(
+    (module: { default: MermaidLibrary }) => module.default,
+    (error: unknown) => {
+      library = null;
+      libraryFailures += 1;
+      throw error;
+    },
+  );
+  return library;
+}
+
 declare global {
   interface HTMLElementTagNameMap {
-    "caffold-mermaid-view": CaffoldMermaidView;
+    "caffold-task-mermaid-diagram": CaffoldTaskMermaidDiagram;
   }
 }

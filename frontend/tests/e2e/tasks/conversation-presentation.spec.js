@@ -542,16 +542,14 @@ test("owns final Markdown links without guessing fragments or stale bindings", {
   await revealActionHintControl(external);
   hint = await enterActionHints(page);
   await expect(hint.getByLabel(/Open External docs in a new tab$/)).toBeVisible();
-  // An equivalent Markdown revision retains the link and its current hint.
-  await external.evaluate((link) => { window.__retainedMarkdownLink = link; });
+  // Markdown drawn again replaces its links, so the shown hint is withdrawn.
   await markdown.evaluate((element, source) => {
     element.markdown = `${source}\n`;
   }, markdownSource);
   await expect(actionHintDialog(page)).toBeVisible();
   await expect(hint.getByLabel(/Open External docs in a new tab$/))
-    .toHaveCount(1);
+    .toHaveCount(0);
   await expect(markdown).toHaveAttribute("data-render-state", "markdown");
-  expect(await external.evaluate((link) => link === window.__retainedMarkdownLink)).toBe(true);
   await page.keyboard.press("Escape");
 
   const tableScroll = markdown.locator(".markdown-table-scroll");

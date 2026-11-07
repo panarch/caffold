@@ -11,14 +11,17 @@ const { ScrollSurfaces } = await import("#app/scroll-scope.js");
 const codeBlock = registry.element("caffold-task-code-block").prototype;
 after(() => registry.restore());
 
-test("offers Preview only for a Markdown fence and never as a toggle", () => {
-  for (const [label, offered] of [
-    ["markdown", true],
-    ["Markdown", true],
-    ["md", true],
-    ["mdx", false],
-    ["rust", false],
-    ["Plain text", false],
+test("offers Preview only for a Markdown or Mermaid fence and never as a toggle", () => {
+  for (const [label, previewLabel] of [
+    ["markdown", "Preview Markdown"],
+    ["Markdown", "Preview Markdown"],
+    ["md", "Preview Markdown"],
+    ["mermaid", "Preview Mermaid"],
+    ["Mermaid", "Preview Mermaid"],
+    ["mdx", null],
+    ["mmd", null],
+    ["rust", null],
+    ["Plain text", null],
   ]) {
     const owner = Object.create(codeBlock, Object.getOwnPropertyDescriptors({
       text: "",
@@ -30,9 +33,9 @@ test("offers Preview only for a Markdown fence and never as a toggle", () => {
     owner.surfaces = new ScrollSurfaces(owner);
     const html = templateHtml(owner.render());
     const preview = html.match(/<button[^>]*data-code-action="preview"[^>]*>/)?.[0];
-    assert.equal(Boolean(preview), offered, label);
-    if (offered) {
-      assert.match(preview, /aria-label="Preview Markdown"/);
+    assert.equal(Boolean(preview), Boolean(previewLabel), label);
+    if (previewLabel) {
+      assert.match(preview, new RegExp(`aria-label="${previewLabel}"`));
       assert.doesNotMatch(preview, /aria-pressed/);
     }
   }
@@ -56,7 +59,7 @@ test("draws the text it is given as code under its name", () => {
   );
 });
 
-test("takes Markdown's code, name, and place keeping for its reactive update", () => {
+test("takes Markdown's code, name, and place keeping, and draws at once", () => {
   const preserveLayout = () => {};
   let draws = 0;
   const owner = Object.create(codeBlock, Object.getOwnPropertyDescriptors({
@@ -72,7 +75,7 @@ test("takes Markdown's code, name, and place keeping for its reactive update", (
   assert.equal(owner.text, "fn main() {}\n");
   assert.equal(owner.label, "rust");
   assert.equal(owner.preserveLayout, preserveLayout);
-  assert.equal(draws, 0);
+  assert.equal(draws, 1);
 });
 
 test("requests a preview of the block text from its Preview button", () => {
@@ -95,5 +98,29 @@ test("requests a preview of the block text from its Preview button", () => {
 
   owner.previewButton = { value: undefined };
   owner.requestPreview();
+  assert.equal(events.length, 1);
+});
+
+test("requests a diagram preview of a Mermaid block from its Preview button", () => {
+  const events = [];
+  const opener = {};
+  const owner = Object.create(codeBlock, Object.getOwnPropertyDescriptors({
+    text: "flowchart LR\n  A --> B\n",
+    previewButton: { value: opener },
+    dispatchEvent: (event) => events.push(event),
+  }));
+
+  owner.requestMermaidPreview();
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "caffold:task-mermaid-preview-intent");
+  assert.equal(events[0].bubbles, true);
+  assert.equal(events[0].composed, true);
+  assert.deepEqual(events[0].detail, {
+    source: "flowchart LR\n  A --> B\n",
+    opener,
+  });
+
+  owner.previewButton = { value: undefined };
+  owner.requestMermaidPreview();
   assert.equal(events.length, 1);
 });

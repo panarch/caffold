@@ -84,7 +84,6 @@ The backend owns:
 - canonical Tailscale status, constrained Serve operations, and private URL/QR
   derivation;
 - browser Push subscription persistence and delivery;
-- Mermaid-to-SVG rendering through the request-local Merman library;
 - Notes that agents write through Caffold's Notes tools and the browser reads;
   and
 - shared server settings, PWA assets, and capabilities consumed by browser and

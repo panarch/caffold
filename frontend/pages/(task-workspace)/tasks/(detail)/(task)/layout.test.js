@@ -144,12 +144,13 @@ test("offers the conversation, follow-up Composer, and Current Plan while the co
   assert.deepEqual(ids(), ["task:thread-a:absence"]);
 });
 
-test("merges composer popovers, Current Plan, Command, Tool call, Markdown preview, and permission instruction modals independently", () => {
+test("merges composer popovers, Current Plan, Command, Tool call, Markdown preview, Mermaid preview, and permission instruction modals independently", () => {
   const composerContext = { id: "composer-popover" };
   const planContext = { id: "current-plan" };
   const commandContext = { id: "command-output" };
   const toolCallContext = { id: "tool-call-details" };
   const markdownPreviewContext = { id: "markdown-preview" };
+  const mermaidPreviewContext = { id: "mermaid-preview" };
   const permissionInstructionsContext = { id: "permission-instructions" };
   const slot = {};
   const composer = {
@@ -181,6 +182,9 @@ test("merges composer popovers, Current Plan, Command, Tool call, Markdown previ
     markdownPreviewDialog: {
       value: { keyboardNavigationContexts: () => [markdownPreviewContext] },
     },
+    mermaidPreviewDialog: {
+      value: { keyboardNavigationContexts: () => [mermaidPreviewContext] },
+    },
     permissionInstructionsDialog: {
       value: {
         keyboardNavigationContexts: () => [permissionInstructionsContext],
@@ -198,6 +202,7 @@ test("merges composer popovers, Current Plan, Command, Tool call, Markdown previ
       commandContext,
       toolCallContext,
       markdownPreviewContext,
+      mermaidPreviewContext,
       permissionInstructionsContext,
     ],
   );
@@ -211,10 +216,24 @@ test("merges composer popovers, Current Plan, Command, Tool call, Markdown previ
       commandContext,
       toolCallContext,
       markdownPreviewContext,
+      mermaidPreviewContext,
       permissionInstructionsContext,
     ],
   );
   owner.markdownPreviewDialog = { value: undefined };
+  assert.deepEqual(
+    taskDetail.keyboardNavigationContexts.call(owner),
+    [
+      { id: "force-archive" },
+      { id: "handoff" },
+      composerContext,
+      commandContext,
+      toolCallContext,
+      mermaidPreviewContext,
+      permissionInstructionsContext,
+    ],
+  );
+  owner.mermaidPreviewDialog = { value: undefined };
   assert.deepEqual(
     taskDetail.keyboardNavigationContexts.call(owner),
     [

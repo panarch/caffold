@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 
 import { installBrowserDefaults } from "./support/browser-defaults.js";
-import { AGENT_CATALOG } from "./support/agent-catalog-fixture.js";
 
 test(
   "multiplexes three logical channels per tab without blocking REST fetches",
@@ -15,11 +14,6 @@ test(
       [secondPage, 0],
     ]);
     for (const candidate of [page, secondPage]) {
-      // Model discovery calls installed agents and is unrelated to this
-      // connection-pool contract. Keep only live updates and REST on the server.
-      await candidate.route("**/api/agent/models", (route) =>
-        route.fulfill({ json: AGENT_CATALOG }),
-      );
       candidate.on("request", (request) => {
         if (new URL(request.url()).pathname === "/api/live") {
           liveRequests.set(candidate, liveRequests.get(candidate) + 1);

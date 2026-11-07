@@ -307,6 +307,7 @@ test("registered product dialogs retain one context-local keyboard presentation"
     "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.ts",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/tool-call-dialog.ts",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.ts",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog.ts",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.ts",
     "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.ts",
   ];
@@ -334,6 +335,7 @@ test("product dialog CSS does not style nested keyboard presentation dialogs", (
     "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/tool-call-dialog.css",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.css",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog.css",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.css",
     "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.css",
   ];
@@ -479,9 +481,11 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(taskLayout, /import "\.\/components\/conversation\.js"/);
   assert.match(taskLayout, /import "\.\/components\/command-dialog\.js"/);
   assert.match(taskLayout, /import "\.\/components\/markdown-preview-dialog\.js"/);
+  assert.match(taskLayout, /import "\.\/components\/mermaid-preview-dialog\.js"/);
   assert.match(taskLayout, /<caffold-task-conversation\b/);
   assert.match(taskLayout, /<caffold-task-command-dialog\b/);
   assert.match(taskLayout, /<caffold-task-markdown-preview-dialog\b/);
+  assert.match(taskLayout, /<caffold-task-mermaid-preview-dialog\b/);
   assert.doesNotMatch(taskLayout, /\(review\)|\(git\)|\(github\)/);
   assert.doesNotMatch(
     taskLayout,

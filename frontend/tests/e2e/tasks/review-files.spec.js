@@ -529,18 +529,10 @@ test("renders a route-owned Markdown Preview without changing file selection", {
   });
   await page.locator(".task-workspace-surface").focus();
   await page.keyboard.press("s");
-  const surfaceSelector = page.locator("caffold-scroll-surface-selector > dialog:modal");
+  await expect(page.locator("caffold-scroll-surface-selector > dialog:modal")).toBeHidden();
   const workspaceHud = page.locator(
     "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   );
-  // The file navigator can also overflow at this viewport. Wait for the
-  // keyboard mode's result, then choose the preview if it offers a selector.
-  await expect(surfaceSelector.or(workspaceHud)).toBeVisible();
-  if (await surfaceSelector.isVisible()) {
-    await surfaceSelector.getByRole("button", {
-      name: /^[A-Z]+ — README.md preview$/,
-    }).click();
-  }
   await expect(workspaceHud).toContainText("Scroll: README.md preview");
   await page.keyboard.press("j");
   await expect.poll(() => markdownPreview.evaluate((element) => element.scrollTop))
@@ -1652,21 +1644,4 @@ test("the file viewer scrolls a source file and a notice under the names it show
       scrollport: "viewer-notice-content",
     }],
   });
-});
-
-test("renders a Mermaid fence in file Preview through the real render API", { tag: "@server-steady" }, async ({ page }) => {
-  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
-  await page.route(/\/api\/file(?:\?|$)/, async (route) => {
-    if (!new URL(route.request().url()).searchParams.get("path")?.endsWith("/README.md")) return route.continue();
-    const response = await route.fetch();
-    const file = await response.json();
-    await route.fulfill({ json: { ...file, content: '# Diagram file\n\n```mermaid\nflowchart LR\nA[File preview] --> B[한글 SVG]\n```\n' } });
-  });
-  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
-  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
-  await taskReview.locator('button[data-file-tree-path="src/README.md"]').click();
-  await taskReview.getByRole("button", { name: "Preview", exact: true }).click();
-  const diagram = taskReview.locator("caffold-markdown-preview caffold-mermaid-view");
-  await expect(diagram).toHaveAttribute("data-render-state", "ready");
-  await expect(diagram).toContainText("한글 SVG");
 });

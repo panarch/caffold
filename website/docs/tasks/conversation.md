@@ -27,12 +27,11 @@ call shows what the agent passed the tool and what came back.
 
 ## Read a diagram
 
-A Mermaid code block opens as a diagram inside the answer. Choose **Show Mermaid
-code** to read its source, or **Preview Mermaid** to return to the diagram.
-**Copy code** copies the Mermaid source. You can select text directly in the
-diagram; scroll sideways to read a wide one.
+A Mermaid code block in the agent's answer has a **Preview Mermaid** button.
+Choose it to open the diagram in a dialog, and scroll the dialog to read a large
+diagram. **Copy code** on the block copies the Mermaid source.
 
-If a diagram cannot render, its block shows the source and an error. Choose
+If the diagram cannot be drawn, the dialog shows why, with the source. Choose
 **Retry** to try again.
 
 ## Copy an answer

@@ -183,17 +183,12 @@ mod tests {
             serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
                 .unwrap();
         let row = &body["tasks"][0];
-        // JSON object field membership is the contract; dependencies may
-        // enable serde_json's preserve_order feature for their own models.
-        let mut fields: Vec<_> = row
-            .as_object()
-            .unwrap()
-            .keys()
-            .map(String::as_str)
-            .collect();
-        fields.sort_unstable();
         assert_eq!(
-            fields,
+            row.as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
             [
                 "conversationAvailable",
                 "createdMs",
