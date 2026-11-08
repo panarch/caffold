@@ -1,5 +1,6 @@
 //! Locate and inspect the user's CLI. Installation and updates belong to agy.
 use super::AntigravityError;
+use crate::agent::driver::AgentInstallation;
 use semver::Version;
 use serde::Serialize;
 use std::{env, io::ErrorKind, path::PathBuf, process::Stdio, time::Duration};
@@ -52,6 +53,19 @@ impl Cli {
             Err(error) => status.error = Some(error.to_string()),
         }
         status
+    }
+
+    pub(super) async fn installation(&self) -> AgentInstallation {
+        match self.inspect().await {
+            Ok((_, version)) if check_version(&version).is_ok() => {
+                AgentInstallation::Ready { version }
+            }
+            Ok((_, version)) => AgentInstallation::Unavailable {
+                version: Some(version),
+            },
+            Err(AntigravityError::NotInstalled) => AgentInstallation::NotInstalled,
+            Err(_) => AgentInstallation::Unavailable { version: None },
+        }
     }
 
     async fn inspect(&self) -> Result<(PathBuf, String), AntigravityError> {
@@ -152,6 +166,36 @@ mod tests {
         assert_eq!(status.installed, None);
         assert!(!status.ready);
         assert!(status.error.is_some());
+    }
+
+    #[tokio::test]
+    async fn an_installation_is_ready_only_at_the_minimum_version_or_newer() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("agy");
+        let cli = Cli {
+            executable: Some(path.clone()),
+        };
+        assert_eq!(cli.installation().await, AgentInstallation::NotInstalled);
+        fs::write(&path, "#!/bin/sh\necho 1.4.5\n").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(
+            cli.installation().await,
+            AgentInstallation::Unavailable {
+                version: Some("1.4.5".to_string())
+            }
+        );
+        fs::write(&path, "#!/bin/sh\necho 1.5.1\n").unwrap();
+        assert_eq!(
+            cli.installation().await,
+            AgentInstallation::Ready {
+                version: "1.5.1".to_string()
+            }
+        );
+        fs::write(&path, "#!/bin/sh\nexit 1\n").unwrap();
+        assert_eq!(
+            cli.installation().await,
+            AgentInstallation::Unavailable { version: None }
+        );
     }
 
     #[test]

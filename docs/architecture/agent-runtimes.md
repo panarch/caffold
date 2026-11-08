@@ -62,8 +62,9 @@ operations Caffold has verified for every agent:
 - validate and apply model, effort, speed, and permission choices;
 - create, open, watch, and page a conversation;
 - dispatch input, report whether steering is supported, and stop current work;
-- archive, restore, and delete a conversation; and
-- report whether an archived conversation still exists.
+- archive, restore, and delete a conversation;
+- report whether an archived conversation still exists; and
+- report whether the agent is installed, as `AgentInstallation`.
 
 A prompt starts work or, where supported, steers the running turn. When the agent refuses a
 steer because that turn has ended, or a start because a turn is already
@@ -73,9 +74,21 @@ running turn when there is one. Codex and Grok stop a turn by its identity, so
 either one reading as working with no turn answers that there is nothing to
 stop.
 
-Approval translation, readiness, diagnostics, and provider-specific controls
-remain in each driver where their meanings differ. Shared HTTP routes ask the
-recorded driver and carry back options under the agent's own identifiers.
+Approval translation, readiness beyond installation, diagnostics, and
+provider-specific controls remain in each driver where their meanings differ.
+Shared HTTP routes ask the recorded driver and carry back options under the
+agent's own identifiers.
+
+`GET /api/agent/installations` lists every agent in a fixed order with its
+display name and one installation state: `ready` with the version the
+executable answered, `notInstalled`, or `unavailable` with the version when one
+was read. Each driver checks the executable it would start for a Task and asks
+it nothing else. Codex requires the official standalone installation and its
+minimum version, Claude runs `claude` from `PATH`, Grok uses its executable
+search, and Antigravity requires `agy` at its minimum version. The request
+therefore starts no daemon, runner, leader, or ACP process and reads no
+account. The macOS menu-bar app asks it each time its menu opens; each
+agent's Settings report stays separate.
 
 ## A Task belongs to one agent
 

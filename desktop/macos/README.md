@@ -122,9 +122,12 @@ setup fails.
 
 `Server Settings...` controls the installed PWA name, bind mode, port, and automatic Tailscale Serve startup. Use a distinct name before installing the PWA to distinguish multiple Caffold servers; existing installations may need to be reinstalled after a name change. Local-only binding is the default. LAN binding is an explicit opt-in and is not required for Tailscale Serve.
 
-The menu reports stable status rows for Codex, Git, GitHub CLI, voice
-readiness, Tailscale connectivity, and the Caffold Serve URL. Codex and
-Tailscale both use backend-owned status. Swift does not locate the Tailscale
+The menu reports a row for each agent Caffold drives, saying only whether it
+is installed, and stable status rows for Git, GitHub CLI, voice readiness,
+Tailscale connectivity, and the Caffold Serve URL. The agent rows and Tailscale
+both use backend-owned status. The server lists the agents and checks each
+one's executable through `GET /api/agent/installations`; Swift keeps no list of
+agents and classifies no installation. Swift does not locate the Tailscale
 CLI, classify its output, derive the Tailnet URL, or issue Serve commands; it
 calls the same fixed server capability used by **Settings → Remote Access**.
 The native automatic-start preference and compact on/off and open actions

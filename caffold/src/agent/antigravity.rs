@@ -15,8 +15,8 @@ mod settings;
 mod usage;
 
 use super::driver::{
-    AgentError, Driver, ModelOption, OpenedConversation, PermissionModes, PromptImage,
-    StartedConversation, StartedTurn, TurnOptions,
+    AgentError, AgentInstallation, Driver, ModelOption, OpenedConversation, PermissionModes,
+    PromptImage, StartedConversation, StartedTurn, TurnOptions,
 };
 use super::history::RecordedPage;
 use super::http_mcp::{TaskMcpBindings, new_binding_value};
@@ -109,6 +109,11 @@ impl AntigravityClient {
             models_available: self.inner.catalog.lock().await.is_some(),
             models_error: self.inner.catalog_error.lock().await.clone(),
         }
+    }
+    /// Whether `agy` is installed and fit to run, without starting an ACP
+    /// process or asking about the account.
+    pub(crate) async fn installation(&self) -> AgentInstallation {
+        self.inner.cli.installation().await
     }
     #[cfg(test)]
     pub(crate) fn uninstalled() -> Self {

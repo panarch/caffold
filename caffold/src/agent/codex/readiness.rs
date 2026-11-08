@@ -10,6 +10,8 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use tokio::{process::Command, time::timeout};
 
+use crate::agent::driver::AgentInstallation;
+
 pub use super::protocol::MINIMUM_SUPPORTED_CODEX_CLI_VERSION;
 
 const VERSION_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -118,6 +120,29 @@ pub(crate) async fn inspect_codex_installation() -> Result<CodexInstallation, Co
         ],
     )
     .await
+}
+
+/// Whether Codex is installed the way Caffold runs it, asked no further than a
+/// Task's start asks before it connects to the app-server.
+pub(crate) async fn codex_installation() -> AgentInstallation {
+    installation_of(inspect_codex_installation().await)
+}
+
+fn installation_of(inspected: Result<CodexInstallation, CodexReadiness>) -> AgentInstallation {
+    match inspected {
+        Ok(installation) => match installation.executable.version {
+            Some(version) => AgentInstallation::Ready { version },
+            None => AgentInstallation::Unavailable { version: None },
+        },
+        Err(readiness) if readiness.state == CodexReadinessState::Missing => {
+            AgentInstallation::NotInstalled
+        }
+        Err(readiness) => AgentInstallation::Unavailable {
+            version: readiness
+                .detected_executable
+                .and_then(|executable| executable.version),
+        },
+    }
 }
 
 async fn inspect_codex_installation_from(
@@ -812,6 +837,63 @@ mod tests {
         );
         assert!(readiness.detected_executable.is_none());
         assert!(probe.calls().is_empty());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_installation_reads_as_ready_not_installed_or_unavailable() {
+        use std::ffi::OsString;
+
+        let temp = tempfile::tempdir().expect("temporary Codex fixture");
+        let inspect = |probe: ScriptedCodexProbe, search_path: Option<OsString>| {
+            let home = temp.path().to_path_buf();
+            async move {
+                installation_of(
+                    inspect_codex_installation_from_with_probe(
+                        None,
+                        search_path.as_deref(),
+                        Some(&home),
+                        &[],
+                        &probe,
+                    )
+                    .await,
+                )
+            }
+        };
+
+        assert_eq!(
+            inspect(ScriptedCodexProbe::supported("0.155.1"), None).await,
+            AgentInstallation::NotInstalled
+        );
+
+        let path_bin = temp.path().join("path-bin");
+        std::fs::create_dir(&path_bin).expect("create PATH bin");
+        write_executable_marker(&path_bin.join("codex"));
+        let search_path = env::join_paths([&path_bin]).expect("join PATH");
+        assert_eq!(
+            inspect(ScriptedCodexProbe::supported("0.200.0"), Some(search_path)).await,
+            AgentInstallation::Unavailable {
+                version: Some("0.200.0".to_string())
+            },
+            "an installation Caffold does not run is found but not fit to run"
+        );
+
+        let home_bin = temp.path().join(".local/bin");
+        std::fs::create_dir_all(&home_bin).expect("create standalone bin");
+        write_executable_marker(&home_bin.join("codex"));
+        assert_eq!(
+            inspect(ScriptedCodexProbe::supported("0.155.0"), None).await,
+            AgentInstallation::Unavailable {
+                version: Some("0.155.0".to_string())
+            },
+            "an outdated Codex is found but not fit to run"
+        );
+        assert_eq!(
+            inspect(ScriptedCodexProbe::supported("0.155.1"), None).await,
+            AgentInstallation::Ready {
+                version: "0.155.1".to_string()
+            }
+        );
     }
 
     #[tokio::test]

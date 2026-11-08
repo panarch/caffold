@@ -9,9 +9,11 @@
 //! What is here is what a Task needs of an agent: begin a conversation, open
 //! one and watch it, page back through its turns, stop watching, begin a turn,
 //! add to a running one, stop it, and say how the agent can be allowed to work.
-//! Answering an approval, reporting readiness, and the rest of settings are
-//! still each agent's own, because Caffold has not yet watched two agents do
-//! them and would be guessing at the shared shape.
+//! Whether an agent is installed is here too, because every driver already
+//! checks its own executable before a Task runs it. Answering an approval, the
+//! rest of readiness, and settings are still each agent's own, because Caffold
+//! has not yet watched two agents do them and would be guessing at the shared
+//! shape.
 //!
 //! This module holds the vocabulary and the choosing. What a choice means to an
 //! agent belongs to that agent — `codex::contract` for Codex, `claude` for
@@ -228,6 +230,29 @@ pub(crate) fn reviewed_permission_option(available: bool) -> PermissionModeOptio
         unavailable_reason: (!available).then(|| REVIEWED_PERMISSION_UNAVAILABLE.to_string()),
         dangerous: false,
     }
+}
+
+/// Whether an agent's executable is on this machine and can run, with the
+/// version it answered.
+///
+/// Each driver answers from the executable it would start for a Task, found
+/// and checked the way that start finds and checks it, and asks it nothing
+/// that signs in, opens a session, or wakes a daemon. That is what makes it
+/// cheap enough to ask every time a menu opens.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+pub(crate) enum AgentInstallation {
+    /// Found, answered `--version`, and fit to run a Task.
+    Ready {
+        version: String,
+    },
+    NotInstalled,
+    /// Found but not fit to run a Task: it would not answer, it is older than
+    /// Caffold supports, or it is an installation Caffold does not run.
+    Unavailable {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        version: Option<String>,
+    },
 }
 
 /// What a person chose for a turn.

@@ -30,6 +30,7 @@ use super::{
     GrokClient,
     transport::{ANSWER_TIMEOUT, SocketState, socket_state},
 };
+use crate::agent::driver::AgentInstallation;
 
 /// The whole report, one block per source. A block a source could not fill is
 /// absent, and why it is absent is under `problems` by the block's name.
@@ -154,6 +155,22 @@ struct Prepaid {
 }
 
 impl GrokClient {
+    /// Whether `grok` is installed and runs, from its `--version` alone: no
+    /// leader, bridge, or account is asked.
+    pub(crate) async fn installation(&self) -> AgentInstallation {
+        #[cfg(test)]
+        let Some((executable, _)) = self.inner.transport.launcher_paths() else {
+            return AgentInstallation::NotInstalled;
+        };
+        #[cfg(not(test))]
+        let (executable, _) = self
+            .inner
+            .transport
+            .launcher_paths()
+            .expect("a real launcher has paths");
+        installation_at(executable).await
+    }
+
     /// What this installation is right now, every source asked at once and
     /// each bounded by [`ANSWER_TIMEOUT`].
     pub(crate) async fn introspect(&self) -> GrokStatus {
@@ -292,6 +309,18 @@ fn keep<T>(
             problems.insert(name, problem);
             None
         }
+    }
+}
+
+async fn installation_at(executable: &Path) -> AgentInstallation {
+    if !executable.is_file() {
+        return AgentInstallation::NotInstalled;
+    }
+    match probe(executable_report(executable)).await {
+        Ok(executable) => AgentInstallation::Ready {
+            version: executable.version,
+        },
+        Err(_) => AgentInstallation::Unavailable { version: None },
     }
 }
 
@@ -700,6 +729,34 @@ mod tests {
             .unwrap_err();
         assert!(problem.contains("not found"), "{problem}");
         assert!(problem.contains("Install the Grok CLI"), "{problem}");
+    }
+
+    #[tokio::test]
+    async fn an_installation_is_ready_only_when_grok_answers_its_version() {
+        use std::{fs, os::unix::fs::PermissionsExt};
+
+        let dir = tempfile::tempdir().unwrap();
+        let grok = dir.path().join("grok");
+        assert_eq!(
+            installation_at(&grok).await,
+            AgentInstallation::NotInstalled
+        );
+
+        let answering = |script: &str| {
+            fs::write(&grok, script).unwrap();
+            fs::set_permissions(&grok, fs::Permissions::from_mode(0o700)).unwrap();
+            installation_at(&grok)
+        };
+        assert_eq!(
+            answering("#!/bin/sh\necho 'grok 1.0.30 (04b7ffed98c6) [stable]'\n").await,
+            AgentInstallation::Ready {
+                version: "grok 1.0.30 (04b7ffed98c6) [stable]".to_string()
+            }
+        );
+        assert_eq!(
+            answering("#!/bin/sh\nexit 1\n").await,
+            AgentInstallation::Unavailable { version: None }
+        );
     }
 
     #[tokio::test]
