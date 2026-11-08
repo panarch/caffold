@@ -3351,13 +3351,11 @@ mod request_tests {
                 }
             })
         };
+        let (closing, release) =
+            MockCodexResponse::gated_ok("thread/unsubscribe", json!({ "status": "unsubscribed" }));
         let client = CodexThreadClient::mock(vec![
             MockCodexResponse::ok("thread/resume", resume()),
-            MockCodexResponse::delayed_ok(
-                "thread/unsubscribe",
-                json!({ "status": "unsubscribed" }),
-                Duration::from_millis(250),
-            ),
+            closing,
             MockCodexResponse::ok("thread/resume", resume()),
             MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
@@ -3372,14 +3370,17 @@ mod request_tests {
         let lapsing = tokio::spawn(async move { sessions.lapse_retention(thread_id).await });
         wait_for_mock_method(&client, "thread/unsubscribe").await;
 
+        // The unsubscribe answer is held until the stream has opened, so a
+        // stream that waits for it fails here instead of hanging the test.
         let stream_response = tokio::time::timeout(
-            Duration::from_millis(50),
+            Duration::from_secs(5),
             test_task_stream(state.clone(), thread_id.to_string()),
         )
         .await
         .expect("task stream must not wait for the detail cleanup RPC")
         .expect("task stream succeeds");
 
+        release.send(()).unwrap();
         wait_for_mock_method_count(&client, "thread/resume", 2).await;
         assert_eq!(
             client
@@ -3391,13 +3392,21 @@ mod request_tests {
             ["thread/resume", "thread/unsubscribe", "thread/resume"]
         );
 
-        tokio::time::sleep(Duration::from_millis(275)).await;
-        let snapshot = state
-            .task_sessions
-            .snapshot(thread_id)
-            .await
-            .expect("thread session snapshot");
-        assert_eq!(snapshot.lifecycle, SessionLifecycle::Subscribed);
+        let snapshot = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let snapshot = state
+                    .task_sessions
+                    .snapshot(thread_id)
+                    .await
+                    .expect("thread session snapshot");
+                if snapshot.lifecycle == SessionLifecycle::Subscribed {
+                    return snapshot;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the reopened stream subscribes again");
         assert_eq!(snapshot.viewer_leases, 1);
         lapsing.await.unwrap();
 
