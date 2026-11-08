@@ -241,8 +241,8 @@ test("renders permission and network approvals without clipping at appearance ex
         uiTypefacePreset: "geist-sans",
         codeTypefacePreset: "geist-mono",
         interfaceScalePercent: 120,
-        conversationTextPx: 20,
-        codeTextPx: 20,
+        conversationTextPx: 24,
+        codeTextPx: 24,
         fileSortMode: "folders-first",
       }),
     );
@@ -430,11 +430,11 @@ test("renders permission and network approvals without clipping at appearance ex
   );
   await expect(permissionCard.locator(".task-approval-reason")).toHaveCSS(
     "font-size",
-    "20px",
+    "24px",
   );
   await expect(permissionCard.locator("code").first()).toHaveCSS(
     "font-size",
-    "20px",
+    "24px",
   );
 
   const layout = await page.evaluate(([flow, permission, scroller, command, cards]) => {
