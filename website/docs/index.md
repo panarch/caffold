@@ -1,237 +1,281 @@
 ---
 template: home.html
-title: Leave your desk. Keep working.
-description: Leave your desk. Keep working. Codex, Claude Code, Grok, and Antigravity run on your Mac, and you follow, review, and direct them from any screen.
+title: One workspace for your coding agents, on every screen.
+description: Run Codex, Claude Code, Grok, and Antigravity on your own Mac. Start Tasks, follow their work, and keep going from a desktop, foldable, tablet, or phone.
 hide:
   - navigation
   - toc
   - path
+  - footer
 ---
 
 <section class="cf-hero" markdown>
 
+<div class="cf-intro" markdown>
+
 <p class="cf-eyebrow">Caffold · self-hosted on your Mac</p>
 
-<h1><span>Leave your desk.</span> <span>Keep working.</span></h1>
+# One workspace for your coding agents, on every screen.
 
-<p class="cf-lede">Codex, Claude Code, Grok, and Antigravity run on your Mac. From a
-desktop, a tablet, or a phone, follow their work, answer their approvals, read
-the actual diff, and send the next instruction. Unfold a foldable, and you have
-the whole workspace.</p>
+<p class="cf-lede">Run Codex, Claude Code, Grok, and Antigravity on your own Mac.
+Start Tasks, follow their work, and send the next instruction from a desktop,
+foldable, tablet, or phone.</p>
 
 <div class="cf-actions" markdown>
-[Get started](get-started/how-caffold-works.md){ .cf-button .cf-button--primary }
-[View on GitHub](https://github.com/panarch/caffold){ .cf-button }
+[Get started](get-started/install.md){ .cf-button .cf-button--primary }
+[GitHub](https://github.com/panarch/caffold){ .cf-button }
 </div>
 
 ```sh
 brew install --cask panarch/tap/caffold
 ```
 
-</section>
+<p class="cf-requirements">Apple silicon · macOS 14+ · Apache 2.0</p>
 
-<div class="cf-devices" markdown>
+</div>
 
-<figure class="cf-device" markdown>
-![Working Tree on an unfolded foldable: the changed files beside the diff](assets/screenshots/review-working-tree-foldable.png)
-<figcaption>Unfolded foldable · Working Tree</figcaption>
+<div class="cf-preview" markdown>
+
+<figure markdown>
+![A Task on a foldable: the agent's answer, the completed plan, and a draft asking for a live theme preview](assets/screenshots/landing-task-light-foldable.png#only-light)
+![The same Task on a foldable in dark mode](assets/screenshots/landing-task-dark-foldable.png#only-dark)
 </figure>
 
-<figure class="cf-device" markdown>
-![The same Task's conversation on a phone](assets/screenshots/task-conversation-phone.png)
-<figcaption>Phone · Conversation</figcaption>
+<figure markdown>
+![The same Task and next instruction on a phone](assets/screenshots/landing-task-light-phone.png#only-light)
+![The same Task and next instruction on a phone in dark mode](assets/screenshots/landing-task-dark-phone.png#only-dark)
 </figure>
 
-</div>
-
-<section class="cf-section" markdown>
-
-## The loop stays with you
-
-<div class="cf-steps" markdown>
-
-<div class="cf-step" markdown>
-<span class="cf-step-number">01</span>
-
-### Ask
-
-Start a Task where the work belongs, choose a Codex, Claude, Grok, or Antigravity model,
-and describe the work, with files or screenshots if they help.
-</div>
-
-<div class="cf-step" markdown>
-<span class="cf-step-number">02</span>
-
-### Follow
-
-Watch the conversation as it happens and answer the agent's approval requests
-while it works.
-</div>
-
-<div class="cf-step" markdown>
-<span class="cf-step-number">03</span>
-
-### Review
-
-Read the answer, the commands and tests it ran, the changed files, and the
-actual diff.
-</div>
-
-<div class="cf-step" markdown>
-<span class="cf-step-number">04</span>
-
-### Continue
-
-Say what comes next, from a fix to a commit, a worktree, or a Note. Steer a
-running turn where supported, or pick up the same Task later.
-</div>
+<p class="cf-caption">The same Task, ready for the next instruction. Foldable and phone.</p>
 
 </div>
-
-Ask an agent to keep decisions in [Notes](notes/index.md). Read a reference
-beside a checklist with [two Notes open together](notes/index.md#read-two-notes-side-by-side).
-
-<figure class="cf-shot" markdown>
-![A finished Caffold Task on a desktop: the request, the agent's answer, its plan, and the Task list](assets/screenshots/task-conversation-desktop.png)
-</figure>
 
 </section>
 
-<section class="cf-section" markdown>
+<section class="cf-experience" markdown>
 
-## The agents you already use
+## Your Mac does the work. Every screen opens it.
 
-Caffold does not reimplement the agents. It runs each one you have installed,
-with its own sign-in, models, approval modes, and conversation history.
-
-<div class="cf-agents" markdown>
-
-<div class="cf-agent" markdown>
-### Codex
-
-The official Codex CLI, through the same runtime Codex's own apps use.
-</div>
-
-<div class="cf-agent" markdown>
-### Claude Code
-
-The Claude Code CLI, picking up each conversation from Claude's own history.
-</div>
-
-<div class="cf-agent" markdown>
-### Grok
-
-The Grok CLI, with sessions that keep running while Caffold restarts.
-</div>
-
-<div class="cf-agent" markdown>
-### Antigravity
-
-The installed Antigravity CLI, using its saved sign-in through ACP.
-</div>
-
-</div>
-
-[Set up your agents](get-started/agents.md){ .cf-more }
-
-</section>
-
-<section class="cf-section cf-split" markdown>
+<div class="cf-experience-grid" markdown>
 
 <div markdown>
 
-## Read the real changes
+### Your environment, your data
 
-The answer is only the agent's summary. Next to every conversation, Caffold
-keeps the repository it worked in:
-
-- the uncommitted changes and the branch, file by file, with their diffs;
-- comparisons between any two refs, and the commit history;
-- the repository's Issues and Pull Requests, each of which can start a Task.
-
-[Review changes](review/changes.md){ .cf-more }
+Run agents beside your repositories and credentials on your Mac.
+Caffold stores its data there; each agent keeps its own history.
+[Where data goes](reference/data-and-privacy.md).
 
 </div>
-
-<figure class="cf-shot" markdown>
-![Working Tree showing a Task's changed files and the diff of one of them](assets/screenshots/review-working-tree-desktop.png)
-</figure>
-
-</section>
-
-<section class="cf-section cf-split cf-split--phone" markdown>
-
-<figure class="cf-shot cf-shot--phone" markdown>
-![An approval request waiting on a phone](assets/screenshots/approval-card-phone.png)
-</figure>
 
 <div markdown>
 
-## Any screen, the same Task
+### Pick up where you left off
 
-A desktop, a foldable, a tablet, and a phone all open the same Tasks. The
-layout changes with the screen, the work does not.
-
-- Reach the Mac privately from your other devices with Tailscale.
-- Install Caffold as an app and get notified when a turn ends or an approval
-  waits.
-- Attach files and screenshots to any prompt.
-- Dictate prompts, on the Mac or with your own speech-to-text key.
-
-[Use other devices](get-started/other-devices.md){ .cf-more }
+Open the same Tasks through your private [Tailscale address](get-started/other-devices.md).
+Work keeps running when you close the window.
 
 </div>
-
-</section>
-
-<section class="cf-section cf-split" markdown>
 
 <div markdown>
 
-## Every action from the keyboard
+### Keyboard, touch, or voice
 
-<p class="cf-sentences"><span>Every action in Caffold works from the
-keyboard.</span> <span>If one doesn't, that's a bug.</span></p>
-
-- Press <kbd>F</kbd>, and a short code appears on every action in view. Type
-  it to run the action.
-- Press <kbd>S</kbd> to scroll any area, and <kbd>T</kbd> to switch Tasks.
-- Key combinations open the terminal, show or hide the side panel, and bring
-  up action codes, even while you type.
-
-[Keyboard navigation](keyboard.md){ .cf-more }
+Use the [keyboard](keyboard.md), tap the same controls, or
+[dictate your next prompt](voice-input.md).
 
 </div>
 
-<figure class="cf-shot" markdown>
-![Short action codes over the buttons of a Task conversation](assets/screenshots/action-hints-desktop.png)
+</div>
+
+</section>
+
+<section class="cf-showcase" aria-labelledby="cf-showcase-heading" markdown>
+
+<h2 id="cf-showcase-heading">A closer look at your workspace</h2>
+
+<fieldset class="cf-tour" markdown>
+<legend class="cf-visually-hidden">Choose a feature to explore</legend>
+<div class="cf-tour-choices">
+<input class="cf-visually-hidden" type="radio" name="cf-tour" id="cf-tour-work" value="work" checked>
+<label for="cf-tour-work">
+<span class="cf-tour-title">Work with the agent</span>
+<span class="cf-tour-hint">Follow the work. Shape the next step.</span>
+</label>
+<input class="cf-visually-hidden" type="radio" name="cf-tour" id="cf-tour-changes" value="changes">
+<label for="cf-tour-changes">
+<span class="cf-tour-title">See what changed</span>
+<span class="cf-tour-hint">From the conversation to the code.</span>
+</label>
+<input class="cf-visually-hidden" type="radio" name="cf-tour" id="cf-tour-tasks" value="tasks">
+<label for="cf-tour-tasks">
+<span class="cf-tour-title">Move between Tasks</span>
+<span class="cf-tour-hint">Keep several threads of work in reach.</span>
+</label>
+<input class="cf-visually-hidden" type="radio" name="cf-tour" id="cf-tour-notes" value="notes">
+<label for="cf-tour-notes">
+<span class="cf-tour-title">Carry context forward</span>
+<span class="cf-tour-hint">Give decisions a place to live.</span>
+</label>
+</div>
+<div class="cf-tour-scenes" markdown>
+<figure class="cf-tour-scene" data-scene="work" aria-label="Work with the agent" markdown>
+<div class="cf-tour-media">
+<picture>
+<source media="(max-width: 599px)" srcset="assets/screenshots/landing-work-light-phone.png" width="390" height="844">
+<img src="assets/screenshots/landing-work-light-desktop.png#only-light" width="960" height="640" loading="lazy" alt="An agent fixes a checkout test while the person adds a request to test WebKit too">
+</picture>
+<picture>
+<source media="(max-width: 599px)" srcset="assets/screenshots/landing-work-dark-phone.png" width="390" height="844">
+<img src="assets/screenshots/landing-work-dark-desktop.png#only-dark" width="960" height="640" loading="lazy" alt="An agent fixes a checkout test while the person adds a request to test WebKit too, in dark mode">
+</picture>
+</div>
+<figcaption markdown>
+
+Follow the work as it happens. Send another instruction into a running Codex,
+Claude Code, Grok, or Antigravity turn.
+
+[Inside a Task](tasks/conversation.md)
+
+</figcaption>
 </figure>
 
+<figure class="cf-tour-scene" data-scene="changes" aria-label="See what changed" markdown>
+<div class="cf-tour-media">
+<picture>
+<source media="(max-width: 599px)" srcset="assets/screenshots/landing-changes-light-phone.png" width="390" height="844">
+<img src="assets/screenshots/landing-changes-light-desktop.png#only-light" width="960" height="640" loading="lazy" alt="The SettingsPage diff in a Task’s Working Tree">
+</picture>
+<picture>
+<source media="(max-width: 599px)" srcset="assets/screenshots/landing-changes-dark-phone.png" width="390" height="844">
+<img src="assets/screenshots/landing-changes-dark-desktop.png#only-dark" width="960" height="640" loading="lazy" alt="The SettingsPage diff in a Task’s Working Tree in dark mode">
+</picture>
+</div>
+<figcaption markdown>
+
+Open the Working Tree to inspect the files your Task changed, or review the whole branch.
+
+[Explore changes](review/changes.md)
+
+</figcaption>
+</figure>
+
+<figure class="cf-tour-scene" data-scene="tasks" aria-label="Move between Tasks" markdown>
+<div class="cf-tour-media">
+<picture>
+<source media="(max-width: 599px)" srcset="assets/screenshots/landing-tasks-light-phone.png" width="390" height="844">
+<img src="assets/screenshots/landing-tasks-light-desktop.png#only-light" width="960" height="640" loading="lazy" alt="The Task Switcher lists work across the Lumen app, API, and launch notes">
+</picture>
+<picture>
+<source media="(max-width: 599px)" srcset="assets/screenshots/landing-tasks-dark-phone.png" width="390" height="844">
+<img src="assets/screenshots/landing-tasks-dark-desktop.png#only-dark" width="960" height="640" loading="lazy" alt="The Task Switcher lists work across the Lumen app, API, and launch notes in dark mode">
+</picture>
+</div>
+<figcaption markdown>
+
+Jump to another Task with its conversation and working directory intact. Press T to open the Task Switcher.
+
+[Organize your workspace](tasks/sections.md)
+
+</figcaption>
+</figure>
+
+<figure class="cf-tour-scene" data-scene="notes" aria-label="Carry context forward" markdown>
+<div class="cf-tour-media">
+<picture>
+<source media="(max-width: 599px)" srcset="assets/screenshots/landing-notes-light-phone.png" width="390" height="844">
+<img src="assets/screenshots/landing-notes-light-desktop.png#only-light" width="960" height="640" loading="lazy" alt="Theme decisions in Notes, with the organized folder tree alongside on a wide screen">
+</picture>
+<picture>
+<source media="(max-width: 599px)" srcset="assets/screenshots/landing-notes-dark-phone.png" width="390" height="844">
+<img src="assets/screenshots/landing-notes-dark-desktop.png#only-dark" width="960" height="640" loading="lazy" alt="Theme decisions in Notes, with the organized folder tree alongside on a wide screen in dark mode">
+</picture>
+</div>
+<figcaption markdown>
+
+Ask agents to organize decisions and references in Notes that other Tasks can use.
+Browse the folders and open a document to read it.
+
+[Work with Notes](notes/index.md)
+
+</figcaption>
+</figure>
+</div>
+</fieldset>
+
 </section>
 
-<section class="cf-section" markdown>
+<section class="cf-features" markdown>
 
-## Your Mac, your data
+## More ways to make it yours
 
-Caffold is not a hosted service. The agents, your repositories and
-credentials, and the conversations stay on the Mac you run it on. Other devices
-reach it through your own private network, and nothing leaves the Mac for
-voice input or permission review unless you turn it on.
+<div class="cf-feature-grid" markdown>
 
-[Data and privacy](reference/data-and-privacy.md){ .cf-more }
+<section markdown>
+
+### Your agents, your settings
+
+Use your installed CLIs with their own [sign-in, models, and approval modes](get-started/agents.md).
+[Hand a Task to another agent](tasks/worktrees.md#continue-with-another-agent)
+in the same worktree.
+
+</section>
+
+<section markdown>
+
+### Context for the next step
+
+[Attach files and screenshots](tasks/start-a-task.md#attach-files) by choosing,
+pasting, or dropping them. Follow progress in a [Plan and Checklist](tasks/current-plan.md).
 
 </section>
 
-<section class="cf-closing" markdown>
+<section markdown>
 
-## Install Caffold
+### Control as work happens
 
-Caffold runs on Apple silicon Macs with macOS 14 or later.
-
-```sh
-brew install --cask panarch/tap/caffold
-```
-
-[Install guide](get-started/install.md){ .cf-button }
+[Steer a running turn or stop it](tasks/steer-and-stop.md).
+Let [Ask Jev first](tasks/ask-jev-first.md) handle routine approvals under your rules,
+and [get notified](get-started/notifications.md) when attention is needed.
 
 </section>
+
+<section markdown>
+
+### Git and GitHub in reach
+
+[Compare refs and browse commits](review/git.md), read
+[Issues and Pull Requests](review/github.md), or start a Task from one.
+
+</section>
+
+<section markdown>
+
+### Room for parallel work
+
+Use [worktrees](tasks/worktrees.md) for separate changes,
+[fork a conversation](tasks/fork.md) to try another direction, and
+[archive finished Tasks](tasks/archive-and-delete.md).
+
+</section>
+
+<section markdown>
+
+### A shell in your workspace
+
+Open a [terminal](tasks/terminal.md) for a Task or Section.
+It runs on your Mac and stays available from the same workspace.
+
+</section>
+
+</div>
+
+</section>
+
+<div class="cf-closing" markdown>
+
+**Start with one Task.** [Install Caffold](get-started/install.md),
+[connect your agents](get-started/agents.md), and [give it some work](get-started/first-task.md).
+Or read [how Caffold works](get-started/how-caffold-works.md).
+
+</div>

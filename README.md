@@ -17,11 +17,11 @@ repositories, credentials, conversations, and execution remain on your Mac.
 
 ## What it looks like
 
-![A finished Caffold Task with its conversation, current plan, and the Task list](website/docs/assets/screenshots/task-conversation-desktop.png)
+![A finished Caffold Task with its conversation, current plan, and the Task list](website/docs/assets/screenshots/task-conversation-light-desktop.png)
 
 _Follow a Task as it runs, then read the result and decide what comes next._
 
-![The same Caffold Task's changed files and diff in Working Tree](website/docs/assets/screenshots/review-working-tree-desktop.png)
+![The same Caffold Task's changed files and diff in Working Tree](website/docs/assets/screenshots/review-working-tree-light-desktop.png)
 
 _Open Working Tree to review the actual files and diff without leaving the
 Task._

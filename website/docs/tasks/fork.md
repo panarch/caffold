@@ -8,7 +8,8 @@ Grok conversation. The child uses the same agent. Antigravity is not offered.
 Open an idle Task, choose **Task details** at its top right, and choose
 **Fork task**. The new Task, named `Fork of …`, opens in the same Section.
 
-![Task details with Fork task](../assets/screenshots/task-details-desktop.png)
+![Task details with Fork task](../assets/screenshots/task-details-light-desktop.png#only-light)
+![Task details with Fork task](../assets/screenshots/task-details-dark-desktop.png#only-dark)
 
 ## Fork a conversation from outside Caffold
 
@@ -20,7 +21,8 @@ Open an idle Task, choose **Task details** at its top right, and choose
    directory, and recent messages. Changing the agent or ID clears the preview.
 5. Choose **Fork task**.
 
-![Conversation fork preview](../assets/screenshots/conversation-fork-desktop.png)
+![Conversation fork preview](../assets/screenshots/conversation-fork-light-desktop.png#only-light)
+![Conversation fork preview](../assets/screenshots/conversation-fork-dark-desktop.png#only-dark)
 
 The child starts in the Section's directory. Preview reads the source without
 resuming it or adding it to the Task list. A known active conversation cannot

@@ -13,7 +13,8 @@ current place: the workspace, or the dialog or popover that is open. Type a
 code to run its action. While you are typing, or in the terminal, use its
 [key combination](#key-combinations) instead.
 
-![Action codes over a Task conversation](assets/screenshots/action-hints-desktop.png)
+![Action codes over a Task conversation](assets/screenshots/action-hints-light-desktop.png#only-light)
+![Action codes over a Task conversation](assets/screenshots/action-hints-dark-desktop.png#only-dark)
 
 - <kbd>Backspace</kbd> removes the last letter you typed.
 - <kbd>Esc</kbd> leaves without choosing.
@@ -41,7 +42,8 @@ you just heard back from leads its part. Type a row's code, or choose a
 row, to open that Task. The **Switch task** button, the clock at the top of the
 Task list, opens the same list.
 
-![The Task Switcher](assets/screenshots/task-switcher-desktop.png)
+![The Task Switcher](assets/screenshots/task-switcher-light-desktop.png#only-light)
+![The Task Switcher](assets/screenshots/task-switcher-dark-desktop.png#only-dark)
 
 ## Leave a field: <kbd>Esc</kbd>
 
@@ -57,7 +59,8 @@ the middle of choosing an action or scrolling. Inside the list,
 <kbd>F</kbd> reaches its close button and <kbd>S</kbd> scrolls it. Press
 <kbd>?</kbd> or <kbd>Esc</kbd> to close it.
 
-![Keyboard shortcut help](assets/screenshots/keyboard-shortcuts-desktop.png)
+![Keyboard shortcut help](assets/screenshots/keyboard-shortcuts-light-desktop.png#only-light)
+![Keyboard shortcut help](assets/screenshots/keyboard-shortcuts-dark-desktop.png#only-dark)
 
 ## Key combinations
 

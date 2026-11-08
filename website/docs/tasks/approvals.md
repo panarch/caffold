@@ -5,7 +5,8 @@ allow, such as running a command, reaching the network, or writing outside its
 workspace. Caffold puts the request in the conversation and the turn waits for
 your answer.
 
-![A command approval request waiting in the conversation](../assets/screenshots/approval-card-desktop.png)
+![A command approval request waiting in the conversation](../assets/screenshots/approval-card-light-desktop.png#only-light)
+![A command approval request waiting in the conversation](../assets/screenshots/approval-card-dark-desktop.png#only-dark)
 
 ## Answer a request
 
@@ -46,7 +47,8 @@ model offer, each with a short description. Modes that give up the protection
 of asking are marked in red. On a phone the button shows only a shield, red for
 such a mode.
 
-![The Permissions menu of a Codex Task](../assets/screenshots/approval-modes-desktop.png)
+![The Permissions menu of a Codex Task](../assets/screenshots/approval-modes-light-desktop.png#only-light)
+![The Permissions menu of a Codex Task](../assets/screenshots/approval-modes-dark-desktop.png#only-dark)
 
 - The next turn always runs under the mode the Composer shows.
 - In a Codex, Claude Code, or Antigravity Task you can change the mode between turns.

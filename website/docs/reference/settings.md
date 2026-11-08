@@ -4,7 +4,8 @@ Open **Settings** at the bottom of the navigation pane. What you set in
 **Appearance**, **Keyboard**, and **Files** is saved in each browser;
 everything else is saved on the Mac.
 
-![Settings → Appearance](../assets/screenshots/settings-appearance-desktop.png)
+![Settings → Appearance](../assets/screenshots/settings-appearance-light-desktop.png#only-light)
+![Settings → Appearance](../assets/screenshots/settings-appearance-dark-desktop.png#only-dark)
 
 ## Appearance
 
@@ -67,7 +68,8 @@ runtime restart or update.
 When Codex has rate-limit reset credits, **Settings → Codex** lists them under
 the usage, each with its expiry.
 
-![Codex usage and two reset credits](../assets/screenshots/settings-codex-desktop.png)
+![Codex usage and two reset credits](../assets/screenshots/settings-codex-light-desktop.png#only-light)
+![Codex usage and two reset credits](../assets/screenshots/settings-codex-dark-desktop.png#only-dark)
 
 **Use this reset** asks Codex to use that credit to reset an eligible usage
 limit. It asks for confirmation first, because a used credit cannot be
@@ -92,7 +94,8 @@ your local timezone. **Service status** opens Google AI Studio status.
 and starts the installed runner binary. Saved conversations and Google sign-in
 remain; open a Task to resume its conversation.
 
-![Antigravity runtime status and restart control](../assets/screenshots/settings-antigravity-runtime-desktop.png)
+![Antigravity runtime status and restart control](../assets/screenshots/settings-antigravity-runtime-light-desktop.png#only-light)
+![Antigravity runtime status and restart control](../assets/screenshots/settings-antigravity-runtime-dark-desktop.png#only-dark)
 
 Refresh and restart progress update while the page is shown.
 Follow [Set up Antigravity](../get-started/agents.md#antigravity) for installation

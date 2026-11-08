@@ -26,7 +26,8 @@ package is managed separately and can have a different version from the CLI.
 and says how to fix it when it is not. A Codex problem blocks only Codex: your
 existing Tasks stay readable, and other agents keep working.
 
-![Settings → Codex: Codex is ready, with its App-server version and CLI reference information](../assets/screenshots/settings-codex-desktop.png)
+![Settings → Codex: usage, reset credits, and a ready App-server with its version](../assets/screenshots/settings-codex-light-desktop.png#only-light)
+![Settings → Codex: usage, reset credits, and a ready App-server with its version](../assets/screenshots/settings-codex-dark-desktop.png#only-dark)
 
 Codex's own automatic updates restart it in the middle of running work, so
 Caffold turns them off unless you have set them yourself in Codex's settings.
@@ -70,7 +71,8 @@ Caffold finds `agy` on its executable search path or at `~/.local/bin/agy`.
 
 Caffold shares the CLI's saved sign-in. Manage that sign-in in the CLI.
 
-![Antigravity CLI and observed Google account plan](../assets/screenshots/settings-antigravity-desktop.png)
+![Antigravity CLI and observed Google account plan](../assets/screenshots/settings-antigravity-light-desktop.png#only-light)
+![Antigravity CLI and observed Google account plan](../assets/screenshots/settings-antigravity-dark-desktop.png#only-dark)
 
 You can send more instructions while Antigravity works. Answer a pending
 permission, or stop the turn, before sending another prompt.

@@ -22,7 +22,8 @@ Select a Section's name to open it. An open Section offers, for its directory:
 - **Existing conversations**, which forks a Codex, Claude, or Grok conversation into the
   Section. See [Fork a conversation](fork.md).
 
-![A Section opened: New Task in its directory, existing conversations, and its GitHub repository](../assets/screenshots/section-detail-desktop.png)
+![A Section opened: New Task in its directory, existing conversations, and its GitHub repository](../assets/screenshots/section-detail-light-desktop.png#only-light)
+![A Section opened: New Task in its directory, existing conversations, and its GitHub repository](../assets/screenshots/section-detail-dark-desktop.png#only-dark)
 
 ## Pin a Task
 

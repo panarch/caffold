@@ -108,128 +108,104 @@ html:not(.cf-development) [data-md-component="announce"] {
   transform: translateY(-12%);
 }
 
-/* Home */
+/* Home: prose and the two-screen example share the first row on wide
+   screens. Narrow screens stack them; text and commands wrap instead of
+   clipping. Feature groups share the available width and wrap naturally. */
+.md-main__inner:has(.cf-home) {
+  margin-top: 0.8rem;
+}
 
 .cf-home {
-  --cf-measure: 44rem;
-
   & .md-content__inner {
     margin: 0 auto;
-    padding: 0 0.8rem 4rem;
+    padding: 0 0.8rem 2rem;
+  }
+
+  & .md-content__inner::before {
+    display: none;
   }
 
   & .md-typeset {
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     line-height: 1.6;
   }
 
   & .md-typeset h2 {
     margin: 0 0 1rem;
-    font-size: clamp(1.4rem, 3vw, 2rem);
+    color: var(--caffold-text);
+    font-size: 1.05rem;
     font-weight: 650;
-    letter-spacing: -0.03em;
-    line-height: 1.1;
+    line-height: 1.35;
+    letter-spacing: -0.02em;
   }
 
   & .md-typeset h3 {
     margin: 0 0 0.4rem;
-    font-size: 0.95rem;
+    color: var(--caffold-text);
+    font-size: 0.85rem;
     font-weight: 600;
-    letter-spacing: -0.01em;
+    line-height: 1.4;
   }
 
-  & .md-typeset pre > code {
-    font-size: 0.8rem;
+  & .md-typeset p {
+    margin-top: 0;
   }
+
 }
 
 .cf-hero {
-  max-width: 50rem;
-  padding: 3.5rem 0 2.5rem;
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.45fr);
+  align-items: center;
+  gap: 1.6rem;
+  padding: 1rem 0 1.2rem;
 
   & h1 {
-    margin: 0 0 1.2rem;
+    margin: 0 0 0.8rem;
     color: var(--caffold-text);
-    font-size: clamp(2.2rem, 6vw, 3.8rem);
-    font-weight: 700;
-    letter-spacing: -0.045em;
-    line-height: 1.02;
-  }
-
-  /* Each sentence starts its own line and wraps evenly within it. */
-  & h1 > span {
-    display: block;
+    font-size: clamp(1.4rem, 2.5vw, 1.7rem);
+    font-weight: 650;
+    letter-spacing: -0.035em;
+    line-height: 1.18;
     text-wrap: balance;
   }
 
+  & .cf-lede {
+    margin-bottom: 1rem;
+    color: var(--caffold-text);
+    font-size: 0.85rem;
+    line-height: 1.6;
+  }
+
   & .highlight {
-    max-width: 30rem;
+    margin: 0.8rem 0 0.5rem;
+  }
+
+  & pre > code {
+    padding-right: 2rem;
+    font-size: 0.65rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 }
 
-/* The same Task on two screens, side by side at one height: the columns
-   share the width in the ratio of the screenshots' aspect ratios
-   (933 x 704 against 390 x 844), and the edge is a shadow so it adds no size. */
-.cf-devices {
-  display: grid;
-  grid-template-columns: minmax(0, 2.868fr) minmax(0, 1fr);
-  gap: 1.5rem;
-  align-items: start;
-}
-
-.cf-devices .cf-device {
-  width: auto;
-  max-width: none;
-  margin: 0;
-
-  & > p {
-    margin: 0;
-  }
-
-  .md-typeset & img[src] {
-    display: block;
-    width: 100%;
-    height: auto;
-    border: 0;
-    border-radius: 0.6rem;
-    box-shadow:
-      0 0 0 1px var(--caffold-border-strong),
-      0 1px 2px rgb(0 0 0 / 4%),
-      0 12px 32px rgb(0 0 0 / 7%);
-  }
-
-  & figcaption {
-    margin: 0.7rem 0 0;
-    color: var(--caffold-muted);
-    font-family: var(--md-code-font-family);
-    font-size: 0.7rem;
-    font-style: normal;
-    letter-spacing: 0.02em;
-    text-align: left;
-  }
+.cf-eyebrow,
+.cf-requirements,
+.cf-caption {
+  color: var(--caffold-muted);
+  font-size: 0.65rem;
+  line-height: 1.5;
 }
 
 .cf-eyebrow {
-  margin: 0 0 1rem;
-  color: var(--caffold-muted);
-  font-family: var(--md-code-font-family);
-  font-size: 0.7rem;
-  letter-spacing: 0.02em;
-}
-
-.cf-lede {
-  max-width: var(--cf-measure);
-  margin: 0 0 1.6rem;
-  color: var(--caffold-muted);
-  font-size: 1.05rem;
-  line-height: 1.55;
+  margin-bottom: 0.6rem;
+  font-weight: 500;
 }
 
 .cf-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.6rem;
-  margin: 0 0 1.4rem;
+  gap: 0.5rem;
 
   & p {
     display: contents;
@@ -237,11 +213,14 @@ html:not(.cf-development) [data-md-component="announce"] {
 }
 
 .md-typeset .cf-button {
-  display: inline-block;
-  padding: 0.5rem 1rem;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.2rem;
+  padding: 0.35rem 0.8rem;
   border: 1px solid var(--caffold-border-strong);
-  border-radius: 0.4rem;
+  border-radius: 0.3rem;
   color: var(--caffold-text);
+  font-size: 0.75rem;
   font-weight: 600;
   text-decoration: none;
 
@@ -264,141 +243,245 @@ html:not(.cf-development) [data-md-component="announce"] {
   }
 }
 
-.md-typeset .cf-more {
-  color: var(--caffold-text);
-  font-weight: 600;
-  text-decoration: none;
+/* The images keep their original aspect ratios. Theme CSS owns visibility;
+   an image display rule here would override Zensical's theme selectors. */
+.cf-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 2.868fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.7rem;
 
-  &::after {
-    content: " →";
+  & figure {
+    margin: 0;
+    width: auto;
+    max-width: none;
   }
 
-  &:hover,
-  &:focus-visible {
-    text-decoration: underline;
-  }
-}
-
-.cf-shot {
-  margin: 0;
-
-  .cf-steps + & {
-    margin-top: 2rem;
+  & figure p {
+    margin: 0;
+    line-height: 0;
   }
 
   & img {
-    display: block;
     width: 100%;
-    border: 1px solid var(--caffold-border-strong);
-    border-radius: 0.6rem;
-    box-shadow: 0 1px 2px rgb(0 0 0 / 4%), 0 12px 32px rgb(0 0 0 / 7%);
+    height: auto;
+    box-shadow: 0 2px 10px rgb(0 0 0 / 6%);
+  }
+
+  & .cf-caption {
+    grid-column: 1 / -1;
+    margin: 0;
   }
 }
 
-.cf-shot--phone {
-  max-width: 17rem;
-  justify-self: center;
+.cf-experience,
+.cf-showcase,
+.cf-features,
+.cf-closing {
+  border-top: 1px solid var(--caffold-border);
+  padding-top: 1.3rem;
 }
 
-.cf-section {
-  padding: 4rem 0 0;
-
-  & > p,
-  & > ul {
-    max-width: var(--cf-measure);
-  }
-}
-
-.cf-steps,
-.cf-agents {
+.cf-experience-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-  gap: 1rem;
-  margin: 1.5rem 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
 }
 
-.cf-step,
-.cf-agent {
-  padding: 1.1rem 1.2rem;
-  border: 1px solid var(--caffold-border);
-  border-radius: 0.6rem;
+.cf-showcase,
+.cf-features {
+  margin-top: 1.5rem;
+}
+
+.cf-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.2rem 1.8rem;
 
   & p {
-    margin: 0;
-    color: var(--caffold-muted);
+    margin-bottom: 0;
   }
 }
 
-.cf-step-number {
-  display: block;
-  margin-bottom: 0.8rem;
-  color: var(--caffold-muted);
-  font-family: var(--md-code-font-family);
-  font-size: 0.7rem;
-}
-
-.cf-split {
+/* One native radio group owns the tour's selection, including arrow keys.
+   Panels share a grid cell so the tallest caption reserves space without JS.
+   Hidden panels remain in layout but leave focus and the accessibility tree. */
+.cf-tour {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
-  gap: 2.5rem;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 3fr);
+  align-items: start;
+  gap: 1.6rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
-.cf-split--phone {
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+.cf-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
-/* Beside a screenshot, each sentence starts its own line; in the phone
-   layout they run on as prose. */
-@media (min-width: 45em) {
-  .cf-sentences > span {
-    display: block;
-    text-wrap: balance;
+.cf-tour-choices {
+  display: grid;
+  gap: 0.4rem;
+
+  & label {
+    display: grid;
+    gap: 0.2rem;
+    min-height: 2.2rem;
+    padding: 0.7rem 0.8rem;
+    border: 0;
+    border-radius: 0.3rem;
+    cursor: pointer;
+  }
+
+  & label:hover {
+    background: var(--caffold-surface);
+  }
+
+  & input:checked + label {
+    background: color-mix(in srgb, var(--caffold-text) 12%, var(--caffold-bg));
+  }
+
+  & input:focus-visible + label {
+    outline: 2px solid var(--caffold-text);
+    outline-offset: 3px;
+  }
+}
+
+.cf-tour-title {
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.cf-tour-hint {
+  color: var(--caffold-muted);
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.cf-tour-scenes {
+  display: grid;
+  min-width: 0;
+}
+
+.md-typeset .cf-tour-scene {
+  grid-area: 1 / 1;
+  visibility: hidden;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+
+  & figcaption {
+    max-width: none;
+    margin: 0.7rem 0 0;
+    color: var(--caffold-muted);
+    font-size: 0.75rem;
+    font-style: normal;
+    text-align: left;
+
+    & p {
+      margin: 0;
+    }
+
+    & p + p {
+      margin-top: 0.35rem;
+    }
+  }
+}
+
+.cf-tour:has(#cf-tour-work:checked) [data-scene="work"],
+.cf-tour:has(#cf-tour-changes:checked) [data-scene="changes"],
+.cf-tour:has(#cf-tour-tasks:checked) [data-scene="tasks"],
+.cf-tour:has(#cf-tour-notes:checked) [data-scene="notes"] {
+  visibility: visible;
+}
+
+.cf-tour-media {
+  display: grid;
+
+  & picture {
+    grid-area: 1 / 1;
+    min-width: 0;
+    line-height: 0;
+  }
+
+  & img {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 960 / 640;
   }
 }
 
 .cf-closing {
-  margin-top: 4rem;
-  padding: 2.5rem;
-  border: 1px solid var(--caffold-border);
-  border-radius: 0.8rem;
-  background: var(--caffold-surface);
+  margin-top: 1.5rem;
+}
 
-  & h2 {
-    margin-top: 0;
+@media (max-width: 49.9375em) {
+  .cf-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+    padding-top: 1rem;
   }
 
-  & .highlight {
-    max-width: 30rem;
+  .cf-intro {
+    max-width: 34rem;
+  }
+
+  .cf-preview {
+    max-width: 38rem;
+  }
+
+  .cf-tour {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+
+  .cf-tour-choices {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 44.9375em) {
-  .cf-hero {
-    padding-top: 2rem;
-  }
-
-  .cf-split,
-  .cf-split--phone {
+  .cf-experience-grid,
+  .cf-feature-grid {
     grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
   }
 
-  .cf-split--phone .cf-shot--phone {
-    order: 1;
+  .cf-experience-grid p {
+    margin-bottom: 0;
   }
 
-  .cf-devices {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 2rem;
+  .cf-experience,
+  .cf-showcase,
+  .cf-features {
+    margin-top: 1.2rem;
+  }
+}
+
+@media (max-width: 599px) {
+  .cf-tour-choices label {
+    padding: 0.6rem;
   }
 
-  .cf-devices .cf-device:last-child {
-    width: 60%;
-    justify-self: center;
+  .cf-tour-hint {
+    display: none;
   }
 
-  .cf-closing {
-    padding: 1.5rem;
+  .cf-tour-media {
+    max-width: 22rem;
+    margin-inline: auto;
+
+    & img {
+      aspect-ratio: 390 / 844;
+    }
   }
 }
 

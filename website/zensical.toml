@@ -1,12 +1,13 @@
 [project]
 site_name = "Caffold"
-site_description = "Codex, Claude Code, and Grok run on your Mac. Follow their work, read the actual diff, and send the next instruction from a desktop, tablet, foldable, or phone."
+site_description = "Run Codex, Claude Code, Grok, and Antigravity on your own Mac. Start Tasks, follow their work, and keep going from a desktop, foldable, tablet, or phone."
 site_url = "https://caffold.dev/"
 repo_url = "https://github.com/panarch/caffold"
 repo_name = "panarch/caffold"
 copyright = "Caffold is available under the Apache License 2.0."
 
 nav = [
+  { "Home" = "index.md" },
   { "Get started" = [
     "get-started/how-caffold-works.md",
     "get-started/install.md",

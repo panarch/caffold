@@ -5,7 +5,8 @@ same Tasks, conversations, and approvals. It reaches the Mac through a private
 HTTPS address that [Tailscale](https://tailscale.com/download) provides, which
 only devices signed in to your tailnet can open.
 
-![Settings → Remote Access with the private address and its QR code](../assets/screenshots/settings-remote-access-desktop.png)
+![Settings → Remote Access with the private address and its QR code](../assets/screenshots/settings-remote-access-light-desktop.png#only-light)
+![Settings → Remote Access with the private address and its QR code](../assets/screenshots/settings-remote-access-dark-desktop.png#only-dark)
 
 ## Turn on private access
 
@@ -27,7 +28,8 @@ address with **Copy link**, **Open link**, and a QR code for it.
    iPhone or iPad, choose **Share**, then **Add to Home Screen**. In Chrome,
    open the browser menu and choose **Add to Home screen** or **Install app**.
 
-![A Task on a phone](../assets/screenshots/task-conversation-phone.png){ width="300" }
+![A Task on a phone](../assets/screenshots/task-conversation-light-phone.png#only-light){ width="300" }
+![A Task on a phone](../assets/screenshots/task-conversation-dark-phone.png#only-dark){ width="300" }
 
 The installed app has its own window and icon, and it updates with the Mac.
 You can install the app on the Mac itself as well, from

@@ -263,14 +263,28 @@ therefore fails its scenario; a purely visual change does not. Run them with:
 npm run test:e2e -- tests/e2e/manual
 ```
 
-Each scenario writes `<name>-<project>.png` under `test-results`, which every
-run empties. These are candidate images, not committed visual baselines. Open
+Every manual scenario runs in light and dark themes. It passes the theme to
+`installManualDefaults(page, theme)`, checks the rendered `data-theme` before
+capture, and includes the theme in each image name.
+
+The homepage's `manual/landing.spec.js` captures the same Task and draft on a
+foldable and a phone, plus its feature tour's running turn, Working Tree, Task
+Switcher, and Notes scenes on desktop and phone. The tour uses each phone image
+below 600px; Notes shows its folder tree beside the open document on desktop,
+and the document alone on a phone.
+
+Each scenario writes `<surface>-<theme>-<project>.png` under `test-results`,
+which every run empties. These are candidate images, not committed visual baselines. Open
 each one before using it, because a passing scenario can still capture an
 error, an empty state, or a clipped control. Then copy the images of that
 passing run, unchanged and under the same names, to
 `website/docs/assets/screenshots/`, where the manual and the README reference
 them. [Documentation Review](../review/documentation.md#change-completeness)
 defines when an image has to be replaced.
+
+Manual pages pair the images with `#only-light` and `#only-dark`, so they follow
+the site's selected theme. Preserve the same alt text and display dimensions
+for both variants. The README references the light images directly.
 
 Name a scenario and its image after the surface they show, so that a search
 for the surface finds both. Keep the sample content short and representative;

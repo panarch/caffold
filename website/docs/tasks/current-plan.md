@@ -30,12 +30,14 @@ While both files are there, the Task shows the plan's title and a count such as
 **3 / 5** above the Composer. The count updates as the agent edits the
 checklist.
 
-![The plan's title and its count of 5 / 5 above the Composer](../assets/screenshots/current-plan-desktop.png)
+![The plan's title and its count of 5 / 5 above the Composer](../assets/screenshots/current-plan-light-desktop.png#only-light)
+![The plan's title and its count of 5 / 5 above the Composer](../assets/screenshots/current-plan-dark-desktop.png#only-dark)
 
 Choose the title to read `PLAN.md`, or the count to read `CHECKLIST.md`; the
 checkboxes there are for reading only.
 
-![The checklist of a finished plan](../assets/screenshots/current-plan-checklist-desktop.png)
+![The checklist of a finished plan](../assets/screenshots/current-plan-checklist-light-desktop.png#only-light)
+![The checklist of a finished plan](../assets/screenshots/current-plan-checklist-dark-desktop.png#only-dark)
 
 If one file is missing or cannot be read, the same place shows a warning, such
 as `CHECKLIST.md missing`, instead of a count. Choose it to see the problem.

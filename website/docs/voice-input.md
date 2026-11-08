@@ -18,7 +18,8 @@ Open **Settings → Voice Input** and choose a provider:
 
 Whisper is the provider until you choose another.
 
-![Settings → Voice Input with Whisper chosen and its model downloaded](assets/screenshots/settings-voice-input-desktop.png)
+![Settings → Voice Input with Whisper chosen and its model downloaded](assets/screenshots/settings-voice-input-light-desktop.png#only-light)
+![Settings → Voice Input with Whisper chosen and its model downloaded](assets/screenshots/settings-voice-input-dark-desktop.png#only-dark)
 
 ## Dictate a prompt
 

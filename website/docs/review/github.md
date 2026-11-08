@@ -5,7 +5,8 @@ Section shows the repository's Issues and Pull Requests, and can start a Task
 from one of them. Caffold reads GitHub and does not post comments, reviews,
 or Pull Requests.
 
-![A Pull Request with Start Task](../assets/screenshots/github-pull-request-desktop.png)
+![A Pull Request with Start Task](../assets/screenshots/github-pull-request-light-desktop.png#only-light)
+![A Pull Request with Start Task](../assets/screenshots/github-pull-request-dark-desktop.png#only-dark)
 
 ## Set up
 

@@ -9,7 +9,8 @@ of a verified broken worktree.
 Open the Task, choose **Task details** at its top right, and choose
 **Archive task**.
 
-![Task details with Archive task, and two archived Tasks at the bottom of the Task list](../assets/screenshots/task-details-desktop.png)
+![Task details with Archive task, and two archived Tasks at the bottom of the Task list](../assets/screenshots/task-details-light-desktop.png#only-light)
+![Task details with Archive task, and two archived Tasks at the bottom of the Task list](../assets/screenshots/task-details-dark-desktop.png#only-dark)
 
 - A Task that is still running cannot be archived; stop or finish its turn
   first.
