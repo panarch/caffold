@@ -3,6 +3,7 @@ import Foundation
 enum IntegrationState: Equatable {
     case checking
     case ready
+    case notInstalled
     case attention
     case unavailable
 }
@@ -23,32 +24,7 @@ struct IntegrationStatus {
     }
 }
 
-private struct CodexStatusResponse: Decodable {
-    struct Account: Decodable {
-        let email: String?
-        let planType: String?
-    }
-
-    struct Readiness: Decodable {
-        struct Executable: Decodable {
-            let path: String?
-            let version: String?
-        }
-
-        let state: String
-        let blocksTaskOperations: Bool
-        let reasonCode: String
-        let minimumSupportedVersion: String
-        let detectedExecutable: Executable?
-        let managedExecutable: Executable?
-        let runningAppServerVersion: String?
-    }
-
-    let readiness: Readiness
-    let account: Account?
-}
-
-/// What every Task request, Codex status included, answers while the server
+/// What every Task request, the agent list included, answers while the server
 /// is still preparing its Task store.
 private struct TaskStoreRefusal: Decodable {
     struct Detail: Decodable {
@@ -161,96 +137,100 @@ func probeGithubStatus(completion: @escaping (IntegrationStatus) -> Void) {
     }
 }
 
-func probeCodexStatus(
+private struct AgentInstallationsResponse: Decodable {
+    struct Agent: Decodable {
+        enum State: String, Decodable {
+            case ready
+            case notInstalled
+            case unavailable
+        }
+
+        let provider: String
+        let name: String
+        let state: State
+        let version: String?
+    }
+
+    let agents: [Agent]
+}
+
+/// One row of the Agents section, and the agent whose Settings page it opens.
+struct AgentStatus {
+    let provider: String
+    let status: IntegrationStatus
+}
+
+/// The server's list of agents, or why it gave none.
+enum AgentStatusAnswer {
+    case agents([AgentStatus])
+    case unanswered(IntegrationState, String)
+}
+
+/// What the Agents section shows.
+///
+/// Until the server has listed its agents there are no rows, only a line
+/// saying why. A list once received stays: an answer without one changes the
+/// status of each row it already has, so the section does not shrink and grow
+/// as the server comes and goes.
+enum AgentSection {
+    case waiting(String)
+    case agents([AgentStatus])
+}
+
+func agentSection(after answer: AgentStatusAnswer, showing section: AgentSection) -> AgentSection {
+    switch (answer, section) {
+    case let (.agents(agents), _):
+        return .agents(agents)
+    case let (.unanswered(state, status), .agents(shown)):
+        return .agents(shown.map { agent in
+            AgentStatus(
+                provider: agent.provider,
+                status: IntegrationStatus(
+                    name: agent.status.name,
+                    state: state,
+                    status: status,
+                    details: []
+                )
+            )
+        })
+    case let (.unanswered(_, status), .waiting):
+        return .waiting(status)
+    }
+}
+
+func probeAgentStatus(
     url: URL,
     session: URLSession = .shared,
-    completion: @escaping (IntegrationStatus) -> Void
+    completion: @escaping (AgentStatusAnswer) -> Void
 ) {
     var request = URLRequest(url: url)
     request.timeoutInterval = 4
     session.dataTask(with: request) { data, response, _ in
-        let statusResult: IntegrationStatus
+        let answer: AgentStatusAnswer
         if
             let response = response as? HTTPURLResponse,
             response.statusCode == 200,
             let data,
-            let status = try? JSONDecoder().decode(CodexStatusResponse.self, from: data)
+            let listed = try? JSONDecoder().decode(AgentInstallationsResponse.self, from: data)
         {
-            let readiness = status.readiness
-            let version = readiness.detectedExecutable?.version?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let versionDetail = version.flatMap { value in
-                value.isEmpty
-                    ? nil
-                    : IntegrationDetail(label: "Version", value: value)
-            }
-            let versionDetails = [versionDetail].compactMap { $0 }
-            switch readiness.state {
-            case "ready":
-                let details = [
-                    versionDetail,
-                    status.account?.email.map { IntegrationDetail(label: "Account", value: $0) },
-                    status.account?.planType.map { IntegrationDetail(label: "Plan", value: $0) },
-                ].compactMap { $0 }
-                statusResult = IntegrationStatus(
-                    name: "Codex",
-                    state: .ready,
-                    status: "Ready",
-                    details: details
-                )
-            case "missing", "unsupportedInstall":
-                statusResult = IntegrationStatus(
-                    name: "Codex",
-                    state: .attention,
-                    status: "Setup required",
-                    details: versionDetails
-                )
-            case "updateRequired":
-                let details = [
-                    versionDetail,
-                    IntegrationDetail(
-                        label: "Minimum",
-                        value: readiness.minimumSupportedVersion
-                    ),
-                ].compactMap { $0 }
-                statusResult = IntegrationStatus(
-                    name: "Codex",
-                    state: .attention,
-                    status: "Update required",
-                    details: details
-                )
-            case "signInRequired":
-                statusResult = IntegrationStatus(
-                    name: "Codex",
-                    state: .attention,
-                    status: "Sign-in required",
-                    details: versionDetails
-                )
-            case "restartRequired":
-                let runtimeDetail = readiness.runningAppServerVersion.map {
-                    IntegrationDetail(label: "Runtime", value: $0)
+            answer = .agents(listed.agents.map { agent in
+                let (state, status): (IntegrationState, String) = switch agent.state {
+                case .ready: (.ready, "Ready")
+                case .notInstalled: (.notInstalled, "Not installed")
+                case .unavailable: (.unavailable, "Unavailable")
                 }
-                statusResult = IntegrationStatus(
-                    name: "Codex",
-                    state: .attention,
-                    status: "Restart required",
-                    details: [versionDetail, runtimeDetail].compactMap { $0 }
+                return AgentStatus(
+                    provider: agent.provider,
+                    status: IntegrationStatus(
+                        name: agent.name,
+                        state: state,
+                        status: status,
+                        details: agent.version.map {
+                            [IntegrationDetail(label: "Version", value: $0)]
+                        } ?? []
+                    )
                 )
-            case "incompatible", "error":
-                statusResult = IntegrationStatus(
-                    name: "Codex",
-                    state: .unavailable,
-                    status: "Unavailable",
-                    details: versionDetails
-                )
-            default:
-                statusResult = IntegrationStatus(
-                    name: "Codex",
-                    state: .unavailable,
-                    status: "Unavailable",
-                    details: versionDetails
-                )
-            }
+            })
         } else if
             let response = response as? HTTPURLResponse,
             response.statusCode == 503,
@@ -259,29 +239,14 @@ func probeCodexStatus(
             ["task_store_migration_pending", "task_store_migration_failed"]
                 .contains(refusal.error.code)
         {
-            statusResult = refusal.error.code == "task_store_migration_pending"
-                ? IntegrationStatus(
-                    name: "Codex",
-                    state: .checking,
-                    status: "Preparing...",
-                    details: []
-                )
-                : IntegrationStatus(
-                    name: "Codex",
-                    state: .unavailable,
-                    status: "Unavailable",
-                    details: []
-                )
+            answer = refusal.error.code == "task_store_migration_pending"
+                ? .unanswered(.checking, "Preparing...")
+                : .unanswered(.unavailable, "Unavailable")
         } else {
-            statusResult = IntegrationStatus(
-                name: "Codex",
-                state: .unavailable,
-                status: "Server unavailable",
-                details: []
-            )
+            answer = .unanswered(.unavailable, "Server unavailable")
         }
         DispatchQueue.main.async {
-            completion(statusResult)
+            completion(answer)
         }
     }.resume()
 }

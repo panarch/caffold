@@ -33,7 +33,7 @@ mod sections;
 mod store;
 mod uploads;
 
-use agent::{agent_models, agent_permissions};
+use agent::{agent_installations, agent_models, agent_permissions};
 use archived::ArchivedTaskRecord;
 use claude::{claude_restart, claude_status};
 use codex::{
@@ -308,6 +308,7 @@ pub(super) fn router(state: TaskState) -> Router {
         .route("/api/tasks/{thread_id}/handoff", post(handoff::create))
         .route("/api/agent/models", get(agent_models))
         .route("/api/agent/permissions", get(agent_permissions))
+        .route("/api/agent/installations", get(agent_installations))
         .route(
             "/api/tasks",
             get(list_managed_tasks)

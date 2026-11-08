@@ -75,7 +75,7 @@ use protocol::{
     ThreadStatus as CodexThreadStatus, thread_loaded_list_params,
     thread_naming_instructions_params,
 };
-pub(crate) use readiness::{CodexInstallation, inspect_codex_installation};
+pub(crate) use readiness::{CodexInstallation, codex_installation, inspect_codex_installation};
 pub(crate) use readiness::{CodexReadiness, CodexReadinessReason, CodexReadinessState};
 // The supported baseline is part of Caffold's outward contract, so the protocol
 // contract test in `tests/` reads it from the crate rather than repeating it.

@@ -797,17 +797,18 @@ the Section's Existing conversations row reads it when shown.
 `incompatible`, `ready`, or `error`. It reports whether the state blocks Task
 operations, a stable reason code, a diagnostic message, the minimum supported
 version, detected and managed executable facts, and the running app-server
-version. The browser and platform wrapper project this classification; they do
-not compare versions or parse stderr themselves.
+version. The browser projects this classification; it does not compare
+versions or parse stderr itself.
 
 Projection does not mean that only one client may expose a Codex setting or
 action. The PWA and Swift wrapper may both call the same Caffold backend
 capability and present it appropriately for their surface. What must not be
 duplicated is the readiness classification, stored setting ownership, mutation
-semantics, or a separate client-specific recovery implementation. The current
-menu wrapper keeps Codex recovery compact and opens the shared Codex Settings
-page; that product choice is not a rule that future server-backed controls must
-be removed from Swift.
+semantics, or a separate client-specific recovery implementation. The menu
+wrapper shows only whether Codex is installed, from the shared
+[agent installation list](agent-runtimes.md#boundary), and opens the shared
+Codex Settings page; that product choice is not a rule that future
+server-backed controls must be removed from Swift.
 
 Installation inspection happens before daemon startup. `CAFFOLD_CODEX_BIN` is
 an explicit development/test override. Released operation otherwise accepts

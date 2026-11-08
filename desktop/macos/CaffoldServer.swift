@@ -19,7 +19,9 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var tailscaleStatusMenuItem: NSMenuItem?
     private var tailscaleToggleMenuItem: NSMenuItem?
     private var tailnetURLMenuItem: NSMenuItem?
-    private var codexStatusMenuItem: NSMenuItem?
+    private var agentsHeaderMenuItem: NSMenuItem?
+    private var agentMenuItems: [NSMenuItem] = []
+    private var shownAgentSection = AgentSection.waiting("Checking...")
     private var gitStatusMenuItem: NSMenuItem?
     private var githubStatusMenuItem: NSMenuItem?
     private var voiceStatusMenuItem: NSMenuItem?
@@ -43,12 +45,8 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         localURL.appendingPathComponent("api/server/settings")
     }
 
-    private var codexStatusURL: URL {
-        localURL.appendingPathComponent("api/codex/status")
-    }
-
-    private var codexSettingsURL: URL {
-        localURL.appendingPathComponent("settings/codex")
+    private var agentStatusURL: URL {
+        localURL.appendingPathComponent("api/agent/installations")
     }
 
     private var voiceStatusURL: URL {
@@ -173,11 +171,13 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         tailscaleToggleMenuItem = tailscaleToggle
 
         menu.addItem(.separator())
-        menu.addItem(sectionItem("Integrations"))
+        let agentsHeader = sectionItem("Agents")
+        menu.addItem(agentsHeader)
+        agentsHeaderMenuItem = agentsHeader
+        showAgentSection(shownAgentSection)
 
-        let codexStatus = makeIntegrationItem("Codex")
-        menu.addItem(codexStatus)
-        codexStatusMenuItem = codexStatus
+        menu.addItem(.separator())
+        menu.addItem(sectionItem("Integrations"))
 
         let gitStatus = makeIntegrationItem("Git")
         menu.addItem(gitStatus)
@@ -314,7 +314,9 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func refreshSystemStatus() {
-        applyIntegrationStatus(.checking("Codex"), to: codexStatusMenuItem)
+        showAgentSection(
+            agentSection(after: .unanswered(.checking, "Checking..."), showing: shownAgentSection)
+        )
         applyIntegrationStatus(.checking("Git"), to: gitStatusMenuItem)
         applyIntegrationStatus(.checking("GitHub CLI"), to: githubStatusMenuItem)
         applyIntegrationStatus(.checking("Voice"), to: voiceStatusMenuItem)
@@ -331,8 +333,9 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
 
-        probeCodexStatus(url: codexStatusURL) { [weak self] status in
-            self?.applyIntegrationStatus(status, to: self?.codexStatusMenuItem)
+        probeAgentStatus(url: agentStatusURL) { [weak self] answer in
+            guard let self else { return }
+            self.showAgentSection(agentSection(after: answer, showing: self.shownAgentSection))
         }
         probeGitStatus { [weak self] status in
             self?.applyIntegrationStatus(status, to: self?.gitStatusMenuItem)
@@ -387,17 +390,53 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
             detail.isEnabled = false
             submenu.addItem(detail)
         }
-        if item === codexStatusMenuItem {
-            submenu.addItem(.separator())
-            let repair = NSMenuItem(
-                title: "Open Codex Settings...",
-                action: #selector(openCodexSettings),
-                keyEquivalent: ""
-            )
-            repair.target = self
-            submenu.addItem(repair)
-        }
         item.submenu = submenu
+    }
+
+    /// Puts the Agents section in the menu: the line saying why there are no
+    /// rows yet, or a row per agent. Rows for the same agents are updated where
+    /// they stand, so an open menu does not jump.
+    private func showAgentSection(_ section: AgentSection) {
+        shownAgentSection = section
+        switch section {
+        case let .waiting(status):
+            if agentMenuItems.count == 1, agentMenuItems[0].representedObject == nil {
+                agentMenuItems[0].title = status
+            } else {
+                replaceAgentMenuItems(with: [makeStatusItem(status)])
+            }
+        case let .agents(agents):
+            if agentMenuItems.map({ $0.representedObject as? String })
+                != agents.map({ $0.provider as String? })
+            {
+                replaceAgentMenuItems(with: agents.map { agent in
+                    let item = NSMenuItem(title: agent.status.name, action: nil, keyEquivalent: "")
+                    item.representedObject = agent.provider
+                    return item
+                })
+            }
+            for (item, agent) in zip(agentMenuItems, agents) {
+                applyIntegrationStatus(agent.status, to: item)
+                let settings = NSMenuItem(
+                    title: "Open \(agent.status.name) Settings...",
+                    action: #selector(openAgentSettings(_:)),
+                    keyEquivalent: ""
+                )
+                settings.target = self
+                settings.representedObject = agent.provider
+                item.submenu?.addItem(.separator())
+                item.submenu?.addItem(settings)
+            }
+        }
+    }
+
+    private func replaceAgentMenuItems(with items: [NSMenuItem]) {
+        guard let header = agentsHeaderMenuItem, let menu = header.menu else { return }
+        agentMenuItems.forEach(menu.removeItem)
+        for (offset, item) in items.enumerated() {
+            menu.insertItem(item, at: menu.index(of: header) + 1 + offset)
+        }
+        agentMenuItems = items
     }
 
     private func integrationStatusImage(_ state: IntegrationState) -> NSImage? {
@@ -407,6 +446,8 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
             symbol = "arrow.clockwise.circle"
         case .ready:
             symbol = "checkmark.circle.fill"
+        case .notInstalled:
+            symbol = "circle.dashed"
         case .attention:
             symbol = "exclamationmark.triangle.fill"
         case .unavailable:
@@ -891,8 +932,9 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSWorkspace.shared.open(localURL)
     }
 
-    @objc private func openCodexSettings() {
-        NSWorkspace.shared.open(codexSettingsURL)
+    @objc private func openAgentSettings(_ sender: NSMenuItem) {
+        guard let provider = sender.representedObject as? String else { return }
+        NSWorkspace.shared.open(localURL.appendingPathComponent("settings/\(provider)"))
     }
 
     @objc private func showLogs() {

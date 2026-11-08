@@ -1,7 +1,7 @@
 # Menu-bar app
 
 **Caffold Server** lives in the menu bar and starts and controls the Caffold
-server. Its menu opens with **Open Caffold**, followed by four groups.
+server. Its menu opens with **Open Caffold**, followed by five groups.
 
 ## Server
 
@@ -23,9 +23,28 @@ server. Its menu opens with **Open Caffold**, followed by four groups.
 - **Turn On Tailscale Serve** or **Turn Off Tailscale Serve** switches remote
   access.
 
+## Agents
+
+A row for each agent Caffold works with: Codex, Claude, Grok, and
+Antigravity. A row shows only whether the agent's command-line tool is
+installed. Sign-in, plan, and usage are on the agent's page in
+[Settings](settings.md).
+
+- A check mark: installed, and Caffold can run it. Its submenu shows the
+  version.
+- A dashed circle: not installed. An agent you don't use stays this way.
+- A cross: installed, but Caffold can't run it, for example because it is
+  older than Caffold supports.
+- **Open *agent* Settings...** in the submenu opens that agent's Settings page.
+
+Until the server answers for the first time, the group holds one line instead:
+**Checking...**, **Preparing...**, or **Server unavailable**. Once the agents
+are listed they stay, and each reads **Server unavailable** while the server
+does not answer.
+
 ## Integrations
 
-Whether Codex, Git, the GitHub CLI, and voice input are ready.
+Whether Git, the GitHub CLI, and voice input are ready.
 
 ## Application
 

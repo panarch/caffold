@@ -1,5 +1,6 @@
 use super::commands::{require_codex_thread_client, task_cwd};
 use crate::agent::PermissionModes;
+use crate::agent::codex::codex_installation;
 use crate::agent::driver::reviewed_permission_option;
 use crate::app::error::ApiError;
 use crate::app::tasks::TaskState;
@@ -7,7 +8,7 @@ use axum::Json;
 use axum::extract::{Query, State};
 use serde::{Deserialize, Serialize};
 
-use crate::agent::driver::ModelOption;
+use crate::agent::driver::{AgentInstallation, ModelOption};
 use crate::task_store::TaskProvider;
 
 /// One model, and which agent offers it.
@@ -38,6 +39,23 @@ pub(super) struct AgentModelsPayload {
 pub(super) struct UnavailableAgent {
     provider: &'static str,
     message: String,
+}
+
+/// One agent and whether it is installed, as the menu-bar app lists it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct AgentInstallationEntry {
+    provider: &'static str,
+    /// The name a person reads, so that the menu-bar app keeps no list of
+    /// agents of its own.
+    name: &'static str,
+    #[serde(flatten)]
+    installation: AgentInstallation,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct AgentInstallationsPayload {
+    agents: Vec<AgentInstallationEntry>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -176,6 +194,44 @@ fn extend(models: &mut Vec<AgentModel>, provider: TaskProvider, offered: Vec<Mod
         provider: provider.as_str(),
         model,
     }));
+}
+
+/// Every agent Caffold drives, and whether each is installed.
+///
+/// Every agent is asked at once and only about its executable, because the
+/// menu-bar app asks again each time its menu opens.
+pub(super) async fn agent_installations(
+    State(state): State<TaskState>,
+) -> Json<AgentInstallationsPayload> {
+    let (codex, claude, grok, antigravity) = tokio::join!(
+        codex_installation(),
+        state.task_runtime.claude().installation(),
+        state.task_runtime.grok().installation(),
+        state.task_runtime.antigravity().installation(),
+    );
+    let agents = [
+        (TaskProvider::Codex, codex),
+        (TaskProvider::Claude, claude),
+        (TaskProvider::Grok, grok),
+        (TaskProvider::Antigravity, antigravity),
+    ]
+    .into_iter()
+    .map(|(provider, installation)| AgentInstallationEntry {
+        provider: provider.as_str(),
+        name: display_name(provider),
+        installation,
+    })
+    .collect();
+    Json(AgentInstallationsPayload { agents })
+}
+
+fn display_name(provider: TaskProvider) -> &'static str {
+    match provider {
+        TaskProvider::Codex => "Codex",
+        TaskProvider::Claude => "Claude",
+        TaskProvider::Grok => "Grok",
+        TaskProvider::Antigravity => "Antigravity",
+    }
 }
 
 #[cfg(test)]
@@ -419,6 +475,99 @@ mod tests {
                     "and says so"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn an_installation_arrives_as_a_state_beside_the_agent_it_belongs_to() {
+        let entry = |installation| {
+            serde_json::to_value(AgentInstallationEntry {
+                provider: "grok",
+                name: "Grok",
+                installation,
+            })
+            .unwrap()
+        };
+        assert_eq!(
+            entry(AgentInstallation::Ready {
+                version: "grok 1.0.30 (04b7ffed98c6) [stable]".to_string()
+            }),
+            json!({
+                "provider": "grok",
+                "name": "Grok",
+                "state": "ready",
+                "version": "grok 1.0.30 (04b7ffed98c6) [stable]",
+            })
+        );
+        assert_eq!(
+            entry(AgentInstallation::NotInstalled),
+            json!({ "provider": "grok", "name": "Grok", "state": "notInstalled" })
+        );
+        assert_eq!(
+            entry(AgentInstallation::Unavailable { version: None }),
+            json!({ "provider": "grok", "name": "Grok", "state": "unavailable" })
+        );
+        assert_eq!(
+            entry(AgentInstallation::Unavailable {
+                version: Some("1.4.5".to_string())
+            }),
+            json!({
+                "provider": "grok",
+                "name": "Grok",
+                "state": "unavailable",
+                "version": "1.4.5",
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn every_agent_is_listed_in_order_whether_or_not_it_is_installed() {
+        use axum::body::{Body, to_bytes};
+        use axum::http::{Request, StatusCode};
+        use tower::ServiceExt;
+
+        use crate::app::tasks::routes::router;
+
+        let root = tempfile::tempdir().unwrap();
+        let state = task_state_with_codex_client(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+
+        let response = router(state)
+            .oneshot(
+                Request::get("/api/agent/installations")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let agents = payload["agents"].as_array().unwrap();
+        assert_eq!(
+            agents
+                .iter()
+                .map(|agent| (agent["provider"].as_str(), agent["name"].as_str()))
+                .collect::<Vec<_>>(),
+            [
+                (Some("codex"), Some("Codex")),
+                (Some("claude"), Some("Claude")),
+                (Some("grok"), Some("Grok")),
+                (Some("antigravity"), Some("Antigravity")),
+            ]
+        );
+        // Which agents this machine has installed is the machine's business;
+        // that each one answers in one of the three states is not.
+        for agent in agents {
+            assert!(
+                ["ready", "notInstalled", "unavailable"]
+                    .contains(&agent["state"].as_str().unwrap()),
+                "{agent}"
+            );
         }
     }
 }

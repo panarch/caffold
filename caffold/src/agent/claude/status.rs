@@ -13,12 +13,13 @@
 //! The agent marks that answer experimental, which is why every field here is
 //! read tolerantly: a shape this release cannot read costs the row it is in.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, ffi::OsStr, io};
 
 use serde::Serialize;
 use serde_json::{Value, json};
 
 use super::{ANSWER_TIMEOUT, ClaudeClient};
+use crate::agent::driver::AgentInstallation;
 
 /// The whole report, one block per source. A block a source could not fill is
 /// absent, and why it is absent is under `problems` by the block's name.
@@ -139,6 +140,22 @@ impl ClaudeClient {
             problems,
         }
     }
+
+    /// Whether `claude` is installed and runs, from its `--version` alone: no
+    /// account, usage, or runner is asked.
+    pub(crate) async fn installation(&self) -> AgentInstallation {
+        installation_of(OsStr::new("claude")).await
+    }
+}
+
+async fn installation_of(program: &OsStr) -> AgentInstallation {
+    match tokio::time::timeout(ANSWER_TIMEOUT, version_of(program)).await {
+        Ok(Ok(version)) => AgentInstallation::Ready { version },
+        Ok(Err(VersionProblem::NotRunnable(error))) if error.kind() == io::ErrorKind::NotFound => {
+            AgentInstallation::NotInstalled
+        }
+        Ok(Err(_)) | Err(_) => AgentInstallation::Unavailable { version: None },
+    }
 }
 
 /// The block when the source answered, or its name under `problems`.
@@ -169,18 +186,10 @@ async fn probe<T>(asked: impl Future<Output = Result<T, String>>) -> Result<T, S
 
 /// The binary, by running it: `--version` proves it runs, `which` says where.
 async fn executable_report() -> Result<Executable, String> {
-    let answered = run("claude", &["--version"]).await?;
-    if !answered.status.success() {
-        return Err(format!(
-            "claude refused --version: {}",
-            String::from_utf8_lossy(&answered.stderr).trim()
-        ));
-    }
-    let version = String::from_utf8_lossy(&answered.stdout).trim().to_string();
-    if version.is_empty() {
-        return Err("claude answered --version with nothing".to_string());
-    }
-    let path = match run("which", &["claude"]).await {
+    let version = version_of(OsStr::new("claude"))
+        .await
+        .map_err(|problem| problem.to_string())?;
+    let path = match run(OsStr::new("which"), &["claude"]).await {
         Ok(output) if output.status.success() => {
             let found = String::from_utf8_lossy(&output.stdout).trim().to_string();
             (!found.is_empty()).then_some(found)
@@ -190,6 +199,33 @@ async fn executable_report() -> Result<Executable, String> {
     Ok(Executable { path, version })
 }
 
+/// What `--version` answered, whole: "2.1.239 (Claude Code)".
+async fn version_of(program: &OsStr) -> Result<String, VersionProblem> {
+    let answered = run(program, &["--version"])
+        .await
+        .map_err(VersionProblem::NotRunnable)?;
+    if !answered.status.success() {
+        return Err(VersionProblem::Refused(
+            String::from_utf8_lossy(&answered.stderr).trim().to_string(),
+        ));
+    }
+    let version = String::from_utf8_lossy(&answered.stdout).trim().to_string();
+    if version.is_empty() {
+        return Err(VersionProblem::Silent);
+    }
+    Ok(version)
+}
+
+#[derive(Debug, thiserror::Error)]
+enum VersionProblem {
+    #[error("could not run claude: {0}")]
+    NotRunnable(io::Error),
+    #[error("claude refused --version: {0}")]
+    Refused(String),
+    #[error("claude answered --version with nothing")]
+    Silent,
+}
+
 /// The account, in the agent's own `auth status --json` words.
 ///
 /// Read from what is already on this machine, not asked of the service —
@@ -197,7 +233,9 @@ async fn executable_report() -> Result<Executable, String> {
 /// credential refresh's round trip — which is why it does not pass the
 /// start door the authenticating starts do.
 async fn auth_report() -> Result<Auth, String> {
-    let output = run("claude", &["auth", "status", "--json"]).await?;
+    let output = run(OsStr::new("claude"), &["auth", "status", "--json"])
+        .await
+        .map_err(|error| format!("could not run claude: {error}"))?;
     // Parsed regardless of the exit code: logged out is a report, not an
     // error, and which exit code accompanies it is the agent's business.
     let answer: Value = serde_json::from_slice(&output.stdout).map_err(|_| {
@@ -221,14 +259,13 @@ async fn usage_report(client: &ClaudeClient) -> Result<Usage, String> {
 /// Run one command to completion, capturing what it wrote. Killed with the
 /// probe that asked: a command still running when nobody is waiting anymore
 /// is a process this report leaks.
-async fn run(program: &str, arguments: &[&str]) -> Result<std::process::Output, String> {
+async fn run(program: &OsStr, arguments: &[&str]) -> io::Result<std::process::Output> {
     tokio::process::Command::new(program)
         .args(arguments)
         .stdin(std::process::Stdio::null())
         .kill_on_drop(true)
         .output()
         .await
-        .map_err(|error| format!("could not run {program}: {error}"))
 }
 
 /// The auth answer, read tolerantly — except for the one load-bearing field:
@@ -518,5 +555,38 @@ mod tests {
             "a block nobody filled is absent, not null: {value}"
         );
         assert!(value.get("runner").is_none(), "{value}");
+    }
+
+    #[tokio::test]
+    async fn an_installation_is_ready_only_when_claude_answers_its_version() {
+        use std::{fs, os::unix::fs::PermissionsExt};
+
+        let root = tempfile::tempdir().unwrap();
+        let claude = root.path().join("claude");
+        assert_eq!(
+            installation_of(claude.as_os_str()).await,
+            AgentInstallation::NotInstalled
+        );
+
+        let answering = |script: &str| {
+            fs::write(&claude, script).unwrap();
+            fs::set_permissions(&claude, fs::Permissions::from_mode(0o700)).unwrap();
+            installation_of(claude.as_os_str())
+        };
+        assert_eq!(
+            answering("#!/bin/sh\necho '2.1.239 (Claude Code)'\n").await,
+            AgentInstallation::Ready {
+                version: "2.1.239 (Claude Code)".to_string()
+            }
+        );
+        assert_eq!(
+            answering("#!/bin/sh\necho broken >&2\nexit 1\n").await,
+            AgentInstallation::Unavailable { version: None }
+        );
+        assert_eq!(
+            answering("#!/bin/sh\n").await,
+            AgentInstallation::Unavailable { version: None },
+            "an empty answer is not a version"
+        );
     }
 }

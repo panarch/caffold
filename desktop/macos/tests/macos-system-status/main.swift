@@ -132,14 +132,14 @@ private func tailscaleFixture(
     )
 }
 
-private func probeCodexFixture(
+private func probeAgentFixture(
     _ json: String,
     statusCode: Int = 200,
     url: URL,
     session: URLSession
-) throws -> IntegrationStatus {
+) throws -> AgentStatusAnswer {
     MockURLProtocol.handler = { request in
-        try require(request.url == url, "the menu must probe the Codex status endpoint")
+        try require(request.url == url, "the menu must ask the agent installations endpoint")
         let response = HTTPURLResponse(
             url: url,
             statusCode: statusCode,
@@ -148,48 +148,22 @@ private func probeCodexFixture(
         )!
         return (response, Data(json.utf8))
     }
-    return try awaitIntegrationStatus { completion in
-        probeCodexStatus(url: url, session: session, completion: completion)
+    var result: AgentStatusAnswer?
+    probeAgentStatus(url: url, session: session) { answer in
+        result = answer
     }
-}
-
-private func codexFixture(
-    state: String,
-    blocksTaskOperations: Bool = true,
-    detectedVersion: String? = "0.147.0",
-    runningVersion: String? = nil,
-    account: Bool = false
-) -> String {
-    let version = detectedVersion.map { "\"\($0)\"" } ?? "null"
-    let running = runningVersion.map { "\"\($0)\"" } ?? "null"
-    let detectedExecutable = state == "missing"
-        ? "null"
-        : "{\"path\":\"/Users/example/.local/bin/codex\",\"version\":\(version)}"
-    let managedExecutable = ["missing", "unsupportedInstall", "updateRequired"].contains(state)
-        ? "null"
-        : "{\"path\":\"/Users/example/.local/bin/codex\",\"version\":\(version)}"
-    let accountJson = account
-        ? #", "account":{"email":"user@example.com","planType":"pro"}"#
-        : ""
-    return """
-    {
-      "readiness": {
-        "state": "\(state)",
-        "blocksTaskOperations": \(blocksTaskOperations),
-        "reasonCode": "fixtureReason",
-        "diagnosticMessage": "fixture diagnostic",
-        "minimumSupportedVersion": "0.147.0",
-        "detectedExecutable": \(detectedExecutable),
-        "managedExecutable": \(managedExecutable),
-        "runningAppServerVersion": \(running)
-      }
-      \(accountJson)
+    let deadline = Date().addingTimeInterval(2)
+    while result == nil, Date() < deadline {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
     }
-    """
+    guard let result else {
+        throw TestFailure(description: "agent status probe timed out")
+    }
+    return result
 }
 
 private func runTests() throws {
-    let codexStatusURL = URL(string: "http://127.0.0.1:5178/api/codex/status")!
+    let agentStatusURL = URL(string: "http://127.0.0.1:5178/api/agent/installations")!
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [MockURLProtocol.self]
     let session = URLSession(configuration: configuration)
@@ -353,112 +327,113 @@ private func runTests() throws {
         "server failures must not be classified by the native wrapper"
     )
 
-    let initialCodex = try probeCodexFixture(
-        codexFixture(
-            state: "ready",
-            blocksTaskOperations: false,
-            runningVersion: "0.147.0",
-            account: true
-        ),
-        url: codexStatusURL,
+    let listed = try probeAgentFixture(
+        """
+        {"agents": [
+          {"provider": "codex", "name": "Codex", "state": "ready", "version": "0.155.1"},
+          {"provider": "claude", "name": "Claude", "state": "ready",
+           "version": "2.1.239 (Claude Code)"},
+          {"provider": "grok", "name": "Grok", "state": "notInstalled"},
+          {"provider": "antigravity", "name": "Antigravity", "state": "unavailable",
+           "version": "1.4.5"}
+        ]}
+        """,
+        url: agentStatusURL,
         session: session
     )
-    try require(initialCodex.state == .ready, "canonical ready must map to Ready")
-    try require(
-        detail("Version", in: initialCodex) == "0.147.0",
-        "the detected standalone version must be visible"
-    )
-    try require(
-        detail("Account", in: initialCodex) == "user@example.com",
-        "the Codex account must remain visible"
-    )
-    try require(detail("Plan", in: initialCodex) == "pro", "the Codex plan must remain visible")
-    try require(
-        initialCodex.details.map(\.label) == ["Version", "Account", "Plan"],
-        "Codex integration details must keep their menu order"
-    )
-
-    let codexNeedsSignIn = try probeCodexFixture(
-        codexFixture(state: "signInRequired", runningVersion: "0.147.0"),
-        url: codexStatusURL,
-        session: session
-    )
-    try require(codexNeedsSignIn.state == .attention, "sign-in must need attention")
-    try require(
-        codexNeedsSignIn.status == "Sign-in required",
-        "canonical sign-in must keep its compact status"
-    )
-    try require(
-        detail("Version", in: codexNeedsSignIn) == "0.147.0",
-        "the standalone version must remain visible while sign-in is required"
-    )
-
-    let canonicalMappings: [(String, IntegrationState, String)] = [
-        ("missing", .attention, "Setup required"),
-        ("unsupportedInstall", .attention, "Setup required"),
-        ("updateRequired", .attention, "Update required"),
-        ("restartRequired", .attention, "Restart required"),
-        ("incompatible", .unavailable, "Unavailable"),
-        ("error", .unavailable, "Unavailable"),
-    ]
-    for (readinessState, expectedState, expectedStatus) in canonicalMappings {
-        let status = try probeCodexFixture(
-            codexFixture(
-                state: readinessState,
-                detectedVersion: readinessState == "missing" ? nil : "0.147.0",
-                runningVersion: readinessState == "restartRequired" ? "0.146.0" : nil
-            ),
-            url: codexStatusURL,
-            session: session
-        )
-        try require(
-            status.state == expectedState,
-            "\(readinessState) must use the canonical menu state"
-        )
-        try require(
-            status.status == expectedStatus,
-            "\(readinessState) must use the canonical compact summary"
-        )
+    guard case let .agents(agents) = listed else {
+        throw TestFailure(description: "a listed answer must read as agents")
     }
+    try require(
+        agents.map(\.provider) == ["codex", "claude", "grok", "antigravity"],
+        "rows must keep the server's order and providers"
+    )
+    try require(
+        agents.map(\.status.name) == ["Codex", "Claude", "Grok", "Antigravity"],
+        "rows must use the names the server gives"
+    )
+    try require(
+        agents.map(\.status.state) == [.ready, .ready, .notInstalled, .unavailable],
+        "each installation state must keep its own menu state"
+    )
+    try require(
+        agents.map(\.status.status) == ["Ready", "Ready", "Not installed", "Unavailable"],
+        "each installation state must keep its own compact status"
+    )
+    try require(
+        detail("Version", in: agents[1].status) == "2.1.239 (Claude Code)",
+        "a version must read as the agent answered it"
+    )
+    try require(agents[2].status.details.isEmpty, "an agent that is not installed has no version")
+    try require(
+        detail("Version", in: agents[3].status) == "1.4.5",
+        "an unavailable agent keeps the version it answered"
+    )
 
-    let storeRefusals: [(String, IntegrationState, String)] = [
+    let refusals: [(String, IntegrationState, String)] = [
         ("task_store_migration_pending", .checking, "Preparing..."),
         ("task_store_migration_failed", .unavailable, "Unavailable"),
         ("internal_error", .unavailable, "Server unavailable"),
     ]
-    for (code, expectedState, expectedStatus) in storeRefusals {
-        let status = try probeCodexFixture(
+    for (code, expectedState, expectedStatus) in refusals {
+        let answer = try probeAgentFixture(
             #"{"error":{"code":"\#(code)","message":"Caffold is preparing the Task store."}}"#,
             statusCode: 503,
-            url: codexStatusURL,
+            url: agentStatusURL,
             session: session
         )
+        guard case let .unanswered(state, status) = answer else {
+            throw TestFailure(description: "a 503 \(code) must not read as a list")
+        }
         try require(
-            status.state == expectedState && status.status == expectedStatus,
+            state == expectedState && status == expectedStatus,
             "a 503 \(code) must read as \(expectedStatus)"
         )
-        try require(status.details.isEmpty, "a refusal carries no Codex details")
     }
 
-    let updateRequired = try probeCodexFixture(
-        codexFixture(state: "updateRequired", detectedVersion: "0.146.0"),
-        url: codexStatusURL,
-        session: session
+    let firstLine = AgentSection.waiting("Checking...")
+    guard
+        case .waiting("Server unavailable") = agentSection(
+            after: .unanswered(.unavailable, "Server unavailable"),
+            showing: firstLine
+        )
+    else {
+        throw TestFailure(description: "before any list, an unanswered request only changes the line")
+    }
+    let shown = agentSection(after: listed, showing: firstLine)
+    guard case let .agents(rows) = shown, rows.map(\.provider) == agents.map(\.provider) else {
+        throw TestFailure(description: "the first list must replace the line with a row per agent")
+    }
+    guard
+        case let .agents(kept) = agentSection(
+            after: .unanswered(.unavailable, "Server unavailable"),
+            showing: shown
+        )
+    else {
+        throw TestFailure(description: "a list once received must stay when the server stops answering")
+    }
+    try require(
+        kept.map(\.provider) == agents.map(\.provider)
+            && kept.map(\.status.name) == agents.map(\.status.name),
+        "the rows that stay must be the agents last listed"
     )
     try require(
-        detail("Minimum", in: updateRequired) == "0.147.0",
-        "update guidance must expose the backend-owned minimum"
+        kept.allSatisfy {
+            $0.status.state == .unavailable
+                && $0.status.status == "Server unavailable"
+                && $0.status.details.isEmpty
+        },
+        "each row that stays must say why it has no answer"
     )
-
-    let restartRequired = try probeCodexFixture(
-        codexFixture(state: "restartRequired", runningVersion: "0.146.0"),
-        url: codexStatusURL,
-        session: session
-    )
-    try require(
-        detail("Runtime", in: restartRequired) == "0.146.0",
-        "restart guidance must expose the running runtime"
-    )
+    guard
+        case let .agents(checking) = agentSection(
+            after: .unanswered(.checking, "Checking..."),
+            showing: shown
+        ),
+        checking.allSatisfy({ $0.status.state == .checking && $0.status.status == "Checking..." })
+    else {
+        throw TestFailure(description: "asking again must mark every row as checking")
+    }
 
     let setup = voiceIntegrationStatus(voiceResponse())
     try require(setup.name == "Voice", "voice status must use the Voice integration name")
