@@ -645,8 +645,8 @@ test("keeps Review reflowed at the appearance extremes", { tag: "@all-viewports"
   await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
 
   for (const settings of [
-    { interfaceScalePercent: 90, conversationTextPx: 13, codeTextPx: 12 },
-    { interfaceScalePercent: 120, conversationTextPx: 20, codeTextPx: 20 },
+    { interfaceScalePercent: 90, conversationTextPx: 11, codeTextPx: 8 },
+    { interfaceScalePercent: 120, conversationTextPx: 24, codeTextPx: 24 },
   ]) {
     await page.evaluate(async (appearance) => {
       const { setAppearanceRangeSetting } = await import("/assets/settings.js");

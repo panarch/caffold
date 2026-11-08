@@ -2854,10 +2854,10 @@ test("updates independent ranges live without replacing their DOM", { tag: "@all
   await expect(interfaceRange).toHaveAttribute("min", "90");
   await expect(interfaceRange).toHaveAttribute("max", "120");
   await expect(interfaceRange).toHaveAttribute("step", "5");
-  await expect(conversationRange).toHaveAttribute("min", "13");
-  await expect(conversationRange).toHaveAttribute("max", "20");
-  await expect(codeRange).toHaveAttribute("min", "12");
-  await expect(codeRange).toHaveAttribute("max", "20");
+  await expect(conversationRange).toHaveAttribute("min", "11");
+  await expect(conversationRange).toHaveAttribute("max", "24");
+  await expect(codeRange).toHaveAttribute("min", "8");
+  await expect(codeRange).toHaveAttribute("max", "24");
   const settingsSmallText = settingsPage
     .locator(".settings-field-copy > span:not(.settings-field-label)")
     .first();
@@ -3295,8 +3295,8 @@ test("applies extreme values to the retained Review code viewer", { tag: "@all-v
   await page.goto("/settings/appearance");
   const settingsPage = page.locator("caffold-settings-appearance-page");
   await setRange(range(settingsPage, "interfaceScalePercent"), 120);
-  await setRange(range(settingsPage, "conversationTextPx"), 13);
-  await setRange(range(settingsPage, "codeTextPx"), 20);
+  await setRange(range(settingsPage, "conversationTextPx"), 11);
+  await setRange(range(settingsPage, "codeTextPx"), 24);
 
   const viewer = await page.evaluateHandle(() => {
     const element = document.createElement("caffold-review-file-viewer");
@@ -3314,7 +3314,7 @@ test("applies extreme values to the retained Review code viewer", { tag: "@all-v
   });
   await expect(page.locator("caffold-code-viewer .code-lines")).toHaveCSS(
     "font-size",
-    "20px",
+    "24px",
   );
   await expect(page.locator("caffold-code-viewer .code-lines")).toHaveCSS(
     "text-size-adjust",
@@ -3344,7 +3344,7 @@ test("applies extreme values to the retained Review code viewer", { tag: "@all-v
   });
   await expect(page.locator("caffold-diff-viewer .diff-lines")).toHaveCSS(
     "font-size",
-    "20px",
+    "24px",
   );
   await expect(page.locator("caffold-diff-viewer .diff-lines")).toHaveCSS(
     "text-size-adjust",
@@ -3369,10 +3369,10 @@ test("keeps mixed surfaces reflowed across appearance extremes", { tag: "@all-vi
   const settingsPage = page.locator("caffold-settings-appearance-page");
   const combinations = [
     [100, 15, 13],
-    [90, 13, 12],
-    [120, 20, 20],
-    [90, 20, 20],
-    [120, 13, 12],
+    [90, 11, 8],
+    [120, 24, 24],
+    [90, 24, 24],
+    [120, 11, 8],
   ];
 
   for (const [interfaceValue, conversationValue, codeValue] of combinations) {
@@ -3397,8 +3397,8 @@ test("keeps mixed surfaces reflowed across appearance extremes", { tag: "@all-vi
   }
 
   await setRange(range(settingsPage, "interfaceScalePercent"), 120);
-  await setRange(range(settingsPage, "conversationTextPx"), 20);
-  await setRange(range(settingsPage, "codeTextPx"), 20);
+  await setRange(range(settingsPage, "conversationTextPx"), 24);
+  await setRange(range(settingsPage, "codeTextPx"), 24);
   const mixedMetrics = await page.evaluate(async () => {
     await customElements.whenDefined("caffold-task-composer");
     const host = document.createElement("section");
@@ -3457,11 +3457,11 @@ test("keeps mixed surfaces reflowed across appearance extremes", { tag: "@all-vi
     return result;
   });
   expect(mixedMetrics.documentOverflow).toBe(false);
-  expect(mixedMetrics.approvalText.fontSize).toBe("20px");
-  expect(mixedMetrics.approvalCode.fontSize).toBe("20px");
-  expect(mixedMetrics.textarea.fontSize).toBe("20px");
-  expect(mixedMetrics.githubText.fontSize).toBe("20px");
-  expect(mixedMetrics.githubCode.fontSize).toBe("20px");
+  expect(mixedMetrics.approvalText.fontSize).toBe("24px");
+  expect(mixedMetrics.approvalCode.fontSize).toBe("24px");
+  expect(mixedMetrics.textarea.fontSize).toBe("24px");
+  expect(mixedMetrics.githubText.fontSize).toBe("24px");
+  expect(mixedMetrics.githubCode.fontSize).toBe("24px");
   for (const control of [mixedMetrics.send]) {
     expect(control.height).toBeGreaterThanOrEqual(
       testInfo.project.name === "desktop" ? 38 : 40,
@@ -3516,8 +3516,8 @@ test("keeps model picker chrome compact and scales it only with Interface", { ta
   await expect(modelButton).toContainText("5.6 Sol");
 
   await setRange(interfaceRange, 90);
-  await setRange(conversationRange, 13);
-  await setRange(codeRange, 12);
+  await setRange(conversationRange, 11);
+  await setRange(codeRange, 8);
   await modelButton.click();
   const popover = composer.getByRole("menu", {
     name: /Model.*options/,
@@ -3553,8 +3553,8 @@ test("keeps model picker chrome compact and scales it only with Interface", { ta
   expect(compact.chipGap).toBeLessThanOrEqual(compact.toolbarGap + 1);
   expectComposerIconsCentered(compact, shownIcons);
 
-  await setRange(conversationRange, 20);
-  await setRange(codeRange, 20);
+  await setRange(conversationRange, 24);
+  await setRange(codeRange, 24);
   const contentAxesChanged = await modelPickerMetrics(composer);
   expect(stableModelPickerMetrics(contentAxesChanged)).toEqual(
     stableModelPickerMetrics(compact),
