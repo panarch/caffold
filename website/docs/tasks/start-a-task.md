@@ -3,7 +3,8 @@
 A Task is one piece of work given to one agent. You start it with a directory,
 a model, and a first prompt.
 
-![New Task with the model menu open: the agents under Provider, Codex's models, and the reasoning level and speed](../assets/screenshots/new-task-model-picker-desktop.png)
+![New Task with the model menu open: the agents under Provider, Codex's models, and the reasoning level and speed](../assets/screenshots/new-task-model-picker-light-desktop.png#only-light)
+![New Task with the model menu open: the agents under Provider, Codex's models, and the reasoning level and speed](../assets/screenshots/new-task-model-picker-dark-desktop.png#only-dark)
 
 ## Start from New Task
 
@@ -38,7 +39,8 @@ to 5 GB each:
 Folders cannot be attached. A picture shows as a thumbnail you can choose to
 see larger, and any other file by its name; the X on each takes it out.
 
-![New Task with a pasted screenshot and an attached log](../assets/screenshots/composer-attachments-desktop.png)
+![New Task with a pasted screenshot and an attached log](../assets/screenshots/composer-attachments-light-desktop.png#only-light)
+![New Task with a pasted screenshot and an attached log](../assets/screenshots/composer-attachments-dark-desktop.png#only-dark)
 
 Sending uploads the files to the Mac one at a time, into a folder of their own
 under `.caffold/uploads/` in the Task's working directory, and upload progress
@@ -49,7 +51,8 @@ also stops the turn.
 Once the files are up, the prompt reaches the agent with an **Attached files**
 list of their paths, which the agent reads and the conversation shows.
 
-![The sent prompt with its screenshot and its Attached files list](../assets/screenshots/conversation-attachments-desktop.png)
+![The sent prompt with its screenshot and its Attached files list](../assets/screenshots/conversation-attachments-light-desktop.png#only-light)
+![The sent prompt with its screenshot and its Attached files list](../assets/screenshots/conversation-attachments-dark-desktop.png#only-dark)
 
 A PNG, JPEG, GIF, WebP, or AVIF picture of up to 10 MB also reaches the agent
 as an image; whether the agent reads it depends on the model you chose. Any

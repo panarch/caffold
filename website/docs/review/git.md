@@ -4,7 +4,8 @@ The Git button, with the Git logo, at the top of a Task or a repository
 Section opens a menu with **Compare** and **Log**. Everything there is
 read-only.
 
-![Git Compare between two refs, with one file's diff](../assets/screenshots/git-compare-desktop.png)
+![Git Compare between two refs, with one file's diff](../assets/screenshots/git-compare-light-desktop.png#only-light)
+![Git Compare between two refs, with one file's diff](../assets/screenshots/git-compare-dark-desktop.png#only-dark)
 
 ## Compare
 

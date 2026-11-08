@@ -6,7 +6,8 @@ Caffold is [installed](install.md) and at least one
 
 ## 1. Ask for the work
 
-![New Task with the model menu open: the agents under Provider, Codex's models, and the reasoning level and speed](../assets/screenshots/new-task-model-picker-desktop.png)
+![New Task with the model menu open: the agents under Provider, Codex's models, and the reasoning level and speed](../assets/screenshots/new-task-model-picker-light-desktop.png#only-light)
+![New Task with the model menu open: the agents under Provider, Codex's models, and the reasoning level and speed](../assets/screenshots/new-task-model-picker-dark-desktop.png#only-dark)
 
 1. Choose **Open Caffold** from the menu-bar app.
 2. Choose **New Task** (+) at the top of the Task list.
@@ -40,7 +41,8 @@ list shows a dot next to the Task.
 When the turn ends, read the agent's answer, then choose **Working Tree** to
 see the changed files and their diffs.
 
-![Working Tree with the changed files and a diff](../assets/screenshots/review-working-tree-desktop.png)
+![Working Tree with the changed files and a diff](../assets/screenshots/review-working-tree-light-desktop.png#only-light)
+![Working Tree with the changed files and a diff](../assets/screenshots/review-working-tree-dark-desktop.png#only-dark)
 
 ## 4. Continue
 

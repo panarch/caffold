@@ -15,7 +15,8 @@ On an iPhone or iPad,
 [install Caffold as an app](other-devices.md#open-caffold-on-another-device)
 first; the page says so until you do.
 
-![Settings → Notifications with this browser and a phone subscribed](../assets/screenshots/settings-notifications-desktop.png)
+![Settings → Notifications with this browser and a phone subscribed](../assets/screenshots/settings-notifications-light-desktop.png#only-light)
+![Settings → Notifications with this browser and a phone subscribed](../assets/screenshots/settings-notifications-dark-desktop.png#only-dark)
 
 ## When a notification arrives
 

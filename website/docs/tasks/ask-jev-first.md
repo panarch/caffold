@@ -16,7 +16,8 @@ requests that need a person reach you.
 
 Without a key, **Ask Jev first** stays in the menu and says what is missing.
 
-![Settings → Jev Permissions with a saved key and two extra rules](../assets/screenshots/settings-jev-desktop.png)
+![Settings → Jev Permissions with a saved key and two extra rules](../assets/screenshots/settings-jev-light-desktop.png#only-light)
+![Settings → Jev Permissions with a saved key and two extra rules](../assets/screenshots/settings-jev-dark-desktop.png#only-dark)
 
 ## How it works
 
@@ -54,7 +55,8 @@ To see the record, choose **Task details** at the top right of the Task, then
 **What your prompts settled**, which appears while the Task uses
 **Ask Jev first**. **Forget these** clears the record; this cannot be undone.
 
-![What this Task's prompts settled: two kept prompts, oldest first, and Forget these](../assets/screenshots/permission-instructions-desktop.png)
+![What this Task's prompts settled: two kept prompts, oldest first, and Forget these](../assets/screenshots/permission-instructions-light-desktop.png#only-light)
+![What this Task's prompts settled: two kept prompts, oldest first, and Forget these](../assets/screenshots/permission-instructions-dark-desktop.png#only-dark)
 
 ## What Jev sees
 

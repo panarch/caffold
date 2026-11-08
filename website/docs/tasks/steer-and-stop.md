@@ -6,7 +6,8 @@ Codex, Claude Code, Grok, and Antigravity accept more instructions while a turn
 runs. Antigravity requires a pending permission to be answered, or the turn
 stopped, before it accepts another prompt.
 
-![A running turn with a prompt sent into it, and the Stop button in the Composer](../assets/screenshots/running-turn-desktop.png)
+![A running turn with a prompt sent into it, and the Stop button in the Composer](../assets/screenshots/running-turn-light-desktop.png#only-light)
+![A running turn with a prompt sent into it, and the Stop button in the Composer](../assets/screenshots/running-turn-dark-desktop.png#only-dark)
 
 ## Stop a turn
 

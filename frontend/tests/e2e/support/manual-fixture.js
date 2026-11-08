@@ -134,14 +134,14 @@ export const ASK_JEV_FIRST = "caffold:ask-jev-first";
 
 // Fixes the clock, the appearance, and the agents every manual screenshot
 // shares. Call it before any surface fixture.
-export async function installManualDefaults(page) {
+export async function installManualDefaults(page, theme = "light") {
   await page.clock.setFixedTime(new Date(MANUAL_NOW));
-  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
-  await page.addInitScript(() => {
+  await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+  await page.addInitScript((theme) => {
     localStorage.setItem(
       "caffold:settings",
       JSON.stringify({
-        themeMode: "light",
+        themeMode: theme,
         uiTypefacePreset: "geist-sans",
         codeTypefacePreset: "geist-mono-nerd-font",
         interfaceScalePercent: 100,
@@ -150,7 +150,7 @@ export async function installManualDefaults(page) {
         fileSortMode: "folders-first",
       }),
     );
-  });
+  }, theme);
   await page.route("**/api/agent/models", (route) =>
     route.fulfill({ json: MANUAL_AGENT_CATALOG }),
   );

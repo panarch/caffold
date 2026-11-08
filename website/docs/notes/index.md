@@ -4,7 +4,8 @@ Notes are Markdown documents your agents keep for you across Tasks: decisions,
 findings, checklists you reuse. A Note belongs to no Task, Section, or
 repository, and every Task's agent reaches the same Notes.
 
-![The Notes tab with a Note open beside the tree](../assets/screenshots/notes-desktop.png)
+![The Notes tab with a Note open beside the tree](../assets/screenshots/notes-light-desktop.png#only-light)
+![The Notes tab with a Note open beside the tree](../assets/screenshots/notes-dark-desktop.png#only-dark)
 
 ## Keep Notes through an agent
 
@@ -49,7 +50,8 @@ In this example, **Theme tokens** holds Lumen's color and theme decisions;
 tokens. Read the reference and the checklist together without switching
 between them.
 
-![Theme tokens on the left and Release checklist on the right, on an unfolded foldable](../assets/screenshots/notes-side-by-side-foldable.png)
+![Theme tokens on the left and Release checklist on the right, on an unfolded foldable](../assets/screenshots/notes-side-by-side-light-foldable.png#only-light)
+![Theme tokens on the left and Release checklist on the right, on an unfolded foldable](../assets/screenshots/notes-side-by-side-dark-foldable.png#only-dark)
 
 On a wide screen:
 
@@ -63,7 +65,8 @@ On a wide screen:
 Here, **Theme tokens** stays open while you choose **Announcement outline**
 to read next on the right.
 
-![Theme tokens stays open on the left while the right pane offers another Note, including Announcement outline](../assets/screenshots/notes-side-by-side-picker-foldable.png)
+![Theme tokens stays open on the left while the right pane offers another Note, including Announcement outline](../assets/screenshots/notes-side-by-side-picker-light-foldable.png#only-light)
+![Theme tokens stays open on the left while the right pane offers another Note, including Announcement outline](../assets/screenshots/notes-side-by-side-picker-dark-foldable.png#only-dark)
 
 The return arrow cancels selection and brings back the Note you were reading.
 **Close side by side** on the right returns to the tree and the left Note,

@@ -4,7 +4,8 @@ A Task's **Conversation** shows the agent's conversation as it happens: your
 prompts, the agent's messages, the work it does, and the approvals it asks
 for.
 
-![A finished Task: the prompt, the agent's answer, and its plan above the Composer](../assets/screenshots/task-conversation-desktop.png)
+![A finished Task: the prompt, the agent's answer, and its plan above the Composer](../assets/screenshots/task-conversation-light-desktop.png#only-light)
+![A finished Task: the prompt, the agent's answer, and its plan above the Composer](../assets/screenshots/task-conversation-dark-desktop.png#only-dark)
 
 ## What the conversation shows
 
@@ -20,7 +21,8 @@ for.
 - **How each turn ended**: completed, interrupted, or failed, with the error
   the agent reported.
 
-![The same turn with its work unfolded: a progress message, the test command, and the changed files](../assets/screenshots/task-work-details-desktop.png)
+![The same turn with its work unfolded: a progress message, the test command, and the changed files](../assets/screenshots/task-work-details-light-desktop.png#only-light)
+![The same turn with its work unfolded: a progress message, the test command, and the changed files](../assets/screenshots/task-work-details-dark-desktop.png#only-dark)
 
 **View output** on a command opens its full output. **View details** on a tool
 call shows what the agent passed the tool and what came back.

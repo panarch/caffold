@@ -24,7 +24,8 @@ Now review PR #123.
 New Task shows these two prompts as a guide. You can send the first one as the
 first prompt of a new Task, or later in an existing one.
 
-![New Task with the worktree guide, and branch icons on the Tasks that run in worktrees](../assets/screenshots/new-task-desktop.png)
+![New Task with the worktree guide, and branch icons on the Tasks that run in worktrees](../assets/screenshots/new-task-light-desktop.png#only-light)
+![New Task with the worktree guide, and branch icons on the Tasks that run in worktrees](../assets/screenshots/new-task-dark-desktop.png#only-dark)
 
 In the Task list, a branch icon marks a Task that runs in a worktree Caffold
 prepared. Caffold keeps these worktrees under
@@ -64,9 +65,11 @@ The selected model reads the previous Task's history
 and current files, summarizes the situation, and waits for your next request.
 The previous model is not asked to generate a summary.
 
-![Choose another agent from the model picker](../assets/screenshots/task-handoff-picker-desktop.png)
+![Choose another agent from the model picker](../assets/screenshots/task-handoff-picker-light-desktop.png#only-light)
+![Choose another agent from the model picker](../assets/screenshots/task-handoff-picker-dark-desktop.png#only-dark)
 
-![Continue with another agent](../assets/screenshots/task-handoff-desktop.png)
+![Continue with another agent](../assets/screenshots/task-handoff-light-desktop.png#only-light)
+![Continue with another agent](../assets/screenshots/task-handoff-dark-desktop.png#only-dark)
 
 The same worktree, including uncommitted changes and build output, moves to the
 new Task. The previous Task stays in Active so you can read its conversation;

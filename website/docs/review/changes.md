@@ -3,7 +3,8 @@
 Next to its conversation, a Task shows the actual files and diff of the
 repository it works in, so you can judge the result yourself.
 
-![Working Tree showing a Task's changed files and the diff of one of them](../assets/screenshots/review-working-tree-desktop.png)
+![Working Tree showing a Task's changed files and the diff of one of them](../assets/screenshots/review-working-tree-light-desktop.png#only-light)
+![Working Tree showing a Task's changed files and the diff of one of them](../assets/screenshots/review-working-tree-dark-desktop.png#only-dark)
 
 ## Open it
 

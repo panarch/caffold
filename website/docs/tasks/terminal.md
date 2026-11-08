@@ -12,7 +12,8 @@ terminal takes the place of what the Task was showing and, on a wide screen, of
 the Task list too, so it has the whole width. The first time, Caffold starts
 your login shell.
 
-![A Task's terminal using the whole width of the window](../assets/screenshots/terminal-desktop.png)
+![A Task's terminal using the whole width of the window](../assets/screenshots/terminal-light-desktop.png#only-light)
+![A Task's terminal using the whole width of the window](../assets/screenshots/terminal-dark-desktop.png#only-dark)
 
 Choose the button or press the key again to go back to where you were. On a
 Section, the terminal button is the last one in the header.
@@ -56,7 +57,8 @@ On a touch screen, press and hold a word to select it, and drag to select more.
 **Copy** copies the selection and **Paste** pastes into the shell. Tap the
 terminal to clear the selection.
 
-![The terminal on a phone, with the special key row](../assets/screenshots/terminal-phone.png)
+![The terminal on a phone, with the special key row](../assets/screenshots/terminal-light-phone.png#only-light)
+![The terminal on a phone, with the special key row](../assets/screenshots/terminal-dark-phone.png#only-dark)
 
 For more than one shell in a Task, run a program such as `tmux` inside the
 terminal.
@@ -68,7 +70,8 @@ the header's height too. Its buttons then stand on the right, with **Leave
 terminal** to go back and **Show header** to bring the header back. Each
 browser remembers your choice.
 
-![A terminal without the header, its buttons in a column on the right](../assets/screenshots/terminal-header-hidden-desktop.png)
+![A terminal without the header, its buttons in a column on the right](../assets/screenshots/terminal-header-hidden-light-desktop.png#only-light)
+![A terminal without the header, its buttons in a column on the right](../assets/screenshots/terminal-header-hidden-dark-desktop.png#only-dark)
 
 ## Close it
 
