@@ -150,7 +150,7 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
 
   await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
   await expect(taskReview.getByRole("button", { name: "Wrap code lines" })).toBeVisible();
-  const after = await taskReview.evaluate((review) => {
+  const after = await taskReview.evaluate((review, [git, github]) => {
     const navigator = review.shadowRoot.querySelector(".task-review-navigator-pane");
     const viewer = review.shadowRoot.querySelector(".task-review-viewer-pane");
     const viewerHeader = review
@@ -173,7 +173,6 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
     };
     const viewerInfoBounds = visualBounds(viewerInfo, "::after");
     const viewerWrapBounds = visualBounds(viewerWrap, "::before");
-    const rootStyle = getComputedStyle(document.documentElement);
     return {
       overflow: review.scrollWidth > review.clientWidth,
       navigatorVisible: getComputedStyle(navigator).display !== "none",
@@ -181,26 +180,29 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
       titleClear:
         viewerTitle.getBoundingClientRect().right <=
           viewerInfo.getBoundingClientRect().left,
-      wrapAfterInfo: viewerWrapBounds.left > viewerInfoBounds.right,
       wrapWidth: viewerWrapBounds.right - viewerWrapBounds.left,
       infoWidth: viewerInfoBounds.right - viewerInfoBounds.left,
-      // Wrap is the header's last action, beside the Review viewer axis.
-      viewerControlGap:
+      // The file header's buttons and the Review viewer axis after them
+      // stand as far apart as the Detail header's Git and GitHub buttons.
+      viewerButtonGap: viewerWrapBounds.left - viewerInfoBounds.right,
+      viewerAxisGap:
         viewerAxis.getBoundingClientRect().left - viewerWrapBounds.right,
-      expectedControlGap:
-        Number.parseFloat(rootStyle.getPropertyValue("--interface-space-5")) *
-        Number.parseFloat(rootStyle.fontSize),
+      headerButtonGap:
+        visualBounds(github, "::before").left -
+          visualBounds(git, "::before").right,
     };
-  });
+  }, await elementHandles(page.locator("caffold-detail-layout"), [
+    ".task-git-button",
+    ".task-github-button",
+  ]));
   expect(after.overflow).toBe(false);
   expect(after.viewerVisible).toBe(true);
   expect(after.navigatorVisible).toBe(testInfo.project.name !== "phone");
   expect(after.titleClear).toBe(true);
-  expect(after.wrapAfterInfo).toBe(true);
   expect(after.wrapWidth).toBeCloseTo(after.infoWidth, 1);
-  expect(
-    Math.abs(after.viewerControlGap - after.expectedControlGap),
-  ).toBeLessThanOrEqual(1);
+  expect(after.headerButtonGap).toBeGreaterThan(0);
+  expect(Math.abs(after.viewerButtonGap - after.headerButtonGap)).toBeLessThanOrEqual(1);
+  expect(Math.abs(after.viewerAxisGap - after.headerButtonGap)).toBeLessThanOrEqual(1);
 });
 
 test("owns one collapsed Back across Conversation and Review modes", { tag: "@phone" }, async ({

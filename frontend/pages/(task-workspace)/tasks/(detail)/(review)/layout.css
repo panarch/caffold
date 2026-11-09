@@ -114,11 +114,20 @@ caffold-review-selected-file {
   );
 }
 
+/* The file header's last button stands from the viewer axis as the Detail
+   header's buttons stand from each other. */
 .task-review-viewer-pane {
   --review-pane-action-clearance: calc(
     var(--review-viewer-action-inline-end) +
     var(--review-viewer-control-inline-size) +
-    var(--interface-space-5) -
+    max(
+      0rem,
+      calc(
+        var(--interface-toolbar-gap) -
+        var(--interface-compact-hit-outset) -
+        var(--interface-compact-hit-outset)
+      )
+    ) +
     var(--interface-compact-hit-outset)
   );
 }

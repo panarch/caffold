@@ -1893,3 +1893,54 @@ test("offers Wrap for source and a diff beside the choice of representation, and
     expect(new Set(offsets)).toEqual(new Set([0]));
   }
 });
+
+test("spaces the file header's choice and buttons as the Detail header spaces its own", { tag: ["@desktop", "@phone"] }, async ({
+  page,
+}) => {
+  await page.goto("/settings/files");
+
+  const gaps = await page.evaluate(async () => {
+    await import("/assets/components/file-viewer.js");
+    const viewer = document.createElement("caffold-review-file-viewer");
+    viewer.style.cssText = "display: block; width: 360px; height: 200px;";
+    document.body.append(viewer);
+    viewer.setChangeChoices({
+      choices: [
+        { value: "diff", label: "Diff" },
+        { value: "visual", label: "Visual" },
+      ],
+      selected: "diff",
+    });
+    viewer.setDiff({ diff: "" }, {
+      presentation: {
+        title: "logo.svg",
+        metadata: [{ field: "size", label: "Size", value: "1 KB" }],
+      },
+    });
+    await new Promise(requestAnimationFrame);
+    const root = viewer.shadowRoot;
+    // Where a control's drawn surface starts and ends, inside its hit area.
+    const surface = (element, pseudo) => {
+      const rect = element.getBoundingClientRect();
+      const inset = pseudo ? Number.parseFloat(getComputedStyle(element, pseudo).left) : 0;
+      return { left: rect.left + inset, right: rect.right - inset };
+    };
+    const change = surface(root.querySelector(".viewer-change-control"));
+    const wrap = surface(root.querySelector(".viewer-wrap-button"), "::before");
+    const info = surface(root.querySelector(".viewer-info-button"), "::after");
+    // The Detail header's gap between two buttons' surfaces.
+    const probe = document.createElement("div");
+    probe.style.width = `calc(
+      max(0rem, calc(var(--interface-toolbar-gap) - 2 * var(--interface-compact-hit-outset))) +
+      2 * var(--interface-compact-hit-outset)
+    )`;
+    document.body.append(probe);
+    const header = probe.getBoundingClientRect().width;
+    probe.remove();
+    return { changeToWrap: wrap.left - change.right, wrapToInfo: info.left - wrap.right, header };
+  });
+
+  expect(gaps.header).toBeGreaterThan(0);
+  expect(Math.abs(gaps.changeToWrap - gaps.header)).toBeLessThanOrEqual(1);
+  expect(Math.abs(gaps.wrapToInfo - gaps.header)).toBeLessThanOrEqual(1);
+});

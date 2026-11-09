@@ -91,12 +91,17 @@
   min-width: 0;
 }
 
+/* The header's buttons stand as far apart as the Detail header's. */
 .viewer-actions {
   display: grid;
   grid-auto-flow: column;
   gap: max(
-    var(--interface-control-gap),
-    calc(var(--interface-compact-hit-outset) * 2)
+    0rem,
+    calc(
+      var(--interface-toolbar-gap) -
+      var(--interface-compact-hit-outset) -
+      var(--interface-compact-hit-outset)
+    )
   );
   align-items: center;
 }
@@ -188,6 +193,8 @@ caffold-visual-diff {
   --segmented-control-label-padding-inline: var(--interface-space-1);
   --viewer-change-axis-inline-size: 7.5rem;
 
+  /* It has no hit area around it, so it keeps the button gap without one. */
+  margin-inline-end: var(--interface-compact-hit-outset);
   width: calc(
     var(--viewer-change-choice-count, 1) *
     var(--viewer-change-axis-inline-size) /
