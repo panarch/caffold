@@ -88,6 +88,9 @@ export class CaffoldTaskSwitcherDialog extends CaffoldElement {
     this.selectedThreadId = selectedThreadId;
     this.takeOrder(rows);
     this.draw();
+    // The opening focus goes to the list, which is marked `autofocus`. On a
+    // row, Safari would show it even after a tap or click, as if that Task
+    // were chosen.
     dialog.showModal();
     // A closed dialog keeps its scroll offset, and the Task that just finished
     // is the reason to open this one.
@@ -188,11 +191,13 @@ export class CaffoldTaskSwitcherDialog extends CaffoldElement {
               clipRoots: () => [this.scrollport.value],
             })}
             class="task-switcher-scroll"
+            tabindex="-1"
+            autofocus
           >
             <ul class="task-switcher-list">${repeat(
               pinned,
               ({ task }) => taskThreadId(task),
-              (entry, index) => this.rowTemplate(entry, index === 0),
+              (entry) => this.rowTemplate(entry),
             )}${
               pinned.length && others.length
                 ? html`<li class="task-switcher-divider" role="separator"></li>`
@@ -200,8 +205,7 @@ export class CaffoldTaskSwitcherDialog extends CaffoldElement {
             }${repeat(
               others,
               ({ task }) => taskThreadId(task),
-              (entry, index) =>
-                this.rowTemplate(entry, !pinned.length && index === 0),
+              (entry) => this.rowTemplate(entry),
             )}</ul>
             <p class="task-switcher-empty" ?hidden=${rows.length > 0}>${
               this.tasksLoaded
@@ -222,9 +226,7 @@ export class CaffoldTaskSwitcherDialog extends CaffoldElement {
     this.performUpdate();
   }
 
-  // Close comes first in the dialog, so the top row has to claim the focus
-  // the dialog hands out when it opens.
-  private rowTemplate({ task, sectionName }: TaskWithSection, first: boolean) {
+  private rowTemplate({ task, sectionName }: TaskWithSection) {
     const threadId = taskThreadId(task);
     const recovery = "recovery" in task;
     return html`<li
@@ -246,7 +248,6 @@ export class CaffoldTaskSwitcherDialog extends CaffoldElement {
         data-task-status=${taskStatusKey(task)}
         title=${task.title}
         aria-label=${rowLabel(task.title, sectionName)}
-        ?autofocus=${first}
         @click=${() => this.select({ threadId, recovery })}
       >
         <span class="task-switcher-row-title">${task.title}</span>

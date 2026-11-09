@@ -56,11 +56,6 @@ test("orders by when a Task last finished, not by when it was last looked at", (
     "never-finished",
     "looked-at",
   ]);
-  assert.match(
-    html(switcher),
-    /data-thread-id="finished-last"[^>]*><button[^>]*\?autofocus="true"/,
-    "the newest Task takes the focus the dialog hands out",
-  );
   assert.equal(switcher.open({ rows: [] }), false, "an open dialog stays as it is");
 });
 
@@ -87,19 +82,12 @@ test("puts the pinned Tasks first, each part by when it last finished", () => {
     html(switcher),
     /data-thread-id="pinned-earlier".*?<\/li><li class="task-switcher-divider" role="separator"><\/li><li[^>]*data-thread-id="finished-last"/,
   );
-  assert.match(
-    html(switcher),
-    /data-thread-id="pinned-later"[^>]*><button[^>]*\?autofocus="true"/,
-    "the top pinned Task takes the focus the dialog hands out",
-  );
-  assert.equal(html(switcher).match(/\?autofocus="true"/g).length, 1);
 
   for (const pinned of [true, false]) {
     const single = openedSwitcher();
     single.dialog.open = false;
     single.open({ rows: [entry("a", {}, pinned), entry("b", {}, pinned)] });
     assert.doesNotMatch(html(single), /task-switcher-divider/);
-    assert.match(html(single), /data-thread-id="a"[^>]*><button[^>]*\?autofocus="true"/);
   }
 });
 

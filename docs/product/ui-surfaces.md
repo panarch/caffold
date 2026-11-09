@@ -127,7 +127,8 @@ Task, Section, or New Task has replaced the list, so no screen shows two. Wide
 code surfaces show neither the navigator nor that Back, and compact file and
 domain screens show a deeper Back instead, so there the Task Switcher opens
 with `T` or from the Conversation. The X in its header closes it, as do Escape
-and a click or tap outside it.
+and a click or tap outside it. It opens with the focus on the list rather than
+on a row, so no Task looks chosen before one is.
 
 It takes that order from the first loaded Task list and keeps it until it
 closes, so a Task that finishes while the list is open does not move the row

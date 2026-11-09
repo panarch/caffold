@@ -502,12 +502,6 @@ test("lists pinned Tasks first, above a divider, each part by when it finished",
     "finished_last",
     "finished_before",
   ]);
-  // The top row is the one the dialog focuses when it opens.
-  await expect(dialog.locator(".task-switcher-row[autofocus]")).toHaveAttribute(
-    "title",
-    "Pinned, finished later",
-  );
-  await expect(dialog.locator(".task-switcher-row[autofocus]")).toHaveCount(1);
 });
 
 test("opens from the Task list header by pointer and closes with its X", { tag: "@server-steady" }, async ({
@@ -529,11 +523,33 @@ test("opens from the Task list header by pointer and closes with its X", { tag: 
   await expect(rows.first()).toHaveAccessibleName(
     "Open task: Middle task in a-deliberately-long-section-name-for-clipping",
   );
-  await expect(rows.first()).toBeFocused();
+  // The list takes the opening focus, so no row looks chosen before one is.
+  await expect(dialog.locator(".task-switcher-scroll")).toBeFocused();
 
   await dialog.getByRole("button", { name: "Close task switcher" }).click();
   await expect(dialog).toBeHidden();
   await expect(opener).toBeFocused();
+});
+
+test("opens from its button by keyboard with the focus on the list", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await installSwitcherFixture(page, switcherTasks());
+  await page.goto("/tasks/switcher_oldest");
+  await expect(page.locator("caffold-task-detail")).toBeVisible();
+  const opener = listSwitcherOpener(page);
+  await opener.focus();
+  await page.keyboard.press("Enter");
+
+  const dialog = page.locator("caffold-task-switcher-dialog > dialog");
+  await expect(dialog).toBeVisible();
+  const list = dialog.locator(".task-switcher-scroll");
+  await expect(list).toBeFocused();
+  // The browser would ring this focus; the list is not a control, so it does not.
+  expect(await list.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+  await expect(list).toHaveCSS("outline-style", "none");
+  await page.keyboard.press("Tab");
+  await expect(dialog.locator(".task-switcher-row").first()).toBeFocused();
 });
 
 test("hands the Hint session to the switcher when its opener is chosen by Hint", { tag: "@server-steady" }, async ({
