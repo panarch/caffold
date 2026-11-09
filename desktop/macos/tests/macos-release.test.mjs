@@ -353,9 +353,9 @@ test("a release candidate is a pre-release whose notes start from the candidate 
   const start = releaseJob.indexOf('            notes_start=""');
   const end = releaseJob.indexOf('            release_args+=(--notes-start-tag "${notes_start}")');
   assert.ok(start >= 0 && end > start && releaseJob.indexOf("            release_args=(") < start);
-  // Actions runs each step with bash -eo pipefail.
+  // Actions runs these steps with bash -e.
   const notesFor = (version) => run("bash", ["-c", `
-    set -eo pipefail
+    set -e
     gh() {
       [[ "$*" == "api repos/panarch/caffold/releases/latest --jq .tag_name" ]] || return 1
       echo v0.22.2
