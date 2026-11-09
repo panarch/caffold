@@ -733,28 +733,29 @@ mod tests {
 
     #[tokio::test]
     async fn an_installation_is_ready_only_when_grok_answers_its_version() {
-        use std::{fs, os::unix::fs::PermissionsExt};
-
         let dir = tempfile::tempdir().unwrap();
-        let grok = dir.path().join("grok");
         assert_eq!(
-            installation_at(&grok).await,
+            installation_at(&dir.path().join("grok")).await,
             AgentInstallation::NotInstalled
         );
 
-        let answering = |script: &str| {
-            fs::write(&grok, script).unwrap();
-            fs::set_permissions(&grok, fs::Permissions::from_mode(0o700)).unwrap();
-            installation_at(&grok)
+        // The stand-ins are checked in. Linux refuses to run a file that is
+        // open for writing, and a process another test is starting can still
+        // hold a file this test has just written.
+        let answering = |name: &str| {
+            let grok = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("src/agent/grok/status/fixtures")
+                .join(name);
+            async move { installation_at(&grok).await }
         };
         assert_eq!(
-            answering("#!/bin/sh\necho 'grok 1.0.30 (04b7ffed98c6) [stable]'\n").await,
+            answering("fake-grok-version").await,
             AgentInstallation::Ready {
                 version: "grok 1.0.30 (04b7ffed98c6) [stable]".to_string()
             }
         );
         assert_eq!(
-            answering("#!/bin/sh\nexit 1\n").await,
+            answering("fake-grok-failure").await,
             AgentInstallation::Unavailable { version: None }
         );
     }

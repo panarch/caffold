@@ -1,0 +1,8 @@
+#!/bin/sh
+
+if [ "$1 $2 $3" != "app-server daemon version" ]; then
+  echo "unexpected arguments: $*" >&2
+  exit 2
+fi
+
+printf '%s' '{"status":"running","managedCodexPath":"/home/example/.codex/packages/standalone/current/bin/codex","managedCodexVersion":"0.162.1","cliVersion":"0.155.1","appServerVersion":"0.166.0"}'

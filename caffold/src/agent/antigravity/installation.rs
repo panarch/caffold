@@ -136,33 +136,42 @@ pub(super) fn check_version(value: &str) -> Result<(), AntigravityError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{fs, os::unix::fs::PermissionsExt};
+    use std::path::Path;
+
+    // The agy stand-ins are checked in. Linux refuses to run a file that is
+    // open for writing, and a process another test is starting can still
+    // hold a file this test has just written.
+    fn cli_at(executable: PathBuf) -> Cli {
+        Cli {
+            executable: Some(executable),
+        }
+    }
+
+    fn fake_agy(name: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src/agent/antigravity/installation/fixtures")
+            .join(name)
+    }
 
     #[tokio::test]
     async fn absent_old_and_failed_cli_are_distinct_from_ready() {
         let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("agy");
-        let cli = Cli {
-            executable: Some(path.clone()),
-        };
-        let status = cli.status().await;
+        let status = cli_at(root.path().join("agy")).status().await;
         assert_eq!(status.installed, Some(false));
         assert!(!status.ready);
-        fs::write(&path, "#!/bin/sh\necho 1.4.5\n").unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
-        let status = cli.status().await;
+        let old = cli_at(fake_agy("fake-agy-1.4.5"));
+        let status = old.status().await;
         assert_eq!(status.installed, Some(true));
         assert_eq!(status.version.as_deref(), Some("1.4.5"));
         assert!(!status.ready);
         assert!(matches!(
-            cli.executable().await,
+            old.executable().await,
             Err(AntigravityError::Installation(_))
         ));
-        fs::write(&path, "#!/bin/sh\necho 1.5.1\n").unwrap();
-        assert!(cli.status().await.ready);
-        assert_eq!(cli.executable().await.unwrap(), path);
-        fs::write(&path, "#!/bin/sh\nexit 1\n").unwrap();
-        let status = cli.status().await;
+        let current = fake_agy("fake-agy-1.5.1");
+        assert!(cli_at(current.clone()).status().await.ready);
+        assert_eq!(cli_at(current.clone()).executable().await.unwrap(), current);
+        let status = cli_at(fake_agy("fake-agy-failure")).status().await;
         assert_eq!(status.installed, None);
         assert!(!status.ready);
         assert!(status.error.is_some());
@@ -171,29 +180,24 @@ mod tests {
     #[tokio::test]
     async fn an_installation_is_ready_only_at_the_minimum_version_or_newer() {
         let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("agy");
-        let cli = Cli {
-            executable: Some(path.clone()),
-        };
-        assert_eq!(cli.installation().await, AgentInstallation::NotInstalled);
-        fs::write(&path, "#!/bin/sh\necho 1.4.5\n").unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
         assert_eq!(
-            cli.installation().await,
+            cli_at(root.path().join("agy")).installation().await,
+            AgentInstallation::NotInstalled
+        );
+        assert_eq!(
+            cli_at(fake_agy("fake-agy-1.4.5")).installation().await,
             AgentInstallation::Unavailable {
                 version: Some("1.4.5".to_string())
             }
         );
-        fs::write(&path, "#!/bin/sh\necho 1.5.1\n").unwrap();
         assert_eq!(
-            cli.installation().await,
+            cli_at(fake_agy("fake-agy-1.5.1")).installation().await,
             AgentInstallation::Ready {
                 version: "1.5.1".to_string()
             }
         );
-        fs::write(&path, "#!/bin/sh\nexit 1\n").unwrap();
         assert_eq!(
-            cli.installation().await,
+            cli_at(fake_agy("fake-agy-failure")).installation().await,
             AgentInstallation::Unavailable { version: None }
         );
     }

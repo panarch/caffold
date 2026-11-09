@@ -1,0 +1,14 @@
+#!/bin/sh
+
+# Run through a link in a Codex home: the daemon settings are beside the link.
+settings="$(dirname "$0")/app-server-daemon/settings.json"
+grep -q '"autoUpdateEnabled": false' "$settings" || {
+  echo "automatic updates were still on" >&2
+  exit 3
+}
+case "$3" in
+  start) printf '%s' '{"status":"started"}' ;;
+  restart) printf '%s' '{"status":"restarted"}' ;;
+  update) printf '%s' '{"status":"noUpdate","message":"The managed installation and running daemon are already current; the daemon was left running."}' ;;
+  *) echo "unexpected arguments: $*" >&2; exit 2 ;;
+esac

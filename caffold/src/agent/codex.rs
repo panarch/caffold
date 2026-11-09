@@ -2078,28 +2078,19 @@ mod tests {
     }
 
     /// A Codex stand-in that answers a daemon command only when Codex's
-    /// settings already turn the updater off.
+    /// settings already turn the updater off: a link in `home` to a checked-in
+    /// script, which reads the settings beside the link. Linux refuses to run
+    /// a file that is open for writing, and a process another test is
+    /// starting can still hold a script this test has just written.
     #[cfg(unix)]
     fn codex_requiring_updates_off(home: &tempfile::TempDir) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt;
-
-        let settings = home.path().join("app-server-daemon/settings.json");
-        let script = r#"#!/bin/sh
-grep -q '"autoUpdateEnabled": false' 'SETTINGS' || {
-  echo "automatic updates were still on" >&2
-  exit 3
-}
-case "$3" in
-  start) printf '%s' '{"status":"started"}' ;;
-  restart) printf '%s' '{"status":"restarted"}' ;;
-  update) printf '%s' '{"status":"noUpdate","message":"The managed installation and running daemon are already current; the daemon was left running."}' ;;
-  *) echo "unexpected arguments: $*" >&2; exit 2 ;;
-esac
-"#
-        .replace("SETTINGS", &settings.display().to_string());
         let codex = home.path().join("codex");
-        std::fs::write(&codex, script).unwrap();
-        std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::os::unix::fs::symlink(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("src/agent/codex/fixtures/fake-codex-requiring-updates-off"),
+            &codex,
+        )
+        .unwrap();
         codex
     }
 

@@ -559,32 +559,35 @@ mod tests {
 
     #[tokio::test]
     async fn an_installation_is_ready_only_when_claude_answers_its_version() {
-        use std::{fs, os::unix::fs::PermissionsExt};
+        use std::path::Path;
 
         let root = tempfile::tempdir().unwrap();
-        let claude = root.path().join("claude");
         assert_eq!(
-            installation_of(claude.as_os_str()).await,
+            installation_of(root.path().join("claude").as_os_str()).await,
             AgentInstallation::NotInstalled
         );
 
-        let answering = |script: &str| {
-            fs::write(&claude, script).unwrap();
-            fs::set_permissions(&claude, fs::Permissions::from_mode(0o700)).unwrap();
-            installation_of(claude.as_os_str())
+        // The stand-ins are checked in. Linux refuses to run a file that is
+        // open for writing, and a process another test is starting can still
+        // hold a file this test has just written.
+        let answering = |name: &str| {
+            let claude = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("src/agent/claude/status/fixtures")
+                .join(name);
+            async move { installation_of(claude.as_os_str()).await }
         };
         assert_eq!(
-            answering("#!/bin/sh\necho '2.1.239 (Claude Code)'\n").await,
+            answering("fake-claude-version").await,
             AgentInstallation::Ready {
                 version: "2.1.239 (Claude Code)".to_string()
             }
         );
         assert_eq!(
-            answering("#!/bin/sh\necho broken >&2\nexit 1\n").await,
+            answering("fake-claude-failure").await,
             AgentInstallation::Unavailable { version: None }
         );
         assert_eq!(
-            answering("#!/bin/sh\n").await,
+            answering("fake-claude-silent").await,
             AgentInstallation::Unavailable { version: None },
             "an empty answer is not a version"
         );
