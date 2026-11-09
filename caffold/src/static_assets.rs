@@ -1886,6 +1886,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/tasks/components/active-task-list.js"
             ))))
         }
+        "pages/(task-workspace)/tasks/components/active-task-list/list-read.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/active-task-list/list-read.js"
+            ))))
+        }
         "pages/(task-workspace)/tasks/components/active-task-list/move-list-item.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
@@ -3279,6 +3285,10 @@ mod tests {
                 b"caffold-active-task-list".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/components/active-task-list/list-read.js",
+                b"superseded".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/components/active-task-list/move-list-item.js",
                 b"moveBefore".as_slice(),
             ),
@@ -3584,6 +3594,7 @@ mod tests {
             "/assets/pages/(task-workspace)/tasks/stream/machine.js",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list.css",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list.js",
+            "/assets/pages/(task-workspace)/tasks/components/active-task-list/list-read.js",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list/move-list-item.js",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/section.css",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/section.js",
