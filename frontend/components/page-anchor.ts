@@ -1,6 +1,7 @@
 // Where a scroller of pages is read, by the page at its top rather than by
 // pixels: a page that fits the width it is given grows and shrinks with that
 // width, so the same pixel offset reaches another page once the width changes.
+// The wrapped rows of a code or diff viewer are read as pages too.
 export interface PageAnchor {
   // The first page whose bottom is below the scroller's top edge, from 0.
   page: number;
@@ -18,10 +19,7 @@ export function readPageAnchor(
     return null;
   }
   const top = scrollport.getBoundingClientRect().top;
-  const index = pages.findIndex(
-    (page) => page.getBoundingClientRect().bottom > top,
-  );
-  const page = index < 0 ? pages.length - 1 : index;
+  const page = firstPageBelow(pages, top);
   const box = pages[page].getBoundingClientRect();
   return { page, fraction: box.height > 0 ? (top - box.top) / box.height : 0 };
 }
@@ -41,4 +39,21 @@ export function scrollToPageAnchor(
   const pageTop =
     box.top - scrollport.getBoundingClientRect().top + scrollport.scrollTop;
   scrollport.scrollTop = pageTop + anchor.fraction * box.height;
+}
+
+// The first page whose bottom is below `top`, or the last page when none is.
+// Pages lie one below another, so halving them finds it without measuring
+// each of the thousands of rows a source file has, as every scroll asks.
+function firstPageBelow(pages: readonly Element[], top: number) {
+  let low = 0;
+  let high = pages.length - 1;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (pages[middle].getBoundingClientRect().bottom > top) {
+      high = middle;
+    } else {
+      low = middle + 1;
+    }
+  }
+  return low;
 }

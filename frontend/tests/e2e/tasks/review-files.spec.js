@@ -856,6 +856,92 @@ test("returns Source to the line it was reading after another surface", { tag: "
   }
 });
 
+test("keeps the line Source reads at the top as it wraps, the width changes, and Review returns", { tag: "@server-changes" }, async ({
+  page,
+}, testInfo) => {
+  const folder = `planner/source-wrap-${testInfo.project.name}-${testInfo.repeatEachIndex}`;
+  const folderPath = repositoryPath("frontend/tests/e2e/fixtures/home/src", folder);
+  await mkdir(folderPath, { recursive: true });
+  // Lines of many lengths, so wrapping changes the rows by different amounts.
+  await writeFile(
+    `${folderPath}/guide.md`,
+    Array.from(
+      { length: 300 },
+      (_, index) => `Line ${index + 1} ${"word ".repeat((index % 7) * 15)}`,
+    ).join("\n"),
+  );
+  try {
+    const { tasksPage, taskReview, shown: source } = await openGuide(page, folder, "source");
+    const viewer = taskReview.locator("caffold-review-file-viewer");
+    const lines = source.locator(".code-lines");
+    const firstLine = () => lines.evaluate((element) => {
+      const top = element.getBoundingClientRect().top;
+      return [...element.querySelectorAll(".code-row")]
+        .find((row) => row.getBoundingClientRect().bottom > top).dataset.lineNumber;
+    });
+    const overflows = () => lines.evaluate((element) => element.scrollWidth > element.clientWidth);
+    // The top edge halfway down line 150, so no rounding of the scroll can
+    // put it on another line.
+    await lines.evaluate((element) => {
+      const rows = element.querySelectorAll(".code-row");
+      const row = rows[149];
+      element.scrollTop = row.offsetTop - rows[0].offsetTop + row.offsetHeight / 2;
+    });
+    const line = "150";
+    await expect.poll(firstLine).toBe(line);
+    expect(await overflows()).toBe(true);
+
+    await viewer.getByRole("button", { name: "Wrap code lines" }).click();
+    await expect(source).toHaveAttribute("wrap", "");
+    await expect(viewer.getByRole("button", { name: "Stop wrapping code lines" }))
+      .toHaveAttribute("aria-pressed", "true");
+    expect(await overflows()).toBe(false);
+    await expect.poll(firstLine).toBe(line);
+
+    await page.setViewportSize({ width: 960, height: 700 });
+    await expect.poll(firstLine).toBe(line);
+
+    await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
+    await expect(source).toBeHidden();
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+    await expect(source.locator(".code-row").first()).toBeVisible();
+    await expect.poll(firstLine).toBe(line);
+
+    await viewer.getByRole("button", { name: "Stop wrapping code lines" }).click();
+    await expect(source).not.toHaveAttribute("wrap", "");
+    expect(await overflows()).toBe(true);
+    await expect.poll(firstLine).toBe(line);
+  } finally {
+    await rm(folderPath, { recursive: true, force: true });
+  }
+});
+
+test("keeps Wrap as this device's choice across a reload", { tag: "@server-changes" }, async ({
+  page,
+}, testInfo) => {
+  const folder = `planner/source-wrap-kept-${testInfo.project.name}-${testInfo.repeatEachIndex}`;
+  const folderPath = repositoryPath("frontend/tests/e2e/fixtures/home/src", folder);
+  await mkdir(folderPath, { recursive: true });
+  await writeFile(`${folderPath}/guide.md`, `${"word ".repeat(200)}\nshort`);
+  try {
+    const { taskReview, shown: source } = await openGuide(page, folder, "source");
+    const viewer = taskReview.locator("caffold-review-file-viewer");
+    await expect(viewer.getByRole("button", { name: "Wrap code lines" }))
+      .toHaveAttribute("aria-pressed", "false");
+    await viewer.getByRole("button", { name: "Wrap code lines" }).click();
+    await expect(source).toHaveAttribute("wrap", "");
+
+    await page.reload();
+    await expect(source.locator(".code-row").first()).toBeVisible();
+    await expect(source).toHaveAttribute("wrap", "");
+    await expect(viewer.getByRole("button", { name: "Stop wrapping code lines" }))
+      .toHaveAttribute("aria-pressed", "true");
+  } finally {
+    await rm(folderPath, { recursive: true, force: true });
+  }
+});
+
 test("returns a Markdown Preview to where it was reading after another surface", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {
@@ -1490,7 +1576,7 @@ test("keeps the open file shown while the next one loads and names a longer wait
   );
 });
 
-test("the file viewer offers a notice's representation button, and details only for metadata", { tag: "@server-steady" }, async ({
+test("the file viewer offers a notice's representation button, details only for metadata, and Wrap for a diff", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.goto("/settings/files");
@@ -1552,10 +1638,11 @@ test("the file viewer offers a notice's representation button, and details only 
       ["review:viewer:notice:view-preview", "navigation.review.axis", "View rendered preview"],
     ],
     otherNotice: [],
-    bare: [],
+    bare: [["review:viewer:wrap", "button.activate", "Wrap code lines"]],
     bareDetails: [],
     described: [
       ["review:viewer:details:open", "navigation.file-details.open", "Show details for a.rs"],
+      ["review:viewer:wrap", "button.activate", "Wrap code lines"],
     ],
     describedDetails: [["review:viewer:details", 0]],
   });
@@ -1644,4 +1731,165 @@ test("the file viewer scrolls a source file and a notice under the names it show
       scrollport: "viewer-notice-content",
     }],
   });
+});
+
+test("offers Wrap for source and a diff beside the choice of representation, and every file viewer follows it", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/files");
+
+  const result = await page.evaluate(async () => {
+    await import("/assets/components/file-viewer.js");
+    const drawn = () => new Promise(requestAnimationFrame);
+    const [first, second] = [0, 1].map(() => {
+      const viewer = document.createElement("caffold-review-file-viewer");
+      viewer.style.cssText = "display: block; width: 520px; height: 300px;";
+      document.body.append(viewer);
+      return viewer;
+    });
+    const long = `    const line = "${"wrap ".repeat(60)}";`;
+    const actions = (viewer) =>
+      [...(viewer.shadowRoot.querySelector(".viewer-actions")?.children ?? [])]
+        .map((element) => element.classList[0] ?? element.localName);
+    const wrapButton = (viewer) => viewer.shadowRoot.querySelector(".viewer-wrap-button");
+    const leaf = (viewer) =>
+      viewer.shadowRoot.querySelector("caffold-code-viewer, caffold-diff-viewer");
+    const overflows = (viewer) => {
+      const scroller = leaf(viewer).shadowRoot.querySelector(".code-lines, .diff-lines");
+      return scroller.scrollWidth > scroller.clientWidth;
+    };
+    // Where each row of the wide line starts, beside where its code column's
+    // text starts.
+    const rowStarts = (viewer, selector) => {
+      const code = leaf(viewer).shadowRoot.querySelector(selector);
+      const range = document.createRange();
+      range.selectNodeContents(code);
+      const starts = new Map();
+      for (const rect of range.getClientRects()) {
+        const top = Math.round(rect.top);
+        starts.set(top, Math.min(starts.get(top) ?? Infinity, rect.left));
+      }
+      return {
+        rows: starts.size,
+        offsets: [...starts.values()].map((left) =>
+          Math.round(
+            left - code.getBoundingClientRect().left -
+              Number.parseFloat(getComputedStyle(code).paddingLeft),
+          ),
+        ),
+      };
+    };
+    const button = (viewer) => ({
+      pressed: wrapButton(viewer).getAttribute("aria-pressed"),
+      label: wrapButton(viewer).getAttribute("aria-label"),
+    });
+    // Pressed, Wrap draws as the Task code block's Wrap does.
+    const surface = (viewer) => {
+      const look = getComputedStyle(wrapButton(viewer), "::before");
+      return [look.backgroundColor, look.borderTopColor];
+    };
+    const tokens = (viewer) => {
+      const probe = document.createElement("span");
+      probe.style.backgroundColor = "var(--selection-bg)";
+      probe.style.borderTopColor = "var(--border-strong)";
+      viewer.shadowRoot.append(probe);
+      const look = getComputedStyle(probe);
+      const colors = [look.backgroundColor, look.borderTopColor];
+      probe.remove();
+      return colors;
+    };
+
+    const file = { path: "src/a.js", content: `short\n${long}` };
+    first.setFile(file);
+    second.setFile(file);
+    await drawn();
+    const source = {
+      actions: actions(first),
+      button: button(first),
+      overflows: overflows(first),
+      pressedLook: surface(first)[0] === tokens(first)[0],
+    };
+
+    wrapButton(first).click();
+    await drawn();
+    const wrapped = {
+      button: button(first),
+      pressedLook: surface(first).join() === tokens(first).join(),
+      overflows: overflows(first),
+      starts: rowStarts(first, '.code-row[data-line-number="2"] .line-code'),
+      followed: leaf(second).hasAttribute("wrap"),
+      stored: window.localStorage.getItem("caffold:file-viewer-wrap"),
+    };
+
+    first.setChangeChoices({
+      choices: [
+        { value: "diff", label: "Diff" },
+        { value: "visual", label: "Visual" },
+      ],
+      selected: "diff",
+    });
+    first.setDiff({ path: "src/a.js", diff: `@@ -1,1 +1,2 @@\n short\n+${long}` });
+    await drawn();
+    const diffRow = leaf(first).shadowRoot.querySelector(".diff-row-added");
+    const diff = {
+      actions: actions(first),
+      wraps: leaf(first).hasAttribute("wrap"),
+      overflows: overflows(first),
+      starts: rowStarts(first, ".diff-row-added .diff-code"),
+      rowHeight: diffRow.getBoundingClientRect().height,
+      gutterHeight: diffRow.querySelector(".diff-gutter").getBoundingClientRect().height,
+    };
+
+    first.setChangeChoices({ choices: [], selected: "" });
+    first.setMarkdown({ path: "README.md", content: "# Read me" });
+    await drawn();
+    const markdown = actions(first);
+    first.setNotice("This file is large.", { title: "big.bin" });
+    await drawn();
+    const notice = actions(first);
+
+    wrapButton(second).click();
+    await drawn();
+    const unwrapped = {
+      button: button(second),
+      stored: window.localStorage.getItem("caffold:file-viewer-wrap"),
+    };
+    return { source, wrapped, diff, markdown, notice, unwrapped };
+  });
+
+  expect(result).toEqual({
+    source: {
+      actions: ["viewer-info-button", "viewer-wrap-button"],
+      button: { pressed: "false", label: "Wrap code lines" },
+      overflows: true,
+      pressedLook: false,
+    },
+    wrapped: {
+      button: { pressed: "true", label: "Stop wrapping code lines" },
+      pressedLook: true,
+      overflows: false,
+      starts: { rows: expect.any(Number), offsets: expect.any(Array) },
+      followed: true,
+      stored: "true",
+    },
+    diff: {
+      actions: ["viewer-change-control", "viewer-wrap-button", "viewer-info-button"],
+      wraps: true,
+      overflows: false,
+      starts: { rows: expect.any(Number), offsets: expect.any(Array) },
+      rowHeight: expect.any(Number),
+      gutterHeight: result.diff.rowHeight,
+    },
+    markdown: ["viewer-info-button"],
+    notice: [],
+    unwrapped: {
+      button: { pressed: "false", label: "Wrap code lines" },
+      stored: "false",
+    },
+  });
+  // A wrapped line goes on from the start of its code column.
+  for (const { rows, offsets } of [result.wrapped.starts, result.diff.starts]) {
+    expect(rows).toBeGreaterThan(1);
+    expect(new Set(offsets)).toEqual(new Set([0]));
+  }
 });

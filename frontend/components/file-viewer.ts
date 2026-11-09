@@ -36,7 +36,7 @@ import "./file-viewer/components/code-viewer.js";
 import type {
   CaffoldCodeViewer,
   CodeFile,
-  ScrollPosition,
+  CodePosition,
   ViewerPosition,
   ViewerPositionOptions,
 } from "./file-viewer/components/code-viewer.js";
@@ -63,7 +63,10 @@ import {
 import { inlineIcon, warmIcons } from "./icons.js";
 import "./loading-text.js";
 import "./markdown-preview.js";
-import type { CaffoldMarkdownPreview } from "./markdown-preview.js";
+import type {
+  CaffoldMarkdownPreview,
+  ScrollPosition,
+} from "./markdown-preview.js";
 import type { PageAnchor } from "./page-anchor.js";
 import "./pdf-viewer.js";
 import "./pptx-viewer.js";
@@ -87,11 +90,21 @@ import styles from "./file-viewer.css.js";
 // the loading state replaces it.
 const RETAINED_CONTENT_MS = 180;
 
-// Where a view was last read, in the terms of the leaf that drew it: a
-// scroll position for source, a diff, or Markdown, the page at the top for a
-// paged document or Visual, and the sheets of a workbook. Its owner keeps one
-// for each view and hands it back when it shows the view again.
-export type ReadingPosition = ScrollPosition | PageAnchor | WorkbookPosition;
+// Where a view was last read, in the terms of the leaf that drew it: the row
+// at the top for source or a diff, a scroll position for Markdown, the page at
+// the top for a paged document or Visual, and the sheets of a workbook. Its
+// owner keeps one for each view and hands it back when it shows the view
+// again.
+export type ReadingPosition =
+  | CodePosition
+  | ScrollPosition
+  | PageAnchor
+  | WorkbookPosition;
+
+// Whether source and diffs wrap their long lines is the device's choice: it
+// is kept in the browser, and every file viewer on the page follows a change.
+const WRAP_STORAGE_KEY = "caffold:file-viewer-wrap";
+const WRAP_CHANGE_EVENT = "caffold:file-viewer-wrap-change";
 
 // A document preview hands its file to the viewer of its kind, with where the
 // file opens.
@@ -321,9 +334,12 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     choices: [],
     selected: "",
   };
+  @state()
+  private accessor wrap = false;
 
   static override styles = [
     scopedStyle(compactIconButton, ".viewer-refresh-button"),
+    scopedStyle(compactIconButton, ".viewer-wrap-button"),
     scopedStyle(compactIconButton, ".viewer-close-button"),
     scopedStyle(secondaryButton, ".task-secondary-button"),
     styles,
@@ -333,6 +349,9 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   private previewFiles: Partial<Record<PreviewSlot, PreviewFile>> = {};
   private retainedContent: RetainedContent | null = null;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly followWrap = (event: CustomEvent<{ wrap: boolean }>) => {
+    this.wrap = event.detail.wrap;
+  };
   private readonly hints = new ActionHints(this);
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly keyboard = new KeyboardContexts(this);
@@ -354,6 +373,8 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
 
   override connectedCallback() {
     super.connectedCallback();
+    this.wrap = readWrapPreference();
+    window.addEventListener(WRAP_CHANGE_EVENT, this.followWrap);
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
@@ -361,6 +382,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   override disconnectedCallback() {
     super.disconnectedCallback();
     this.deactivate();
+    window.removeEventListener(WRAP_CHANGE_EVENT, this.followWrap);
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
 
@@ -383,6 +405,32 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     const downloadPath = presentation?.downloadPath ?? "";
     const details = Boolean(subtitle || lineStats || metadata.length > 0);
     const closeIcon = this.closeMode === "back" ? "ArrowLeft" : "X";
+    // Wrap sits beside the choice of representation: right after the header's
+    // own, or else last, which in Review is beside the choice Review places at
+    // the header's end.
+    const offersChange = this.changeChoices.choices.length > 0;
+    const wrapLabel = this.wrap
+      ? "Stop wrapping code lines"
+      : "Wrap code lines";
+    const wrapButton =
+      state.status === "file" || state.status === "diff"
+        ? html`<button
+            ${this.hints.button({
+              id: "wrap",
+              label: wrapLabel,
+              action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            })}
+            type="button"
+            class="viewer-wrap-button"
+            data-action="wrap-code-lines"
+            aria-label=${wrapLabel}
+            title=${wrapLabel}
+            aria-pressed=${this.wrap}
+            @click=${this.toggleWrap}
+          >
+            ${inlineIcon("WrapText", "", "viewer-wrap-icon")}
+          </button>`
+        : nothing;
     const header = html`
       <header class="viewer-header">
         <div class="viewer-title-row">
@@ -435,13 +483,14 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
           </div>
           <div class="viewer-actions">
             ${
-              this.changeChoices.choices.length > 0
+              offersChange
                 ? html`<caffold-segmented-control
-                    ${drawn(this.changeControl)}
-                    class="viewer-change-control"
-                    style="--viewer-change-choice-count: ${this.changeChoices.choices.length};"
-                    @caffold:segmented-control-intent=${this.chooseChange}
-                  ></caffold-segmented-control>`
+                      ${drawn(this.changeControl)}
+                      class="viewer-change-control"
+                      style="--viewer-change-choice-count: ${this.changeChoices.choices.length};"
+                      @caffold:segmented-control-intent=${this.chooseChange}
+                    ></caffold-segmented-control>
+                    ${wrapButton}`
                 : nothing
             }
             ${
@@ -486,6 +535,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
                   </button>`
                 : nothing
             }
+            ${offersChange ? nothing : wrapButton}
           </div>
         </div>
         ${
@@ -607,6 +657,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
               ${drawn(this.diffViewer)}
               .diff=${state.diff}
               .position=${state.position}
+              .wrap=${this.wrap}
             ></caffold-diff-viewer>
           </section>
         `;
@@ -678,6 +729,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
               ${drawn(this.codeViewer)}
               .file=${state.file}
               .position=${state.position}
+              .wrap=${this.wrap}
             ></caffold-code-viewer>
           </section>
         `;
@@ -929,12 +981,11 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     this.show();
   }
 
-  captureContentScroll(): ScrollPosition | null {
+  // Markdown keeps its own place when it is drawn again, so this is where
+  // source or a diff is read.
+  captureContentScroll(): CodePosition | null {
     const viewer = this.codeViewer.value ?? this.diffViewer.value;
-    if (viewer) {
-      return viewer.getScrollState();
-    }
-    return this.preview.value?.getScrollState() ?? null;
+    return viewer?.getScrollState() ?? null;
   }
 
   // Where the content shown was last read while it was on screen, which
@@ -1063,7 +1114,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     return {
       scroll: options.preserveScroll
         ? this.captureContentScroll()
-        : scrollIn(options.position),
+        : codePositionIn(options.position),
       line: options.line,
     };
   }
@@ -1125,6 +1176,15 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   private chooseVisualMode(event: CustomEvent<VisualModeIntentDetail>) {
     this.visualMode = event.detail.mode;
     this.drawVisualSides();
+  }
+
+  // Every file viewer on the page, this one included, follows the change.
+  private toggleWrap() {
+    const wrap = !this.wrap;
+    writeWrapPreference(wrap);
+    window.dispatchEvent(
+      new CustomEvent(WRAP_CHANGE_EVENT, { detail: { wrap } }),
+    );
   }
 
   private chooseChange(event: CustomEvent<SegmentedControlIntentDetail>) {
@@ -1386,6 +1446,10 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
 
 // A reading position for the leaf of each kind, or none when it was read by
 // another kind of leaf.
+function codePositionIn(position: ReadingPosition | null | undefined) {
+  return position && "anchor" in position ? position : null;
+}
+
 function scrollIn(position: ReadingPosition | null | undefined) {
   return position && "top" in position ? position : null;
 }
@@ -1396,6 +1460,22 @@ function pageAnchorIn(position: ReadingPosition | null | undefined) {
 
 function workbookIn(position: ReadingPosition | null | undefined) {
   return position && "sheet" in position ? position : null;
+}
+
+function readWrapPreference() {
+  try {
+    return window.localStorage.getItem(WRAP_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeWrapPreference(wrap: boolean) {
+  try {
+    window.localStorage.setItem(WRAP_STORAGE_KEY, `${wrap}`);
+  } catch {
+    // The choice then lasts only for this page.
+  }
 }
 
 // Where a side of a change is fetched from: its blob, read through the
@@ -1415,5 +1495,9 @@ declare global {
   interface HTMLElementEventMap {
     "caffold:file-viewer-notice-action": CustomEvent<FileViewerNoticeActionDetail>;
     "caffold:file-viewer-change-intent": CustomEvent<FileViewerChangeIntentDetail>;
+  }
+
+  interface WindowEventMap {
+    "caffold:file-viewer-wrap-change": CustomEvent<{ wrap: boolean }>;
   }
 }

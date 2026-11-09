@@ -133,38 +133,72 @@ test("passes scrolling and Action Hints to the document viewer of its kind", () 
 });
 
 test("names where the leaf it shows was last read", () => {
+  const code = { anchor: { page: 30, fraction: 0.25 }, left: 0 };
   const scroll = { top: 40, left: 0 };
   const anchor = { page: 2, fraction: 0.5 };
   const workbook = { sheet: "Q2", scrolls: new Map() };
   const leaf = (position) => ({ readingPosition: () => position });
   for (const [state, children, expected] of [
-    [{ status: "file" }, { codeViewer: leaf(scroll) }, scroll],
-    [{ status: "diff" }, { diffViewer: leaf(scroll) }, scroll],
+    [{ status: "file" }, { codeViewer: leaf(code) }, code],
+    [{ status: "diff" }, { diffViewer: leaf(code) }, code],
     [{ status: "markdown" }, { preview: leaf(scroll) }, scroll],
     [{ status: "document", document: { kind: "pdf" } }, { documentViewer: leaf(anchor) }, anchor],
     [{ status: "document", document: { kind: "xlsx" } }, { documentViewer: leaf(workbook) }, workbook],
     [{ status: "visual" }, { visualDiff: leaf(anchor) }, anchor],
     [{ status: "image" }, {}, null],
-    [{ status: "loading" }, { codeViewer: leaf(scroll) }, null],
+    [{ status: "loading" }, { codeViewer: leaf(code) }, null],
   ]) {
     assert.equal(viewerWith(state, children).readingPosition(), expected, state.status);
   }
 });
 
-test("opens source, a diff, or Markdown at a scroll its owner kept, and ignores another kind of place", () => {
+test("opens source or a diff where its owner kept it, and ignores another kind of place", () => {
   const owner = viewerWith({ status: "empty" });
   owner.previewFiles = {};
   owner.detailsPopover = { value: null };
   const file = { path: "a.js", content: "a" };
+  const kept = { anchor: { page: 40, fraction: 0.5 }, left: 3 };
 
-  owner.setFile(file, { position: { top: 40, left: 3 } });
-  assert.deepEqual(owner.state.position, { scroll: { top: 40, left: 3 }, line: undefined });
+  owner.setFile(file, { position: kept });
+  assert.deepEqual(owner.state.position, { scroll: kept, line: undefined });
 
-  owner.setFile(file, { position: { page: 1, fraction: 0.5 } });
-  assert.deepEqual(owner.state.position, { scroll: null, line: undefined });
+  for (const other of [{ page: 1, fraction: 0.5 }, { top: 40, left: 3 }]) {
+    owner.setFile(file, { position: other });
+    assert.deepEqual(owner.state.position, { scroll: null, line: undefined });
+  }
 
-  owner.setDiff({ path: "a.js", diff: "" }, { position: { top: 7, left: 0 } });
-  assert.deepEqual(owner.state.position, { scroll: { top: 7, left: 0 }, line: undefined });
+  owner.setDiff({ path: "a.js", diff: "" }, { position: kept });
+  assert.deepEqual(owner.state.position, { scroll: kept, line: undefined });
+});
+
+test("keeps Wrap as the device's choice and tells every file viewer on the page", () => {
+  const stored = new Map();
+  const sent = [];
+  let storageWorks = true;
+  globalThis.window = {
+    localStorage: {
+      setItem(key, value) {
+        if (!storageWorks) {
+          throw new Error("storage unavailable");
+        }
+        stored.set(key, value);
+      },
+    },
+    dispatchEvent: (event) => sent.push(event),
+  };
+  const owner = elementStandIn(fileViewer, { wrap: false });
+
+  fileViewer.toggleWrap.call(owner);
+  assert.equal(stored.get("caffold:file-viewer-wrap"), "true");
+  assert.equal(sent[0].type, "caffold:file-viewer-wrap-change");
+  assert.deepEqual(sent[0].detail, { wrap: true });
+  assert.equal(owner.wrap, false, "the viewer follows the event like the rest");
+
+  owner.wrap = true;
+  storageWorks = false;
+  fileViewer.toggleWrap.call(owner);
+  assert.equal(stored.get("caffold:file-viewer-wrap"), "true");
+  assert.deepEqual(sent[1].detail, { wrap: false });
 });
 
 // Load requests, the retained-content timer, and arriving states reach the

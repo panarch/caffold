@@ -89,3 +89,24 @@ test("reads nothing from a scroller with no page or no box, and moves nothing to
   scrollToPageAnchor(scrollport, [], { page: 0, fraction: 0 });
   assert.equal(scrollport.scrollTop, 50);
 });
+
+test("finds the page at the top of many by reading only a few of them", () => {
+  const heights = Array.from({ length: 2000 }, (_, index) => 18 + (index % 5) * 18);
+  const { scrollport, pages } = column(heights, { padding: 0, gap: 0 });
+  let reads = 0;
+  const counted = pages.map((page) => ({
+    getBoundingClientRect() {
+      reads += 1;
+      return page.getBoundingClientRect();
+    },
+  }));
+
+  for (const scrollTop of [0, 17, 18, 5000, 41_234, 107_999]) {
+    scrollport.scrollTop = scrollTop;
+    const expected = pages.findIndex((page) => page.getBoundingClientRect().bottom > 100);
+    reads = 0;
+
+    assert.equal(readPageAnchor(scrollport, counted).page, expected, `at ${scrollTop}`);
+    assert.ok(reads <= 13, `${reads} pages read at ${scrollTop}`);
+  }
+});

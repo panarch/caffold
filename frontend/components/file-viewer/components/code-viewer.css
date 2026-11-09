@@ -116,6 +116,17 @@
   padding: 0 0.75rem;
 }
 
+/* Wrapped, the lines fit the viewer's width. A line continues from the start
+   of the code column; its number stands beside its first row only. */
+:host([wrap]) .code-table {
+  width: 100%;
+}
+
+:host([wrap]) .line-code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .syntax-comment {
   color: var(--syntax-comment);
 }

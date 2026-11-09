@@ -149,13 +149,17 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
   expect(summaryClearance.headingWidth).toBeGreaterThanOrEqual(100);
 
   await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
+  await expect(taskReview.getByRole("button", { name: "Wrap code lines" })).toBeVisible();
   const after = await taskReview.evaluate((review) => {
     const navigator = review.shadowRoot.querySelector(".task-review-navigator-pane");
     const viewer = review.shadowRoot.querySelector(".task-review-viewer-pane");
-    const viewerInfo = review
+    const viewerHeader = review
       .shadowRoot.querySelector("caffold-review-selected-file")
       .shadowRoot.querySelector("caffold-review-file-viewer")
-      .shadowRoot.querySelector(".viewer-info-button");
+      .shadowRoot.querySelector(".viewer-header");
+    const viewerTitle = viewerHeader.querySelector("h2");
+    const viewerInfo = viewerHeader.querySelector(".viewer-info-button");
+    const viewerWrap = viewerHeader.querySelector(".viewer-wrap-button");
     const viewerAxis = review.shadowRoot.querySelector(
       '.task-review-viewer-axis caffold-segmented-control[data-review-axis="viewer"]',
     );
@@ -168,13 +172,21 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
       };
     };
     const viewerInfoBounds = visualBounds(viewerInfo, "::after");
+    const viewerWrapBounds = visualBounds(viewerWrap, "::before");
     const rootStyle = getComputedStyle(document.documentElement);
     return {
       overflow: review.scrollWidth > review.clientWidth,
       navigatorVisible: getComputedStyle(navigator).display !== "none",
       viewerVisible: getComputedStyle(viewer).display !== "none",
+      titleClear:
+        viewerTitle.getBoundingClientRect().right <=
+          viewerInfo.getBoundingClientRect().left,
+      wrapAfterInfo: viewerWrapBounds.left > viewerInfoBounds.right,
+      wrapWidth: viewerWrapBounds.right - viewerWrapBounds.left,
+      infoWidth: viewerInfoBounds.right - viewerInfoBounds.left,
+      // Wrap is the header's last action, beside the Review viewer axis.
       viewerControlGap:
-        viewerAxis.getBoundingClientRect().left - viewerInfoBounds.right,
+        viewerAxis.getBoundingClientRect().left - viewerWrapBounds.right,
       expectedControlGap:
         Number.parseFloat(rootStyle.getPropertyValue("--interface-space-5")) *
         Number.parseFloat(rootStyle.fontSize),
@@ -183,6 +195,9 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
   expect(after.overflow).toBe(false);
   expect(after.viewerVisible).toBe(true);
   expect(after.navigatorVisible).toBe(testInfo.project.name !== "phone");
+  expect(after.titleClear).toBe(true);
+  expect(after.wrapAfterInfo).toBe(true);
+  expect(after.wrapWidth).toBeCloseTo(after.infoWidth, 1);
   expect(
     Math.abs(after.viewerControlGap - after.expectedControlGap),
   ).toBeLessThanOrEqual(1);
@@ -278,6 +293,7 @@ test("keeps one compact file-navigation header on phone", { tag: "@phone" }, asy
       .shadowRoot.querySelector(".viewer-header");
     const close = viewerHeader.querySelector(".viewer-close-button");
     const info = viewerHeader.querySelector(".viewer-info-button");
+    const wrap = viewerHeader.querySelector(".viewer-wrap-button");
     const titleBlock = viewerHeader.querySelector(".viewer-title-block");
     const headerRect = viewerHeader.getBoundingClientRect();
     const closeRect = close.getBoundingClientRect();
@@ -289,6 +305,10 @@ test("keeps one compact file-navigation header on phone", { tag: "@phone" }, asy
     const infoInset = Number.parseFloat(
       getComputedStyle(info, "::after").top,
     );
+    const wrapRect = wrap.getBoundingClientRect();
+    const wrapInset = Number.parseFloat(
+      getComputedStyle(wrap, "::before").top,
+    );
     return {
       closeVisualHeight: closeRect.height - closeInset * 2,
       closeVisualWidth: closeRect.width - closeInset * 2,
@@ -296,6 +316,9 @@ test("keeps one compact file-navigation header on phone", { tag: "@phone" }, asy
       hitHeight: closeRect.height,
       infoVisualHeight: infoRect.height - infoInset * 2,
       infoVisualWidth: infoRect.width - infoInset * 2,
+      wrapHitHeight: wrapRect.height,
+      wrapVisualHeight: wrapRect.height - wrapInset * 2,
+      wrapVisualWidth: wrapRect.width - wrapInset * 2,
       overflow: review.scrollWidth > review.clientWidth,
       titleCenter: titleBlockRect.top + titleBlockRect.height / 2,
       headerCenter: headerRect.top + headerRect.height / 2,
@@ -307,6 +330,9 @@ test("keeps one compact file-navigation header on phone", { tag: "@phone" }, asy
   expect(geometry.closeVisualHeight).toBeLessThanOrEqual(36);
   expect(geometry.infoVisualWidth).toBeCloseTo(geometry.closeVisualWidth, 1);
   expect(geometry.infoVisualHeight).toBeCloseTo(geometry.closeVisualHeight, 1);
+  expect(geometry.wrapVisualWidth).toBeCloseTo(geometry.closeVisualWidth, 1);
+  expect(geometry.wrapVisualHeight).toBeCloseTo(geometry.closeVisualHeight, 1);
+  expect(geometry.wrapHitHeight).toBe(geometry.hitHeight);
   expect(geometry.hitHeight).toBeGreaterThanOrEqual(40);
   expect(geometry.headerHeight).toBeLessThanOrEqual(42);
   expect(Math.abs(geometry.titleCenter - geometry.headerCenter)).toBeLessThanOrEqual(1);

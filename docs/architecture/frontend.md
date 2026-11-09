@@ -1482,12 +1482,16 @@ Both changes components answer the selected file's change, its diff, and the
 versions its diff compares for the viewer, and raise intents for the route
 changes they ask for.
 
-A view's place is kept in the terms of the leaf that drew it: the scroll of
-source, a diff, or Markdown; for a PDF, Word document, PowerPoint deck, or
-Visual, whose pages and pictures follow the viewer's width, the page at the
-top and how far into it; and for a workbook, its last sheet and where each
-sheet was scrolled. A viewer taken off the page reads 0, so each leaf records
-its place as it is scrolled while it is drawn. The selected file takes the
+A view's place is kept in the terms of the leaf that drew it: for source or a
+diff, whose wrapped rows change height with the viewer's width, the row at the
+top and how far into it, with the sideways scroll; the scroll of Markdown; for
+a PDF, Word document, PowerPoint deck, or Visual, whose pages and pictures
+follow the viewer's width, the page at the top and how far into it; and for a
+workbook, its last sheet and where each sheet was scrolled. A viewer taken off
+the page reads 0, so each leaf records its place as it is scrolled while it is
+drawn. Source and a diff also hold a place they are handed off the page until
+they are shown again, and return to their row whenever their width or
+wrapping changes. The selected file takes the
 place from the viewer when another view follows and right before it reads the
 shown view again, as it does when Review comes back on screen, and hands it
 back when it shows that view; the file viewer gives it only to a leaf of the
@@ -1926,6 +1930,18 @@ Reusable RootedFs capabilities remain shared:
 PDF, Word, PowerPoint, and Excel leaves used by review surfaces. Navigation,
 presentation, and filesystem-watch primitives stay shared while each active
 surface owns its selection and request lifetime.
+
+Source and a diff offer Wrap in the file viewer's header. The file viewer owns
+the choice and hands it to `caffold-code-viewer` and `caffold-diff-viewer` as
+`wrap`; wrapped, their lines fit the viewer's width and go on from the start of
+the code column, with each line's numbers beside its first row. Wrap sits
+beside the choice of representation: right after the header's own Diff and
+Visual where Commit or Compare offers them, and otherwise last, which in
+Integrated Review is beside its viewer axis. Each browser keeps the choice in
+`localStorage` as `caffold:file-viewer-wrap`. A file viewer reads it whenever
+it connects; the one whose Wrap is pressed stores the new choice and sends
+`caffold:file-viewer-wrap-change` on `window`, and every connected file viewer
+follows it, those Git and GitHub keep hidden included.
 
 Source and diff text arrive colored. `/api/file` and the Git diff routes color
 it on the server with syntect and bat's syntax set (two-face), choosing a

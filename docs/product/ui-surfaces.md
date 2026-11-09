@@ -468,6 +468,10 @@ viewer, Word document viewer, PowerPoint viewer, and Excel viewer. In Source
 and Preview, the file's details
 offer Download, which saves the file itself, including a large or binary file
 that no viewer can show. The details of a diff or Visual offer no Download.
+In Diff and Source, Wrap in the file's header fits long lines to the viewer's
+width instead of scrolling them sideways; a wrapped line goes on from the start
+of the code column. Each browser remembers the choice for every file view,
+Git's and GitHub's included.
 
 ### Git
 
@@ -549,12 +553,14 @@ Switching among Integrated Review, Git, and GitHub may preserve selection,
 disclosure, and scroll within the same Task or Section. Returning to a surface
 reconciles current source state. Integrated Review shows a file it returns to
 where it was last read, whether Review comes back on screen or the file is
-opened again: at the same scroll, at the same part of the same page, slide, or
-picture even at another width, or at the workbook's last sheet with each sheet
-where it was. A document that changes while it is read is drawn again at the
-same place. A reload starts every file at its top. Changing Task, Section, or
-repository context discards retained external context. The implementation
-contract is defined in [Frontend Architecture](../architecture/frontend.md).
+opened again: source or a diff at the same part of the same line, and a
+document or Visual at the same part of the same page, slide, or picture, even
+at another width or with Wrap changed; Markdown at the same scroll; or a
+workbook at its last sheet with each sheet where it was. A document that
+changes while it is read is drawn again at the same place. A reload starts
+every file at its top. Changing Task, Section, or repository context discards
+retained external context. The implementation contract is defined in
+[Frontend Architecture](../architecture/frontend.md).
 
 ## Notes
 
