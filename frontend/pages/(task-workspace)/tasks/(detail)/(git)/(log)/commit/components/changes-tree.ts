@@ -167,9 +167,25 @@ export class CaffoldCommitChangesTree extends CaffoldElement {
     return this.fileTree()?.scroller() ?? null;
   }
 
+  // Opens a file of the commit as choosing its row does.
+  openPath(path: string) {
+    const files =
+      this.state.status === "ready" ? this.state.commitPayload.files : [];
+    const file = files.find((entry) => entry.path === path);
+    if (file) {
+      this.open(file);
+    }
+  }
+
   private openFile(event: CustomEvent<FileTreeSelectDetail>) {
     const file = commitFile(event.detail.node);
-    if (!file || this.state.status !== "ready") {
+    if (file) {
+      this.open(file);
+    }
+  }
+
+  private open(file: GitCommitFile) {
+    if (this.state.status !== "ready") {
       return;
     }
     this.selectedPath = file.path;
@@ -184,6 +200,12 @@ export class CaffoldCommitChangesTree extends CaffoldElement {
         },
       }),
     );
+  }
+
+  // The changed files in the order the list shows them, each once.
+  changedPathsInOrder() {
+    this.performUpdate();
+    return [...new Set(this.fileTree()?.filePathsInOrder() ?? [])];
   }
 
   private fileTree() {

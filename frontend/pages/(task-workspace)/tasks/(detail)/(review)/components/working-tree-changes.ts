@@ -277,6 +277,12 @@ export class CaffoldReviewWorkingTreeChanges extends CaffoldElement {
       hasData && !fromBeforeReturn && !this.status?.files?.length;
   }
 
+  // The changed files in the order the list shows them: Unstaged, then
+  // Staged, a file in both counted where it first shows.
+  changedPathsInOrder() {
+    return this.tree.changedPathsInOrder();
+  }
+
   // The tree is drawn the first time it is needed, which can be before the
   // changes are in the document.
   private get tree() {

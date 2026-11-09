@@ -322,6 +322,11 @@ export class CaffoldReviewBranchChanges extends CaffoldElement {
     }
   }
 
+  // The changed files in the order the list shows them.
+  changedPathsInOrder() {
+    return this.tree.changedPathsInOrder();
+  }
+
   // The tree is drawn the first time it is needed, which can be before the
   // changes are in the document.
   private get tree() {

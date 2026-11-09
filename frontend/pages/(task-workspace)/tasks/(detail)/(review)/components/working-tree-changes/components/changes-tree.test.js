@@ -43,3 +43,18 @@ test("forwards file and disclosure semantics to its retained File Tree", () => {
     clipRoots: [owner, clipRoot],
   });
 });
+
+test("counts a file staged and unstaged once, where it first shows", () => {
+  const owner = {
+    performUpdate() {},
+    fileTree: () => ({
+      filePathsInOrder: () => ["src/b.rs", "src/a.rs", "src/b.rs", "src/c.rs"],
+    }),
+  };
+
+  assert.deepEqual(changesTree.changedPathsInOrder.call(owner), [
+    "src/b.rs",
+    "src/a.rs",
+    "src/c.rs",
+  ]);
+});

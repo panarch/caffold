@@ -132,6 +132,7 @@ export class CaffoldDiffViewer extends CaffoldElement {
           >
             ${drawnRows}
           </div>
+          <slot name="end"></slot>
         </div>
       </section>
     `;

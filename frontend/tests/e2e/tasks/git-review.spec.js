@@ -126,19 +126,6 @@ async function installTaskGitFixture(
   });
   await mockAgentModels(page);
   const repository = { rootPath, branch, dirty: false };
-  const counts = {
-    repository,
-    refs: 0,
-    compare: 0,
-    compareDiff: 0,
-    fetch: 0,
-    fetchBranch: "main",
-    fetchCompleted: 0,
-    fetchError: null,
-    fetchWait: null,
-    log: 0,
-    commit: 0,
-  };
   const compareFiles = [
     { path: "src/alpha.rs", repoRelativePath: "alpha.rs", status: "A" },
     { path: "src/example.rs", repoRelativePath: "example.rs", status: "M" },
@@ -155,6 +142,20 @@ async function installTaskGitFixture(
         }))
       : []),
   ];
+  const counts = {
+    repository,
+    compareFiles,
+    refs: 0,
+    compare: 0,
+    compareDiff: 0,
+    fetch: 0,
+    fetchBranch: "main",
+    fetchCompleted: 0,
+    fetchError: null,
+    fetchWait: null,
+    log: 0,
+    commit: 0,
+  };
   const compareDiff = longDiff
     ? [
         "@@ -1,80 +1,80 @@",
@@ -560,7 +561,10 @@ test("clamps the Compare tree when the window narrows so the viewer keeps its mi
   const split = await compareBrowser.evaluate((browser) => {
     const part = (name) => browser.shadowRoot.querySelector(name).getBoundingClientRect();
     const tree = part("caffold-git-compare-tree");
-    const resizer = part("caffold-pane-resizer");
+    const resizer = browser.shadowRoot
+      .querySelector("caffold-split-view")
+      .shadowRoot.querySelector("caffold-pane-resizer")
+      .getBoundingClientRect();
     const viewer = part("caffold-review-file-viewer");
     return {
       treeEnd: tree.right,
@@ -637,7 +641,9 @@ test("refreshes Git and scrolls the exact visible Compare tree and diff from the
 
   await workspace.focus();
   await page.keyboard.press("s");
-  if (testInfo.project.name === "phone") {
+  // Below a wide window an open file takes the width: the phone shows it
+  // alone and the drawer folds the list away.
+  if (testInfo.project.name !== "desktop") {
     await expect(selector).toBeHidden();
     await expect(hud).toContainText("Scroll: example.rs diff");
   } else {
@@ -836,7 +842,9 @@ test("uses Log actions and scrolls the exact visible Commit tree and diff from t
 
   await workspace.focus();
   await page.keyboard.press("s");
-  if (testInfo.project.name === "phone") {
+  // Below a wide window an open file takes the width: the phone shows it
+  // alone and the drawer folds the list away.
+  if (testInfo.project.name !== "desktop") {
     await expect(selector).toBeHidden();
     await expect(hud).toContainText("Scroll: example.rs diff");
   } else {
@@ -1107,7 +1115,133 @@ test("keeps the loaded Git route stable across unrelated Task stream updates", {
   expect(counts.log).toBe(1);
 });
 
-test("collapses the Compare and Commit trees from the corner toggle, each remembered on its own", { tag: ["@desktop", "@foldable"] }, async ({
+test("folds the Compare and Commit trees into the drawer strip while a file is open", { tag: "@foldable" }, async ({
+  page,
+}) => {
+  await installTaskGitFixture(page, [taskRecord()]);
+  const compareUrl =
+    `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview`;
+  const toggle = page.locator("caffold-task-workspace .task-workspace-side-pane-toggle");
+  const compare = page.locator("caffold-git-compare-browser");
+  const compareTree = compare.locator("caffold-git-compare-tree");
+  const compareStrip = compare.locator("caffold-split-view .split-view-strip");
+  const commit = page.locator("caffold-git-log-commit-page");
+  const commitTree = commit.locator("caffold-commit-changes-tree");
+  const commitStrip = commit.locator("caffold-split-view .split-view-strip");
+
+  await page.goto(compareUrl);
+  await expect(compareTree).toBeVisible();
+  await expect(compareStrip).toBeHidden();
+
+  await page.goto(`${compareUrl}&file=example.rs`);
+  await expect(compare.locator("caffold-diff-viewer")).toContainText("new compare");
+  await expect(compareTree).toBeHidden();
+  await expect(compareStrip).toHaveText("Changes 3");
+  await expect(compareStrip).toHaveAccessibleName(
+    "Show review side panel, Changes 3",
+  );
+  await expect(compare.getByRole("button", { name: "Back to compare" })).toBeHidden();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+  await compareStrip.click();
+  await expect(compareTree).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  // The fixture answers only example.rs, so the choice is that file again.
+  await compare.locator('button[data-file-tree-path="src/example.rs"]').click();
+  await expect(compareTree).toBeHidden();
+  await expect(compare.locator("caffold-diff-viewer")).toContainText("new compare");
+
+  await page.goto(`/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}&file=example.rs`);
+  await expect(commit.locator("caffold-diff-viewer")).toContainText("new commit");
+  await expect(commitTree).toBeHidden();
+  await expect(commitStrip).toHaveText("Changes 3");
+  await toggle.click();
+  await expect(commitTree).toBeVisible();
+  const dim = commit.locator("caffold-split-view .split-view-dim");
+  const dimBox = await dim.boundingBox();
+  await dim.click({ position: { x: dimBox.width - 24, y: dimBox.height / 2 } });
+  await expect(commitTree).toBeHidden();
+});
+
+test("ends a compared file and a commit's file with the files around them", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const counts = await installTaskGitFixture(page, [taskRecord()]);
+  const compare = page.locator("caffold-git-compare-browser");
+  const commit = page.locator("caffold-git-log-commit-page");
+  const name = (path) => path.split("/").at(-1);
+  const order = (host) =>
+    host.locator('button[data-file-tree-kind="file"]').evaluateAll((buttons) =>
+      buttons.map((button) => button.dataset.fileTreeRelativePath)
+    );
+
+  await page.goto(
+    `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview&file=example.rs`,
+  );
+  await expect(compare.locator("caffold-diff-viewer")).toContainText("new compare");
+  const compared = await order(compare);
+  const at = compared.indexOf("example.rs");
+  const previous = compare.locator(".viewer-adjacent-previous");
+  const next = compare.locator(".viewer-adjacent-next");
+  if (at > 0) {
+    await expect(previous).toContainText(name(compared[at - 1]));
+  } else {
+    await expect(previous).toHaveCount(0);
+  }
+  if (at < compared.length - 1) {
+    await expect(next).toContainText(name(compared[at + 1]));
+  } else {
+    await expect(next).toHaveCount(0);
+  }
+
+  counts.compareFiles.push({
+    path: "src/extra.rs",
+    repoRelativePath: "extra.rs",
+    status: "A",
+  });
+  const compareRequests = counts.compare;
+  await activateActionHint(page, /Refresh compare$/);
+  await expect.poll(() => counts.compare).toBe(compareRequests + 1);
+  await expect(next).toContainText("extra.rs");
+
+  await page.goto(`/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}&file=example.rs`);
+  await expect(commit.locator("caffold-diff-viewer")).toContainText("new commit");
+  const committed = await order(commit);
+  await expect(commit.locator(".viewer-adjacent-files")).toContainText(
+    name(committed[committed.indexOf("example.rs") > 0 ? committed.indexOf("example.rs") - 1 : 1]),
+  );
+});
+
+test("shows the Compare tree and file in turn only up to 560px", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installTaskGitFixture(page, [taskRecord()]);
+  const compare = page.locator("caffold-git-compare-browser");
+  const compareTree = compare.locator("caffold-git-compare-tree");
+  const viewer = compare.locator("caffold-review-file-viewer");
+  const strip = compare.locator("caffold-split-view .split-view-strip");
+  const back = compare.getByRole("button", { name: "Back to compare" });
+
+  await page.setViewportSize({ width: 700, height: 800 });
+  await page.goto(
+    `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview&file=example.rs`,
+  );
+  await expect(compare.locator("caffold-diff-viewer")).toContainText("new compare");
+  await expect(strip).toBeVisible();
+  await expect(viewer).toBeVisible();
+  await expect(back).toBeHidden();
+
+  await page.setViewportSize({ width: 560, height: 800 });
+  await expect(strip).toBeHidden();
+  await expect(compareTree).toBeHidden();
+  await expect(viewer).toBeVisible();
+  await expect(back).toBeVisible();
+  await back.click();
+  await expect(compareTree).toBeVisible();
+  await expect(viewer).toBeHidden();
+});
+
+test("collapses the Compare and Commit trees from the corner toggle, each remembered on its own", { tag: "@desktop" }, async ({
   page,
 }) => {
   await installTaskGitFixture(page, [taskRecord()]);
@@ -1126,10 +1260,8 @@ test("collapses the Compare and Commit trees from the corner toggle, each rememb
   const viewerFills = (host) =>
     host.evaluate((element) => {
       const bounds = element.getBoundingClientRect();
-      // Compare draws its viewer in its shadow root; the commit page draws it
-      // as a child of its own element.
-      const viewer = [...(element.shadowRoot ?? element).children]
-        .find((child) => child.localName === "caffold-review-file-viewer")
+      const viewer = element.shadowRoot
+        .querySelector("caffold-review-file-viewer")
         .getBoundingClientRect();
       return Math.abs(viewer.left - bounds.left) <= 1 &&
         Math.abs(viewer.width - bounds.width) <= 1;

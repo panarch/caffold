@@ -68,6 +68,11 @@ for (const theme of ["light", "dark"]) {
     });
 
     test("see what changed in the Working Tree", { tag: ["@desktop", "@phone"] }, async ({ page }, testInfo) => {
+      // Review keeps its file list beside the diff only from 1,061px, so this
+      // scene is captured wider in the same 3:2 shape.
+      if (testInfo.project.name === "desktop") {
+        await page.setViewportSize({ width: 1080, height: 720 });
+      }
       await installManualTasks(page);
       await page.goto(`/tasks/${MANUAL_TASKS.darkTheme.threadId}`);
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);

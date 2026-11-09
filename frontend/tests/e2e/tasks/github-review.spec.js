@@ -1327,7 +1327,9 @@ test("scrolls GitHub lists, Pull detail, and exact Pull Files surfaces from the 
 
   await workspace.focus();
   await page.keyboard.press("s");
-  if (testInfo.project.name === "phone") {
+  // Below a wide window an open file takes the width: the phone shows it
+  // alone and the drawer folds the list away.
+  if (testInfo.project.name !== "desktop") {
     await expect(selector).toBeHidden();
     await expect(hud).toContainText("Scroll: src/review.rs diff");
   } else {
@@ -2422,7 +2424,42 @@ test("reloads a Task-scoped GitHub route from canonical Task context", { tag: "@
   await expect.poll(() => fixture.counts.pulls).toBe(2);
 });
 
-test("collapses the PR file tree from the corner toggle only while a diff is open", { tag: ["@desktop", "@foldable"] }, async ({
+test("folds the PR file tree into the drawer strip while a diff is open", { tag: "@foldable" }, async ({
+  page,
+}) => {
+  await installLinkedWorktreeGithubFixture(page);
+  const filesUrl = `/tasks/${THREAD_ID}/github/pulls/1983/files`;
+  const files = page.locator("caffold-github-pull-files-page");
+  const tree = files.locator("caffold-github-pull-files-tree");
+  const strip = files.locator("caffold-split-view .split-view-strip");
+
+  await page.goto(`${filesUrl}?file=src%2Freview.rs`);
+  await expect(page.locator("caffold-diff-viewer")).toContainText(
+    "new Task-owned review",
+  );
+  await expect(tree).toBeHidden();
+  const count = Number.parseInt(
+    await files.locator(".github-pull-files-count").textContent(),
+    10,
+  );
+  await expect(strip).toHaveText(`Changes ${count}`);
+  await expect(files.getByRole("button", { name: "Back to PR files" })).toBeHidden();
+  const order = await files.locator('button[data-file-tree-kind="file"]').evaluateAll(
+    (buttons) => buttons.map((button) => button.dataset.fileTreePath),
+  );
+  const other = order.find((path) => !path.endsWith("src/review.rs"));
+  await expect(files.locator(".viewer-adjacent-files")).toContainText(
+    other.split("/").at(-1),
+  );
+
+  await strip.click();
+  await expect(tree).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(tree).toBeHidden();
+  await expect(strip).toBeFocused();
+});
+
+test("collapses the PR file tree from the corner toggle only while a diff is open", { tag: "@desktop" }, async ({
   page,
 }) => {
   await installLinkedWorktreeGithubFixture(page);

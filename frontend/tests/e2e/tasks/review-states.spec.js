@@ -3,6 +3,7 @@ import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   openCompletedTaskForReview,
   selectTaskReviewScope,
+  showReviewNavigator,
 } from "../support/task-review-test.js";
 import {
   captureReviewScreenshot,
@@ -148,9 +149,7 @@ test("keeps unchanged and deleted file representations explicit", { tag: "@all-v
   await taskReview.getByRole("button", { name: "View source" }).click();
   await expect(taskReview.locator("caffold-review-file-viewer")).toContainText("pub const ALPHA");
 
-  if (test.info().project.name === "phone") {
-    await taskReview.getByRole("button", { name: "Back to navigator" }).click();
-  }
+  await showReviewNavigator(taskReview, test.info().project.name);
   await taskReview.getByRole("button", { name: "Changes", exact: true }).click();
   await taskReview.locator('button[data-file-tree-relative-path="deleted.rs"]').click();
   await taskReview.getByRole("button", { name: "Source", exact: true }).click();

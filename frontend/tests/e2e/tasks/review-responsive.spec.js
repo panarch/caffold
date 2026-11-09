@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { activateActionHint } from "../support/action-hints.js";
+import { activateActionHint, enterActionHints } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { elementHandles } from "../support/element-handles.js";
 import { openCompletedTaskForReview } from "../support/task-review-test.js";
@@ -76,8 +76,8 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
       summaryActionsContained:
         actionsRect.left >= summaryRect.left - 1 &&
         actionsRect.right <= summaryRect.right + 1,
-      navigatorVisible: getComputedStyle(navigator).display !== "none",
-      viewerVisible: getComputedStyle(viewer).display !== "none",
+      navigatorVisible: navigator.getClientRects().length > 0,
+      viewerVisible: viewer.getClientRects().length > 0,
       actionEdgeDelta: Math.abs(
         infoRect.right - infoVisualInset -
           rightmostPaneControl.getBoundingClientRect().right,
@@ -150,6 +150,9 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
 
   await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
   await expect(taskReview.getByRole("button", { name: "Wrap code lines" })).toBeVisible();
+  if (testInfo.project.name !== "desktop") {
+    await expect(taskReview.locator(".task-review-navigator-pane")).toBeHidden();
+  }
   const after = await taskReview.evaluate((review, [git, github]) => {
     const navigator = review.shadowRoot.querySelector(".task-review-navigator-pane");
     const viewer = review.shadowRoot.querySelector(".task-review-viewer-pane");
@@ -175,8 +178,8 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
     const viewerWrapBounds = visualBounds(viewerWrap, "::before");
     return {
       overflow: review.scrollWidth > review.clientWidth,
-      navigatorVisible: getComputedStyle(navigator).display !== "none",
-      viewerVisible: getComputedStyle(viewer).display !== "none",
+      navigatorVisible: navigator.getClientRects().length > 0,
+      viewerVisible: viewer.getClientRects().length > 0,
       titleClear:
         viewerTitle.getBoundingClientRect().right <=
           viewerInfo.getBoundingClientRect().left,
@@ -197,7 +200,9 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
   ]));
   expect(after.overflow).toBe(false);
   expect(after.viewerVisible).toBe(true);
-  expect(after.navigatorVisible).toBe(testInfo.project.name !== "phone");
+  // An open file takes the width below a wide window: the phone shows it
+  // alone and the foldable folds the navigator into its drawer.
+  expect(after.navigatorVisible).toBe(testInfo.project.name === "desktop");
   expect(after.titleClear).toBe(true);
   expect(after.wrapWidth).toBeCloseTo(after.infoWidth, 1);
   expect(after.headerButtonGap).toBeGreaterThan(0);
@@ -395,7 +400,7 @@ test("remembers the review navigator width across reloads", { tag: "@desktop" },
     .toBe(368);
 });
 
-test("collapses the review navigator from the corner toggle only while a file is open", { tag: ["@desktop", "@foldable"] }, async ({
+test("collapses the review navigator from the corner toggle only while a file is open", { tag: "@desktop" }, async ({
   page,
 }) => {
   const { tasksPage, taskReview, taskScenario } = await openCompletedTaskForReview(page);
@@ -465,7 +470,7 @@ test("collapses the review navigator from the corner toggle only while a file is
   expect(await stored("task-review")).toBe("false");
 });
 
-test("offers the corner toggle wherever the review navigator sits beside the viewer", { tag: "@desktop" }, async ({
+test("shows one pane on a phone, the drawer up to 1,060px, and both panes wider", { tag: "@desktop" }, async ({
   page,
 }) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
@@ -476,36 +481,367 @@ test("offers the corner toggle wherever the review navigator sits beside the vie
   const back = workspace.locator(".task-workspace-back");
   const navigator = taskReview.locator(".task-review-navigator-pane");
   const viewer = taskReview.locator(".task-review-viewer-pane");
+  const strip = taskReview.locator("caffold-split-view .split-view-strip");
 
   await page.setViewportSize({ width: 700, height: 800 });
   await expect(navigator).toBeVisible();
   await expect(viewer).toBeVisible();
+  await expect(strip).toBeHidden();
   await expect(back).toBeVisible();
   await expect(toggle).toBeHidden();
 
   await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
   await expect(taskReview).toHaveAttribute("data-file-selected", "");
   await expect(back).toBeHidden();
-  await expect(toggle).toBeVisible();
-  await expect(toggle).toBeEnabled();
-  await toggle.click();
   await expect(navigator).toBeHidden();
+  await expect(strip).toBeVisible();
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(navigator).toBeVisible();
   await expect(viewer).toBeVisible();
 
   await page.setViewportSize({ width: 560, height: 800 });
   await expect(toggle).toBeHidden();
+  await expect(strip).toBeHidden();
+  await expect(navigator).toBeHidden();
   await expect(viewer).toBeVisible();
 
   await page.setViewportSize({ width: 561, height: 800 });
   await expect(toggle).toBeVisible();
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await expect(navigator).toBeHidden();
+  await expect(strip).toBeVisible();
 
-  await page.setViewportSize({ width: 900, height: 800 });
-  await expect(toggle).toBeVisible();
+  await page.setViewportSize({ width: 1060, height: 800 });
+  await expect(strip).toBeVisible();
+  await expect(navigator).toBeHidden();
+
+  await page.setViewportSize({ width: 1061, height: 800 });
+  await expect(strip).toBeHidden();
+  await expect(navigator).toBeVisible();
+  await expect(toggle).toHaveAccessibleName("Hide review navigator");
+});
+
+test("folds the review navigator into a strip under the corner toggle while a file is open", { tag: "@foldable" }, async ({
+  page,
+}) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const toggle = page.locator("caffold-task-workspace .task-workspace-side-pane-toggle");
+  const navigator = taskReview.locator(".task-review-navigator-pane");
+  const strip = taskReview.locator("caffold-split-view .split-view-strip");
+
+  await expect(navigator).toBeVisible();
+  await expect(strip).toBeHidden();
+  await expect(toggle).toBeDisabled();
+  await expect(taskReview.locator(".change-count")).toHaveText(/^\d+ changes$/);
+  const changes = Number.parseInt(
+    await taskReview.locator(".change-count").textContent(),
+    10,
+  );
+
+  await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
+  await expect(taskReview).toHaveAttribute("data-file-selected", "");
+  await expect(navigator).toBeHidden();
+  await expect(strip).toBeVisible();
+  await expect(strip).toHaveText(`Changes ${changes}`);
+  await expect(strip).toHaveAccessibleName(
+    `Show review navigator, Changes ${changes}`,
+  );
+  await expect(toggle).toBeEnabled();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await expect(toggle).toHaveAccessibleName("Show review navigator");
+  await expect(taskReview.getByRole("button", { name: "Back to navigator" })).toBeHidden();
+
+  const box = (locator) => locator.boundingBox();
+  const [stripBox, chevronBox, toggleBox, titleBox, viewerBox, layoutBox, drawerBox] =
+    await Promise.all([
+      box(strip),
+      box(taskReview.locator("caffold-split-view .split-view-strip-icon")),
+      box(toggle),
+      box(page.locator("caffold-task-detail-summary .task-detail-heading h2")),
+      box(taskReview.locator(".task-review-viewer-pane")),
+      box(taskReview.locator("caffold-split-view")),
+      box(taskReview.locator("caffold-split-view .split-view-list")),
+    ]);
+  // The strip is the column the corner toggle stands in: its edge meets the
+  // Task title above, and its chevron sits under the toggle. It is the edge
+  // of the folded drawer.
+  expect(Math.abs(stripBox.x + stripBox.width - titleBox.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(
+    drawerBox.x + drawerBox.width - (stripBox.x + stripBox.width),
+  )).toBeLessThanOrEqual(1);
+  expect(Math.abs(
+    chevronBox.x + chevronBox.width / 2 - (toggleBox.x + toggleBox.width / 2),
+  )).toBeLessThanOrEqual(1);
+  expect(Math.abs(viewerBox.x - (stripBox.x + stripBox.width))).toBeLessThanOrEqual(1);
+  expect(Math.abs(
+    viewerBox.x + viewerBox.width - (layoutBox.x + layoutBox.width),
+  )).toBeLessThanOrEqual(1);
+
+  await strip.click();
+  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  await expect(taskReview.locator(".task-review-navigator-pane")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(strip).toHaveText("Files");
+  await expect(strip).toHaveAccessibleName("Show review navigator, Files");
+});
+
+test("opens the folded review navigator over the file and closes it after a choice", { tag: "@foldable" }, async ({
+  page,
+}) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const toggle = page.locator("caffold-task-workspace .task-workspace-side-pane-toggle");
+  const navigator = taskReview.locator(".task-review-navigator-pane");
+  const viewer = taskReview.locator(".task-review-viewer-pane");
+  const strip = taskReview.locator("caffold-split-view .split-view-strip");
+  const drawer = taskReview.locator("caffold-split-view .split-view-list");
+  const dim = taskReview.locator("caffold-split-view .split-view-dim");
+  const separator = taskReview.getByRole("separator", {
+    name: "Resize review navigator",
+  });
+
+  await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
+  await expect(strip).toBeVisible();
+  const closedViewer = await viewer.boundingBox();
+
+  await strip.click();
+  await expect(navigator).toBeVisible();
+  await expect(dim).toBeVisible();
+  await expect(separator).toBeVisible();
+  await expect(drawer).toBeFocused();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(toggle).toHaveAccessibleName("Hide review navigator");
+  // The drawer covers the file; the file keeps its place and its lines.
+  expect(await viewer.boundingBox()).toEqual(closedViewer);
+
+  await page.keyboard.press("Escape");
+  await expect(navigator).toBeHidden();
+  await expect(strip).toBeFocused();
+
   await toggle.click();
   await expect(navigator).toBeVisible();
+  const dimBox = await dim.boundingBox();
+  await dim.click({ position: { x: dimBox.width - 24, y: dimBox.height / 2 } });
+  await expect(navigator).toBeHidden();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+  await toggle.click();
+  await expect(navigator).toBeVisible();
+  await taskReview.locator('button[data-file-tree-relative-path="lib.rs"]').click();
+  await expect(navigator).toBeHidden();
+  await expect(taskReview.locator('button[data-file-tree-relative-path="lib.rs"]'))
+    .toHaveAttribute("aria-current", "true");
+  await expect(page).toHaveURL(/lib\.rs/);
+
+  await strip.click();
+  await expect(navigator).toBeVisible();
+  await page.reload();
+  await expect(taskReview).toHaveAttribute("data-file-selected", "");
+  await expect(strip).toBeVisible();
+  await expect(navigator).toBeHidden();
+
+  await toggle.click();
+  await expect(navigator).toBeVisible();
+  await page.setViewportSize({ width: 1100, height: page.viewportSize().height });
+  await expect(strip).toBeHidden();
+  await expect(navigator).toBeVisible();
+  await expect(dim).toBeHidden();
+  await expect(toggle).toHaveAccessibleName("Hide review navigator");
+});
+
+test("keeps the drawer between 320px and 70% of Review and the chosen width for side by side", { tag: "@foldable" }, async ({
+  page,
+}) => {
+  const { tasksPage, taskReview, taskScenario } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const navigator = taskReview.locator(".task-review-navigator-pane");
+  const strip = taskReview.locator("caffold-split-view .split-view-strip");
+  const separator = taskReview.getByRole("separator", {
+    name: "Resize review navigator",
+  });
+  const openDrawer = async () => {
+    await strip.click();
+    await expect(navigator).toBeVisible();
+  };
+
+  await separator.focus();
+  await separator.press("Home");
+  await expect(separator).toHaveAttribute("aria-valuenow", "220");
+
+  await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
+  await expect(page).toHaveURL(/planner\.rs/);
+  const fileUrl = page.url();
+  await openDrawer();
+  await expect(separator).toHaveAttribute("aria-valuemin", "320");
+  await expect(separator).toHaveAttribute("aria-valuenow", "320");
+
+  await page.goto(`/tasks/${taskScenario.threadId}/review`);
+  await expect(navigator).toBeVisible();
+  await expect(separator).toHaveAttribute("aria-valuemin", "220");
+  await expect(separator).toHaveAttribute("aria-valuenow", "220");
+
+  await page.goto(fileUrl);
+  await openDrawer();
+  const reviewWidth = (await taskReview.locator("caffold-split-view").boundingBox()).width;
+  await separator.focus();
+  await separator.press("End");
+  await expect(separator).toHaveAttribute(
+    "aria-valuenow",
+    `${Math.round(reviewWidth * 0.7)}`,
+  );
+  await expect.poll(async () => Math.round((await navigator.boundingBox()).width))
+    .toBe(Math.round(reviewWidth * 0.7));
+  await separator.press("Home");
+  await expect(separator).toHaveAttribute("aria-valuenow", "320");
+  await expect(navigator).toBeVisible();
+});
+
+test("offers the folded strip as an Action Hint on its chevron and only the drawer while it is open", { tag: "@foldable" }, async ({
+  page,
+}) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const navigator = taskReview.locator(".task-review-navigator-pane");
+  await expect(taskReview.locator(".change-count")).toHaveText(/^\d+ changes$/);
+  const changes = Number.parseInt(
+    await taskReview.locator(".change-count").textContent(),
+    10,
+  );
+  const stripName = `Show review navigator, Changes ${changes}`;
+  const labels = () =>
+    taskReview.evaluate((review) =>
+      review.actionHintScope().targets.map((target) => target.label)
+    );
+
+  await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
+  await expect(taskReview.getByRole("button", { name: "Wrap code lines" })).toBeVisible();
+  await expect.poll(labels).toContain(stripName);
+  expect(await labels()).toContain("Wrap code lines");
+  expect(await labels()).not.toContain("Resize review navigator");
+
+  const dialog = await enterActionHints(page);
+  const badge = dialog.getByLabel(stripName);
+  await expect(badge).toBeVisible();
+  const [badgeBox, chevronBox] = await Promise.all([
+    badge.boundingBox(),
+    taskReview.locator("caffold-split-view .split-view-strip-icon").boundingBox(),
+  ]);
+  expect(Math.abs(badgeBox.y - chevronBox.y)).toBeLessThanOrEqual(1);
+  await page.keyboard.type(
+    (await badge.getAttribute("data-action-hint-code")).toLowerCase(),
+  );
+  await expect(navigator).toBeVisible();
+
+  await expect.poll(labels).toContain("Resize review navigator");
+  const open = await labels();
+  expect(open).not.toContain(stripName);
+  expect(open).not.toContain("Wrap code lines");
+});
+
+test("slides the drawer out from the strip unless the person asked for less motion", { tag: "@foldable" }, async ({
+  page,
+}) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const navigator = taskReview.locator(".task-review-navigator-pane");
+  const toggle = page.locator("caffold-task-workspace .task-workspace-side-pane-toggle");
+  const strip = taskReview.locator("caffold-split-view .split-view-strip");
+  // The press sets the motion at once, so it is read in the same task.
+  const open = (point = null) =>
+    taskReview.locator("caffold-split-view").evaluate((split, point) => {
+      const root = split.shadowRoot;
+      root.querySelector(".split-view-strip").click();
+      const drawer = getComputedStyle(root.querySelector(".split-view-list"));
+      const strip = getComputedStyle(root.querySelector(".split-view-strip"));
+      return {
+        drawer: drawer.transitionDuration,
+        strip: strip.transitionDuration,
+        stripDelay: strip.transitionDelay,
+        ...(point && {
+          stripOnTop: Boolean(
+            root.elementFromPoint(point.x, point.y)?.closest(".split-view-strip"),
+          ),
+        }),
+      };
+    }, point);
+
+  await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
+  const stripBox = await strip.boundingBox();
+  // The drawer moves for 0.15s; the strip fades in its first half, still
+  // covering the list's header controls as the drawer starts out.
+  expect(await open({ x: stripBox.x + stripBox.width / 2, y: stripBox.y + 16 }))
+    .toEqual({
+      drawer: "0.15s",
+      strip: "0.075s, 0s",
+      stripDelay: "0s, 0.075s",
+      stripOnTop: true,
+    });
+  await expect(navigator).toBeVisible();
+  await toggle.click();
+  await expect(navigator).toBeHidden();
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  expect(await open()).toEqual({
+    drawer: "0s",
+    strip: "0s, 0s",
+    stripDelay: "0s, 0s",
+  });
+});
+
+test("shades the whole file beside the folded strip and dims all of it under the open drawer", { tag: "@foldable" }, async ({
+  page,
+}) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
+  const strip = taskReview.locator("caffold-split-view .split-view-strip");
+  const lineNumbers = taskReview.locator("caffold-diff-viewer .diff-gutter").first();
+  const diff = taskReview.getByRole("button", { name: "Diff", exact: true });
+  await expect(lineNumbers).toBeVisible();
+  const colors = async (points) => {
+    const screenshot = await page.screenshot({
+      animations: "disabled",
+      caret: "hide",
+      scale: "css",
+    });
+    return page.evaluate(async ({ base64, points }) => {
+      const bitmap = await createImageBitmap(
+        new Blob([Uint8Array.from(atob(base64), (character) => character.charCodeAt(0))]),
+      );
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const context = canvas.getContext("2d");
+      context.drawImage(bitmap, 0, 0);
+      return points.map(([x, y]) => [
+        ...context.getImageData(Math.floor(x), Math.floor(y), 1, 1).data.slice(0, 3),
+      ]);
+    }, { base64: screenshot.toString("base64"), points });
+  };
+  const darkening = (shaded, plain) =>
+    plain.reduce((sum, channel, index) => sum + channel - shaded[index], 0);
+
+  // The strip's shadow falls on a line's numbers as on the space below them.
+  const [stripBox, lineBox, diffBox] = await Promise.all([
+    strip.boundingBox(),
+    lineNumbers.boundingBox(),
+    diff.boundingBox(),
+  ]);
+  const edge = stripBox.x + stripBox.width;
+  const inDiff = [diffBox.x + 6, diffBox.y + diffBox.height / 2];
+  const [besideStrip, awayFromStrip, closed] = await colors([
+    [edge + 2, lineBox.y + 1],
+    [edge + 24, lineBox.y + 1],
+    inDiff,
+  ]);
+  expect(darkening(besideStrip, awayFromStrip)).toBeGreaterThan(9);
+
+  // The open drawer's dim covers the file's own controls as well.
+  await strip.click();
+  await expect(taskReview.locator(".task-review-navigator-pane")).toBeVisible();
+  const [dimmed] = await colors([inDiff]);
+  expect(darkening(dimmed, closed)).toBeGreaterThan(20);
 });
 
 test("draws the shared separator as the pane line with a centered handle and a 3px highlight", { tag: "@desktop" }, async ({
@@ -522,7 +858,9 @@ test("draws the shared separator as the pane line with a centered handle and a 3
     const layout = review.shadowRoot.querySelector(".task-review-layout").getBoundingClientRect();
     const navigator = review.shadowRoot.querySelector(".task-review-navigator-pane").getBoundingClientRect();
     const viewer = review.shadowRoot.querySelector(".task-review-viewer-pane").getBoundingClientRect();
-    const resizer = review.shadowRoot.querySelector("caffold-pane-resizer");
+    const resizer = review.shadowRoot
+      .querySelector("caffold-split-view")
+      .shadowRoot.querySelector("caffold-pane-resizer");
     const bounds = resizer.getBoundingClientRect();
     const center = bounds.left + bounds.width / 2;
     const middle = bounds.top + bounds.height / 2;
@@ -592,7 +930,9 @@ test("gives the shared separator handle the Interface touch target", { tag: ["@d
   })).toBeVisible();
 
   const touch = await taskReview.evaluate((review) => {
-    const resizer = review.shadowRoot.querySelector(".task-review-layout > caffold-pane-resizer");
+    const resizer = review.shadowRoot
+      .querySelector("caffold-split-view")
+      .shadowRoot.querySelector("caffold-pane-resizer");
     const handle = resizer.shadowRoot.querySelector(".pane-resizer-handle").getBoundingClientRect();
     const centerX = handle.left + handle.width / 2;
     const centerY = handle.top + handle.height / 2;

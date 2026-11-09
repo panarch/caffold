@@ -33,6 +33,7 @@ const shadowRootStyles = new Map([
   ["components/pptx-viewer.css", "caffold-pptx-viewer"],
   ["components/pptx-viewer/components/document.css", "caffold-pptx-document"],
   ["components/segmented-control.css", "caffold-segmented-control"],
+  ["components/split-view.css", "caffold-split-view"],
   ["components/terminal-view.css", "caffold-terminal-view"],
   ["components/xlsx-viewer.css", "caffold-xlsx-viewer"],
   ["keyboard-navigation/components/hud.css", "caffold-scroll-mode-hud"],

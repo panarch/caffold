@@ -482,9 +482,11 @@ host's `sidePane()` through Tasks, Detail, and the Git and GitHub layouts, along
 the same parent-to-child path as its Action Hint scope. That snapshot carries
 the pane's name, whether the pane sits beside its detail at the current width,
 whether the detail has a file or page open, whether the pane is collapsed, and
-the function that changes the choice. Each code-surface host collapses its tree
-only while a file is open, which is also when its single-pane layout shows the
-viewer, and announces every change with a bubbling `caffold:side-pane-change`.
+the function that changes the choice. Each code-surface host lays out its tree
+and viewer through `caffold-split-view` and hands on its answer: the tree
+collapses only while a file is open, and at drawer widths the toggle opens and
+closes the tree's drawer over the open file instead. The split view announces
+every change with a bubbling `caffold:side-pane-change`.
 The workspace re-reads the snapshot on route and presentation changes, on that
 event, and when its own size changes. It shows the toggle while the pane sits
 beside its detail and the compact Back is not using the corner, and keeps it in
@@ -613,8 +615,9 @@ native control and its product owner continue to own option selection, value
 changes, persistence, and subsequent keyboard input.
 
 Keyboard-operable split separators follow the same focus-only handoff. The
-reusable Pane Resizer publishes a child scope that Task Workspace, Integrated
-Review, Git Compare, Git Log Commit, and GitHub Pull Files merge; its badge is
+reusable Pane Resizer publishes a child scope that Task Workspace merges and
+Integrated Review, Git Compare, Git Log Commit, and GitHub Pull Files merge
+through their split view; its badge is
 anchored to the resize handle at the separator's vertical center. Actual layout
 and resizing capability are required, so single-pane or hidden separators do
 not become targets. Arrow, Shift+Arrow, Home, and End remain component-owned.
@@ -871,9 +874,10 @@ Settings publishes its navigator plus the exact active page surface. Tasks
 publishes its navigator plus the visible New, Recovery, Task-store recovery,
 Codex-readiness, Section, or Task Detail child. Detail delegates to the exact active
 Conversation, Integrated Review, Git, or GitHub domain. Integrated Review, Git
-Compare and Commit, and GitHub Pull Files merge their simultaneously visible
-tree and viewer leaves on desktop and omit the tree on single-pane layouts and
-while it is collapsed. File tree, source, diff, Markdown preview, image stage,
+Compare and Commit, and GitHub Pull Files merge the tree and viewer leaves
+their split view says the person can reach: both side by side, the tree alone
+while its drawer covers the file, and otherwise whichever pane is shown. File
+tree, source, diff, Markdown preview, image stage,
 PDF, Word, PowerPoint, and Excel previews, and scrollable notice owners publish
 their actual retained leaf rather than having a screen parent reach into their
 DOM. File tree, source, diff, Markdown preview hosts, GitHub Issue Markdown
@@ -1461,7 +1465,8 @@ review. It owns:
 - one root watch while active, whose changes and recovery it hands to its
   children;
 - Changes/Files, Diff, and file-capability-aware Source/Preview reconciliation;
-- the pane layout, the error notice, and each navigator's scroll.
+- the error notice, each navigator's scroll, and what its split view shows on
+  the folded drawer's strip.
 
 Three Review components below it own one part each, and each wraps a component
 that only draws:
@@ -1931,6 +1936,22 @@ PDF, Word, PowerPoint, and Excel leaves used by review surfaces. Navigation,
 presentation, and filesystem-watch primitives stay shared while each active
 surface owns its selection and request lifetime.
 
+A diff, source, a Visual comparison, and a notice that names its file end with
+the files its owner hands over with `setAdjacentFiles`: a Previous and a Next
+card, each naming the file and its folder. Code, diff, and Visual leaves place
+them in their `end` slot, after the last line or under the pictures; a code or
+diff leaf's scroll content is a row that takes the rest of the viewer's height
+and a row for the cards, so the cards end a short file at the viewer's bottom,
+and they keep to the viewer's width while the lines scroll sideways. Choosing
+one sends `caffold:file-viewer-open-adjacent` with its path. Integrated Review
+hands over the changed files around one opened from Changes, in the order the
+list shows them, a file in both Working Tree groups counted where it first
+shows, and opens the chosen file as a choice in the list. Git Compare, Git Log
+commits, and GitHub Pull Files do the same with their trees and send the open
+event their tree sends. Each list answers its order with
+`changedPathsInOrder()`, which `caffold-file-tree` gives as
+`filePathsInOrder()`: its rows' order with every directory open.
+
 Source and a diff offer Wrap in the file viewer's header. The file viewer owns
 the choice and hands it to `caffold-code-viewer` and `caffold-diff-viewer` as
 `wrap`; wrapped, their lines fit the viewer's width and go on from the start of
@@ -2316,6 +2337,7 @@ frontend/
     |-- xlsx-viewer/window.ts
     |-- pane-resizer.ts
     |-- segmented-control.ts
+    |-- split-view.ts
     |-- terminal-view.ts
     |-- terminal-view/touch-gesture.ts
     `-- terminal-view/word-range.ts
@@ -2505,18 +2527,55 @@ start pane width and of the person's choice to collapse the start pane. It
 keeps the width last chosen by pointer or keyboard apart from the applied
 width: a narrower container clamps the applied width, and a wider one returns
 to the chosen width. The container is its parent, or the host when it sits at
-the top of a shadow root, as in Git Compare.
+the top of a shadow root, as in the split view.
 Its host sets `start-default`, `start-min`, `start-max`,
-and `end-min` where it needs them, names a `storage-key` and a
+and `end-min` where it needs them, `end-min="0"` for a start pane that covers
+the end pane, names a `storage-key` and a
 `collapsed-storage-key`, applies the published width to its own grid variable,
 and keeps no copy of either value. The resizer restores both from
 `localStorage` whenever it connects, stores the width when a drag or key
 adjustment ends, and stores the collapsed choice when its host sets it from the
-side pane toggle. The host decides when that choice applies and hides the
-start pane and separator itself. Each kind of pane has its own
-`caffold:pane-width:*` and `caffold:pane-collapsed:*` keys: `task-workspace`,
-`task-review` (shared by every Task and Section), `git-compare`,
-`git-log-commit`, and `github-pull-files`.
+side pane toggle. A changed limit applies at once, and a separator that comes
+into view applies the limits it could not measure while hidden. The host
+decides when that choice applies and hides the start pane and separator
+itself. Each kind of pane has its own `caffold:pane-width:*` and
+`caffold:pane-collapsed:*` keys: `task-workspace`, `task-review` (shared by
+every Task and Section), `git-compare`, `git-log-commit`, and
+`github-pull-files`.
+
+`caffold-split-view` lays out the list and the file of the review file
+screens: Integrated Review, Git Compare, Git Log commits, and GitHub Pull
+Files. The host puts its list in the `list` slot and its file in the `detail`
+slot, says whether a file is open, names the list and its file count for the
+strip, and hands the resizer's keys, label, and side-by-side limits through
+attributes. Its stylesheet chooses the layout by window width, and the same
+two boundaries, `SPLIT_VIEW_SINGLE_MAX_WIDTH_PX` (560) and
+`SPLIT_VIEW_DRAWER_MAX_WIDTH_PX` (1,060), name the mode it reads for state:
+
+- `single`: the list and the open file take turns, and the file viewer offers
+  Back.
+- `drawer`: with no file open the list sits beside an empty viewer. An open
+  file takes the width, and the list folds into a drawer that rests with only
+  its edge in view: a strip as wide as the corner toggle's column, which names
+  the list and its count and opens the drawer; its Action Hint badge sits on
+  its chevron. The drawer slides out from that edge over the file, which turns
+  inert, above a dimmed layer that closes it when pressed; the strip fades as
+  the drawer leaves it and returns as the drawer settles back. The file pane
+  and the drawer's list keep their own stacking layers inside them, so the
+  file's sticky line numbers and header controls stay under the strip's
+  shadow, the dim, and the drawer, and the list's header stays under the
+  strip. The
+  resizer limits the drawer to 320 px and 70% of the view without changing the
+  chosen width. Opening it moves focus into it; closing it returns focus where
+  it was, and Escape the keyboard mode left alone closes it. Choosing a file
+  closes it through `closeDrawer()`, and leaving the drawer widths, closing
+  the file, or disconnecting closes it without a trace. It slides for 150 ms
+  unless the person asks for reduced motion.
+- `beside`: the list sits beside the file and collapses as the side pane
+  toggle chooses while a file is open.
+
+`sidePane()`, `listShown()`, and `detailShown()` answer for the current mode,
+and `actionHintScope()` publishes the strip and the resizer.
 
 Every production JavaScript/CSS asset must be registered consistently in:
 

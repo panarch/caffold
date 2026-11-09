@@ -14,12 +14,18 @@ const START_DEFAULT_WIDTH = 320;
 const START_MIN_WIDTH = 180;
 const END_MIN_WIDTH = 320;
 const START_MAX_RATIO = 0.7;
+const LIMIT_ATTRIBUTES = ["start-min", "start-max", "end-min"];
 
 export type PaneResizePhase = "start" | "update" | "end";
 
 @customElement("caffold-pane-resizer")
 export class CaffoldPaneResizer extends CaffoldElement {
   static override styles = styles;
+
+  static override get observedAttributes() {
+    // biome-ignore lint/complexity/noThisInStatic: Lit reads the attributes of the class it is asked about.
+    return [...super.observedAttributes, ...LIMIT_ATTRIBUTES];
+  }
 
   private currentValue = START_DEFAULT_WIDTH;
   private preferredValue: number | null = null;
@@ -74,8 +80,28 @@ export class CaffoldPaneResizer extends CaffoldElement {
     if (container) {
       this.resizeObserver.observe(container);
     }
+    // A separator that appears, as a drawer's does when it opens, applies the
+    // limits it could not measure while hidden.
+    this.resizeObserver.observe(this);
     this.restorePreferredValue();
     this.restoreCollapsed();
+  }
+
+  // A host that changes a limit sees the applied width follow at once; the
+  // chosen width stays as it was.
+  override attributeChangedCallback(
+    name: string,
+    previous: string | null,
+    value: string | null,
+  ) {
+    super.attributeChangedCallback(name, previous, value);
+    if (
+      this.isConnected &&
+      previous !== value &&
+      LIMIT_ATTRIBUTES.includes(name)
+    ) {
+      this.applyPreferredValue();
+    }
   }
 
   override disconnectedCallback() {
@@ -296,8 +322,12 @@ export class CaffoldPaneResizer extends CaffoldElement {
     return numericAttribute(this, "start-min", START_MIN_WIDTH);
   }
 
+  // Zero lets the start pane cover the end pane up to its ratio limit.
   private endMinimumValue() {
-    return numericAttribute(this, "end-min", END_MIN_WIDTH);
+    const value = this.getAttribute("end-min");
+    return value?.trim() === "0"
+      ? 0
+      : numericAttribute(this, "end-min", END_MIN_WIDTH);
   }
 
   private canResize() {

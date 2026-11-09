@@ -269,6 +269,12 @@ export class CaffoldGitCompareTree extends CaffoldElement {
     this.fileTree()?.restoreScroll(scroll);
   }
 
+  // The changed files in the order the list shows them, each once.
+  changedPathsInOrder() {
+    this.performUpdate();
+    return [...new Set(this.fileTree()?.filePathsInOrder() ?? [])];
+  }
+
   fileTree() {
     return this.tree.value ?? null;
   }
@@ -318,11 +324,24 @@ export class CaffoldGitCompareTree extends CaffoldElement {
     );
   }
 
+  // Opens a compared file as choosing its row does.
+  openPath(path: string) {
+    const files =
+      this.state.status === "ready" ? this.state.comparePayload.files : [];
+    const file = (files ?? []).find((entry) => entry.path === path);
+    if (file) {
+      this.open(file);
+    }
+  }
+
   private openFile(event: CustomEvent<FileTreeSelectDetail>) {
     const file = comparedFile(event.detail.node);
-    if (!file) {
-      return;
+    if (file) {
+      this.open(file);
     }
+  }
+
+  private open(file: GitCompareFile) {
     this.selectedPath = file.path;
     this.dispatchEvent(
       new CustomEvent<OpenCompareDiffDetail>("caffold:open-compare-diff", {

@@ -4,7 +4,6 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   emptyActionHintScope,
-  hasActionHintLayoutBox,
   mergeActionHintScopes,
 } from "#app/action-hints.js";
 import {
@@ -30,19 +29,19 @@ import {
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/file-viewer.js";
 import type {
+  AdjacentFile,
   CaffoldReviewFileViewer,
   FileViewerChangeIntentDetail,
+  FileViewerOpenAdjacentDetail,
 } from "#components/file-viewer.js";
 import {
   diffViewerPresentation,
   type ViewerPresentation,
 } from "#components/file-viewer-presentation.js";
-import "#components/pane-resizer.js";
-import type { CaffoldPaneResizer } from "#components/pane-resizer.js";
-import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "#components/review-responsive.js";
+import "#components/split-view.js";
+import type { CaffoldSplitView } from "#components/split-view.js";
 import "./components/changes-tree.js";
 import { CaffoldElement } from "#app/caffold-element.js";
-import type { PaneResizeDetail } from "#components/pane-resizer.js";
 import type { CaffoldCommitChangesTree } from "./components/changes-tree.js";
 
 import styles from "./page.css.js";
@@ -81,32 +80,35 @@ export class CaffoldGitLogCommitPage extends CaffoldElement {
   // when it can.
   private changeView: ChangeRepresentation = "diff";
   private readonly filesList = new DrawnRef<CaffoldCommitChangesTree>(this);
-  private readonly paneResizer = new DrawnRef<CaffoldPaneResizer>(this);
+  private readonly splitView = new DrawnRef<CaffoldSplitView>(this);
   private readonly viewer = new DrawnRef<CaffoldReviewFileViewer>(this);
 
   override render() {
     return html`
-      <caffold-commit-changes-tree
-        ${drawn(this.filesList)}
-      ></caffold-commit-changes-tree>
-      <caffold-pane-resizer
-        ${drawn(this.paneResizer)}
+      <caffold-split-view
+        ${drawn(this.splitView)}
         storage-key="caffold:pane-width:git-log-commit"
         collapsed-storage-key="caffold:pane-collapsed:git-log-commit"
-        aria-label="Resize review side panel"
-        @caffold:pane-resize=${this.handlePanelResize}
-      ></caffold-pane-resizer>
-      <caffold-review-file-viewer
-        ${drawn(this.viewer)}
-        refresh-action="refresh-git-review"
-        @caffold:file-viewer-change-intent=${this.chooseChange}
-      ></caffold-review-file-viewer>
+        resizer-label="Resize review side panel"
+        pane-label="review side panel"
+      >
+        <caffold-commit-changes-tree
+          ${drawn(this.filesList)}
+          slot="list"
+        ></caffold-commit-changes-tree>
+        <caffold-review-file-viewer
+          ${drawn(this.viewer)}
+          slot="detail"
+          refresh-action="refresh-git-review"
+          @caffold:file-viewer-change-intent=${this.chooseChange}
+          @caffold:file-viewer-open-adjacent=${this.openAdjacent}
+        ></caffold-review-file-viewer>
+      </caffold-split-view>
     `;
   }
 
   override firstUpdated() {
     this.fileViewer.setCloseLabel("Back to commit");
-    this.applyPanelWidth();
   }
 
   reset() {
@@ -268,6 +270,7 @@ export class CaffoldGitLogCommitPage extends CaffoldElement {
     this.treeScrollTop =
       this.commitTree.scroller()?.scrollTop ?? this.treeScrollTop;
     this.setDetailView("viewer");
+    this.split.closeDrawer();
     this.emitStateChange();
     const presentation = this.diffPresentation(path, sha, options.status);
     this.viewerPresentation = presentation;
@@ -339,6 +342,7 @@ export class CaffoldGitLogCommitPage extends CaffoldElement {
 
   deactivate() {
     this.fileViewer.deactivate();
+    this.split.closeDrawer();
   }
 
   commitSubtitle() {
@@ -355,20 +359,15 @@ export class CaffoldGitLogCommitPage extends CaffoldElement {
     if (!sha || this.hidden) {
       return emptyActionHintScope();
     }
-    const listActive =
-      !this.sidePaneCollapsed() &&
-      (this.detailView === "list" ||
-        !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches);
-    const viewerActive = this.detailView === "viewer";
+    const split = this.split;
+    const listActive = split.listShown();
+    const viewerActive = this.detailView === "viewer" && split.detailShown();
     const prefix = `${scopeId}:${encodeURIComponent(sha)}`;
-    const resizer = this.panelResizer;
-    const resizerScope = hasActionHintLayoutBox(resizer)
-      ? resizer.actionHintScope({
-          scopeId: `${prefix}:files`,
-          actionId: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
-          clipRoots: [this, ...clipRoots],
-        })
-      : null;
+    const resizerScope = split.actionHintScope({
+      scopeId: `${prefix}:files`,
+      actionId: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
+      clipRoots: [this, ...clipRoots],
+    });
     return mergeActionHintScopes(
       listActive
         ? this.commitTree.actionHintScope({
@@ -406,11 +405,9 @@ export class CaffoldGitLogCommitPage extends CaffoldElement {
     if (!sha || this.hidden) {
       return emptyScrollSurfaceScope();
     }
-    const listActive =
-      !this.sidePaneCollapsed() &&
-      (this.detailView === "list" ||
-        !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches);
-    const viewerActive = this.detailView === "viewer";
+    const split = this.split;
+    const listActive = split.listShown();
+    const viewerActive = this.detailView === "viewer" && split.detailShown();
     const prefix = `${scopeId}:${encodeURIComponent(sha)}`;
     return mergeScrollSurfaceScopes(
       listActive && hasScrollLayoutBox(this.commitTree)
@@ -431,7 +428,10 @@ export class CaffoldGitLogCommitPage extends CaffoldElement {
 
   keyboardNavigationContexts({ scopeId = "git:commit" } = {}) {
     const sha = this.currentCommitSha();
-    return sha && !this.hidden && this.detailView === "viewer"
+    return sha &&
+      !this.hidden &&
+      this.detailView === "viewer" &&
+      this.split.detailShown()
       ? this.fileViewer.keyboardNavigationContexts({
           scopeId: `${scopeId}:${encodeURIComponent(sha)}:viewer`,
         })
@@ -444,26 +444,12 @@ export class CaffoldGitLogCommitPage extends CaffoldElement {
     }
     this.detailView = view;
     this.dataset.detailView = view;
-    this.applySidePane();
+    this.split.setDetailOpen(view === "viewer");
   }
 
-  /**
-   * The commit's file tree the workspace's side pane toggle hides and shows.
-   *
-   * It collapses only while the viewer is showing a file, the same state in
-   * which the single-pane layout shows the viewer instead of the tree.
-   */
+  // The commit's file tree the workspace's side pane toggle hides and shows.
   sidePane() {
-    return {
-      label: "review side panel",
-      beside: !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches,
-      collapsible: this.detailView === "viewer",
-      collapsed: this.sidePaneCollapsed(),
-      setCollapsed: (collapsed: boolean) => {
-        this.panelResizer.setCollapsed(collapsed);
-        this.applySidePane();
-      },
-    };
+    return this.split.sidePane();
   }
 
   private async refreshSelectedDiff() {
@@ -475,7 +461,7 @@ export class CaffoldGitLogCommitPage extends CaffoldElement {
     const file = this.findFile(path);
     if (!file) {
       this.commitTree.setSelectedPath("");
-      if (window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches) {
+      if (this.split.showsOnePane()) {
         this.showFileList();
       } else {
         this.fileViewer.setNotice("This file is no longer part of the commit.");
@@ -595,39 +581,45 @@ export class CaffoldGitLogCommitPage extends CaffoldElement {
     });
   }
 
-  private handlePanelResize(event: CustomEvent<PaneResizeDetail>) {
+  // A file the person goes to from the end of another opens as a choice in
+  // the tree does.
+  private openAdjacent(event: CustomEvent<FileViewerOpenAdjacentDetail>) {
     event.stopPropagation();
-    if (event.detail.phase === "start") {
-      this.classList.add("is-resizing-panel");
-    } else if (event.detail.phase === "end") {
-      this.classList.remove("is-resizing-panel");
-    } else if (event.detail.phase === "update") {
-      this.applyPanelWidth();
-    }
+    this.commitTree.openPath(event.detail.path);
   }
 
-  private applyPanelWidth() {
-    this.style.setProperty(
-      "--git-log-commit-panel-width",
-      `${this.panelResizer.value}px`,
-    );
-  }
-
-  private applySidePane() {
-    this.toggleAttribute("data-side-pane-collapsed", this.sidePaneCollapsed());
-    this.dispatchEvent(
-      new CustomEvent("caffold:side-pane-change", {
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
-
-  private sidePaneCollapsed() {
-    return this.detailView === "viewer" && this.panelResizer.collapsed;
+  // The open file ends with the commit's files before and after it, in the
+  // tree's order.
+  private patchAdjacentFiles() {
+    const path =
+      this.detailView === "viewer" ? this.commitTree.selectedPath : "";
+    const order = path ? this.commitTree.changedPathsInOrder() : [];
+    const index = order.indexOf(path);
+    const describe = (candidate: string | undefined): AdjacentFile | null => {
+      const file = candidate ? this.findFile(candidate) : null;
+      if (!file) {
+        return null;
+      }
+      const shown = file.repoRelativePath || file.path;
+      const slash = shown.lastIndexOf("/");
+      return {
+        path: file.path,
+        name: shown.slice(slash + 1),
+        folder: slash > 0 ? shown.slice(0, slash) : "",
+      };
+    };
+    this.fileViewer.setAdjacentFiles({
+      previous: index > 0 ? describe(order[index - 1]) : null,
+      next: index >= 0 ? describe(order[index + 1]) : null,
+    });
   }
 
   private emitStateChange() {
+    this.patchAdjacentFiles();
+    this.split.setListName(
+      "Changes",
+      this.commitPayload?.files?.length ?? null,
+    );
     this.dispatchEvent(
       new CustomEvent("caffold:git-log-commit-state-change", { bubbles: true }),
     );
@@ -640,9 +632,9 @@ export class CaffoldGitLogCommitPage extends CaffoldElement {
     return this.filesList.value as CaffoldCommitChangesTree;
   }
 
-  private get panelResizer() {
+  private get split() {
     this.performUpdate();
-    return this.paneResizer.value as CaffoldPaneResizer;
+    return this.splitView.value as CaffoldSplitView;
   }
 
   private get fileViewer() {

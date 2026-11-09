@@ -81,7 +81,7 @@ test("reopens the selected Review scope at its last semantic route", { tag: "@al
     .click();
   await selectTaskReviewScope(tasksPage, "branch");
   await taskReview.getByRole("button", { name: "Source", exact: true }).click();
-  if (testInfo.project.name === "phone") {
+  if (testInfo.project.name !== "desktop") {
     await taskReview.evaluate((review) => review.updateRoute({ navigator: "files" }));
   } else {
     await taskReview.getByRole("button", { name: "Files", exact: true }).click();
@@ -206,7 +206,7 @@ test("keeps Task view and pane controls mounted and focused through live updates
   await expect(viewerControl).toBeFocused();
 });
 
-test("does not reveal the selected Files entry again during canonical task sync", { tag: ["@desktop", "@foldable"] }, async ({
+test("does not reveal the selected Files entry again during canonical task sync", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
   const { taskScenario, tasksPage, taskReview } =

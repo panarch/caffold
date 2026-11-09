@@ -4,7 +4,6 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   emptyActionHintScope,
-  hasActionHintLayoutBox,
   mergeActionHintScopes,
 } from "#app/action-hints.js";
 import {
@@ -22,17 +21,19 @@ import {
 } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/file-viewer.js";
-import type { CaffoldReviewFileViewer } from "#components/file-viewer.js";
+import type {
+  AdjacentFile,
+  CaffoldReviewFileViewer,
+  FileViewerOpenAdjacentDetail,
+} from "#components/file-viewer.js";
 import {
   diffViewerPresentation,
   type ViewerPresentation,
 } from "#components/file-viewer-presentation.js";
-import "#components/pane-resizer.js";
-import type { CaffoldPaneResizer } from "#components/pane-resizer.js";
-import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "#components/review-responsive.js";
+import "#components/split-view.js";
+import type { CaffoldSplitView } from "#components/split-view.js";
 import "./components/tree.js";
 import { CaffoldElement } from "#app/caffold-element.js";
-import type { PaneResizeDetail } from "#components/pane-resizer.js";
 import type { CaffoldGithubPullFilesTree } from "./components/tree.js";
 
 import styles from "./page.css.js";
@@ -56,30 +57,33 @@ export class CaffoldGithubPullFilesPage extends CaffoldElement {
   private fileRequestId = 0;
   private treeScrollTop = 0;
   private readonly filesList = new DrawnRef<CaffoldGithubPullFilesTree>(this);
-  private readonly paneResizer = new DrawnRef<CaffoldPaneResizer>(this);
+  private readonly splitView = new DrawnRef<CaffoldSplitView>(this);
   private readonly viewer = new DrawnRef<CaffoldReviewFileViewer>(this);
 
   override render() {
     return html`
-      <caffold-github-pull-files-tree
-        ${drawn(this.filesList)}
-      ></caffold-github-pull-files-tree>
-      <caffold-pane-resizer
-        ${drawn(this.paneResizer)}
+      <caffold-split-view
+        ${drawn(this.splitView)}
         storage-key="caffold:pane-width:github-pull-files"
         collapsed-storage-key="caffold:pane-collapsed:github-pull-files"
-        aria-label="Resize review side panel"
-        @caffold:pane-resize=${this.handlePanelResize}
-      ></caffold-pane-resizer>
-      <caffold-review-file-viewer
-        ${drawn(this.viewer)}
-      ></caffold-review-file-viewer>
+        resizer-label="Resize review side panel"
+        pane-label="review side panel"
+      >
+        <caffold-github-pull-files-tree
+          ${drawn(this.filesList)}
+          slot="list"
+        ></caffold-github-pull-files-tree>
+        <caffold-review-file-viewer
+          ${drawn(this.viewer)}
+          slot="detail"
+          @caffold:file-viewer-open-adjacent=${this.openAdjacent}
+        ></caffold-review-file-viewer>
+      </caffold-split-view>
     `;
   }
 
   override firstUpdated() {
     this.fileViewer.setCloseLabel("Back to PR files");
-    this.applyPanelWidth();
   }
 
   reset() {
@@ -127,28 +131,15 @@ export class CaffoldGithubPullFilesPage extends CaffoldElement {
     }
   }
 
-  /**
-   * The pull request's file tree the workspace's side pane toggle hides and
-   * shows.
-   *
-   * It collapses only while the viewer is showing a file, the same state in
-   * which the single-pane layout shows the viewer instead of the tree.
-   */
+  // The pull request's file tree the workspace's side pane toggle hides and
+  // shows.
   sidePane() {
-    return {
-      label: "review side panel",
-      beside: !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches,
-      collapsible: this.detailView === "viewer",
-      collapsed: this.sidePaneCollapsed(),
-      setCollapsed: (collapsed: boolean) => {
-        this.panelResizer.setCollapsed(collapsed);
-        this.applySidePane();
-      },
-    };
+    return this.split.sidePane();
   }
 
   deactivate() {
     this.fileViewer.deactivate();
+    this.split.closeDrawer();
   }
 
   // `preserveView` keeps an open file on screen while the list changes.
@@ -226,6 +217,7 @@ export class CaffoldGithubPullFilesPage extends CaffoldElement {
     this.tree.setSelectedPath(path);
     this.treeScrollTop = this.tree.scroller()?.scrollTop ?? this.treeScrollTop;
     this.setView("viewer");
+    this.split.closeDrawer();
     this.emitStateChange();
     const presentation = this.diffPresentation(path, status);
     this.viewerPresentation = presentation;
@@ -341,20 +333,15 @@ export class CaffoldGithubPullFilesPage extends CaffoldElement {
     if (!number || this.hidden) {
       return emptyActionHintScope();
     }
-    const listActive =
-      !this.sidePaneCollapsed() &&
-      (this.detailView === "list" ||
-        !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches);
-    const viewerActive = this.detailView === "viewer";
+    const split = this.split;
+    const listActive = split.listShown();
+    const viewerActive = this.detailView === "viewer" && split.detailShown();
     const prefix = `${scopeId}:${number}`;
-    const resizer = this.panelResizer;
-    const resizerScope = hasActionHintLayoutBox(resizer)
-      ? resizer.actionHintScope({
-          scopeId: `${prefix}:files`,
-          actionId: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
-          clipRoots: [this, ...clipRoots],
-        })
-      : null;
+    const resizerScope = split.actionHintScope({
+      scopeId: `${prefix}:files`,
+      actionId: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
+      clipRoots: [this, ...clipRoots],
+    });
     return mergeActionHintScopes(
       listActive
         ? this.tree.actionHintScope({
@@ -390,11 +377,9 @@ export class CaffoldGithubPullFilesPage extends CaffoldElement {
     if (!number || this.hidden) {
       return emptyScrollSurfaceScope();
     }
-    const listActive =
-      !this.sidePaneCollapsed() &&
-      (this.detailView === "list" ||
-        !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches);
-    const viewerActive = this.detailView === "viewer";
+    const split = this.split;
+    const listActive = split.listShown();
+    const viewerActive = this.detailView === "viewer" && split.detailShown();
     const prefix = `${scopeId}:${number}`;
     return mergeScrollSurfaceScopes(
       listActive && hasScrollLayoutBox(this.tree)
@@ -415,7 +400,10 @@ export class CaffoldGithubPullFilesPage extends CaffoldElement {
 
   keyboardNavigationContexts({ scopeId = "github:pull-files" } = {}) {
     const number = this.currentPullNumber();
-    return number && !this.hidden && this.detailView === "viewer"
+    return number &&
+      !this.hidden &&
+      this.detailView === "viewer" &&
+      this.split.detailShown()
       ? this.fileViewer.keyboardNavigationContexts({
           scopeId: `${scopeId}:${number}:viewer`,
         })
@@ -428,7 +416,7 @@ export class CaffoldGithubPullFilesPage extends CaffoldElement {
     }
     this.detailView = view;
     this.dataset.detailView = view;
-    this.applySidePane();
+    this.split.setDetailOpen(view === "viewer");
   }
 
   private diffPresentation(
@@ -460,39 +448,41 @@ export class CaffoldGithubPullFilesPage extends CaffoldElement {
     });
   }
 
-  private handlePanelResize(event: CustomEvent<PaneResizeDetail>) {
+  // A file the person goes to from the end of another opens as a choice in
+  // the tree does.
+  private openAdjacent(event: CustomEvent<FileViewerOpenAdjacentDetail>) {
     event.stopPropagation();
-    if (event.detail.phase === "start") {
-      this.classList.add("is-resizing-panel");
-    } else if (event.detail.phase === "end") {
-      this.classList.remove("is-resizing-panel");
-    } else if (event.detail.phase === "update") {
-      this.applyPanelWidth();
-    }
+    this.tree.openPath(event.detail.path);
   }
 
-  private applyPanelWidth() {
-    this.style.setProperty(
-      "--github-pull-files-panel-width",
-      `${this.panelResizer.value}px`,
-    );
-  }
-
-  private applySidePane() {
-    this.toggleAttribute("data-side-pane-collapsed", this.sidePaneCollapsed());
-    this.dispatchEvent(
-      new CustomEvent("caffold:side-pane-change", {
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
-
-  private sidePaneCollapsed() {
-    return this.detailView === "viewer" && this.panelResizer.collapsed;
+  // The open file ends with the pull request's files before and after it,
+  // in the tree's order.
+  private patchAdjacentFiles() {
+    const path = this.detailView === "viewer" ? this.tree.selectedPath : "";
+    const order = path ? this.tree.changedPathsInOrder() : [];
+    const index = order.indexOf(path);
+    const describe = (candidate: string | undefined): AdjacentFile | null => {
+      const file = candidate ? this.findFile(candidate) : null;
+      if (!file) {
+        return null;
+      }
+      const shown = file.repoRelativePath || file.path;
+      const slash = shown.lastIndexOf("/");
+      return {
+        path: file.path,
+        name: shown.slice(slash + 1),
+        folder: slash > 0 ? shown.slice(0, slash) : "",
+      };
+    };
+    this.fileViewer.setAdjacentFiles({
+      previous: index > 0 ? describe(order[index - 1]) : null,
+      next: index >= 0 ? describe(order[index + 1]) : null,
+    });
   }
 
   private emitStateChange() {
+    this.patchAdjacentFiles();
+    this.split.setListName("Changes", this.pullFiles?.files?.length ?? null);
     this.dispatchEvent(
       new CustomEvent("caffold:github-pull-files-state-change", {
         bubbles: true,
@@ -507,9 +497,9 @@ export class CaffoldGithubPullFilesPage extends CaffoldElement {
     return this.filesList.value as CaffoldGithubPullFilesTree;
   }
 
-  private get panelResizer() {
+  private get split() {
     this.performUpdate();
-    return this.paneResizer.value as CaffoldPaneResizer;
+    return this.splitView.value as CaffoldSplitView;
   }
 
   private get fileViewer() {

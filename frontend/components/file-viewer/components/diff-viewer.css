@@ -34,10 +34,12 @@
     var(--diff-new-width) +
     var(--diff-prefix-width)
   );
+  container-type: inline-size;
   min-width: 0;
   min-height: 0;
   height: 100%;
   display: grid;
+  grid-template-rows: 1fr auto;
   overflow: auto;
   overscroll-behavior: contain;
   background: var(--code-bg);
@@ -54,7 +56,6 @@
   z-index: 1;
   grid-area: 1 / 1;
   width: var(--diff-gutter-width);
-  min-height: 100%;
   pointer-events: none;
   background: var(--code-gutter);
   border-right: 1px solid var(--border);
@@ -66,7 +67,20 @@
     100%,
     calc(var(--diff-gutter-width) + var(--diff-code-width) + 24px)
   );
-  min-height: 100%;
+}
+
+/* What the owner places after the file: at the bottom of a file shorter than
+   the viewer, otherwise right after the last line, and as wide as the viewer
+   however far the lines scroll sideways. */
+slot[name="end"] {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: block;
+  grid-row: 2;
+  grid-column: 1;
+  width: 100cqw;
+  font-family: var(--font-ui);
 }
 
 .diff-row {

@@ -447,7 +447,7 @@ dd {
   text-align: center;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 560px) {
   .viewer-panel > header {
     padding: 0.25rem 0.5rem;
     padding-right: var(--review-pane-action-clearance, 0.5rem);
@@ -531,4 +531,95 @@ dd {
 
 .image-preview[hidden] {
   display: none;
+}
+
+/* The files before and after this one, at the end of what the viewer shows:
+   two cards that share the width, Previous on the left and Next on the
+   right, each naming its file and, shortened from the start, its folder. */
+.viewer-adjacent-files {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--interface-space-5);
+  box-sizing: border-box;
+  padding: var(--interface-space-5) var(--interface-space-6)
+    max(var(--interface-space-6), env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  font-size: var(--interface-font-size);
+  line-height: var(--interface-line-height);
+}
+
+.viewer-adjacent-file {
+  display: grid;
+  gap: var(--interface-space-1);
+  min-width: 0;
+  margin: 0;
+  padding: var(--interface-space-5) var(--interface-space-6);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.viewer-adjacent-previous {
+  grid-column: 1;
+}
+
+.viewer-adjacent-next {
+  grid-column: 2;
+  justify-items: end;
+  text-align: right;
+}
+
+.viewer-adjacent-file:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+
+.viewer-adjacent-file:active {
+  background: var(--control-subtle-hover-bg);
+}
+
+@media (hover: hover) {
+  .viewer-adjacent-file:hover {
+    border-color: var(--control-emphasis-border);
+    background: var(--control-subtle-hover-bg);
+  }
+}
+
+.viewer-adjacent-caption {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--interface-space-2);
+  color: var(--muted);
+  font-size: var(--interface-meta-font-size);
+}
+
+.viewer-adjacent-icon {
+  width: 1.2em;
+  height: 1.2em;
+}
+
+.viewer-adjacent-name,
+.viewer-adjacent-folder {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewer-adjacent-name {
+  font-weight: 600;
+}
+
+/* Right to left, so the ellipsis takes the folder's start and keeps the
+   folder nearest the file. */
+.viewer-adjacent-folder {
+  color: var(--muted-subtle);
+  font-size: var(--interface-meta-font-size);
+  direction: rtl;
 }

@@ -1,4 +1,4 @@
-import { html, nothing } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   emptyActionHintScope,
@@ -15,8 +15,6 @@ import { subscribeToWatch, watchChangeAffectsPath } from "#app/watch.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/file-navigator.js";
 import type { CaffoldFileNavigator } from "#components/file-navigator.js";
-import "#components/pane-resizer.js";
-import type { CaffoldPaneResizer } from "#components/pane-resizer.js";
 import "#components/segmented-control.js";
 import type { CaffoldSegmentedControl } from "#components/segmented-control.js";
 import { cleanLogicalPath } from "#tasks/task-format.js";
@@ -36,9 +34,14 @@ import type {
   FileNavigatorOpenFileDetail,
   FileNavigatorRefreshSelectedDetail,
 } from "#components/file-navigator.js";
+import type {
+  AdjacentFile,
+  FileViewerOpenAdjacentDetail,
+} from "#components/file-viewer.js";
 import type { OpenCompareDiffDetail } from "#components/git-compare-tree.js";
-import type { PaneResizeDetail } from "#components/pane-resizer.js";
 import type { SegmentedControlIntentDetail } from "#components/segmented-control.js";
+import "#components/split-view.js";
+import type { CaffoldSplitView } from "#components/split-view.js";
 import type { ReviewBaseIntentDetail } from "./components/branch-changes.js";
 import type { ReviewRepresentationIntentDetail } from "./components/selected-file.js";
 import type { OpenGitDiffDetail } from "./components/working-tree-changes/components/changes-tree.js";
@@ -76,9 +79,6 @@ export interface TaskReviewRouteIntentDetail {
   route: ParsedRoute;
 }
 
-// Matches the width where layout.css stops showing one pane at a time.
-const REVIEW_SPLIT_MEDIA_QUERY = "(min-width: 561px)";
-
 type ReviewChangesElement =
   | CaffoldReviewWorkingTreeChanges
   | CaffoldReviewBranchChanges;
@@ -105,8 +105,6 @@ export class CaffoldTaskReview extends CaffoldElement {
   private accessor route: ReviewRoute = normalizeReviewRoute();
   @state()
   private accessor errorMessage = "";
-  @state()
-  private accessor panelWidth: number | null = null;
 
   static override styles = styles;
 
@@ -131,7 +129,7 @@ export class CaffoldTaskReview extends CaffoldElement {
   );
   private readonly branchList = new DrawnRef<CaffoldReviewBranchChanges>(this);
   private readonly filesList = new DrawnRef<CaffoldFileNavigator>(this);
-  private readonly paneResizer = new DrawnRef<CaffoldPaneResizer>(this);
+  private readonly splitView = new DrawnRef<CaffoldSplitView>(this);
   private readonly fileViewer = new DrawnRef<CaffoldReviewSelectedFile>(this);
 
   override connectedCallback() {
@@ -161,16 +159,19 @@ export class CaffoldTaskReview extends CaffoldElement {
             ?hidden=${!this.errorMessage}
           >${this.errorMessage}</p>
         </div>
-        <div
+        <caffold-split-view
+          ${drawn(this.splitView)}
           class="task-review-layout"
-          style=${
-            this.panelWidth === null
-              ? nothing
-              : `--task-review-panel-width: ${this.panelWidth}px`
-          }
+          storage-key="caffold:pane-width:task-review"
+          collapsed-storage-key="caffold:pane-collapsed:task-review"
+          resizer-label="Resize review navigator"
+          pane-label="review navigator"
+          start-min="220"
+          end-min="360"
         >
           <aside
             ${drawn(this.navigatorPane)}
+            slot="list"
             class="task-review-navigator-pane"
             aria-label="Review navigator"
           >
@@ -217,17 +218,9 @@ export class CaffoldTaskReview extends CaffoldElement {
               ></caffold-file-navigator>
             </div>
           </aside>
-          <caffold-pane-resizer
-            ${drawn(this.paneResizer)}
-            start-min="220"
-            end-min="360"
-            storage-key="caffold:pane-width:task-review"
-            collapsed-storage-key="caffold:pane-collapsed:task-review"
-            aria-label="Resize review navigator"
-            @caffold:pane-resize=${this.resizePanel}
-          ></caffold-pane-resizer>
           <section
             ${drawn(this.viewerPane)}
+            slot="detail"
             class="task-review-viewer-pane"
             aria-label="Review file"
           >
@@ -246,9 +239,10 @@ export class CaffoldTaskReview extends CaffoldElement {
               ${drawn(this.fileViewer)}
               @caffold:review-representation-intent=${this.chooseRepresentation}
               @caffold:close-file-viewer=${this.closeFile}
+              @caffold:file-viewer-open-adjacent=${this.openChange}
             ></caffold-review-selected-file>
           </section>
-        </div>
+        </caffold-split-view>
       </section>
     `;
   }
@@ -258,7 +252,6 @@ export class CaffoldTaskReview extends CaffoldElement {
     this.fileNavigator.setLiveUpdates(this.liveUpdates);
     this.fileNavigator.setWatchActive(false);
     this.fileNavigator.setRefreshVisible(false);
-    this.applyPanelWidth();
   }
 
   setLiveUpdates(liveUpdates: unknown) {
@@ -326,8 +319,10 @@ export class CaffoldTaskReview extends CaffoldElement {
     const scopeId = `review:${encodeURIComponent(subjectId)}`;
     const navigatorPane: Element | null = this.navigatorPane.value ?? null;
     const viewerPane: Element | null = this.viewerPane.value ?? null;
-    const navigatorActive = hasActionHintLayoutBox(navigatorPane);
-    const viewerActive = hasActionHintLayoutBox(viewerPane);
+    const navigatorActive =
+      this.split.listShown() && hasActionHintLayoutBox(navigatorPane);
+    const viewerActive =
+      this.split.detailShown() && hasActionHintLayoutBox(viewerPane);
     const navigatorClipRoots = [this, navigatorPane].filter(
       (root): root is Element => root !== null,
     );
@@ -394,7 +389,7 @@ export class CaffoldTaskReview extends CaffoldElement {
             clipRoots: viewerClipRoots,
           })
         : null;
-    const resizerScope = this.resizer.actionHintScope({
+    const resizerScope = this.split.actionHintScope({
       scopeId: `${scopeId}:navigator`,
       actionId: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
       clipRoots: [this],
@@ -422,7 +417,9 @@ export class CaffoldTaskReview extends CaffoldElement {
     const viewerClipRoots = [this, viewerPane].filter(
       (root): root is Element => root !== null,
     );
-    const navigatorScope = !hasScrollLayoutBox(navigatorPane)
+    const navigatorScope = !(
+      this.split.listShown() && hasScrollLayoutBox(navigatorPane)
+    )
       ? null
       : this.route.navigator === "files"
         ? this.fileNavigator.scrollSurfaceScope({
@@ -442,7 +439,9 @@ export class CaffoldTaskReview extends CaffoldElement {
               clipRoots: navigatorClipRoots,
             });
     const viewerScope =
-      hasScrollLayoutBox(viewerPane) && this.route.path
+      this.split.detailShown() &&
+      hasScrollLayoutBox(viewerPane) &&
+      this.route.path
         ? this.selectedFile.scrollSurfaceScope({
             scopeId: `${scopeId}:viewer`,
             clipRoots: viewerClipRoots,
@@ -459,6 +458,7 @@ export class CaffoldTaskReview extends CaffoldElement {
       !subjectId ||
       !this.contextKey ||
       !this.route.path ||
+      !this.split.detailShown() ||
       !hasActionHintLayoutBox(this.viewerPane.value ?? null)
     ) {
       return [];
@@ -468,23 +468,9 @@ export class CaffoldTaskReview extends CaffoldElement {
     });
   }
 
-  /**
-   * The navigator the workspace's side pane toggle hides and shows.
-   *
-   * It collapses only while a file is open, the same state in which the
-   * phone layout shows the viewer instead of the navigator.
-   */
+  // The navigator the workspace's side pane toggle hides and shows.
   sidePane() {
-    return {
-      label: "review navigator",
-      beside: window.matchMedia(REVIEW_SPLIT_MEDIA_QUERY).matches,
-      collapsible: Boolean(this.route.path),
-      collapsed: this.sidePaneCollapsed(),
-      setCollapsed: (collapsed: boolean) => {
-        this.resizer.setCollapsed(collapsed);
-        this.applySidePane();
-      },
-    };
+    return this.split.sidePane();
   }
 
   private setTaskContext(
@@ -578,6 +564,8 @@ export class CaffoldTaskReview extends CaffoldElement {
     const changes = event.currentTarget as ReviewChangesElement;
     const { ok, hadData, wasOutdated, background = false } = event.detail;
     this.patchErrorState();
+    this.patchListName();
+    this.patchAdjacentFiles();
     if (!ok) {
       this.followRereadInViewer(changes);
       return;
@@ -606,7 +594,10 @@ export class CaffoldTaskReview extends CaffoldElement {
 
   private openChange(
     event: CustomEvent<
-      FileNavigatorOpenFileDetail | OpenCompareDiffDetail | OpenGitDiffDetail
+      | FileNavigatorOpenFileDetail
+      | OpenCompareDiffDetail
+      | OpenGitDiffDetail
+      | FileViewerOpenAdjacentDetail
     >,
   ) {
     event.stopPropagation();
@@ -617,6 +608,7 @@ export class CaffoldTaskReview extends CaffoldElement {
     if (!relative) {
       return;
     }
+    this.split.closeDrawer();
     this.requestRoute(routeForSelectedFile(this.route, relative));
   }
 
@@ -624,13 +616,6 @@ export class CaffoldTaskReview extends CaffoldElement {
     event.stopPropagation();
     if (isFileRepresentation(this.route.viewer)) {
       this.selectedFile.reload(this.currentView(), { background: true });
-    }
-  }
-
-  private resizePanel(event: CustomEvent<PaneResizeDetail>) {
-    event.stopPropagation();
-    if (Number.isFinite(event.detail?.value)) {
-      this.applyPanelWidth();
     }
   }
 
@@ -909,8 +894,47 @@ export class CaffoldTaskReview extends CaffoldElement {
     this.dataset.reviewScope = this.route.scope;
     this.dataset.reviewNavigator = this.route.navigator;
     this.dataset.reviewViewer = this.route.viewer;
-    this.applyPanelWidth();
-    this.applySidePane();
+    this.split.setDetailOpen(Boolean(this.route.path));
+    this.patchListName();
+    this.patchAdjacentFiles();
+  }
+
+  // A file opened from Changes ends with the changed files before and after
+  // it, in the order the list shows them.
+  private patchAdjacentFiles() {
+    const logicalPath = this.logicalSelectedPath();
+    const order =
+      this.route.navigator === "changes" && logicalPath && this.task?.worktree
+        ? this.shownChanges.changedPathsInOrder()
+        : [];
+    const index = order.indexOf(logicalPath);
+    const describe = (path: string | undefined): AdjacentFile | null => {
+      if (!path) {
+        return null;
+      }
+      const shown =
+        this.shownChanges.change(path)?.file.repoRelativePath || path;
+      const slash = shown.lastIndexOf("/");
+      return {
+        path,
+        name: shown.slice(slash + 1),
+        folder: slash > 0 ? shown.slice(0, slash) : "",
+      };
+    };
+    this.selectedFile.setAdjacentFiles({
+      previous: index > 0 ? describe(order[index - 1]) : null,
+      next: index >= 0 ? describe(order[index + 1]) : null,
+    });
+  }
+
+  // The strip of the folded drawer names the list it holds.
+  private patchListName() {
+    if (this.route.navigator === "files") {
+      this.split.setListName("Files");
+      return;
+    }
+    const { data } = this.shownChanges.snapshot();
+    this.split.setListName("Changes", data?.files?.length ?? null);
   }
 
   private syncSelection() {
@@ -1040,24 +1064,6 @@ export class CaffoldTaskReview extends CaffoldElement {
     this.watchPath = "";
   }
 
-  private applyPanelWidth() {
-    this.panelWidth = this.resizer.value;
-  }
-
-  private applySidePane() {
-    this.toggleAttribute("data-side-pane-collapsed", this.sidePaneCollapsed());
-    this.dispatchEvent(
-      new CustomEvent("caffold:side-pane-change", {
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
-
-  private sidePaneCollapsed() {
-    return Boolean(this.route.path) && this.resizer.collapsed;
-  }
-
   private logicalSelectedPath() {
     return this.route.path
       ? joinLogicalPath(taskRootPath(this.task), this.route.path)
@@ -1096,9 +1102,9 @@ export class CaffoldTaskReview extends CaffoldElement {
     return this.fileViewer.value as CaffoldReviewSelectedFile;
   }
 
-  private get resizer() {
+  private get split() {
     this.performUpdate();
-    return this.paneResizer.value as CaffoldPaneResizer;
+    return this.splitView.value as CaffoldSplitView;
   }
 
   private axisControl(axis: "navigator" | "viewer") {

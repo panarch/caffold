@@ -46,7 +46,17 @@ workspace's top-left corner hides the list so the detail takes the full width,
 and shows it again at the width it had. The list hides only while the detail
 has something open: a Task, New Task, a Note, a Settings page, or a file.
 Otherwise the button stays in its place but is unavailable. Each kind of pane
-remembers whether it was hidden, the same way it remembers its width. When the
+remembers whether it was hidden, the same way it remembers its width.
+
+The review file screens, Integrated Review, Git Compare, a Git Log commit, and
+GitHub Pull Request files, place their list by window width. Up to 560 px
+wide, the list and the open file take turns. Up to 1,060 px, an open file takes
+the width and the list folds into a strip at its left edge, as wide as the
+corner button's column, naming the list and how many files it holds. The strip
+or the corner button opens the list over the file as a drawer, between 320 px
+and 70% of the screen at the list's remembered width; choosing a file, the
+darkened file, Escape, or the corner button closes it, and no screen remembers
+it open. Wider, the list sits beside the file as described above. When the
 navigation pane is too narrow for the header's controls and the full Caffold
 name, the header keeps only the Caffold mark.
 
@@ -472,6 +482,12 @@ In Diff and Source, Wrap in the file's header fits long lines to the viewer's
 width instead of scrolling them sideways; a wrapped line goes on from the start
 of the code column. Each browser remembers the choice for every file view,
 Git's and GitHub's included.
+
+A file opened from Changes ends, in Diff, Source, Visual, and a notice about
+it, with cards for the changed files before and after it in the list's order,
+a file in both Working Tree groups counted where it first shows; a card opens
+its file as the list does. Git Compare, a commit, and Pull Request files end
+their files the same way.
 
 ### Git
 

@@ -775,3 +775,27 @@ test("keeps the way Visual compares while files change", () => {
     ["difference", "difference"],
   );
 });
+
+test("hands its owner the adjacent file the person chose", () => {
+  const events = [];
+  const viewer = elementStandIn(fileViewer, {
+    dispatchEvent: (event) => events.push(event),
+  });
+
+  viewer.setAdjacentFiles({
+    previous: { path: "/repo/src/a.rs", name: "a.rs", folder: "src" },
+    next: undefined,
+  });
+  assert.deepEqual(viewer.adjacentFiles, {
+    previous: { path: "/repo/src/a.rs", name: "a.rs", folder: "src" },
+    next: null,
+  });
+
+  viewer.openAdjacent({ currentTarget: { dataset: { adjacentPath: "/repo/src/a.rs" } } });
+  viewer.openAdjacent({ currentTarget: { dataset: {} } });
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "caffold:file-viewer-open-adjacent");
+  assert.deepEqual(events[0].detail, { path: "/repo/src/a.rs" });
+  assert.equal(events[0].bubbles, true);
+  assert.equal(events[0].composed, true);
+});
