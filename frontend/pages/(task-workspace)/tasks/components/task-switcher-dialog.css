@@ -116,6 +116,11 @@ dialog::backdrop {
   font-size: var(--task-list-font-size);
 }
 
+/* The dialog's opening focus rests here; the list is not a control. */
+.task-switcher-scroll:focus-visible {
+  outline: none;
+}
+
 .task-switcher-list {
   display: grid;
   margin: 0;
