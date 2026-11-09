@@ -5,6 +5,7 @@ import {
   installCustomElementUnitRegistry,
 } from "../../../../tests/support/custom-element-unit.js";
 import { templateHtml } from "../../../../tests/support/lit-template.js";
+import { LIST_READ_EVENT } from "./active-task-list/list-read.js";
 
 const registry = installCustomElementUnitRegistry();
 await import("./active-task-list.js");
@@ -142,44 +143,15 @@ test("keeps a Section listed while a pinned Task still names it", () => {
   );
 });
 
-test("gives a caller that joins a Task list load the answer when the first caller no longer wants it", async () => {
-  const originalWindow = globalThis.window;
-  const originalFetch = globalThis.fetch;
-  let answer;
-  globalThis.window = Object.assign(new EventTarget(), {
-    location: { origin: "http://127.0.0.1" },
-    setTimeout,
-    clearTimeout,
-  });
-  globalThis.fetch = () =>
-    new Promise((resolve) => {
-      answer = () =>
-        resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({ sections: [], unsectioned: [] }),
-        });
-    });
-  const list = listHost({
-    taskListLoaded: false,
-    taskListLoadPromise: null,
-    taskListRefreshPending: false,
-    taskListRequestId: 0,
-    revisionByThread: new Map(),
-    pendingMove: null,
-    pendingTopPlacements: new Map(),
-    pendingRuntimeSnapshot: null,
-    settled: false,
-    isConnected: true,
-    draw() {},
-    publishState() {},
-    dispatchEvent() {},
-  });
+test("reads again for a second reconcile and gives it the answer when the first caller no longer wants it", async () => {
+  await withListReads(async (reads) => {
+    const list = readingHost({ taskListLoaded: false, settled: false });
 
-  try {
     const stale = list.reconcileTaskList(() => false);
     const current = list.reconcileTaskList(() => true, { recovery: true });
-    answer();
+    reads[0].answer({ sections: [], unsectioned: [] });
+    await until(() => reads.length === 2);
+    reads[1].answer({ sections: [], unsectioned: [] });
 
     assert.equal(await stale, null);
     assert.deepEqual(await current, {
@@ -188,72 +160,181 @@ test("gives a caller that joins a Task list load the answer when the first calle
       unsectioned: [],
     });
     assert.equal(list.taskListLoaded, true);
-  } finally {
-    globalThis.window = originalWindow;
-    globalThis.fetch = originalFetch;
-  }
+  });
 });
 
 test("asks again when a Task is marked seen during a load, and gives every caller that answer", async () => {
-  const originalWindow = globalThis.window;
-  const originalFetch = globalThis.fetch;
-  const answers = [];
-  globalThis.window = Object.assign(new EventTarget(), {
-    location: { origin: "http://127.0.0.1" },
-    setTimeout,
-    clearTimeout,
-  });
-  globalThis.fetch = () =>
-    new Promise((resolve) => {
-      answers.push((unseen) =>
-        resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            sections: [appSection([{ threadId: "thread-a", unseen }])],
-            unsectioned: [],
-          }),
-        }),
-      );
+  await withListReads(async (reads) => {
+    const list = readingHost({
+      sections: [appSection([{ threadId: "thread-a", unseen: true }])],
     });
-  const list = listHost({
-    sections: [appSection([{ threadId: "thread-a", unseen: true }])],
-    taskListLoaded: true,
-    taskListLoadPromise: null,
-    taskListRefreshPending: false,
-    taskListRequestId: 0,
-    revisionByThread: new Map(),
-    pendingMove: null,
-    pendingTopPlacements: new Map(),
-    pendingRuntimeSnapshot: null,
-    settled: true,
-    isConnected: true,
-    groups: { value: null },
-    draw() {},
-    publishState() {},
-    dispatchEvent() {},
-  });
 
-  try {
     const load = list.loadTasks({ force: true });
     const joined = list.loadTasks({ force: true });
     list.handleStreamEvent("task-updated", {
       data: JSON.stringify({ threadId: "thread-a", unseen: false }),
     });
     // Read before the seen mark was stored.
-    answers[0](true);
-    await until(() => answers.length === 2);
+    reads[0].answer(listed([{ threadId: "thread-a", unseen: true }]));
+    await until(() => reads.length === 2);
     assert.equal(list.taskFor("thread-a").unseen, false);
 
-    answers[1](false);
+    reads[1].answer(listed([{ threadId: "thread-a", unseen: false }]));
     const held = await load;
     assert.equal(held.sections[0].tasks[0].unseen, false);
     assert.equal(await joined, held);
     assert.equal(list.taskFor("thread-a").unseen, false);
-  } finally {
-    globalThis.window = originalWindow;
-    globalThis.fetch = originalFetch;
-  }
+  });
+});
+
+test("reads again when the list is refreshed during a read, and gives every caller that answer", async () => {
+  await withListReads(async (reads) => {
+    const list = readingHost({
+      sections: [appSection([{ threadId: "thread-a" }])],
+    });
+
+    const load = list.loadTasks({ force: true });
+    list.handleStreamEvent("task-list-refresh", { data: "{}" });
+    assert.equal(reads.length, 1);
+    // Read before the pin was stored.
+    reads[0].answer(listed([{ threadId: "thread-a" }]));
+    await until(() => reads.length === 2);
+    assert.equal(list.isPinned("thread-a"), false);
+
+    reads[1].answer({
+      pinned: [{ sectionId: "app", task: { threadId: "thread-a" } }],
+      sections: [appSection([])],
+      unsectioned: [],
+    });
+    const held = await load;
+    assert.deepEqual(
+      held.pinned.map(({ threadId }) => threadId),
+      ["thread-a"],
+    );
+    assert.equal(list.isPinned("thread-a"), true);
+  });
+});
+
+test("keeps a Task placed during a read when the answer read before it lands", async () => {
+  await withListReads(async (reads) => {
+    const list = readingHost({
+      sections: [appSection([{ threadId: "thread-a" }])],
+    });
+
+    const load = list.loadTasks({ force: true });
+    list.handleStreamEvent("task-placed-at-top", {
+      data: JSON.stringify({
+        task: { threadId: "thread-y" },
+        placement: { section: { id: "app", name: "app" } },
+      }),
+    });
+    assert.ok(list.taskFor("thread-y"));
+    reads[0].answer(listed([{ threadId: "thread-a" }]));
+    await until(() => reads.length === 2);
+    assert.ok(list.taskFor("thread-y"));
+
+    reads[1].answer(listed([{ threadId: "thread-y" }, { threadId: "thread-a" }]));
+    await load;
+    assert.ok(list.taskFor("thread-y"));
+  });
+});
+
+test("keeps a Task out that left the list during a read", async () => {
+  await withListReads(async (reads) => {
+    const list = readingHost({
+      sections: [appSection([{ threadId: "thread-a" }, { threadId: "thread-b" }])],
+    });
+
+    const load = list.loadTasks({ force: true });
+    list.handleStreamEvent("task-removed", {
+      data: JSON.stringify({ threadId: "thread-b", reason: "archived" }),
+    });
+    assert.equal(list.taskFor("thread-b"), null);
+    reads[0].answer(listed([{ threadId: "thread-a" }, { threadId: "thread-b" }]));
+    await until(() => reads.length === 2);
+    assert.equal(list.taskFor("thread-b"), null);
+
+    reads[1].answer(listed([{ threadId: "thread-a" }]));
+    await load;
+    assert.equal(list.taskFor("thread-b"), null);
+  });
+});
+
+test("keeps the Section composer settings that changed during a read", async () => {
+  await withListReads(async (reads) => {
+    const list = readingHost({
+      sections: [appSection([{ threadId: "thread-a" }])],
+    });
+    const settings = (model) => ({
+      model,
+      effort: "high",
+      fastMode: false,
+      permissionMode: null,
+    });
+    const withSettings = (model) => ({
+      sections: [
+        {
+          ...appSection([{ threadId: "thread-a" }]),
+          composerSettings: settings(model),
+        },
+      ],
+      unsectioned: [],
+    });
+
+    const load = list.loadTasks({ force: true });
+    list.handleStreamEvent("section-composer-settings", {
+      data: JSON.stringify({
+        sectionId: "app",
+        composerSettings: settings("new-model"),
+      }),
+    });
+    assert.equal(list.sectionFor("app").composerSettings.model, "new-model");
+    reads[0].answer(withSettings("old-model"));
+    await until(() => reads.length === 2);
+    assert.equal(list.sectionFor("app").composerSettings.model, "new-model");
+
+    reads[1].answer(withSettings("new-model"));
+    await load;
+    assert.equal(list.sectionFor("app").composerSettings.model, "new-model");
+  });
+});
+
+test("reads again at once when a superseded read fails, and gives every caller that answer", async () => {
+  await withListReads(async (reads) => {
+    const list = readingHost({
+      sections: [appSection([{ threadId: "thread-a" }])],
+    });
+
+    const load = list.loadTasks({ force: true });
+    list.handleStreamEvent("task-list-refresh", { data: "{}" });
+    reads[0].fail();
+    await until(() => reads.length === 2);
+
+    reads[1].answer(listed([{ threadId: "thread-a" }, { threadId: "thread-b" }]));
+    const held = await load;
+    assert.deepEqual(
+      held.sections[0].tasks.map(({ threadId }) => threadId),
+      ["thread-a", "thread-b"],
+    );
+    assert.equal(list.taskListError, null);
+  });
+});
+
+test("gives every caller nothing when the list leaves the document during a read", async () => {
+  await withListReads(async (reads) => {
+    const list = readingHost({
+      sections: [appSection([{ threadId: "thread-a" }])],
+    });
+
+    const load = list.loadTasks({ force: true });
+    list.dispatchListRead(LIST_READ_EVENT.DETACHED);
+    assert.equal(await load, null);
+
+    reads[0].answer(listed([{ threadId: "thread-b" }]));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(list.taskFor("thread-a"));
+    assert.equal(list.taskFor("thread-b"), null);
+  });
 });
 
 test("leaves whether the Task open now was seen to the server", () => {
@@ -293,7 +374,7 @@ test("leaves whether the Task open now was seen to the server", () => {
 });
 
 test("frames its Sections with the load's state and the outcome of a move", () => {
-  const loading = html(listHost({ taskListLoading: true }));
+  const loading = html(listHost({ listRead: "reading" }));
   assert.match(loading, /<div class="task-list-content"><p class="task-section-message task-section-loading"><caffold-loading-text>Loading...<\/caffold-loading-text><\/p><\/div>/);
 
   const failed = html(listHost({
@@ -321,7 +402,7 @@ function listHost(properties) {
     pinnedGroup: pinnedGroup([]),
     sections: [],
     unsectioned: [],
-    taskListLoading: false,
+    listRead: "idle",
     taskListError: null,
     settled: false,
     reorderMode: "none",
@@ -329,6 +410,62 @@ function listHost(properties) {
     querySelector: () => null,
     ...properties,
   }));
+}
+
+// A list that has shown an answer, reading `GET /api/tasks` through the
+// test's fetch.
+function readingHost(properties) {
+  return listHost({
+    taskListLoaded: true,
+    taskListLoadPromise: null,
+    answerTaskListLoad: null,
+    taskListRequestId: 0,
+    revisionByThread: new Map(),
+    pendingMove: null,
+    pendingTopPlacements: new Map(),
+    pendingRuntimeSnapshot: null,
+    settled: true,
+    isConnected: true,
+    selectedThreadId: "",
+    selectedSectionId: "",
+    groups: { value: null },
+    draw() {},
+    publishState() {},
+    dispatchEvent() {},
+    ...properties,
+  });
+}
+
+// Each `GET /api/tasks` waits until the test answers it with a body or fails
+// it.
+async function withListReads(run) {
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  const reads = [];
+  globalThis.window = Object.assign(new EventTarget(), {
+    location: { origin: "http://127.0.0.1" },
+    setTimeout,
+    clearTimeout,
+  });
+  globalThis.fetch = () =>
+    new Promise((resolve, reject) => {
+      reads.push({
+        answer: (body) =>
+          resolve({ ok: true, status: 200, json: async () => body }),
+        fail: () => reject(new TypeError("Failed to fetch")),
+      });
+    });
+  try {
+    await run(reads);
+  } finally {
+    globalThis.window = originalWindow;
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// A list answer with one Section holding these Tasks.
+function listed(tasks) {
+  return { sections: [appSection(tasks)], unsectioned: [] };
 }
 
 function appSection(tasks) {

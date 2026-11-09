@@ -306,9 +306,10 @@ the Task: it releases its subscription and retries nothing, foreground recovery
 and hiding leave it alone, and it presents as idle until the owner opens a
 context again. The `api.ts` boundary alone turns a refusal code into that
 absence. Owners read only the derived transport state: idle, connecting,
-validating, reconnecting, ready, or unavailable. Callers that join a Task list
-read in flight share its canonical answer and each decide for itself whether it
-still wants it.
+validating, reconnecting, ready, or unavailable. A Task list reconcile is
+answered by a read that began after it, never by one already in flight; callers
+waiting on the list share that canonical answer and each decide for itself
+whether it still wants it.
 
 The app shell also owns the single viewport-level recovery notice. Task list
 and detail expose whether an active transport needs recovery; they do not render
@@ -2223,6 +2224,7 @@ frontend/
 |           |   |-- navigator.ts
 |           |   |-- active-task-list.ts
 |           |   |-- active-task-list/
+|           |   |   |-- list-read.ts
 |           |   |   `-- components/
 |           |   |       |-- section.ts
 |           |   |       `-- section/components/row.ts
@@ -2313,7 +2315,11 @@ below `(task)`; shared review and repository domains are siblings below
 
 Within the Task navigator, `caffold-task-navigator` owns the exclusive Task or
 Section reorder mode selection. `caffold-active-task-list` owns the canonical
-active projection and serialized local reorder mutations. Each
+active projection and serialized local reorder mutations. Its private read
+graph (`active-task-list/list-read.ts`) is idle, reading, or superseded: a list
+change that arrives while a read is in flight supersedes that read, whose
+answer is dropped for another read
+([Task channels](live-updates.md#task-channels)). Each
 `caffold-active-task-section` owns its Section header and Task list; the pinned
 Tasks and the Tasks awaiting recovery each form one more group that it draws
 under a label. Each private `caffold-active-task-row` owns one Task row's

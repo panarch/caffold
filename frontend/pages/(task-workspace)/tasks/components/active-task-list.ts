@@ -43,6 +43,14 @@ import {
   type SectionIntent,
   type SectionSnapshot,
 } from "./active-task-list/components/section.js";
+import {
+  LIST_READ_EFFECT,
+  LIST_READ_EVENT,
+  LIST_READ_NODE,
+  type ListReadEvent,
+  type ListReadNode,
+  transitionListRead,
+} from "./active-task-list/list-read.js";
 import { moveListItemBefore } from "./active-task-list/move-list-item.js";
 
 import secondaryButton from "#app/component-styles/secondary-button.css.js";
@@ -136,6 +144,11 @@ interface HeldTaskList {
   unsectioned: ListedTask[];
 }
 
+type TaskListAnswer = Awaited<ReturnType<typeof getTasks>>;
+
+// What one read of the list brought back.
+type TaskListReadOutcome = { response: TaskListAnswer } | { error: unknown };
+
 // Where a Task newly at the top of the list goes.
 interface TopPlacement {
   section: { id: string; name: string; repository: boolean };
@@ -194,12 +207,13 @@ export class CaffoldActiveTaskList extends CaffoldElement {
   private pinnedGroup: HeldPinnedGroup = heldPinnedGroup([], new Map());
   private sections: HeldSection[] = [];
   private unsectioned: ListedTask[] = [];
-  private taskListLoading = false;
+  private listRead: ListReadNode = LIST_READ_NODE.IDLE;
   private taskListLoaded = false;
   private taskListError: Error | null = null;
   private taskListRequestId = 0;
   private taskListLoadPromise: Promise<HeldTaskList | null> | null = null;
-  private taskListRefreshPending = false;
+  private answerTaskListLoad: ((list: HeldTaskList | null) => void) | null =
+    null;
   private readonly pendingTopPlacements = new Map<
     string,
     { task: ListedTask; placement: TopPlacement }
@@ -245,9 +259,7 @@ export class CaffoldActiveTaskList extends CaffoldElement {
 
   override disconnectedCallback() {
     super.disconnectedCallback();
-    this.taskListRequestId += 1;
-    this.taskListLoadPromise = null;
-    this.taskListLoading = false;
+    this.dispatchListRead(LIST_READ_EVENT.DETACHED);
     this.cancelDrag();
     this.cancelSectionDrag();
     this.closeStream();
@@ -446,30 +458,15 @@ export class CaffoldActiveTaskList extends CaffoldElement {
   }
 
   // Callers that join a load in flight share its answer; each judges for
-  // itself whether it still wants it.
+  // itself whether it still wants it. `requireFresh` says the list may have
+  // changed after a read in flight began, so that read cannot answer.
   async loadTasks({ force = false, requireFresh = false } = {}) {
     if (this.taskListLoaded && !force) {
       return this.heldTaskList();
     }
-    if (this.taskListLoadPromise) {
-      if (force && requireFresh) {
-        this.taskListRefreshPending = true;
-      }
-      return await this.taskListLoadPromise;
-    }
-    const request = this.performLoadTasks();
-    this.taskListLoadPromise = request;
-    try {
-      return await request;
-    } finally {
-      if (this.taskListLoadPromise === request) {
-        this.taskListLoadPromise = null;
-      }
-      if (this.taskListRefreshPending && this.isConnected) {
-        this.taskListRefreshPending = false;
-        void this.loadTasks({ force: true });
-      }
-    }
+    return await this.readTaskList(
+      requireFresh ? LIST_READ_EVENT.REFRESH : LIST_READ_EVENT.READ,
+    );
   }
 
   connectStream() {
@@ -501,7 +498,10 @@ export class CaffoldActiveTaskList extends CaffoldElement {
       return { ok: true, skipped: true };
     }
     if (this.taskOperations.blocked) {
-      const response = await this.loadTasks({ force: true });
+      const response = await this.loadTasks({
+        force: true,
+        requireFresh: true,
+      });
       if (!response) {
         throw (
           this.taskListError ?? new Error("Caffold Task ledger unavailable.")
@@ -603,7 +603,7 @@ export class CaffoldActiveTaskList extends CaffoldElement {
     return {
       count: this.allTasks().length,
       loaded: this.taskListLoaded,
-      loading: this.taskListLoading || !this.settled,
+      loading: this.taskListLoading() || !this.settled,
       error: this.taskListError?.message ?? "",
       selectedThreadId: this.selectedThreadId,
       selectedSection: this.sectionFor(this.selectedSectionId),
@@ -622,7 +622,7 @@ export class CaffoldActiveTaskList extends CaffoldElement {
     const empty = this.allTasks().length === 0;
     const error = this.taskListError;
     let content: TemplateResult;
-    if (empty && (this.taskListLoading || !this.settled)) {
+    if (empty && (this.taskListLoading() || !this.settled)) {
       content = html`<p class="task-section-message task-section-loading"
         ><caffold-loading-text>Loading...</caffold-loading-text></p
       >`;
@@ -1309,78 +1309,147 @@ export class CaffoldActiveTaskList extends CaffoldElement {
     });
   }
 
-  private async performLoadTasks() {
-    const requestId = ++this.taskListRequestId;
-    this.taskListLoading = true;
-    this.taskListError = null;
-    if (this.allTasks().length) {
-      this.publishState();
-    } else {
-      this.draw();
+  // Answers once the read comes to rest: with the list a current read showed,
+  // or with null when that read failed or the list left the document.
+  private readTaskList(
+    event: typeof LIST_READ_EVENT.READ | typeof LIST_READ_EVENT.REFRESH,
+  ): Promise<HeldTaskList | null> {
+    this.dispatchListRead(event);
+    return this.taskListLoadPromise ?? Promise.resolve(null);
+  }
+
+  // The one place the list's read changes node, and what each change starts.
+  private dispatchListRead(
+    event: ListReadEvent,
+    outcome: TaskListReadOutcome | null = null,
+  ) {
+    const transition = transitionListRead(this.listRead, event);
+    if (!transition) {
+      return;
     }
-    try {
-      let response = await getTasks();
-      // An answer read before a change the list has since been told of would
-      // undo it, so the list asks again rather than show that answer.
-      while (
-        this.taskListRefreshPending &&
-        requestId === this.taskListRequestId
-      ) {
-        this.taskListRefreshPending = false;
-        response = await getTasks();
-      }
-      if (requestId !== this.taskListRequestId) {
-        return null;
-      }
-      const runtimeByThread = new Map(
-        this.allTasks().map((task) => [taskThreadId(task), task]),
-      );
-      this.pinnedGroup = heldPinnedGroup(
-        listed(response.pinned),
-        runtimeByThread,
-      );
-      this.sections = heldSections(
-        listed(response.sections),
-        runtimeByThread,
-        new Set(this.pinnedGroup.sectionIds.values()),
-      );
-      this.unsectioned = listed(response.unsectioned).map((task) =>
-        withRuntime(task, runtimeByThread.get(taskThreadId(task))),
-      );
-      const move = this.pendingMove;
-      if (move?.optimistic) {
-        if (move.kind === "section") {
-          this.applySectionMoveToState(move.sectionId, move.beforeSectionId);
+    this.listRead = transition.node;
+    switch (transition.effect) {
+      case LIST_READ_EFFECT.START:
+        this.taskListLoadPromise = new Promise((resolve) => {
+          this.answerTaskListLoad = resolve;
+        });
+        this.taskListError = null;
+        this.requestTaskList();
+        if (this.allTasks().length) {
+          this.publishState();
         } else {
-          this.applyMoveToState(move.threadId, move.beforeThreadId);
+          this.draw();
         }
+        return;
+      case LIST_READ_EFFECT.RESTART:
+        this.requestTaskList();
+        return;
+      case LIST_READ_EFFECT.SHOW: {
+        const answer = this.takeTaskListAnswer();
+        try {
+          if (outcome && "response" in outcome) {
+            this.showTaskList(outcome.response);
+          }
+        } catch (error) {
+          this.showTaskListFailure(error);
+          answer(null);
+          return;
+        }
+        answer(this.heldTaskList());
+        return;
       }
-      this.taskListLoading = false;
-      this.taskListLoaded = true;
-      for (const { task, placement } of this.pendingTopPlacements.values()) {
-        this.applyCanonicalTopPlacement(task, placement);
+      case LIST_READ_EFFECT.FAIL: {
+        const answer = this.takeTaskListAnswer();
+        this.showTaskListFailure(
+          outcome && "error" in outcome ? outcome.error : null,
+        );
+        answer(null);
+        return;
       }
-      this.pendingTopPlacements.clear();
-      if (this.pendingRuntimeSnapshot) {
-        this.applyRuntimeSnapshot(this.pendingRuntimeSnapshot);
-        this.pendingRuntimeSnapshot = null;
-      }
-      const firstAnswer = this.markSettled();
-      this.draw();
-      this.announceSettled(firstAnswer);
-      return this.heldTaskList();
-    } catch (error) {
-      if (requestId !== this.taskListRequestId) {
-        return null;
-      }
-      this.taskListLoading = false;
-      this.taskListError =
-        error instanceof Error ? error : new Error(String(error));
-      const firstAnswer = this.markSettled();
-      this.draw();
-      this.announceSettled(firstAnswer);
-      return null;
+      case LIST_READ_EFFECT.ABANDON:
+        this.taskListRequestId += 1;
+        this.takeTaskListAnswer()(null);
+        return;
+      default:
     }
+  }
+
+  private requestTaskList() {
+    const requestId = ++this.taskListRequestId;
+    getTasks().then(
+      (response) => this.taskListReadSettled(requestId, { response }),
+      (error) => this.taskListReadSettled(requestId, { error }),
+    );
+  }
+
+  // A read the list has moved on from is no longer an event.
+  private taskListReadSettled(requestId: number, outcome: TaskListReadOutcome) {
+    if (requestId !== this.taskListRequestId) {
+      return;
+    }
+    this.dispatchListRead(
+      "response" in outcome ? LIST_READ_EVENT.ANSWERED : LIST_READ_EVENT.FAILED,
+      outcome,
+    );
+  }
+
+  // The shared answer is taken before anything outside the list runs, so a
+  // read started meanwhile gets an answer of its own.
+  private takeTaskListAnswer() {
+    const answer = this.answerTaskListLoad ?? (() => {});
+    this.answerTaskListLoad = null;
+    this.taskListLoadPromise = null;
+    return answer;
+  }
+
+  private taskListLoading() {
+    return this.listRead !== LIST_READ_NODE.IDLE;
+  }
+
+  private showTaskList(response: TaskListAnswer) {
+    const runtimeByThread = new Map(
+      this.allTasks().map((task) => [taskThreadId(task), task]),
+    );
+    this.pinnedGroup = heldPinnedGroup(
+      listed(response.pinned),
+      runtimeByThread,
+    );
+    this.sections = heldSections(
+      listed(response.sections),
+      runtimeByThread,
+      new Set(this.pinnedGroup.sectionIds.values()),
+    );
+    this.unsectioned = listed(response.unsectioned).map((task) =>
+      withRuntime(task, runtimeByThread.get(taskThreadId(task))),
+    );
+    const move = this.pendingMove;
+    if (move?.optimistic) {
+      if (move.kind === "section") {
+        this.applySectionMoveToState(move.sectionId, move.beforeSectionId);
+      } else {
+        this.applyMoveToState(move.threadId, move.beforeThreadId);
+      }
+    }
+    this.taskListLoaded = true;
+    for (const { task, placement } of this.pendingTopPlacements.values()) {
+      this.applyCanonicalTopPlacement(task, placement);
+    }
+    this.pendingTopPlacements.clear();
+    if (this.pendingRuntimeSnapshot) {
+      this.applyRuntimeSnapshot(this.pendingRuntimeSnapshot);
+      this.pendingRuntimeSnapshot = null;
+    }
+    const firstAnswer = this.markSettled();
+    this.draw();
+    this.announceSettled(firstAnswer);
+  }
+
+  private showTaskListFailure(error: unknown) {
+    this.taskListError =
+      error instanceof Error ? error : new Error(String(error));
+    const firstAnswer = this.markSettled();
+    this.draw();
+    this.announceSettled(firstAnswer);
   }
 
   private heldTaskList(): HeldTaskList {
@@ -1449,11 +1518,12 @@ export class CaffoldActiveTaskList extends CaffoldElement {
         } else if (message.reason === "deleted") {
           this.dispatchArchiveSync("remove", message.threadId);
         }
+        this.dispatchListRead(LIST_READ_EVENT.CHANGED);
       }
       return;
     }
     if (type === "task-list-refresh") {
-      void this.loadTasks({ force: true });
+      void this.readTaskList(LIST_READ_EVENT.REFRESH);
       return;
     }
     if (type === "task-list-snapshot") {
@@ -1470,6 +1540,7 @@ export class CaffoldActiveTaskList extends CaffoldElement {
       }>(data);
       if (update?.task && update.placement) {
         this.placeCanonicalTaskAtTop(update.task, update.placement);
+        this.dispatchListRead(LIST_READ_EVENT.CHANGED);
       }
       return;
     }
@@ -1483,6 +1554,7 @@ export class CaffoldActiveTaskList extends CaffoldElement {
           update.sectionId,
           update.composerSettings,
         );
+        this.dispatchListRead(LIST_READ_EVENT.CHANGED);
       }
       return;
     }
@@ -1492,11 +1564,7 @@ export class CaffoldActiveTaskList extends CaffoldElement {
       if (task && threadId) {
         this.upsertCanonicalTask(task);
         this.dispatchArchiveSync("remove", threadId);
-        // The server sends this once the change is stored, so a list read
-        // already under way may have been taken before it.
-        if (this.taskListLoadPromise) {
-          this.taskListRefreshPending = true;
-        }
+        this.dispatchListRead(LIST_READ_EVENT.CHANGED);
       }
       return;
     }
@@ -1564,7 +1632,7 @@ export class CaffoldActiveTaskList extends CaffoldElement {
     if (recovery && isCurrent()) {
       this.revisionByThread.clear();
     }
-    const response = await this.loadTasks({ force: true });
+    const response = await this.loadTasks({ force: true, requireFresh: true });
     if (!isCurrent()) {
       return null;
     }

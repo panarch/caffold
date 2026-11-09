@@ -396,6 +396,7 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file/content.js",
   "/assets/pages/(task-workspace)/tasks/components/active-task-list.css.js",
   "/assets/pages/(task-workspace)/tasks/components/active-task-list.js",
+  "/assets/pages/(task-workspace)/tasks/components/active-task-list/list-read.js",
   "/assets/pages/(task-workspace)/tasks/components/active-task-list/move-list-item.js",
   "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/section.css.js",
   "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/section.js",

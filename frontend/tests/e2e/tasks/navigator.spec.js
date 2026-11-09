@@ -3286,6 +3286,203 @@ test("keeps a seen Task seen when a list read taken before the seen mark answers
   heldReads[1]();
 });
 
+test("keeps a Task placed while a list read taken before it is in flight", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page, {
+    sourceKey: "__taskListEventSource",
+    autoOpen: true,
+  });
+  await mockAgentModels(page);
+  const existing = initialNavigatorTask("thread_placed_existing", "Existing Task");
+  const placed = initialNavigatorTask(
+    "thread_placed_elsewhere",
+    "Task created on another device",
+  );
+  const stored = [existing];
+  // Each read answers with the list as it stood when the read arrived.
+  let holding = false;
+  const heldReads = [];
+  await page.route(/\/api\/tasks(?:\?|$)/, async (route) => {
+    const body = JSON.stringify(activeTaskProjection(stored));
+    if (holding) {
+      await new Promise((release) => heldReads.push(release));
+    }
+    return route.fulfill({ contentType: "application/json", body });
+  });
+
+  await page.goto("/tasks");
+  await expect(
+    page.locator(`.task-row[data-thread-id="${existing.threadId}"]`),
+  ).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => Boolean(window.__taskListEventSource)))
+    .toBe(true);
+  const placedRow = page.locator(
+    `.task-row[data-thread-id="${placed.threadId}"]`,
+  );
+
+  holding = true;
+  // Another Task's turn ended.
+  await page.evaluate(() => {
+    window.__taskListEventSource.emit("task-list-refresh", {});
+  });
+  await expect.poll(() => heldReads.length).toBe(1);
+  stored.unshift(placed);
+  await page.evaluate(
+    ({ task, placement }) => {
+      window.__taskListEventSource.emit("task-placed-at-top", {
+        task,
+        placement,
+      });
+    },
+    {
+      task: activeListTask(placed),
+      placement: {
+        section: {
+          id: "fixture-section-1",
+          name: "frontend/tests/e2e/fixtures/home",
+          repository: false,
+        },
+        beforeThreadId: existing.threadId,
+        beforeSectionId: null,
+      },
+    },
+  );
+  await expect(placedRow).toBeVisible();
+
+  heldReads[0]();
+  await expect.poll(() => heldReads.length).toBe(2);
+  await expect(placedRow).toBeVisible();
+  holding = false;
+  heldReads[1]();
+  await expect(placedRow).toBeVisible();
+});
+
+test("shows a pin stored while a list read taken before it is in flight", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page, {
+    sourceKey: "__taskListEventSource",
+    autoOpen: true,
+  });
+  await mockAgentModels(page);
+  const other = initialNavigatorTask("thread_pin_other", "Other Task");
+  const target = initialNavigatorTask(
+    "thread_pin_elsewhere",
+    "Task pinned on another device",
+  );
+  let pinned = false;
+  const storedList = () =>
+    pinned
+      ? {
+          ...activeTaskProjection([other]),
+          pinned: [
+            { sectionId: "fixture-section-1", task: activeListTask(target) },
+          ],
+        }
+      : activeTaskProjection([target, other]);
+  // Each read answers with the list as it stood when the read arrived.
+  let holding = false;
+  const heldReads = [];
+  await page.route(/\/api\/tasks(?:\?|$)/, async (route) => {
+    const body = JSON.stringify(storedList());
+    if (holding) {
+      await new Promise((release) => heldReads.push(release));
+    }
+    return route.fulfill({ contentType: "application/json", body });
+  });
+
+  await page.goto("/tasks");
+  await expect(
+    page.locator(`.task-row[data-thread-id="${target.threadId}"]`),
+  ).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => Boolean(window.__taskListEventSource)))
+    .toBe(true);
+  const pinnedRow = page.locator(
+    `caffold-active-task-list .task-repository-group[data-task-pinned] .task-row[data-thread-id="${target.threadId}"]`,
+  );
+  await expect(pinnedRow).toHaveCount(0);
+
+  holding = true;
+  // Another Task's turn ended.
+  await page.evaluate(() => {
+    window.__taskListEventSource.emit("task-list-refresh", {});
+  });
+  await expect.poll(() => heldReads.length).toBe(1);
+  pinned = true;
+  await page.evaluate(() => {
+    window.__taskListEventSource.emit("task-list-refresh", {});
+  });
+
+  heldReads[0]();
+  await expect.poll(() => heldReads.length).toBe(2);
+  holding = false;
+  heldReads[1]();
+  await expect(pinnedRow).toBeVisible();
+});
+
+test("keeps an archived Task out when a list read taken before the archive answers", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page, {
+    sourceKey: "__taskListEventSource",
+    autoOpen: true,
+  });
+  await mockAgentModels(page);
+  const kept = initialNavigatorTask("thread_archive_kept", "Kept Task");
+  const archived = initialNavigatorTask(
+    "thread_archive_elsewhere",
+    "Task archived on another device",
+  );
+  let stored = [archived, kept];
+  // Each read answers with the list as it stood when the read arrived.
+  let holding = false;
+  const heldReads = [];
+  await page.route(/\/api\/tasks(?:\?|$)/, async (route) => {
+    const body = JSON.stringify(activeTaskProjection(stored));
+    if (holding) {
+      await new Promise((release) => heldReads.push(release));
+    }
+    return route.fulfill({ contentType: "application/json", body });
+  });
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({ json: { tasks: [], nextCursor: null } }),
+  );
+
+  await page.goto("/tasks");
+  const archivedRow = page.locator(
+    `.task-row[data-thread-id="${archived.threadId}"]`,
+  );
+  await expect(archivedRow).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => Boolean(window.__taskListEventSource)))
+    .toBe(true);
+
+  holding = true;
+  // Another Task's turn ended.
+  await page.evaluate(() => {
+    window.__taskListEventSource.emit("task-list-refresh", {});
+  });
+  await expect.poll(() => heldReads.length).toBe(1);
+  stored = [kept];
+  await page.evaluate((threadId) => {
+    window.__taskListEventSource.emit("task-removed", {
+      threadId,
+      reason: "archived",
+    });
+  }, archived.threadId);
+  await expect(archivedRow).toHaveCount(0);
+
+  heldReads[0]();
+  await expect.poll(() => heldReads.length).toBe(2);
+  await expect(archivedRow).toHaveCount(0);
+  holding = false;
+  heldReads[1]();
+  await expect(archivedRow).toHaveCount(0);
+});
+
 test("patches Task rows in place without reordering and preserves a running spinner", { tag: "@server-changes" }, async ({
   page,
 }) => {

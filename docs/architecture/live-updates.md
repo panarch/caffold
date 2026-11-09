@@ -90,10 +90,13 @@ events observed after that boundary. If a Task List receiver lags, or a
 published Task cannot be turned into a list row, the producer ends instead of
 skipping it, and its generation receives `channel-error`. The browser then
 reopens the channel and reloads the list, so the new snapshot and list
-response cover what was missed. The server publishes `task-updated` only after
-storing the change, so a list request already under way when it arrives may
-have read the Task before it; the browser discards that response and reads the
-list again, and every caller waiting on the load receives the new answer.
+response cover what was missed. The server publishes each list change, a
+`task-placed-at-top`, `task-removed`, `task-updated`,
+`section-composer-settings` or `task-list-refresh`, only after storing it, so a
+list request already under way when one arrives may have read the list before
+it. The browser applies what the event carries, discards that response, and
+reads the list again; every caller waiting on the load receives the newer
+answer.
 
 Task Detail retains the existing viewer lease, agent subscription, bootstrap,
 sync, and event projection owners. A Task Detail channel opens with a
