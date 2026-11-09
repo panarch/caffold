@@ -138,7 +138,7 @@ and `release.yml` call each one directly, so the commands, project matrix,
 toolchains, and failure artifacts have one definition per owner. The entrypoint
 workflows choose which checks to run and enforce their dependencies. Every
 shared check tests the caller's commit directly, without release-specific
-inputs or candidate restoration.
+inputs or a restored release commit.
 
 A pull request or `main` push that changes only files under `website/` skips
 `checks.yml`: the user manual's pages, images, and build settings reach no
@@ -147,11 +147,12 @@ alone. A change that also touches anything else runs both workflows, and a
 release always runs every check.
 
 After all shared checks pass, `.github/workflows/macos-release.yml` prepares
-the release in one macOS job. For a new release it bumps the version and commits
-the candidate locally, then runs Swift application tests, Rust tests and lints,
-and the arm64 package build and verification. It uploads the package before
-pushing the verified candidate. Browser and other Ubuntu checks therefore run
-before the version bump; macOS checks and packaging verify the final version.
+the release in one macOS job. For a new release or release candidate it bumps
+the version and commits it locally, then runs Swift application tests, Rust
+tests and lints, and the arm64 package build and verification. It uploads the
+package before pushing the verified release commit, or only its tag for a
+release candidate. Browser and other Ubuntu checks therefore run before the
+version bump; macOS checks and packaging verify the final version.
 
 The macOS workflow can also be dispatched manually from `main` to verify and
 package that commit. Standalone runs, release `dry-run`, and `resume` do not

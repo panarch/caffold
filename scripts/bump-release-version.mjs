@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +31,19 @@ export function nextReleaseVersion(version, bump) {
     patch += 1;
   }
   return `${major}.${minor}.${patch}`;
+}
+
+export function nextReleaseCandidateVersion(version, bump, tags) {
+  const target = nextReleaseVersion(version, bump);
+  const prefix = `v${target}-rc.`;
+  let latest = 0;
+  for (const tag of tags) {
+    const number = tag.startsWith(prefix) ? tag.slice(prefix.length) : "";
+    if (/^[1-9]\d*$/.test(number)) {
+      latest = Math.max(latest, Number(number));
+    }
+  }
+  return `${target}-rc.${latest + 1}`;
 }
 
 function packageVersion(source, header, packageName = null) {
@@ -76,7 +90,7 @@ function packageVersion(source, header, packageName = null) {
   };
 }
 
-export function bumpReleaseVersion(root, bump) {
+export function bumpReleaseVersion(root, bump, { releaseCandidateTags } = {}) {
   const cargoPath = resolve(root, "caffold", "Cargo.toml");
   const webPath = resolve(root, "frontend", "package.json");
   const lockPath = resolve(root, "Cargo.lock");
@@ -93,7 +107,9 @@ export function bumpReleaseVersion(root, bump) {
     );
   }
 
-  const version = nextReleaseVersion(cargo.version, bump);
+  const version = releaseCandidateTags
+    ? nextReleaseCandidateVersion(cargo.version, bump, releaseCandidateTags)
+    : nextReleaseVersion(cargo.version, bump);
   const nextCargo = cargo.replace(version);
   const nextLock = lock.replace(version);
   const nextWeb = `${JSON.stringify({ ...web, version }, null, 2)}\n`;
@@ -105,18 +121,24 @@ export function bumpReleaseVersion(root, bump) {
 }
 
 function usage() {
-  return "usage: node scripts/bump-release-version.mjs {major|minor|patch}";
+  return "usage: node scripts/bump-release-version.mjs {major|minor|patch} [--rc]";
 }
 
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : null;
 if (invokedPath === fileURLToPath(import.meta.url)) {
-  const bump = process.argv[2];
-  if (process.argv.length !== 3 || !BUMPS.has(bump)) {
+  const [bump, ...options] = process.argv.slice(2);
+  const releaseCandidate = options.length === 1 && options[0] === "--rc";
+  if (!BUMPS.has(bump) || (options.length > 0 && !releaseCandidate)) {
     console.error(usage());
     process.exit(2);
   }
   try {
-    const result = bumpReleaseVersion(process.cwd(), bump);
+    const releaseCandidateTags = releaseCandidate
+      ? execFileSync("git", ["tag", "--list", "v*"], { encoding: "utf8" })
+          .split("\n")
+          .filter(Boolean)
+      : undefined;
+    const result = bumpReleaseVersion(process.cwd(), bump, { releaseCandidateTags });
     console.log(`previous_version=${result.previousVersion}`);
     console.log(`version=${result.version}`);
   } catch (error) {

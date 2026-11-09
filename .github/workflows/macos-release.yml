@@ -55,7 +55,7 @@ jobs:
             exit 1
           fi
           case "${RELEASE_ACTION}" in
-            dry-run|resume|release-patch|release-minor|release-major) ;;
+            dry-run|resume|release-patch|release-minor|release-major|rc-patch|rc-minor|rc-major) ;;
             *) echo "Unknown release action: ${RELEASE_ACTION}." >&2; exit 1 ;;
           esac
 
@@ -91,16 +91,19 @@ jobs:
         working-directory: frontend
 
       - name: Bump the release version locally
-        if: startsWith(inputs.action, 'release-')
+        if: startsWith(inputs.action, 'release-') || startsWith(inputs.action, 'rc-')
         id: bump
         env:
           RELEASE_ACTION: ${{ inputs.action }}
         run: |
-          bump="${RELEASE_ACTION#release-}"
-          node scripts/bump-release-version.mjs "${bump}" >>"${GITHUB_OUTPUT}"
+          args=("${RELEASE_ACTION#*-}")
+          if [[ "${RELEASE_ACTION}" == rc-* ]]; then
+            args+=(--rc)
+          fi
+          node scripts/bump-release-version.mjs "${args[@]}" >>"${GITHUB_OUTPUT}"
 
       - name: Require an unused release version
-        if: startsWith(inputs.action, 'release-')
+        if: startsWith(inputs.action, 'release-') || startsWith(inputs.action, 'rc-')
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.bump.outputs.version }}
@@ -115,8 +118,8 @@ jobs:
             exit 1
           fi
 
-      - name: Commit the local release candidate
-        if: startsWith(inputs.action, 'release-')
+      - name: Commit the release version locally
+        if: startsWith(inputs.action, 'release-') || startsWith(inputs.action, 'rc-')
         env:
           RELEASE_VERSION: ${{ steps.bump.outputs.version }}
         run: |
@@ -211,5 +214,25 @@ jobs:
           remote_sha="$(git ls-remote origin refs/heads/main | awk '{ print $1 }')"
           if [[ "${remote_sha}" != "${RELEASE_SHA}" ]]; then
             echo "main points to ${remote_sha:-nothing}, not ${RELEASE_SHA}." >&2
+            exit 1
+          fi
+
+      - name: Push the verified release candidate tag
+        if: startsWith(inputs.action, 'rc-')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.source.outputs.release_sha }}
+          RELEASE_VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          if [[ "$(git rev-parse HEAD)" != "${RELEASE_SHA}" || -n "$(git status --porcelain)" ]]; then
+            echo "Release source changed during verification." >&2
+            exit 1
+          fi
+          tag="v${RELEASE_VERSION}"
+          gh auth setup-git
+          git push origin "${RELEASE_SHA}:refs/tags/${tag}"
+          remote_sha="$(git ls-remote origin "refs/tags/${tag}" | awk '{ print $1 }')"
+          if [[ "${remote_sha}" != "${RELEASE_SHA}" ]]; then
+            echo "${tag} points to ${remote_sha:-nothing}, not ${RELEASE_SHA}." >&2
             exit 1
           fi

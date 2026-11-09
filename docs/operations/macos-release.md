@@ -9,9 +9,9 @@ start; see [Application update lifecycle](#application-update-lifecycle).
 
 ## Version ownership
 
-`caffold/Cargo.toml` is the application version source; `frontend/package.json` and the Caffold package entry in `Cargo.lock` must contain the same value. `scripts/bump-release-version.mjs` validates all three values before changing them and supports stable `major`, `minor`, and `patch` increments.
+`caffold/Cargo.toml` is the application version source; `frontend/package.json` and the Caffold package entry in `Cargo.lock` must contain the same value. `scripts/bump-release-version.mjs` validates all three values before changing them. It increments a stable version by `major`, `minor`, or `patch`; with `--rc`, it writes the next [release candidate](#release-candidates) of that increment instead.
 
-The manual Release workflow first runs the shared Ubuntu checks on the dispatch commit. For `release-patch`, `release-minor`, or `release-major`, the subsequent macOS job creates one local `Release v<version>` candidate commit that changes only `caffold/Cargo.toml`, `frontend/package.json`, and `Cargo.lock`. macOS tests, packaging, and publication use this final candidate SHA. The job pushes it to `main` only after macOS verification and artifact upload succeed. The shared browser and other Ubuntu checks run before the version bump.
+The manual Release workflow first runs the shared Ubuntu checks on the dispatch commit. For `release-*` and `rc-*` actions, the subsequent macOS job creates one local `Release v<version>` commit that changes only `caffold/Cargo.toml`, `frontend/package.json`, and `Cargo.lock`. macOS tests, packaging, and publication use this commit's SHA. After macOS verification and artifact upload succeed, a `release-*` job pushes it to `main`; an `rc-*` job pushes only its tag. The shared browser and other Ubuntu checks run before the version bump.
 
 The app bundle uses:
 
@@ -57,10 +57,11 @@ artifact; it does not publish anything.
 
 ## GitHub workflow
 
-`.github/workflows/release.yml` exposes preparation, versioning, publication, and recovery through one manual `Release` workflow. Its required `action` input has five unambiguous choices:
+`.github/workflows/release.yml` exposes preparation, versioning, publication, and recovery through one manual `Release` workflow. Its required `action` input has eight unambiguous choices:
 
 - `dry-run` verifies and packages the currently committed version without repository or public mutation.
-- `release-patch`, `release-minor`, and `release-major` increment the current version locally, verify that exact candidate, then push and publish it.
+- `release-patch`, `release-minor`, and `release-major` increment the current version locally, verify that exact release commit, then push and publish it.
+- `rc-patch`, `rc-minor`, and `rc-major` publish the next release candidate of that increment as a GitHub pre-release and leave `main`, the Homebrew Cask, and the website unchanged; see [Release candidates](#release-candidates).
 - `resume` does not change the version. It reconciles the currently committed version with its tag, GitHub Release, and Homebrew Cask after a partial failure.
 
 The Checks and Release entrypoints directly call the same owner workflows on
@@ -80,20 +81,20 @@ minimum remains macOS 14. This workflow keeps source preparation, native
 verification, packaging, and source push in one macOS job:
 
 1. requires `main`, checks out the dispatch commit with full history and no persisted credentials, and confirms that `main` still points to that commit;
-2. for a new release, bumps the three version files, rejects an already-used version, and creates the candidate commit once locally;
+2. for a new release or release candidate, bumps the three version files, rejects an already-used version, and creates the release commit once locally;
 3. runs packaging contracts, Swift application tests, and Rust formatting, tests, and Clippy on that source;
 4. builds and verifies the macOS archive, then uploads the zip and SHA-256 file as seven-day artifacts; and
-5. for a new release, confirms the checked-out source is unchanged and `main` has not moved, then pushes the exact packaged commit.
+5. for a new release, confirms the checked-out source is unchanged and `main` has not moved, then pushes the exact packaged commit to `main`; for a release candidate, confirms the source is unchanged and pushes only the version tag at that commit.
 
-The candidate stays in that runner's worktree throughout; no Git bundle or candidate-restoration action is needed. The common browser and other Ubuntu tests cover the dispatch commit before the version bump. Native macOS tests and packaging cover the final version.
+The release commit stays in that runner's worktree throughout; no Git bundle or restoration step is needed. The common browser and other Ubuntu tests cover the dispatch commit before the version bump. Native macOS tests and packaging cover the final version.
 
-The macOS job has `contents: write` for its final source push. It configures Git push authentication only after tests, packaging, and artifact upload succeed, and never receives the Homebrew token. A failed or skipped common check prevents the job from starting. A failed macOS check, build, upload, or stale `main` check prevents the push and subsequent publication. A failure after a completed push can be recovered through `resume`.
+The macOS job has `contents: write` for its final source push. It configures Git push authentication only after tests, packaging, and artifact upload succeed, and never receives the Homebrew token. A failed or skipped common check prevents the job from starting. A failed macOS check, build, upload, or stale `main` check prevents the push and subsequent publication. A failure after a completed push to `main` can be recovered through `resume`.
 
 The `macOS Release` workflow also supports manual dispatch from `main`, with `action` restricted to `dry-run`. The input description explains that it runs macOS tests, packages the app, and uploads artifacts without changing the version, pushing source, or publishing. That run uses the dispatch commit and does not run browser tests. Release `dry-run` and `resume` also skip version changes and source push, but run all shared and macOS checks.
 
 With `action: dry-run`, no publication job runs. The artifact is for inspecting the runner-built output and is not a stable distribution URL.
 
-With any `release-*` action or `resume`, two publication jobs run after the macOS job succeeds, including its source push for a new release. `publish_release` receives `contents: write` only for `panarch/caffold`; it creates or reconciles the GitHub Release without receiving the tap token. After that succeeds, `publish_homebrew` uses the `release` environment, keeps only `contents: read` for Caffold, and receives the `HOMEBREW_TAP_TOKEN` environment secret, whose fine-grained access is limited to `panarch/homebrew-tap`. Together they:
+With any `release-*` action or `resume`, two publication jobs run after the macOS job succeeds, including its source push for a new release; a release candidate runs only the first. `publish_release` receives `contents: write` only for `panarch/caffold`; it creates or reconciles the GitHub Release without receiving the tap token. After that succeeds, `publish_homebrew` uses the `release` environment, keeps only `contents: read` for Caffold, and receives the `HOMEBREW_TAP_TOKEN` environment secret, whose fine-grained access is limited to `panarch/homebrew-tap`. Together they:
 
 1. download and recheck the exact artifact produced by the verification job;
 2. create the immutable version tag and GitHub Release, or on `resume` verify the existing tag, download the already-published assets, and revalidate their checksum, release version, bundle, architecture, and signature;
@@ -101,11 +102,21 @@ With any `release-*` action or `resume`, two publication jobs run after the macO
 4. create an unpublished local tap commit when the rendered Cask changed, register that exact commit with Homebrew, trust only the generated Caffold Cask, run Homebrew style and strict Cask audit, install the app and bundled CLI, check that quarantine was removed, and uninstall the smoke-test copy; and
 5. push the already-verified tap commit only after the release and Homebrew installation checks pass.
 
+The generated notes of a new GitHub Release list the changes since the latest stable release; a release candidate after the first lists them since the candidate before it. The job names that starting tag instead of leaving it to GitHub, so a stable release never starts from a release candidate.
+
 The GitHub Release and Homebrew publication jobs never edit or commit Caffold source. After a GitHub Release exists, its tag and validated assets remain canonical, so a later workflow-fix commit with the same application version can `resume` a failed tap update without replacing the release. Archive verification checks the published version rather than a value derived from the verifying commit, so a later workflow commit revalidates the same assets. When no release exists yet, an existing version tag must still point to the selected release commit before assets can be published.
 
 After the Homebrew job succeeds, `publish_site` pushes the release commit to the `site` branch with `contents: write` and no tap token. Cloudflare Workers Builds deploys `https://caffold.dev` from that branch, as described in the [website README](../../website/README.md#deployment), so the published user manual changes only once the release it describes installs from Homebrew. The push only fast-forwards; a failed push leaves the release and Cask in place, and `resume` repeats it.
 
 `resume` is desired-state reconciliation, not continuation from a stored step number. Completed external state is validated and reused; missing state is created in order. Conflicting tag ownership, invalid or missing canonical assets, or mismatched release metadata stop with an error instead of being overwritten.
+
+## Release candidates
+
+A release candidate publishes a build for testing from its GitHub Release page without offering it to installed apps. `rc-patch`, `rc-minor`, and `rc-major` take the next patch, minor, or major version after the stable version on `main` and number each candidate one past the highest existing `v<version>-rc.<n>` tag, starting from 1. From `0.22.2`, `rc-minor` publishes `0.23.0-rc.1`; running it again after more changes reach `main` publishes `0.23.0-rc.2`, and `release-minor` later publishes `0.23.0`.
+
+A candidate goes through the same shared checks, macOS verification, and packaging as a release. The macOS job then pushes only the tag at its `Release v<version>-rc.<n>` commit, so `main` keeps the stable version the next action starts from. `publish_release` marks the GitHub Release as a pre-release, and neither `publish_homebrew` nor `publish_site` runs. The Cask therefore stays at the stable version, and the menu-bar app and server, which ask GitHub for the latest stable release, offer no candidate as an update.
+
+To test a candidate, download its archive and checksum from the pre-release page. `resume` reconciles only the stable version on `main`; when a candidate run fails, run the same action again, which takes the next number once the failed run's tag exists.
 
 ## Public release transaction
 
