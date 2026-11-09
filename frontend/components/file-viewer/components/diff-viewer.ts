@@ -4,8 +4,9 @@ import type { SyntaxSpan } from "#app/api.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "../../drawn-refs.js";
+import { readPageAnchor, scrollToPageAnchor } from "../../page-anchor.js";
 import { syntaxLine } from "../syntax-spans.js";
-import type { ScrollPosition, ViewerPosition } from "./code-viewer.js";
+import type { CodePosition, ViewerPosition } from "./code-viewer.js";
 
 import styles from "./diff-viewer.css.js";
 
@@ -43,15 +44,30 @@ export class CaffoldDiffViewer extends CaffoldElement {
   accessor diff: FileDiff | null = null;
   @property({ attribute: false })
   accessor position: ViewerPosition | null = null;
+  // Long lines wrap at the viewer's width instead of scrolling sideways.
+  @property({ type: Boolean, reflect: true })
+  accessor wrap = false;
 
   static override styles = styles;
 
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly table = new DrawnRef<HTMLDivElement>(this);
-  // Where the diff was last read while it was shown. A viewer taken off the
-  // page reads 0, so it is kept as the person scrolls.
-  private readingScroll: ScrollPosition | null = null;
+  private readonly resizes = new ResizeObserver(() => this.keepReadingPlace());
+  // Where the diff was last read while it was shown, or the place it was
+  // handed off the page. A viewer taken off the page reads 0, so it is kept as
+  // the person scrolls.
+  private readingScroll: CodePosition | null = null;
+
+  override connectedCallback() {
+    super.connectedCallback();
+    this.resizes.observe(this);
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    this.resizes.disconnect();
+  }
 
   override render() {
     if (!this.diff) {
@@ -122,10 +138,13 @@ export class CaffoldDiffViewer extends CaffoldElement {
   }
 
   // The rows stay in place from one diff to the next, so a diff that keeps
-  // no position starts from the top again.
+  // no position starts from the top again. Wrapping or unwrapping the lines
+  // keeps the row being read at the top.
   override updated(changed: PropertyValues) {
     if (changed.has("diff") || changed.has("position")) {
       this.restorePosition(this.position);
+    } else if (changed.has("wrap")) {
+      this.keepReadingPlace();
     }
   }
 
@@ -200,31 +219,46 @@ export class CaffoldDiffViewer extends CaffoldElement {
     return [...(this.table.value?.children ?? [])] as HTMLElement[];
   }
 
-  private captureScroll() {
+  private captureScroll(): CodePosition | null {
     const scroller = this.scroller;
-    return scroller
-      ? { top: scroller.scrollTop, left: scroller.scrollLeft }
-      : null;
+    const anchor = scroller && readPageAnchor(scroller, this.rows());
+    return scroller && anchor ? { anchor, left: scroller.scrollLeft } : null;
   }
 
-  private restoreScroll(scroll: ScrollPosition) {
+  private restoreScroll(scroll: CodePosition) {
     const scroller = this.scroller;
     if (scroller) {
-      scroller.scrollTop = scroll.top;
+      scrollToPageAnchor(scroller, this.rows(), scroll.anchor);
       scroller.scrollLeft = scroll.left;
     }
   }
 
-  // A place set to where the viewer already was moves nothing and so sends no
-  // scroll, so the place is read here as well.
+  // Off the page nothing scrolls, so the place waits there for the viewer to
+  // come back. A place set to where the viewer already was moves nothing and
+  // so sends no scroll, so the place is read here as well.
   private restorePosition(position: ViewerPosition | null) {
+    const scroller = this.scroller;
+    if (!scroller?.getClientRects().length) {
+      this.readingScroll = position?.scroll ?? null;
+      return;
+    }
     if (position?.scroll) {
       this.restoreScroll(position.scroll);
     } else {
-      this.restoreScroll({ top: 0, left: 0 });
+      scroller.scrollTop = 0;
+      scroller.scrollLeft = 0;
       this.scrollToLine(position?.line);
     }
     this.recordReading();
+  }
+
+  // Wrapped rows change height when the width or the wrapping changes, so the
+  // row read last is put back at the top, as it is when the viewer returns to
+  // the page.
+  private keepReadingPlace() {
+    if (this.readingScroll && this.scroller?.getClientRects().length) {
+      this.restoreScroll(this.readingScroll);
+    }
   }
 
   private recordReading() {

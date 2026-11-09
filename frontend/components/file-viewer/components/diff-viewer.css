@@ -113,6 +113,17 @@
   padding: 0 0.75rem;
 }
 
+/* Wrapped, the lines fit the viewer's width. A line continues from the start
+   of the code column; its numbers stand beside its first row only. */
+:host([wrap]) .diff-table {
+  width: 100%;
+}
+
+:host([wrap]) .diff-code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .diff-row-metadata {
   background: var(--diff-meta-bg);
   color: var(--diff-meta-text);

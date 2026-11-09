@@ -1896,3 +1896,50 @@ async function expectDrawnPicture(image) {
   await expect(image).toHaveAttribute("src", /^blob:/);
   await expect.poll(() => image.evaluate((element) => element.complete && element.naturalWidth)).toBeGreaterThan(0);
 }
+
+test("wraps the Compare diff it keeps hidden when Wrap is turned on in a commit", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await installTaskGitFixture(page, [taskRecord()], { longDiff: true });
+  await page.goto(
+    `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview`,
+  );
+  await page
+    .locator('caffold-git-compare-page button[data-file-tree-path="src/example.rs"]')
+    .click();
+  const compareViewer = page.locator(
+    "caffold-git-compare-page caffold-review-file-viewer:not([hidden])",
+  );
+  const compareDiff = compareViewer.locator("caffold-diff-viewer");
+  await expect(compareDiff.locator(".diff-row").first()).toBeVisible();
+  await expect(compareDiff).not.toHaveAttribute("wrap", "");
+  // A file with only a diff offers no choice of representation, so Wrap is
+  // the header's last action.
+  await expect(
+    compareViewer.locator(".viewer-actions > :last-child"),
+  ).toHaveClass(/viewer-wrap-button/);
+
+  await chooseGitTool(page, "log");
+  await page
+    .getByRole("button", { name: new RegExp(`^Open commit diff for ${COMMIT.shortSha}`) })
+    .click();
+  await page.getByRole("button", { name: "Show commit diff for example.rs" }).click();
+  const commitViewer = page.locator(
+    ".git-mode-log caffold-review-file-viewer:not([hidden])",
+  );
+  await expect(commitViewer.locator("caffold-diff-viewer")).toContainText("new commit");
+  await commitViewer.getByRole("button", { name: "Wrap code lines" }).click();
+  await expect(commitViewer.locator("caffold-diff-viewer")).toHaveAttribute("wrap", "");
+  await expect(compareDiff).toBeHidden();
+  await expect(compareDiff).toHaveAttribute("wrap", "");
+
+  // Compare opens without a file again, in the same viewer.
+  await chooseGitTool(page, "compare");
+  await page
+    .locator('caffold-git-compare-page button[data-file-tree-path="src/example.rs"]')
+    .click();
+  await expect(compareDiff).toBeVisible();
+  await expect(compareDiff).toHaveAttribute("wrap", "");
+  await expect(compareViewer.getByRole("button", { name: "Stop wrapping code lines" }))
+    .toHaveAttribute("aria-pressed", "true");
+});

@@ -91,12 +91,17 @@
   min-width: 0;
 }
 
+/* The header's buttons stand as far apart as the Detail header's. */
 .viewer-actions {
   display: grid;
   grid-auto-flow: column;
   gap: max(
-    var(--interface-control-gap),
-    calc(var(--interface-compact-hit-outset) * 2)
+    0rem,
+    calc(
+      var(--interface-toolbar-gap) -
+      var(--interface-compact-hit-outset) -
+      var(--interface-compact-hit-outset)
+    )
   );
   align-items: center;
 }
@@ -166,7 +171,8 @@ h2 {
   cursor: pointer;
 }
 
-.viewer-refresh-button {
+.viewer-refresh-button,
+.viewer-wrap-button {
   margin-block: 0;
   color: var(--control-fg);
 }
@@ -187,6 +193,8 @@ caffold-visual-diff {
   --segmented-control-label-padding-inline: var(--interface-space-1);
   --viewer-change-axis-inline-size: 7.5rem;
 
+  /* It has no hit area around it, so it keeps the button gap without one. */
+  margin-inline-end: var(--interface-compact-hit-outset);
   width: calc(
     var(--viewer-change-choice-count, 1) *
     var(--viewer-change-axis-inline-size) /
@@ -218,20 +226,29 @@ caffold-visual-diff {
 }
 
 .viewer-info-button:focus-visible::after,
-.viewer-refresh-button:focus-visible::before {
+.viewer-refresh-button:focus-visible::before,
+.viewer-wrap-button:focus-visible::before {
   border-color: var(--control-hover-bg);
   background: var(--control-hover-bg);
 }
 
 @media (hover: hover) {
   .viewer-info-button:hover::after,
-  .viewer-refresh-button:hover::before {
+  .viewer-refresh-button:hover::before,
+  .viewer-wrap-button:hover::before {
     border-color: var(--control-hover-bg);
     background: var(--control-hover-bg);
   }
 }
 
-.viewer-refresh-icon {
+/* Pressed, Wrap looks as the Task code block's Wrap does. */
+.viewer-wrap-button[aria-pressed="true"]::before {
+  border-color: var(--border-strong);
+  background: var(--selection-bg);
+}
+
+.viewer-refresh-icon,
+.viewer-wrap-icon {
   position: relative;
   display: block;
   width: var(--interface-icon-size);

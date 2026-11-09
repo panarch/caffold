@@ -149,13 +149,17 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
   expect(summaryClearance.headingWidth).toBeGreaterThanOrEqual(100);
 
   await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
-  const after = await taskReview.evaluate((review) => {
+  await expect(taskReview.getByRole("button", { name: "Wrap code lines" })).toBeVisible();
+  const after = await taskReview.evaluate((review, [git, github]) => {
     const navigator = review.shadowRoot.querySelector(".task-review-navigator-pane");
     const viewer = review.shadowRoot.querySelector(".task-review-viewer-pane");
-    const viewerInfo = review
+    const viewerHeader = review
       .shadowRoot.querySelector("caffold-review-selected-file")
       .shadowRoot.querySelector("caffold-review-file-viewer")
-      .shadowRoot.querySelector(".viewer-info-button");
+      .shadowRoot.querySelector(".viewer-header");
+    const viewerTitle = viewerHeader.querySelector("h2");
+    const viewerInfo = viewerHeader.querySelector(".viewer-info-button");
+    const viewerWrap = viewerHeader.querySelector(".viewer-wrap-button");
     const viewerAxis = review.shadowRoot.querySelector(
       '.task-review-viewer-axis caffold-segmented-control[data-review-axis="viewer"]',
     );
@@ -168,24 +172,37 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
       };
     };
     const viewerInfoBounds = visualBounds(viewerInfo, "::after");
-    const rootStyle = getComputedStyle(document.documentElement);
+    const viewerWrapBounds = visualBounds(viewerWrap, "::before");
     return {
       overflow: review.scrollWidth > review.clientWidth,
       navigatorVisible: getComputedStyle(navigator).display !== "none",
       viewerVisible: getComputedStyle(viewer).display !== "none",
-      viewerControlGap:
-        viewerAxis.getBoundingClientRect().left - viewerInfoBounds.right,
-      expectedControlGap:
-        Number.parseFloat(rootStyle.getPropertyValue("--interface-space-5")) *
-        Number.parseFloat(rootStyle.fontSize),
+      titleClear:
+        viewerTitle.getBoundingClientRect().right <=
+          viewerInfo.getBoundingClientRect().left,
+      wrapWidth: viewerWrapBounds.right - viewerWrapBounds.left,
+      infoWidth: viewerInfoBounds.right - viewerInfoBounds.left,
+      // The file header's buttons and the Review viewer axis after them
+      // stand as far apart as the Detail header's Git and GitHub buttons.
+      viewerButtonGap: viewerWrapBounds.left - viewerInfoBounds.right,
+      viewerAxisGap:
+        viewerAxis.getBoundingClientRect().left - viewerWrapBounds.right,
+      headerButtonGap:
+        visualBounds(github, "::before").left -
+          visualBounds(git, "::before").right,
     };
-  });
+  }, await elementHandles(page.locator("caffold-detail-layout"), [
+    ".task-git-button",
+    ".task-github-button",
+  ]));
   expect(after.overflow).toBe(false);
   expect(after.viewerVisible).toBe(true);
   expect(after.navigatorVisible).toBe(testInfo.project.name !== "phone");
-  expect(
-    Math.abs(after.viewerControlGap - after.expectedControlGap),
-  ).toBeLessThanOrEqual(1);
+  expect(after.titleClear).toBe(true);
+  expect(after.wrapWidth).toBeCloseTo(after.infoWidth, 1);
+  expect(after.headerButtonGap).toBeGreaterThan(0);
+  expect(Math.abs(after.viewerButtonGap - after.headerButtonGap)).toBeLessThanOrEqual(1);
+  expect(Math.abs(after.viewerAxisGap - after.headerButtonGap)).toBeLessThanOrEqual(1);
 });
 
 test("owns one collapsed Back across Conversation and Review modes", { tag: "@phone" }, async ({
@@ -278,6 +295,7 @@ test("keeps one compact file-navigation header on phone", { tag: "@phone" }, asy
       .shadowRoot.querySelector(".viewer-header");
     const close = viewerHeader.querySelector(".viewer-close-button");
     const info = viewerHeader.querySelector(".viewer-info-button");
+    const wrap = viewerHeader.querySelector(".viewer-wrap-button");
     const titleBlock = viewerHeader.querySelector(".viewer-title-block");
     const headerRect = viewerHeader.getBoundingClientRect();
     const closeRect = close.getBoundingClientRect();
@@ -289,6 +307,10 @@ test("keeps one compact file-navigation header on phone", { tag: "@phone" }, asy
     const infoInset = Number.parseFloat(
       getComputedStyle(info, "::after").top,
     );
+    const wrapRect = wrap.getBoundingClientRect();
+    const wrapInset = Number.parseFloat(
+      getComputedStyle(wrap, "::before").top,
+    );
     return {
       closeVisualHeight: closeRect.height - closeInset * 2,
       closeVisualWidth: closeRect.width - closeInset * 2,
@@ -296,6 +318,9 @@ test("keeps one compact file-navigation header on phone", { tag: "@phone" }, asy
       hitHeight: closeRect.height,
       infoVisualHeight: infoRect.height - infoInset * 2,
       infoVisualWidth: infoRect.width - infoInset * 2,
+      wrapHitHeight: wrapRect.height,
+      wrapVisualHeight: wrapRect.height - wrapInset * 2,
+      wrapVisualWidth: wrapRect.width - wrapInset * 2,
       overflow: review.scrollWidth > review.clientWidth,
       titleCenter: titleBlockRect.top + titleBlockRect.height / 2,
       headerCenter: headerRect.top + headerRect.height / 2,
@@ -307,6 +332,9 @@ test("keeps one compact file-navigation header on phone", { tag: "@phone" }, asy
   expect(geometry.closeVisualHeight).toBeLessThanOrEqual(36);
   expect(geometry.infoVisualWidth).toBeCloseTo(geometry.closeVisualWidth, 1);
   expect(geometry.infoVisualHeight).toBeCloseTo(geometry.closeVisualHeight, 1);
+  expect(geometry.wrapVisualWidth).toBeCloseTo(geometry.closeVisualWidth, 1);
+  expect(geometry.wrapVisualHeight).toBeCloseTo(geometry.closeVisualHeight, 1);
+  expect(geometry.wrapHitHeight).toBe(geometry.hitHeight);
   expect(geometry.hitHeight).toBeGreaterThanOrEqual(40);
   expect(geometry.headerHeight).toBeLessThanOrEqual(42);
   expect(Math.abs(geometry.titleCenter - geometry.headerCenter)).toBeLessThanOrEqual(1);

@@ -84,6 +84,50 @@ test("marks added lines and removed places beside the Source line numbers", { ta
   expect((await readMarkLook(viewer)).added.background).toBe(look.tokens.addedBackground);
 });
 
+test("wraps Source with each mark across the whole of a wrapped line", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  // The wide line 7 is added, and lines were removed after it.
+  await serveSource(page, { added: [[7, 7]], removedAfter: [7] });
+  const viewer = await openSource(page);
+  await viewer.getByRole("button", { name: "Wrap code lines" }).click();
+  const codeViewer = viewer.locator("caffold-code-viewer");
+  await expect(codeViewer).toHaveAttribute("wrap", "");
+
+  const look = await codeViewer.evaluate((element) => {
+    const root = element.shadowRoot;
+    const row = (line) => root.querySelector(`.code-row[data-line-number="${line}"]`);
+    const scroller = root.querySelector(".code-lines");
+    const wide = row(7).getBoundingClientRect();
+    const number = row(7).querySelector(".line-number");
+    const below = row(8).querySelector(".line-number");
+    const rule = getComputedStyle(below, "::before");
+    const probe = document.createElement("span");
+    probe.style.backgroundColor = "var(--diff-added-bg)";
+    root.append(probe);
+    const addedBackground = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return {
+      overflows: scroller.scrollWidth > scroller.clientWidth,
+      plainHeight: row(1).getBoundingClientRect().height,
+      wideHeight: wide.height,
+      numberHeight: number.getBoundingClientRect().height,
+      numberBackground: getComputedStyle(number).backgroundColor,
+      addedBackground,
+      ruleCenter:
+        below.getBoundingClientRect().top +
+        Number.parseFloat(rule.top) +
+        Number.parseFloat(rule.height) / 2,
+      wideBottom: wide.bottom,
+    };
+  });
+  expect(look.overflows).toBe(false);
+  expect(look.wideHeight).toBeGreaterThan(look.plainHeight * 2);
+  expect(look.numberHeight).toBe(look.wideHeight);
+  expect(look.numberBackground).toBe(look.addedBackground);
+  expect(look.ruleCenter).toBeCloseTo(look.wideBottom, 1);
+});
+
 test("reads Source against the base of the scope it is in", { tag: "@server-steady" }, async ({
   page,
 }) => {
