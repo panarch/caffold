@@ -1,0 +1,294 @@
+/* The list and the file share the host's one row. Beside each other, the
+   list keeps the width the pane resizer applies and the file takes the rest;
+   the phone layout shows one of them; between those widths an open file takes
+   the row and the list rests as a drawer with only its edge, the strip, in
+   view. */
+:host {
+  /* The column the workspace's corner toggle stands in, so the folded list
+     lines up under it. */
+  --split-view-strip-width: calc(
+    2 *
+    var(--interface-space-6) +
+    var(--interface-compact-visual-size)
+  );
+  --split-view-motion-duration: 150ms;
+
+  position: relative;
+  display: grid;
+  grid-template-columns:
+    var(--split-view-list-width, 320px)
+    minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+:host([resizing]) {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.split-view-list,
+.split-view-list-content,
+.split-view-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.split-view-list,
+.split-view-detail {
+  grid-row: 1;
+}
+
+.split-view-list {
+  grid-column: 1;
+}
+
+/* Focus rests on the drawer when it opens; the drawer is not a control. */
+.split-view-list:focus {
+  outline: none;
+}
+
+/* The file's own layers stay inside it, under the strip, the dim, and the
+   drawer. */
+.split-view-detail {
+  grid-column: 2;
+  isolation: isolate;
+}
+
+caffold-pane-resizer {
+  left: var(--split-view-list-width, 320px);
+}
+
+.split-view-strip,
+.split-view-dim {
+  display: none;
+}
+
+:host([collapsed]) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+:host([collapsed]) .split-view-list,
+:host([collapsed]) caffold-pane-resizer {
+  display: none;
+}
+
+:host([collapsed]) .split-view-detail {
+  grid-column: 1;
+}
+
+@media (max-width: 560px) {
+  :host {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .split-view-list,
+  .split-view-detail {
+    grid-column: 1;
+  }
+
+  caffold-pane-resizer {
+    display: none;
+  }
+
+  :host(:not([detail-open])) .split-view-detail,
+  :host([detail-open]) .split-view-list {
+    display: none;
+  }
+}
+
+@media (min-width: 561px) and (max-width: 1060px) {
+  :host([detail-open]) {
+    grid-template-columns: var(--split-view-strip-width) minmax(0, 1fr);
+  }
+
+  :host([detail-open]) .split-view-detail {
+    grid-column: 2;
+  }
+
+  /* Folded, the drawer rests over the strip's column with only its edge in
+     view, shading the file it lies on. Opening slides the whole drawer out
+     from that edge. */
+  :host([detail-open]) .split-view-list {
+    position: absolute;
+    z-index: 4;
+    inset-block: 0;
+    left: 0;
+    width: var(--split-view-list-width, 320px);
+    overflow: visible;
+    background: var(--surface);
+    box-shadow: 3px 0 10px rgb(var(--shadow-rgb) / 10%);
+    transform: translateX(calc(var(--split-view-strip-width) - 100%));
+  }
+
+  /* The open drawer's deeper shadow fades in over the folded edge's. */
+  :host([detail-open]) .split-view-list::after {
+    position: absolute;
+    inset: 0;
+    box-shadow: 6px 0 24px rgb(var(--shadow-rgb) / 14%);
+    content: "";
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* The list's own layers stay under the strip that covers its edge. */
+  :host([detail-open]) .split-view-list-content {
+    isolation: isolate;
+  }
+
+  :host([detail-open]:not([drawer-open])) .split-view-list-content {
+    display: none;
+  }
+
+  /* The strip covers the drawer's edge, with the border the list would draw
+     against the file. */
+  :host([detail-open]) .split-view-strip {
+    position: absolute;
+    inset-block: 0;
+    right: 0;
+    display: grid;
+    width: var(--split-view-strip-width);
+    align-content: center;
+    justify-items: center;
+    gap: var(--interface-space-4);
+    margin: 0;
+    padding: var(--interface-space-4) 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0;
+    background: var(--surface);
+    box-shadow: inset -1px 0 0 var(--border);
+    color: var(--muted);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  :host([detail-open]) .split-view-strip:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+
+  :host([detail-open]) .split-view-strip:active {
+    background: var(--control-subtle-hover-bg);
+    color: var(--control-fg);
+  }
+
+  :host([drawer-open]) .split-view-list {
+    transform: none;
+  }
+
+  :host([drawer-open]) .split-view-list::after {
+    opacity: 1;
+  }
+
+  :host([drawer-open]) .split-view-strip {
+    visibility: hidden;
+    opacity: 0;
+  }
+
+  /* Only the person opening or closing the drawer moves it; a list folding
+     as a file opens, or a window leaving these widths, changes at once. The
+     list stays drawn until the drawer has closed. Closing, the strip returns
+     as the drawer settles into it. */
+  :host([sliding]) .split-view-list {
+    transition: transform var(--split-view-motion-duration) ease;
+  }
+
+  :host([sliding]) .split-view-list::after {
+    transition: opacity var(--split-view-motion-duration) ease;
+  }
+
+  :host([sliding]) .split-view-list-content {
+    transition: display var(--split-view-motion-duration) allow-discrete;
+  }
+
+  :host([sliding]) .split-view-strip {
+    transition: opacity calc(var(--split-view-motion-duration) / 2) ease
+      calc(var(--split-view-motion-duration) / 2);
+  }
+
+  /* Opening, the strip fades as the drawer leaves it, then takes no taps. */
+  :host([sliding][drawer-open]) .split-view-strip {
+    transition:
+      opacity calc(var(--split-view-motion-duration) / 2) ease,
+      visibility 0s calc(var(--split-view-motion-duration) / 2);
+  }
+
+  :host([detail-open]:not([drawer-open])) caffold-pane-resizer {
+    display: none;
+  }
+
+  :host([drawer-open]) caffold-pane-resizer {
+    z-index: 5;
+  }
+
+  :host([detail-open]) .split-view-dim {
+    position: absolute;
+    z-index: 3;
+    inset: 0;
+    display: none;
+    background: rgb(var(--shadow-rgb) / 12%);
+    opacity: 0;
+  }
+
+  :host([sliding]) .split-view-dim {
+    transition:
+      opacity var(--split-view-motion-duration) ease,
+      display var(--split-view-motion-duration) allow-discrete;
+  }
+
+  :host([drawer-open]) .split-view-dim {
+    display: block;
+    opacity: 1;
+  }
+
+  @starting-style {
+    :host([drawer-open]) .split-view-dim {
+      opacity: 0;
+    }
+  }
+}
+
+@media (min-width: 561px) and (max-width: 1060px) and (hover: hover) {
+  :host([detail-open]) .split-view-strip:hover {
+    background: var(--control-subtle-hover-bg);
+    color: var(--control-fg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :host {
+    --split-view-motion-duration: 0s;
+  }
+}
+
+.split-view-strip-icon {
+  display: grid;
+  place-items: center;
+}
+
+.split-view-strip-chevron {
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
+}
+
+.split-view-strip-label {
+  overflow: hidden;
+  font-size: var(--interface-meta-font-size);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  transform: rotate(180deg);
+  writing-mode: vertical-rl;
+}
+
+.split-view-strip-count {
+  color: var(--muted-subtle);
+  font-weight: 500;
+}

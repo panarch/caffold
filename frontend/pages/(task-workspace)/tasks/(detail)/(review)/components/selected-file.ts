@@ -9,6 +9,7 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/file-viewer.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import type {
+  AdjacentFiles,
   CaffoldReviewFileViewer,
   FileViewerNoticeActionDetail,
   ReadingPosition,
@@ -117,6 +118,10 @@ export class CaffoldReviewSelectedFile extends CaffoldElement {
       background:
         background || (reread && this.shownStateKey === view.stateKey),
     });
+  }
+
+  setAdjacentFiles(files: AdjacentFiles) {
+    this.viewer.setAdjacentFiles(files);
   }
 
   actionHintScope(pull: ActionHintPull = {}) {

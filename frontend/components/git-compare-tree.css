@@ -142,7 +142,7 @@ h2 {
   color: var(--danger);
 }
 
-@media (max-width: 860px) {
+@media (max-width: 560px) {
   :host {
     border-right: 0;
     border-bottom: 1px solid var(--border);

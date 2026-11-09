@@ -229,6 +229,12 @@ export class CaffoldGitDiffChangesTree extends CaffoldElement {
     );
   }
 
+  // The changed files in the order the list shows them, each once.
+  changedPathsInOrder() {
+    this.performUpdate();
+    return [...new Set(this.fileTree()?.filePathsInOrder() ?? [])];
+  }
+
   private fileTree() {
     return this.treeElement.value;
   }

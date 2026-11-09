@@ -69,7 +69,11 @@ test("merges Review axes with only the active navigator and selected viewer", ()
         return scope("viewer");
       },
     },
-    resizer: { actionHintScope: () => null },
+    split: {
+      listShown: () => true,
+      detailShown: () => true,
+      actionHintScope: () => null,
+    },
   };
 
   assert.deepEqual(
@@ -138,7 +142,11 @@ test("composes the shared Review panel resizer through its public scope", () => 
     viewerPane: { value: { getClientRects: () => [{}] } },
     axisControl: () => ({ actionHintScope: () => null }),
     workingTreeChanges: { actionHintScope: () => scope("working") },
-    resizer: panelResizer,
+    split: {
+      listShown: () => true,
+      detailShown: () => true,
+      actionHintScope: panelResizer.actionHintScope,
+    },
   };
 
   assert.deepEqual(
@@ -162,6 +170,7 @@ test("merges only visible Review navigator and viewer Scroll leaves", () => {
     },
   });
   const panes = { navigator: pane(), viewer: pane() };
+  const shown = { list: true, detail: true };
   const owner = {
     active: true,
     hidden: false,
@@ -171,6 +180,10 @@ test("merges only visible Review navigator and viewer Scroll leaves", () => {
     performUpdate() {},
     navigatorPane: { value: panes.navigator },
     viewerPane: { value: panes.viewer },
+    split: {
+      listShown: () => shown.list,
+      detailShown: () => shown.detail,
+    },
     workingTreeChanges: {
       scrollSurfaceScope: () => ({ surfaces: [navigatorSurface] }),
     },
@@ -183,6 +196,12 @@ test("merges only visible Review navigator and viewer Scroll leaves", () => {
     review.scrollSurfaceScope.call(owner).surfaces,
     [navigatorSurface, viewerSurface],
   );
+  shown.list = false;
+  assert.deepEqual(review.scrollSurfaceScope.call(owner).surfaces, [viewerSurface]);
+  shown.list = true;
+  shown.detail = false;
+  assert.deepEqual(review.scrollSurfaceScope.call(owner).surfaces, [navigatorSurface]);
+  shown.detail = true;
   panes.navigator.visible = false;
   assert.deepEqual(review.scrollSurfaceScope.call(owner).surfaces, [viewerSurface]);
   panes.viewer.visible = false;

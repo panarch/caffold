@@ -383,8 +383,9 @@ test("returns to the slide it was reading after another surface, at the same wid
   await expect.poll(() => readingPlace(viewer)).toEqual({ slide: 3, fraction: 0.4 });
 
   // Narrower slides are shorter, so the same pixels would reach another slide.
+  // At this width the open file has the view's width beside the folded list.
   await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
-  await page.setViewportSize({ width: 1000, height: 800 });
+  await page.setViewportSize({ width: 700, height: 800 });
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await expect(viewer.getByText("Slide 4", { exact: true })).toBeVisible();
   await expect.poll(() => readingPlace(viewer)).toEqual({ slide: 3, fraction: 0.4 });

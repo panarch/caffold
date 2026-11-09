@@ -472,9 +472,13 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/components/pane-resizer.js"
         )))),
-        "components/review-responsive.js" => Some(js(include_str!(concat!(
+        "components/split-view.css.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/review-responsive.js"
+            "/frontend/components/split-view.css.js"
+        )))),
+        "components/split-view.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/split-view.js"
         )))),
         "watch.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
@@ -2689,6 +2693,7 @@ mod tests {
             "components/pdf-viewer.css",
             "components/pptx-viewer.css",
             "components/segmented-control.css",
+            "components/split-view.css",
             "components/terminal-view.css",
             "components/xlsx-viewer.css",
             "keyboard-navigation/components/hud.css",
@@ -2840,18 +2845,6 @@ mod tests {
             "text/javascript; charset=utf-8"
         );
         assert!(codex_status_lifecycle.body.starts_with(b"import "));
-
-        let review_responsive_js =
-            get("components/review-responsive.js").expect("review responsive js asset");
-        assert_eq!(
-            review_responsive_js.content_type,
-            "text/javascript; charset=utf-8"
-        );
-        assert!(
-            review_responsive_js
-                .body
-                .starts_with(b"export const REVIEW_SINGLE_PANE_MAX_WIDTH_PX")
-        );
 
         for path in [
             "pages/(task-workspace)/tasks/(detail)/components/git-menu.js",
@@ -3125,6 +3118,14 @@ mod tests {
                 .body
                 .windows(b"caffold-pane-resizer".len())
                 .any(|window| window == b"caffold-pane-resizer")
+        );
+        let split_view = get("components/split-view.js").expect("split view js");
+        assert_eq!(split_view.content_type, "text/javascript; charset=utf-8");
+        assert!(
+            split_view
+                .body
+                .windows(b"caffold-split-view".len())
+                .any(|window| window == b"caffold-split-view")
         );
 
         let compare_page = get("pages/(task-workspace)/tasks/(detail)/(git)/compare/page.js")

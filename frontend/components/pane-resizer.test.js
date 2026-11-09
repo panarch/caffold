@@ -40,6 +40,40 @@ test("divides the host of the shadow root it sits at the top of", () => {
   assert.equal(pane.clampValue(10_000), 896);
 });
 
+test("lets the start pane cover the end pane up to 70% when the end needs no room", () => {
+  const pane = Object.assign(Object.create(resizer), {
+    parentElement: { getBoundingClientRect: () => ({ width: 900 }) },
+    getAttribute: (name) => ({ "start-min": "320", "end-min": "0" })[name] ?? null,
+    getClientRects: () => [{}],
+  });
+
+  assert.equal(pane.clampValue(10_000), 630);
+  assert.equal(pane.clampValue(100), 320);
+});
+
+test("applies a changed limit at once and keeps the chosen width", () => {
+  const updates = [];
+  const attributes = { "start-min": "220", "end-min": "360" };
+  const pane = Object.assign(Object.create(resizer), {
+    currentValue: 250,
+    preferredValue: 250,
+    isConnected: true,
+    parentElement: { getBoundingClientRect: () => ({ width: 933 }) },
+    getAttribute: (name) => attributes[name] ?? null,
+    getClientRects: () => [{}],
+    setAttribute() {},
+    dispatchEvent: (event) => updates.push(event.detail.value),
+  });
+
+  attributes["start-min"] = "320";
+  pane.attributeChangedCallback("start-min", "220", "320");
+  assert.equal(pane.value, 320);
+  attributes["start-min"] = "220";
+  pane.attributeChangedCallback("start-min", "320", "220");
+  assert.equal(pane.value, 250);
+  assert.deepEqual(updates, [320, 250]);
+});
+
 test("returns to the chosen width when its container widens again", () => {
   let containerWidth = 1280;
   const updates = [];

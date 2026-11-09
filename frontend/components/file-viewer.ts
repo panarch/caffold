@@ -248,6 +248,24 @@ export interface FileViewerNoticeActionDetail {
   action: string;
 }
 
+// A file before or after the open one in its owner's list of changes: its
+// path as the owner opens it, and its name and folder as the card shows them.
+export interface AdjacentFile {
+  path: string;
+  name: string;
+  folder: string;
+}
+
+export interface AdjacentFiles {
+  previous: AdjacentFile | null;
+  next: AdjacentFile | null;
+}
+
+// The adjacent file the person chose, which its owner opens.
+export interface FileViewerOpenAdjacentDetail {
+  path: string;
+}
+
 type ViewerState =
   | { status: "empty" }
   | {
@@ -336,6 +354,11 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   };
   @state()
   private accessor wrap = false;
+  @state()
+  private accessor adjacentFiles: AdjacentFiles = {
+    previous: null,
+    next: null,
+  };
 
   static override styles = [
     scopedStyle(compactIconButton, ".viewer-refresh-button"),
@@ -593,6 +616,69 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
       </header>
     `;
 
+    // The files before and after this one end a diff, a file, a Visual
+    // comparison, or a notice about a file. A leaf viewer shows the cards
+    // after its content; a notice shows them under itself.
+    const { previous, next } = this.adjacentFiles;
+    const adjacentFiles =
+      previous || next
+        ? html`<nav
+            class="viewer-adjacent-files"
+            slot="end"
+            aria-label="Changed files"
+          >
+            ${
+              previous
+                ? html`<button
+                    ${this.hints.button({
+                      id: "adjacent:previous",
+                      label: `Previous file ${previous.name}`,
+                      action: ACTION_HINT_ACTION.FILE_OPEN,
+                    })}
+                    type="button"
+                    class="viewer-adjacent-file viewer-adjacent-previous"
+                    data-adjacent-path=${previous.path}
+                    @click=${this.openAdjacent}
+                  >
+                    <span class="viewer-adjacent-caption">${inlineIcon(
+                      "ArrowLeft",
+                      "",
+                      "viewer-adjacent-icon",
+                    )}Previous</span>
+                    <span class="viewer-adjacent-name">${previous.name}</span>
+                    <span class="viewer-adjacent-folder"
+                      ><span dir="ltr">${previous.folder}</span></span
+                    >
+                  </button>`
+                : nothing
+            }
+            ${
+              next
+                ? html`<button
+                    ${this.hints.button({
+                      id: "adjacent:next",
+                      label: `Next file ${next.name}`,
+                      action: ACTION_HINT_ACTION.FILE_OPEN,
+                    })}
+                    type="button"
+                    class="viewer-adjacent-file viewer-adjacent-next"
+                    data-adjacent-path=${next.path}
+                    @click=${this.openAdjacent}
+                  >
+                    <span class="viewer-adjacent-caption">Next${inlineIcon(
+                      "ArrowRight",
+                      "",
+                      "viewer-adjacent-icon",
+                    )}</span>
+                    <span class="viewer-adjacent-name">${next.name}</span>
+                    <span class="viewer-adjacent-folder"
+                      ><span dir="ltr">${next.folder}</span></span
+                    >
+                  </button>`
+                : nothing
+            }
+          </nav>`
+        : nothing;
     switch (state.status) {
       case "loading":
         return html`
@@ -646,6 +732,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
                   : nothing
               }
             </div>
+            ${state.title ? adjacentFiles : nothing}
           </section>
         `;
       }
@@ -658,7 +745,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
               .diff=${state.diff}
               .position=${state.position}
               .wrap=${this.wrap}
-            ></caffold-diff-viewer>
+            >${adjacentFiles}</caffold-diff-viewer>
           </section>
         `;
       case "visual":
@@ -668,7 +755,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
             <caffold-visual-diff
               ${drawn(this.visualDiff)}
               @caffold:visual-diff-mode-intent=${this.chooseVisualMode}
-            ></caffold-visual-diff>
+            >${adjacentFiles}</caffold-visual-diff>
           </section>
         `;
       case "image": {
@@ -730,7 +817,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
               .file=${state.file}
               .position=${state.position}
               .wrap=${this.wrap}
-            ></caffold-code-viewer>
+            >${adjacentFiles}</caffold-code-viewer>
           </section>
         `;
     }
@@ -1025,6 +1112,11 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     this.closeMode = mode === "back" ? "back" : "close";
   }
 
+  // The files before and after the open one in the owner's list of changes.
+  setAdjacentFiles({ previous, next }: AdjacentFiles) {
+    this.adjacentFiles = { previous: previous ?? null, next: next ?? null };
+  }
+
   // `actions` names what each control does: Back or close (`parent`),
   // `details`, `refresh`, and a `notice` button here, and a preview's `link`
   // and `button`. Only the child the state draws has a ref.
@@ -1169,6 +1261,19 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
       new CustomEvent<FileViewerNoticeActionDetail>(
         "caffold:file-viewer-notice-action",
         { detail: { action: this.state.action } },
+      ),
+    );
+  }
+
+  private openAdjacent(event: Event) {
+    const path = (event.currentTarget as HTMLElement).dataset.adjacentPath;
+    if (!path) {
+      return;
+    }
+    this.dispatchEvent(
+      new CustomEvent<FileViewerOpenAdjacentDetail>(
+        "caffold:file-viewer-open-adjacent",
+        { bubbles: true, composed: true, detail: { path } },
       ),
     );
   }
@@ -1495,6 +1600,7 @@ declare global {
   interface HTMLElementEventMap {
     "caffold:file-viewer-notice-action": CustomEvent<FileViewerNoticeActionDetail>;
     "caffold:file-viewer-change-intent": CustomEvent<FileViewerChangeIntentDetail>;
+    "caffold:file-viewer-open-adjacent": CustomEvent<FileViewerOpenAdjacentDetail>;
   }
 
   interface WindowEventMap {

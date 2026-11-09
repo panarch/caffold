@@ -1189,8 +1189,10 @@ test("split panes remember their widths and collapse under one key pair per kind
     "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.ts",
     "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.ts",
   ].map((path) => {
+    // The review file screens hand their keys to the split view, which mounts
+    // the resizer.
     const resizers = [...readFrontend(path).matchAll(
-      /<caffold-pane-resizer\b[^>]*>/g,
+      /<caffold-(?:pane-resizer|split-view)\b[^>]*>/g,
     )].map((match) => match[0]);
     assert.equal(resizers.length, 1, `${path} mounts one remembered pane resizer`);
     return {

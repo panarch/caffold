@@ -9,7 +9,10 @@ import {
   popoverActionHintDialog,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
-import { openCompletedTaskForReview } from "../support/task-review-test.js";
+import {
+  openCompletedTaskForReview,
+  showReviewNavigator,
+} from "../support/task-review-test.js";
 import {
   activeWatchSubscriptionId,
   captureReviewScreenshot,
@@ -630,9 +633,7 @@ test("renders a route-owned Markdown Preview without changing file selection", {
   await expect(preview.locator("h1")).toHaveText("Markdown file preview");
   await expect(previewControl).toHaveAttribute("aria-pressed", "true");
 
-  if (testInfo.project.name === "phone") {
-    await taskReview.getByRole("button", { name: "Back to navigator" }).click();
-  }
+  await showReviewNavigator(taskReview, testInfo.project.name);
   await navigator.locator('button[data-file-tree-path="src/alpha.rs"]').click();
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=alpha.rs`,
@@ -1121,9 +1122,7 @@ test("selects supported source and preview representations for images", { tag: "
     await page.keyboard.press("Escape");
     await expect(workspaceHud).toBeHidden();
 
-    if (testInfo.project.name === "phone") {
-      await taskReview.getByRole("button", { name: "Back to navigator" }).click();
-    }
+    await showReviewNavigator(taskReview, testInfo.project.name);
     await navigator.locator('button[data-file-tree-path="src/review-image.svg"]').click();
     await expect(page).toHaveURL(
       `/tasks/${taskScenario.threadId}/review?nav=files&view=preview&file=review-image.svg`,
@@ -1511,6 +1510,7 @@ test("keeps browser Back aligned with the semantic Review parent", { tag: ["@des
 
   const navigator = taskReview.locator("caffold-file-navigator");
   await navigator.locator('button[data-file-tree-path="src/alpha.rs"]').click();
+  await showReviewNavigator(taskReview, testInfo.project.name);
   await navigator.locator('button[data-file-tree-path="src/planner.rs"]').click();
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=planner.rs`,

@@ -261,3 +261,20 @@ test("returns stacked pictures to the one it was reading once they are drawn aga
   await expect(visual.locator('figure[data-side="after"] img')).toBeVisible();
   await expect.poll(readingPlace).toEqual({ picture: 1, fraction: 0.3 });
 });
+
+test("ends an image's comparison with the files around it", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const { taskReview } = await openVisualReview(page, { file: "release-card.png" });
+  const visual = taskReview.locator("caffold-review-file-viewer caffold-visual-diff");
+  const cards = taskReview.locator(".viewer-adjacent-files");
+  await expect(visual.locator("figure").first()).toBeVisible();
+  await expect(cards).toBeVisible();
+  // The cards sit under the pictures, at the bottom of the viewer.
+  const [cardsBox, visualBox] = await Promise.all([
+    cards.boundingBox(),
+    visual.boundingBox(),
+  ]);
+  expect(Math.abs(cardsBox.y + cardsBox.height - (visualBox.y + visualBox.height)))
+    .toBeLessThanOrEqual(1);
+});

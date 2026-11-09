@@ -31,6 +31,9 @@ The left side lists either:
 
 **Settings → Files** chooses whether folders come before files in these trees.
 
+On a foldable or a tablet held upright, the list folds into a strip on the left
+edge; tap it to open the list over the file, and choosing a file closes it.
+
 ## Read a file
 
 The right side shows the selected file in one of these ways, as the file

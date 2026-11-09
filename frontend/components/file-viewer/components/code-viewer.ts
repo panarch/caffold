@@ -119,6 +119,7 @@ export class CaffoldCodeViewer extends CaffoldElement {
               `,
             )}
           </div>
+          <slot name="end"></slot>
         </div>
       </section>
     `;

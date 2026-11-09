@@ -77,17 +77,6 @@
   display: none;
 }
 
-.task-review-layout {
-  position: relative;
-  display: grid;
-  grid-template-columns:
-    var(--task-review-panel-width, 320px)
-    minmax(360px, 1fr);
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
 .task-review-navigator-pane,
 .task-review-viewer-pane,
 .task-review-navigator,
@@ -189,47 +178,9 @@ caffold-review-selected-file {
   display: none;
 }
 
-.task-review-layout > caffold-pane-resizer {
-  left: var(--task-review-panel-width, 320px);
-}
-
-:host([data-side-pane-collapsed]) .task-review-layout {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-:host([data-side-pane-collapsed]) .task-review-navigator-pane,
-:host([data-side-pane-collapsed]) .task-review-layout > caffold-pane-resizer {
-  display: none;
-}
-
 .task-review-viewer-pane {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
-}
-
-@media (max-width: 560px) {
-  .task-review-workspace {
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .task-review-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  caffold-pane-resizer {
-    display: none;
-  }
-
-  .task-review-navigator-pane,
-  .task-review-viewer-pane {
-    grid-row: 1;
-    grid-column: 1;
-  }
-
-  :host(:not([data-file-selected])) .task-review-viewer-pane,
-  :host([data-file-selected]) .task-review-navigator-pane {
-    display: none;
-  }
 }
 
 @media (pointer: coarse), (max-width: 520px) {

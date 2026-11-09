@@ -426,7 +426,9 @@ test("keeps selectedPath while scope, navigator, and viewer switch independently
     "planner.rs",
   );
 
-  if (testInfo.project.name === "phone") {
+  // An open file has the width below a wide window, with the navigator off
+  // screen.
+  if (testInfo.project.name !== "desktop") {
     await expect(taskReview.locator(".task-review-navigator-axis")).toBeHidden();
     await taskReview.evaluate((review) => review.updateRoute({ navigator: "files" }));
   } else {
@@ -468,7 +470,7 @@ test("supports every scope navigator and viewer combination", { tag: "@all-viewp
   for (const [scope, navigator, representation] of combinations) {
     await test.step(`${scope} / ${navigator} / ${representation}`, async () => {
       await selectTaskReviewScope(tasksPage, scope);
-      if (test.info().project.name === "phone") {
+      if (test.info().project.name !== "desktop") {
         await taskReview.evaluate(
           (review, nextNavigator) =>
             review.updateRoute({ navigator: nextNavigator }),
@@ -585,7 +587,8 @@ test("selects local and remote Branch bases without replacing the picker", { tag
   await baseSelect.evaluate((select) => {
     select.stableBaseSelectorProbe = true;
   });
-  const selectedFile = testInfo.project.name === "phone" ? "" : "file=planner.rs&";
+  // Below a wide window an open file folds the list, base picker included.
+  const selectedFile = testInfo.project.name === "desktop" ? "file=planner.rs&" : "";
   if (selectedFile) {
     await compareTree.locator('button[data-file-tree-path="src/planner.rs"]').click();
   }
@@ -1845,7 +1848,9 @@ test("scrolls the exact visible Review tree and diff through the workspace root"
 
   await workspace.focus();
   await page.keyboard.press("s");
-  if (testInfo.project.name === "phone") {
+  // Below a wide window an open file takes the width: the phone shows it
+  // alone and the drawer folds the list away.
+  if (testInfo.project.name !== "desktop") {
     await expect(selector).toBeHidden();
     await expect(hud).toContainText("Scroll: planner.rs diff");
   } else {
@@ -2188,6 +2193,141 @@ async function returnToPage(page) {
     document.dispatchEvent(new Event("visibilitychange"));
   });
 }
+
+test("ends a changed file with the files before and after it in the list's order", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const { reviewScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const files = taskReview.locator(
+    'caffold-git-diff-changes-tree button[data-file-tree-kind="file"]',
+  );
+  await expect(files.first()).toBeVisible();
+  const listed = () =>
+    files.evaluateAll((buttons) =>
+      buttons.map((button) => button.dataset.fileTreeRelativePath)
+    );
+  const order = await listed();
+  expect(order.length).toBeGreaterThanOrEqual(3);
+  const name = (path) => path.split("/").at(-1);
+  const cards = taskReview.locator(".viewer-adjacent-files");
+  const previous = taskReview.locator(".viewer-adjacent-previous");
+  const next = taskReview.locator(".viewer-adjacent-next");
+
+  await files.nth(1).click();
+  await expect(previous).toContainText(`Previous ${name(order[0])}`);
+  await expect(next).toContainText(`Next ${name(order[2])}`);
+  // A diff shorter than the viewer ends at the viewer's bottom with the cards.
+  const [cardsBox, viewerBox] = await Promise.all([
+    cards.boundingBox(),
+    taskReview.locator("caffold-diff-viewer").boundingBox(),
+  ]);
+  expect(Math.abs(cardsBox.y + cardsBox.height - (viewerBox.y + viewerBox.height)))
+    .toBeLessThanOrEqual(1);
+
+  await next.click();
+  await expect(files.nth(2)).toHaveAttribute("aria-current", "true");
+  await expect(previous).toContainText(name(order[1]));
+
+  await files.first().click();
+  await expect(next).toContainText(name(order[1]));
+  await expect(previous).toHaveCount(0);
+  await files.last().click();
+  await expect(previous).toContainText(name(order.at(-2)));
+  await expect(next).toHaveCount(0);
+
+  // A file the list gains while another is open joins the cards.
+  const lib = order.indexOf("lib.rs");
+  await files.nth(lib).click();
+  await expect(next).toContainText(`Next ${name(order[lib + 1])}`);
+  reviewScenario.includeLiveFile = true;
+  await page.evaluate(() => {
+    const source = window.__caffoldMockEventSources.find(
+      (candidate) =>
+        candidate.url.startsWith("/api/watch?") && candidate.readyState !== 2,
+    );
+    source?.emit("change", {
+      revision: 4,
+      paths: ["src/live-update.rs"],
+      gitStatusChanged: true,
+      gitRefsChanged: false,
+      overflow: false,
+    });
+  });
+  await expect(files).toHaveCount(order.length + 1);
+  const updated = await listed();
+  expect(updated[updated.indexOf("lib.rs") + 1]).toBe("live-update.rs");
+  await expect(next).toContainText("Next live-update.rs");
+
+  // Source reads the file from disk, which the fixture keeps for planner.rs.
+  const planner = updated.indexOf("planner.rs");
+  await files.nth(planner).click();
+  await taskReview.getByRole("button", { name: "Source", exact: true }).click();
+  await expect(taskReview.locator("caffold-code-viewer")).toBeVisible();
+  await expect(previous).toContainText(name(updated[planner - 1]));
+
+  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  await expect(cards).toHaveCount(0);
+});
+
+test("ends a notice about a changed file with the files around it", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page, {
+    configureReview(review) {
+      review.edgeCaseFiles = true;
+    },
+  });
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await taskReview
+    .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="deleted.rs"]')
+    .click();
+  await taskReview.getByRole("button", { name: "Source", exact: true }).click();
+  await expect(taskReview.locator("caffold-review-file-viewer"))
+    .toContainText("This file was deleted in the selected scope.");
+  await expect(taskReview.locator(".viewer-adjacent-files")).toBeVisible();
+});
+
+test("keeps the adjacent files after a long diff's last line and in view sideways", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page, {
+    configureReview(review) {
+      review.workingDiffText = `${"wide ".repeat(60)}\n+${longDiffText("working line")}`;
+    },
+  });
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await taskReview
+    .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="planner.rs"]')
+    .click();
+  const viewer = taskReview.locator("caffold-review-file-viewer");
+  await expect(viewer).toContainText("working line 200");
+  const cards = taskReview.locator(".viewer-adjacent-files");
+  const lines = taskReview.locator("caffold-diff-viewer .diff-lines");
+
+  await lines.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    element.scrollLeft = element.scrollWidth;
+  });
+  await expect.poll(() => lines.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  const placement = await lines.evaluate((element) => {
+    const scroller = element.getBoundingClientRect();
+    const table = element.querySelector(".diff-table").getBoundingClientRect();
+    const end = element.querySelector("slot[name=end]").getBoundingClientRect();
+    return {
+      afterLastLine: Math.abs(end.top - table.bottom),
+      atScrollerBottom: Math.abs(end.bottom - scroller.bottom),
+      left: Math.abs(end.left - scroller.left),
+      width: Math.abs(end.width - element.clientWidth),
+    };
+  });
+  expect(placement.afterLastLine).toBeLessThanOrEqual(1);
+  expect(placement.atScrollerBottom).toBeLessThanOrEqual(1);
+  expect(placement.left).toBeLessThanOrEqual(1);
+  expect(placement.width).toBeLessThanOrEqual(1);
+  await expect(cards).toBeVisible();
+});
 
 function longDiffText(label) {
   return Array.from({ length: 200 }, (_, index) => `${label} ${index + 1}`).join("\n+");

@@ -42,7 +42,7 @@ export class CaffoldGithubPullFilesTree extends CaffoldElement {
   static override styles = styles;
 
   private readonly treeElement = new DrawnRef<CaffoldFileTree>(this);
-  private selectedPath = "";
+  selectedPath = "";
   private fileKeyByPath = new Map<string, string>();
 
   override render() {
@@ -155,11 +155,23 @@ export class CaffoldGithubPullFilesTree extends CaffoldElement {
     return this.fileTree()?.scroller() ?? null;
   }
 
+  // Opens a file of the pull request as choosing its row does.
+  openPath(path: string) {
+    const files = this.state.status === "ready" ? this.state.payload.files : [];
+    const file = files.find((entry) => entry.path === path);
+    if (file) {
+      this.open(file);
+    }
+  }
+
   private openFile(event: CustomEvent<FileTreeSelectDetail>) {
     const file = pullFile(event.detail.node);
-    if (!file) {
-      return;
+    if (file) {
+      this.open(file);
     }
+  }
+
+  private open(file: GitHubPullFile) {
     this.selectedPath = file.path;
     this.dispatchEvent(
       new CustomEvent<OpenGithubPullFileDetail>(
@@ -171,6 +183,12 @@ export class CaffoldGithubPullFilesTree extends CaffoldElement {
         },
       ),
     );
+  }
+
+  // The changed files in the order the list shows them, each once.
+  changedPathsInOrder() {
+    this.performUpdate();
+    return [...new Set(this.fileTree()?.filePathsInOrder() ?? [])];
   }
 
   private fileTree() {

@@ -6,10 +6,7 @@ import {
 } from "../../../../../../../tests/support/custom-element-unit.js";
 
 const previousWindow = globalThis.window;
-let singlePane = false;
-globalThis.window = {
-  matchMedia: () => ({ matches: singlePane }),
-};
+globalThis.window = {};
 const registry = installCustomElementUnitRegistry();
 await import("./page.js");
 const page = registry.element("caffold-github-pull-files-page").prototype;
@@ -43,12 +40,13 @@ test("composes active PR tree/viewer actions and Scroll leaves", () => {
     },
     scrollSurfaceScope: () => ({ surfaces: [viewerSurface] }),
   };
-  const panelResizer = {
-    collapsed: false,
-    getClientRects: () => singlePane || panelResizer.collapsed ? [] : [{}],
+  const shown = { list: true, detail: true };
+  const split = {
+    listShown: () => shown.list,
+    detailShown: () => shown.detail,
     actionHintScope(options) {
       resizerOptions = options;
-      return { targets: [{ id: "separator" }] };
+      return { targets: shown.list ? [{ id: "separator" }] : [] };
     },
   };
   const owner = {
@@ -56,8 +54,7 @@ test("composes active PR tree/viewer actions and Scroll leaves", () => {
     detailView: "viewer",
     tree,
     fileViewer,
-    panelResizer,
-    sidePaneCollapsed: page.sidePaneCollapsed,
+    split,
     currentPullNumber: () => 7,
   };
 
@@ -75,12 +72,14 @@ test("composes active PR tree/viewer actions and Scroll leaves", () => {
     [treeSurface, viewerSurface],
   );
 
-  panelResizer.collapsed = true;
+  shown.list = false;
   assert.deepEqual(page.actionHintScope.call(owner).targets, [viewerTarget]);
   assert.deepEqual(page.scrollSurfaceScope.call(owner).surfaces, [viewerSurface]);
-  panelResizer.collapsed = false;
-
-  singlePane = true;
-  assert.deepEqual(page.actionHintScope.call(owner).targets, [viewerTarget]);
-  assert.deepEqual(page.scrollSurfaceScope.call(owner).surfaces, [viewerSurface]);
+  shown.list = true;
+  shown.detail = false;
+  assert.deepEqual(page.actionHintScope.call(owner).targets, [
+    treeTarget,
+    { id: "separator" },
+  ]);
+  assert.deepEqual(page.scrollSurfaceScope.call(owner).surfaces, [treeSurface]);
 });

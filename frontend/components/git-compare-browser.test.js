@@ -6,8 +6,7 @@ import {
 } from "../tests/support/custom-element-unit.js";
 
 const previousWindow = globalThis.window;
-let singlePane = false;
-globalThis.window = { matchMedia: () => ({ matches: singlePane }) };
+globalThis.window = {};
 const registry = installCustomElementUnitRegistry();
 await import("./git-compare-browser.js");
 const browser = registry.element("caffold-git-compare-browser").prototype;
@@ -38,15 +37,16 @@ test("composes only the Compare tree and viewer that are shown", () => {
     },
     scrollSurfaceScope: () => ({ surfaces: [viewerSurface] }),
   };
+  const shown = { list: true, detail: true };
   const owner = {
     detailView: "viewer",
     compareTree,
     viewer,
-    panelResizer: {
-      collapsed: false,
+    split: {
+      listShown: () => shown.list,
+      detailShown: () => shown.detail,
       actionHintScope: () => ({ targets: [] }),
     },
-    sidePaneCollapsed: browser.sidePaneCollapsed,
   };
   const actions = {
     file: "navigation.file.open",
@@ -69,28 +69,28 @@ test("composes only the Compare tree and viewer that are shown", () => {
     viewerSurface,
   ]);
 
-  owner.panelResizer.collapsed = true;
+  shown.list = false;
   assert.deepEqual(browser.actionHintScope.call(owner, pull).targets, [viewerTarget]);
   assert.deepEqual(browser.scrollSurfaceScope.call(owner, pull).surfaces, [viewerSurface]);
-  owner.panelResizer.collapsed = false;
+  shown.list = true;
 
-  singlePane = true;
-  assert.deepEqual(browser.actionHintScope.call(owner, pull).targets, [viewerTarget]);
-  assert.deepEqual(browser.scrollSurfaceScope.call(owner, pull).surfaces, [viewerSurface]);
-  singlePane = false;
+  shown.detail = false;
+  assert.deepEqual(browser.actionHintScope.call(owner, pull).targets, [treeTarget]);
+  assert.deepEqual(browser.scrollSurfaceScope.call(owner, pull).surfaces, [treeSurface]);
 });
 
 test("hands the resizer its separator action", () => {
   let received = null;
   const owner = {
     detailView: "list",
-    panelResizer: {
+    split: {
+      listShown: () => true,
+      detailShown: () => true,
       actionHintScope(pull) {
         received = pull;
         return { targets: [{ id: "git:compare:separator" }] };
       },
     },
-    sidePaneCollapsed: browser.sidePaneCollapsed,
     compareTree: { actionHintScope: () => ({ targets: [] }) },
     viewer: { actionHintScope: () => ({ targets: [] }) },
   };

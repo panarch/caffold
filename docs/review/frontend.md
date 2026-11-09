@@ -89,10 +89,12 @@ remembers both for each kind of pane.
 A cached inactive review may retain those DOM-local values, but it must release
 filesystem watches, pending requests, and other active lifecycle work.
 
-Responsive review tests must cover both list and viewer roles. Desktop and
-foldable layouts preserve a usable navigator and viewer simultaneously unless
-the person collapses the navigator while a file is open; phone layouts show one
-at a time and expose a semantic file-to-navigator Back action.
+Responsive review tests must cover both list and viewer roles. Wide layouts
+preserve a usable navigator and viewer side by side unless the person collapses
+the navigator while a file is open. Between the phone and wide layouts, an open
+file takes the full width and the navigator opens over it as a drawer from a
+strip at its edge. Phone layouts show one at a time and expose a semantic
+file-to-navigator Back action.
 Test deep paths, unchanged and deleted files, clean scopes, long refs, large
 change sets, appearance extremes, and browser zoom rather than validating only
 the default happy path.

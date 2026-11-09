@@ -451,6 +451,16 @@ export class CaffoldFileTree extends CaffoldElement {
     return this.scrollport.value ?? null;
   }
 
+  // Every file the tree holds, in the order its rows show them with every
+  // directory open.
+  filePathsInOrder() {
+    return filePathsInOrder(
+      this.nodes,
+      this.fileSortMode(),
+      this.hiddenEntriesLast,
+    );
+  }
+
   actionHintScope(pull: ActionHintPull = {}) {
     return this.hints.scope(pull);
   }
@@ -764,6 +774,22 @@ function visibleRows(
   };
   visit(nodes);
   return rows;
+}
+
+function filePathsInOrder(
+  nodes: FileTreeNode[],
+  fileSortMode: FileSortMode,
+  hiddenEntriesLast: boolean,
+): string[] {
+  return sortedNodes(nodes, fileSortMode, hiddenEntriesLast).flatMap((node) => {
+    if (node.kind === "group" || node.kind === "directory") {
+      const children = childState(node);
+      return children.status === "ready"
+        ? filePathsInOrder(children.nodes, fileSortMode, hiddenEntriesLast)
+        : [];
+    }
+    return node.kind === "file" && node.path ? [node.path] : [];
+  });
 }
 
 function sortedNodes(

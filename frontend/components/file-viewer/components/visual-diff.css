@@ -1,6 +1,6 @@
 :host {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
   background: var(--surface);
@@ -28,6 +28,12 @@
 /* The stage is the size every picture is scaled against: a picture shrinks
    to fit it and never grows past its own size, and both sides share one
    scale, so a picture that changed size shows the change. */
+/* What the owner places after the pictures, under the stage. */
+slot[name="end"] {
+  display: block;
+  grid-row: 3;
+}
+
 .visual-stage {
   container: visual-stage / size;
   grid-row: 2;

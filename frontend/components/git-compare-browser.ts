@@ -24,17 +24,18 @@ import {
 } from "./dom.js";
 import "./file-viewer.js";
 import type {
+  AdjacentFile,
   CaffoldReviewFileViewer,
   FileViewerChangeIntentDetail,
+  FileViewerOpenAdjacentDetail,
 } from "./file-viewer.js";
 import { diffViewerPresentation } from "./file-viewer-presentation.js";
 import "./git-compare-tree.js";
-import type { CaffoldGitCompareTree } from "./git-compare-tree.js";
-import "./pane-resizer.js";
 import { CaffoldElement } from "../caffold-element.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
-import type { CaffoldPaneResizer, PaneResizeDetail } from "./pane-resizer.js";
-import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "./review-responsive.js";
+import type { CaffoldGitCompareTree } from "./git-compare-tree.js";
+import "./split-view.js";
+import type { CaffoldSplitView } from "./split-view.js";
 
 import styles from "./git-compare-browser.css.js";
 
@@ -74,7 +75,7 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
   private diffRequestId = 0;
   private compareScrollTop = 0;
   private readonly tree = new DrawnRef<CaffoldGitCompareTree>(this);
-  private readonly resizer = new DrawnRef<CaffoldPaneResizer>(this);
+  private readonly splitView = new DrawnRef<CaffoldSplitView>(this);
   private readonly fileViewer = new DrawnRef<CaffoldReviewFileViewer>(this);
 
   override disconnectedCallback() {
@@ -84,30 +85,36 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
 
   override render() {
     return html`
-      <caffold-git-compare-tree ${drawn(this.tree)}></caffold-git-compare-tree>
-      <caffold-pane-resizer
-        ${drawn(this.resizer)}
+      <caffold-split-view
+        ${drawn(this.splitView)}
         storage-key="caffold:pane-width:git-compare"
         collapsed-storage-key="caffold:pane-collapsed:git-compare"
-        aria-label="Resize review side panel"
-        @caffold:pane-resize=${this.handlePanelResize}
-      ></caffold-pane-resizer>
-      <caffold-review-file-viewer
-        ${drawn(this.fileViewer)}
-        refresh-action="refresh-git-review"
-        @caffold:file-viewer-change-intent=${this.chooseChange}
-      ></caffold-review-file-viewer>
+        resizer-label="Resize review side panel"
+        pane-label="review side panel"
+      >
+        <caffold-git-compare-tree
+          ${drawn(this.tree)}
+          slot="list"
+        ></caffold-git-compare-tree>
+        <caffold-review-file-viewer
+          ${drawn(this.fileViewer)}
+          slot="detail"
+          refresh-action="refresh-git-review"
+          @caffold:file-viewer-change-intent=${this.chooseChange}
+          @caffold:file-viewer-open-adjacent=${this.openAdjacent}
+        ></caffold-review-file-viewer>
+      </caffold-split-view>
     `;
   }
 
   override firstUpdated() {
     this.viewer.setCloseLabel("Back to compare");
     this.setView(this.detailView);
-    this.applyPanelWidth();
   }
 
   deactivate() {
     this.viewer.deactivate();
+    this.split.closeDrawer();
   }
 
   reset() {
@@ -183,6 +190,8 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
     this.rememberCompareScroll();
     this.compareTree.setSelectedPath(path);
     this.setView("viewer");
+    this.split.closeDrawer();
+    this.patchAdjacentFiles();
     const presentation = this.diffPresentation(path, status);
     const loadingTimer = window.setTimeout(() => {
       if (requestId === this.diffRequestId) {
@@ -326,25 +335,22 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
   // and `select` in the compared files, `separator` on the resizer, and
   // `parent`, `details`, `refresh`, and `link` in the viewer.
   actionHintScope(pull: ActionHintPull = {}) {
-    const listActive =
-      !this.sidePaneCollapsed() &&
-      (this.detailView === "list" ||
-        !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches);
+    const split = this.split;
     const clipRoots = [this, ...(pull.clipRoots ?? [])];
     return mergeActionHintScopes(
-      listActive
+      split.listShown()
         ? this.compareTree.actionHintScope({
             ...pull,
             scopeId: `${pull.scopeId}:compare`,
             clipRoots,
           })
         : null,
-      this.panelResizer.actionHintScope({
+      split.actionHintScope({
         scopeId: pull.scopeId,
         actionId: pull.actions?.separator,
         clipRoots,
       }),
-      this.detailView === "viewer"
+      this.detailView === "viewer" && split.detailShown()
         ? this.viewer.actionHintScope({
             ...pull,
             scopeId: `${pull.scopeId}:viewer`,
@@ -355,14 +361,10 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
   }
 
   scrollSurfaceScope(pull: ScrollSurfacePull = {}) {
-    const singlePane = window.matchMedia(
-      REVIEW_SINGLE_PANE_MEDIA_QUERY,
-    ).matches;
-    const listActive =
-      !this.sidePaneCollapsed() && (this.detailView === "list" || !singlePane);
+    const split = this.split;
     const clipRoots = [this, ...(pull.clipRoots ?? [])];
     return mergeScrollSurfaceScopes(
-      listActive
+      split.listShown()
         ? this.compareTree.scrollSurfaceScope({
             ...pull,
             scopeId: `${pull.scopeId}:compare`,
@@ -370,7 +372,7 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
             clipRoots,
           })
         : null,
-      this.detailView === "viewer"
+      this.detailView === "viewer" && split.detailShown()
         ? this.viewer.scrollSurfaceScope({
             ...pull,
             scopeId: `${pull.scopeId}:viewer`,
@@ -381,7 +383,10 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
   }
 
   keyboardNavigationContexts({ scopeId = "" }: { scopeId?: string } = {}) {
-    return scopeId && !this.hidden && this.detailView === "viewer"
+    return scopeId &&
+      !this.hidden &&
+      this.detailView === "viewer" &&
+      this.split.detailShown()
       ? this.viewer.keyboardNavigationContexts({
           scopeId: `${scopeId}:viewer`,
         })
@@ -397,29 +402,15 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
       this.detailView !== nextView || this.dataset.detailView !== nextView;
     this.detailView = nextView;
     this.dataset.detailView = this.detailView;
-    this.applySidePane();
+    this.split.setDetailOpen(nextView === "viewer");
     if (changed) {
       this.emitStateChange();
     }
   }
 
-  /**
-   * The compared-files tree the workspace's side pane toggle hides and shows.
-   *
-   * It collapses only while the viewer is showing a file, the same state in
-   * which the single-pane layout shows the viewer instead of the tree.
-   */
+  // The compared-files tree the workspace's side pane toggle hides and shows.
   sidePane() {
-    return {
-      label: "review side panel",
-      beside: !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches,
-      collapsible: this.detailView === "viewer",
-      collapsed: this.sidePaneCollapsed(),
-      setCollapsed: (collapsed: boolean) => {
-        this.panelResizer.setCollapsed(collapsed);
-        this.applySidePane();
-      },
-    };
+    return this.split.sidePane();
   }
 
   // The children are drawn the first time one is needed, which can be before
@@ -429,9 +420,9 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
     return this.tree.value as CaffoldGitCompareTree;
   }
 
-  private get panelResizer() {
+  private get split() {
     this.performUpdate();
-    return this.resizer.value as CaffoldPaneResizer;
+    return this.splitView.value as CaffoldSplitView;
   }
 
   private get viewer() {
@@ -547,7 +538,7 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
     const file = this.fileForPath(path);
     if (!file) {
       this.compareTree.setSelectedPath("");
-      if (window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches) {
+      if (this.split.showsOnePane()) {
         this.showList();
       } else {
         this.viewer.setNotice("This file is no longer part of the comparison.");
@@ -635,20 +626,6 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
     }
   }
 
-  private applySidePane() {
-    this.toggleAttribute("data-side-pane-collapsed", this.sidePaneCollapsed());
-    this.dispatchEvent(
-      new CustomEvent("caffold:side-pane-change", {
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
-
-  private sidePaneCollapsed() {
-    return this.detailView === "viewer" && this.panelResizer.collapsed;
-  }
-
   private diffPresentation(
     path: string,
     status = "",
@@ -699,29 +676,42 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
     });
   }
 
-  private handlePanelResize(event: CustomEvent<PaneResizeDetail>) {
+  // A file the person goes to from the end of another opens as a choice in
+  // the tree does.
+  private openAdjacent(event: CustomEvent<FileViewerOpenAdjacentDetail>) {
     event.stopPropagation();
-    if (event.detail.phase === "start") {
-      this.classList.add("is-resizing-panel");
-      return;
-    }
-    if (event.detail.phase === "end") {
-      this.classList.remove("is-resizing-panel");
-      return;
-    }
-    if (event.detail.phase === "update") {
-      this.applyPanelWidth();
-    }
+    this.compareTree.openPath(event.detail.path);
   }
 
-  private applyPanelWidth() {
-    this.style.setProperty(
-      "--git-compare-panel-width",
-      `${this.panelResizer.value}px`,
-    );
+  // The open file ends with the compared files before and after it, in the
+  // tree's order.
+  private patchAdjacentFiles() {
+    const path =
+      this.detailView === "viewer" ? this.compareTree.selectedPath : "";
+    const order = path ? this.compareTree.changedPathsInOrder() : [];
+    const index = order.indexOf(path);
+    const describe = (candidate: string | undefined): AdjacentFile | null => {
+      const file = candidate ? this.fileForPath(candidate) : null;
+      if (!file) {
+        return null;
+      }
+      const shown = file.repoRelativePath || file.path;
+      const slash = shown.lastIndexOf("/");
+      return {
+        path: file.path,
+        name: shown.slice(slash + 1),
+        folder: slash > 0 ? shown.slice(0, slash) : "",
+      };
+    };
+    this.viewer.setAdjacentFiles({
+      previous: index > 0 ? describe(order[index - 1]) : null,
+      next: index >= 0 ? describe(order[index + 1]) : null,
+    });
   }
 
   private emitStateChange() {
+    this.split.setListName("Changes", this.compare?.files?.length ?? null);
+    this.patchAdjacentFiles();
     this.dispatchEvent(
       new CustomEvent<GitCompareStateChangeDetail>(
         "caffold:git-compare-state-change",
