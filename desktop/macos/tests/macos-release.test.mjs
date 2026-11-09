@@ -52,6 +52,14 @@ function workflowJob(workflow, name) {
   return match[0];
 }
 
+function workflowStep(workflow, name) {
+  const match = workflow.match(
+    new RegExp(`^      - name: ${name}\\n([\\s\\S]*?)(?=^      - name: |(?![\\s\\S]))`, "m"),
+  );
+  assert.ok(match, `${name} must exist`);
+  return match[0];
+}
+
 test(
   "macOS package metadata has one versioned arm64 archive identity",
   { skip: macosArm64Only },
@@ -158,9 +166,11 @@ test("release checks the source before versioning and packaging on macOS", () =>
   assert.match(source, /^\s+workflow_dispatch:$/m);
   assert.doesNotMatch(source, /^\s+(push|pull_request|schedule):$/m);
   assert.match(source, /^\s+default: dry-run$/m);
-  for (const action of ["dry-run", "release-patch", "release-minor", "release-major", "resume"]) {
-    assert.match(source, new RegExp(`^\\s+- ${action}$`, "m"));
-  }
+  const actions = source.match(/^        options:\n((?:          - .+\n)+)/m)?.[1] ?? "";
+  assert.deepEqual(
+    [...actions.matchAll(/- (.+)/g)].map(([, action]) => action),
+    ["dry-run", "release-patch", "release-minor", "release-major", "rc-patch", "rc-minor", "rc-major", "resume"],
+  );
   assert.doesNotMatch(source + common + macos, /git bundle|candidate-artifact|release-sha:|restore-release-candidate/);
   assert.doesNotMatch(source, /^  (prepare|commit_release):/m);
 
@@ -198,7 +208,7 @@ test("release checks the source before versioning and packaging on macOS", () =>
   assert.match(browser, /name: playwright-results-\$\{\{ matrix\.project \}\}/);
   assert.match(browser, /if: failure\(\)/);
 
-  // Versioning, candidate verification, and source push share one worktree.
+  // Versioning, release commit verification, and source push share one worktree.
   // Direct dispatch explains its purpose and offers only verification and packaging.
   assert.match(macos, /^  workflow_call:$/m);
   const dispatch = macos.match(/^  workflow_dispatch:\n([\s\S]*?)(?=^permissions:)/m)?.[1];
@@ -214,12 +224,17 @@ test("release checks the source before versioning and packaging on macOS", () =>
   assert.match(macos, /git checkout -B main "\$\{REQUESTED_SHA\}"/);
   assert.match(macos, /main changed after this workflow was dispatched/);
   assert.equal(macos.match(/git commit -m "Release v/g)?.length, 1);
-  for (const name of [
-    "Bump the release version locally", "Require an unused release version",
-    "Commit the local release candidate", "Push the verified release commit",
+  const stableOrCandidate = "startsWith(inputs.action, 'release-') || startsWith(inputs.action, 'rc-')";
+  for (const [name, condition] of [
+    ["Bump the release version locally", stableOrCandidate],
+    ["Require an unused release version", stableOrCandidate],
+    ["Commit the release version locally", stableOrCandidate],
+    ["Push the verified release commit", "startsWith(inputs.action, 'release-')"],
+    ["Push the verified release candidate tag", "startsWith(inputs.action, 'rc-')"],
   ]) {
-    assert.ok(macos.includes(`- name: ${name}\n        if: startsWith(inputs.action, 'release-')`));
+    assert.ok(macos.includes(`- name: ${name}\n        if: ${condition}\n`), `${name} runs for ${condition}`);
   }
+  assert.match(macos, /if \[\[ "\$\{RELEASE_ACTION\}" == rc-\* \]\]; then\n\s+args\+=\(--rc\)/);
   const ordered = [
     "npm ci --omit=dev",
     "node scripts/bump-release-version.mjs", 'git commit -m "Release v${RELEASE_VERSION}"',
@@ -227,8 +242,14 @@ test("release checks the source before versioning and packaging on macOS", () =>
     "cargo test --locked", "cargo clippy --locked --all-targets -- -D warnings",
     "desktop/macos/release --dry-run", "uses: actions/upload-artifact@",
     "gh auth setup-git", "main changed after verification", 'git push origin "${RELEASE_SHA}:refs/heads/main"',
+    'git push origin "${RELEASE_SHA}:refs/tags/${tag}"',
   ].map((command) => macos.indexOf(command));
   assert.ok(ordered.every((index, i) => index >= 0 && (i === 0 || index > ordered[i - 1])));
+  // A release candidate publishes its tag alone; main keeps the stable version.
+  const candidateTagPush = workflowStep(macos, "Push the verified release candidate tag");
+  assert.match(candidateTagPush, /Release source changed during verification/);
+  assert.match(candidateTagPush, /git ls-remote origin "refs\/tags\/\$\{tag\}"/);
+  assert.doesNotMatch(candidateTagPush, /refs\/heads\/main|main changed/);
   assert.match(macos, /Release source changed during verification/);
   assert.match(macos, /git ls-remote origin refs\/heads\/main/);
   for (const suite of ["test-system-status", "test-updater"]) {
@@ -271,7 +292,7 @@ test("release checks the source before versioning and packaging on macOS", () =>
 
   assert.match(
     homebrewJob,
-    /^    if: inputs\.action != 'dry-run'$/m,
+    /^    if: startsWith\(inputs\.action, 'release-'\) \|\| inputs\.action == 'resume'$/m,
   );
   assert.match(homebrewJob, /^\s+environment: release$/m);
   assert.match(homebrewJob, /^\s+contents: read$/m);
@@ -315,13 +336,41 @@ test("release checks the source before versioning and packaging on macOS", () =>
 
   // The website's production branch follows the release only after Homebrew
   // serves it, and only ever fast-forwards.
-  assert.match(siteJob, /^    if: inputs\.action != 'dry-run'$/m);
+  assert.match(
+    siteJob,
+    /^    if: startsWith\(inputs\.action, 'release-'\) \|\| inputs\.action == 'resume'$/m,
+  );
   assert.match(siteJob, /^\s+contents: write$/m);
   assert.match(siteJob, /RELEASE_SHA: \$\{\{ needs\.macos\.outputs\.release_sha \}\}/);
   assert.match(siteJob, /git push origin "\$\{RELEASE_SHA\}:refs\/heads\/site"/);
   // A shallow checkout lacks site's commit, and Git rejects the push.
   assert.match(siteJob, /^\s+fetch-depth: 0$/m);
   assert.doesNotMatch(siteJob, /HOMEBREW_TAP_TOKEN|--force|gh release create/);
+});
+
+test("a release candidate is a pre-release whose notes start from the candidate before it", () => {
+  const releaseJob = workflowJob(readFileSync(releaseWorkflow, "utf8"), "publish_release");
+  const start = releaseJob.indexOf('            notes_start=""');
+  const end = releaseJob.indexOf('            release_args+=(--notes-start-tag "${notes_start}")');
+  assert.ok(start >= 0 && end > start && releaseJob.indexOf("            release_args=(") < start);
+  // Actions runs each step with bash -eo pipefail.
+  const notesFor = (version) => run("bash", ["-c", `
+    set -eo pipefail
+    gh() {
+      [[ "$*" == "api repos/panarch/caffold/releases/latest --jq .tag_name" ]] || return 1
+      echo v0.22.2
+    }
+    GITHUB_REPOSITORY=panarch/caffold
+    RELEASE_VERSION=${version}
+    release_args=()
+${releaseJob.slice(start, end)}
+    echo "\${notes_start} \${release_args[*]}"
+  `]).trim();
+
+  assert.equal(notesFor("0.23.0"), "v0.22.2");
+  assert.equal(notesFor("0.23.0-rc.1"), "v0.22.2 --prerelease");
+  assert.equal(notesFor("0.23.0-rc.3"), "v0.23.0-rc.2 --prerelease");
+  assert.equal(notesFor("0.23.0-rc.10"), "v0.23.0-rc.9 --prerelease");
 });
 
 test("failed or skipped checks block the release chain in every mode", () => {
@@ -341,25 +390,37 @@ test("failed or skipped checks block the release chain in every mode", () => {
   assert.deepEqual(dependencies("publish_site"), ["macos", "publish_homebrew"]);
   // These jobs intentionally use Actions' default success() condition. A
   // status-function override would invalidate this failure-propagation model.
+  const stableOrResume = [
+    "startsWith(inputs.action, 'release-') || inputs.action == 'resume'",
+    (action) => action.startsWith("release-") || action === "resume",
+  ];
+  const conditions = {
+    macos: [undefined, () => true],
+    publish_release: ["inputs.action != 'dry-run'", (action) => action !== "dry-run"],
+    publish_homebrew: stableOrResume,
+    publish_site: stableOrResume,
+  };
   for (const name of chain) {
     const condition = workflowJob(source, name).match(/^    if: (.+)$/m)?.[1];
-    assert.equal(condition, name === "macos" ? undefined : "inputs.action != 'dry-run'");
+    assert.equal(condition, conditions[name][0]);
   }
   const runChain = (action, overrides = {}) => {
     const results = Object.fromEntries(requiredChecks.map((name) => [name, "success"]));
     for (const name of requiredChecks) results[name] = overrides[name] ?? results[name];
     for (const name of chain) {
       const enabled = dependencies(name).every((dependency) => results[dependency] === "success")
-        && (name === "macos" || action !== "dry-run");
+        && conditions[name][1](action);
       results[name] = enabled ? overrides[name] ?? "success" : "skipped";
     }
     return results;
   };
-  for (const action of ["dry-run", "resume", "release-patch", "release-minor", "release-major"]) {
+  for (const action of [
+    "dry-run", "resume", "release-patch", "release-minor", "release-major", "rc-patch", "rc-minor", "rc-major",
+  ]) {
     const success = runChain(action);
     assert.equal(success.macos, "success");
     assert.equal(success.publish_release, action === "dry-run" ? "skipped" : "success");
-    assert.equal(success.publish_homebrew, success.publish_release);
+    assert.equal(success.publish_homebrew, action.startsWith("rc-") ? "skipped" : success.publish_release);
     assert.equal(success.publish_site, success.publish_homebrew);
     for (const name of [...requiredChecks, "macos", "publish_release", "publish_homebrew"]) {
       for (const result of ["failure", "cancelled", "skipped"]) {

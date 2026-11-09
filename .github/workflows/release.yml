@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: Verify, create a version release, or resume the current version
+        description: Verify, create a version release or release candidate, or resume the current version
         required: true
         default: dry-run
         type: choice
@@ -14,6 +14,9 @@ on:
           - release-patch
           - release-minor
           - release-major
+          - rc-patch
+          - rc-minor
+          - rc-major
           - resume
 
 permissions:
@@ -126,6 +129,21 @@ jobs:
               --title "Caffold ${tag}"
               --generate-notes
             )
+            # The notes start from a named tag rather than GitHub's choice, so a
+            # stable release never starts from a release candidate: a later
+            # candidate starts from the one before it, every other release from
+            # the latest stable one.
+            notes_start=""
+            if [[ "${RELEASE_VERSION}" =~ ^(.+)-rc\.([1-9][0-9]*)$ ]]; then
+              release_args+=(--prerelease)
+              if (( BASH_REMATCH[2] > 1 )); then
+                notes_start="v${BASH_REMATCH[1]}-rc.$(( BASH_REMATCH[2] - 1 ))"
+              fi
+            fi
+            if [[ -z "${notes_start}" ]]; then
+              notes_start="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)"
+            fi
+            release_args+=(--notes-start-tag "${notes_start}")
             if tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${tag}" --jq .sha 2>/dev/null)"; then
               if [[ "${tag_sha}" != "${RELEASE_SHA}" ]]; then
                 echo "${tag} points to ${tag_sha}, not ${RELEASE_SHA}." >&2
@@ -153,7 +171,7 @@ jobs:
     needs:
       - macos
       - publish_release
-    if: inputs.action != 'dry-run'
+    if: startsWith(inputs.action, 'release-') || inputs.action == 'resume'
     environment: release
     runs-on: macos-26
     timeout-minutes: 20
@@ -243,7 +261,7 @@ jobs:
     needs:
       - macos
       - publish_homebrew
-    if: inputs.action != 'dry-run'
+    if: startsWith(inputs.action, 'release-') || inputs.action == 'resume'
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
