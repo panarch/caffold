@@ -324,34 +324,19 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn version_query_preserves_missing_fields_and_rejects_malformed_versions() {
-        use std::os::unix::fs::PermissionsExt;
-        let directory = tempfile::tempdir().unwrap();
-        let executable = directory.path().join("codex");
-        for (response, valid) in [
-            (r#"{"status":"running","cliVersion":"0.162.1"}"#, true),
-            (
-                r#"{"status":"running","managedCodexPath":"/home/example/.codex/packages/standalone/current/bin/codex","managedCodexVersion":"0.162.1","cliVersion":"0.155.1","appServerVersion":"0.166.0"}"#,
-                true,
-            ),
-            (
-                r#"{"status":"running","managedCodexVersion":"invalid"}"#,
-                false,
-            ),
-            (r#"{"status":"running","appServerVersion":17}"#, false),
-            (r#"{}"#, false),
+        for (fixture, valid) in [
+            ("fake-codex-version-cli-only", true),
+            ("fake-codex-version-every-field", true),
+            ("fake-codex-version-invalid-managed-version", false),
+            ("fake-codex-version-numeric-app-server-version", false),
+            ("fake-codex-version-empty", false),
         ] {
-            std::fs::write(
-                &executable,
-                format!("#!/bin/sh\nprintf '%s' '{response}'\n"),
-            )
-            .unwrap();
-            std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
-            let result = daemon_versions(&executable).await;
+            let result = daemon_versions(&checked_in_codex_fixture(fixture)).await;
             if valid {
                 let daemon = result.unwrap();
                 assert!(daemon.managed_executable().is_none());
             } else {
-                assert!(result.is_err(), "{response}");
+                assert!(result.is_err(), "{fixture}");
             }
         }
     }
