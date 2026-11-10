@@ -182,6 +182,11 @@ export class CaffoldSettingsRemoteAccessPage extends CaffoldElement {
                 data-status-diagnostic
                 ?hidden=${!status?.diagnosticMessage}
               >${status?.diagnosticMessage ?? ""}</p>
+              <p
+                class="settings-remote-diagnostic"
+                data-status-failure-detail
+                ?hidden=${!status?.failureDetail}
+              ><samp>${status?.failureDetail ?? ""}</samp></p>
             </div>
             <div class="settings-remote-actions">
               <button

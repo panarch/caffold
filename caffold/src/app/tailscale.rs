@@ -408,7 +408,12 @@ impl TailscaleService {
         self.status.read().await.clone()
     }
 
-    async fn publish(&self, status: TailscaleStatus, failure: Option<Failure>) -> TailscaleStatus {
+    async fn publish(
+        &self,
+        mut status: TailscaleStatus,
+        failure: Option<Failure>,
+    ) -> TailscaleStatus {
+        status.failure_detail = failure.as_ref().map(|failure| failure.detail.clone());
         let mut failure_log = self.failure_log.lock().await;
         if let Some(failure) = failure_log.record(failure) {
             warn!(detail = %failure.detail, "{}", failure.event);
@@ -422,7 +427,7 @@ struct Inspection {
     status: TailscaleStatus,
     failure: Option<Failure>,
     /// The CLI that answered, with what its `status --json` said about this
-    /// host. The description only goes into failure logs.
+    /// host. The description only goes into failure details.
     cli: Option<(PathBuf, String)>,
 }
 
@@ -1060,6 +1065,58 @@ mod tests {
             .unwrap();
         assert_eq!(expanded_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert!(expanded_runner.calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn answers_with_the_failure_as_logged_wherever_the_request_comes_from() {
+        let runner = MockTailscaleRunner::with_responses([
+            response(true, node_status("Running")),
+            response(true, r#"{"Web":{}}"#),
+            response(false, "Access denied: serve config denied"),
+            response(true, node_status("Running")),
+            response(false, "failed to connect"),
+        ]);
+        let service = service(runner);
+        let app = router_with_service(service.clone());
+        let body = |response: axum::response::Response| async {
+            serde_json::from_slice::<Value>(&to_bytes(response.into_body(), 8192).await.unwrap())
+                .unwrap()
+        };
+
+        let local = body(
+            app.clone()
+                .oneshot(
+                    Request::put("/api/tailscale/serve")
+                        .header(HOST, "127.0.0.1:5178")
+                        .header("origin", "http://127.0.0.1:5178")
+                        .header("content-type", "application/json")
+                        .body(Body::from(r#"{"enabled":true}"#))
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        let (_, enable_failure) = logged_failure(&service).await.unwrap();
+        assert_eq!(local["state"], "failed");
+        assert!(enable_failure.contains("exited with code 1: Access denied: serve config denied"));
+        assert_eq!(local["failureDetail"], enable_failure.as_str());
+
+        let remote = body(
+            app.oneshot(
+                Request::get("/api/tailscale/status")
+                    .header(HOST, "studio.example.ts.net")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+        )
+        .await;
+        let (_, status_failure) = logged_failure(&service).await.unwrap();
+        assert_eq!(remote["state"], "failed");
+        assert!(status_failure.contains("exited with code 1: failed to connect"));
+        assert_eq!(remote["failureDetail"], status_failure.as_str());
     }
 
     fn service(runner: MockTailscaleRunner) -> TailscaleService {

@@ -47,6 +47,9 @@ pub(super) struct TailscaleStatus {
     pub(super) reason_code: TailscaleReason,
     pub(super) diagnostic_message: String,
     pub(super) tailnet_url: Option<String>,
+    /// The failure behind this status as the log records it: the command,
+    /// what Tailscale printed, and what it reports about this host.
+    pub(super) failure_detail: Option<String>,
 }
 
 impl TailscaleStatus {
@@ -60,6 +63,7 @@ impl TailscaleStatus {
             reason_code,
             diagnostic_message: diagnostic_message.into(),
             tailnet_url: None,
+            failure_detail: None,
         }
     }
 
@@ -69,6 +73,7 @@ impl TailscaleStatus {
             reason_code: TailscaleReason::ServeReady,
             diagnostic_message: "Caffold is available through Tailscale Serve.".to_string(),
             tailnet_url: Some(url),
+            failure_detail: None,
         }
     }
 }
@@ -200,7 +205,7 @@ pub(super) struct TailscaleNodeResponse {
 }
 
 /// Summarizes what `tailscale status --json` reports about this host, for
-/// failure logs only.
+/// failure details only.
 pub(super) fn describe_node(status_json: &str) -> String {
     let status = serde_json::from_str::<Value>(status_json).unwrap_or(Value::Null);
     let version = status

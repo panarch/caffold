@@ -14,6 +14,10 @@ import {
 const TAILNET_URL = "https://caffold-review-host.long-tailnet-name.ts.net/";
 const REPLACEMENT_TAILNET_URL =
   "https://caffold-replacement-host.long-tailnet-name.ts.net/";
+const FAILURE_DETAIL =
+  "/usr/bin/tailscale serve --bg --yes --https=443 http://127.0.0.1:5178 exited with code 1: " +
+  "sending serve config: Access denied: serve config denied; " +
+  "Tailscale 1.90.0, HTTPS capability present, health: none";
 
 function tailscaleStatus(state, overrides = {}) {
   return {
@@ -121,6 +125,7 @@ test("enables, retries, and disables only Caffold's Serve mapping", { tag: "@ser
       await firstUpdateGate;
       current = tailscaleStatus("failed", {
         reasonCode: "serveEnableFailed",
+        failureDetail: FAILURE_DETAIL,
       });
     } else {
       current = tailscaleStatus(body.enabled ? "ready" : "serveOff");
@@ -145,6 +150,8 @@ test("enables, retries, and disables only Caffold's Serve mapping", { tag: "@ser
   await expect(
     remoteAccess.getByRole("heading", { name: "Remote access setup failed" }),
   ).toBeVisible();
+  const failureDetail = remoteAccess.locator("[data-status-failure-detail]");
+  await expect(failureDetail).toHaveText(FAILURE_DETAIL);
 
   await revealActionTarget(
     page,
@@ -154,6 +161,7 @@ test("enables, retries, and disables only Caffold's Serve mapping", { tag: "@ser
   await expect(
     remoteAccess.getByRole("heading", { name: "Private access is ready" }),
   ).toBeVisible();
+  await expect(failureDetail).toBeHidden();
   await revealActionTarget(
     page,
     remoteAccess.getByRole("button", { name: "Disable" }),

@@ -14,6 +14,8 @@ export interface TailscaleStatus {
   state: TailscaleState;
   reasonCode: string;
   diagnosticMessage: string;
+  /** What the server logged about the failure behind this status. */
+  failureDetail: string;
   tailnetUrl: string | null;
   canManage: boolean;
 }
@@ -304,6 +306,8 @@ export function normalizeTailscaleStatus(payload: unknown): TailscaleStatus {
       typeof value.diagnosticMessage === "string"
         ? value.diagnosticMessage
         : "Tailscale status is unavailable.",
+    failureDetail:
+      typeof value.failureDetail === "string" ? value.failureDetail : "",
     tailnetUrl,
     canManage: value.canManage === true,
   };
