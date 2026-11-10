@@ -19,18 +19,19 @@ Select a Section's name to open it. An open Section offers, for its directory:
   [Review changes](../review/changes.md).
 - A [terminal](terminal.md) in the Section's directory, from the last button
   in the header.
-- **Existing conversations**, which forks a Codex, Claude, or Grok conversation into the
-  Section. See [Fork a conversation](fork.md).
+- **Existing conversations**, which forks a Codex, Claude Code, or Grok
+  conversation into the Section. See [Fork a conversation](fork.md).
 
 ![A Section opened: New Task in its directory, existing conversations, and its GitHub repository](../assets/screenshots/section-detail-light-desktop.png#only-light)
 ![A Section opened: New Task in its directory, existing conversations, and its GitHub repository](../assets/screenshots/section-detail-dark-desktop.png#only-dark)
 
 ## Pin a Task
 
-Open a Task's details from the button beside its title and choose **Pin task**.
-The Task moves to **Pinned** at the top of the Task list and to the top of the
-[Task Switcher](../keyboard.md#switch-tasks-t). Choose **Unpin task** to return
-it to the top of its Section. Archiving a Task unpins it.
+Open the Task, choose **Task details** at its top right, and choose
+**Pin task**. The Task moves to **Pinned** at the top of the Task list and to
+the top of the [Task Switcher](../keyboard.md#switch-tasks-t). Choose
+**Unpin task** to return it to the top of its Section. Archiving a Task unpins
+it.
 
 A Section whose Tasks are all pinned stays in the list, so you can still open
 it.

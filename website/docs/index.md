@@ -29,6 +29,9 @@ foldable, tablet, or phone.</p>
 ```sh
 # macOS
 brew install --cask panarch/tap/caffold
+```
+
+```sh
 # Linux
 curl -fsSL https://caffold.dev/install.sh | sh
 ```
@@ -219,7 +222,7 @@ Browse the folders and open a document to read it.
 ### Your agents, your settings
 
 Use your installed CLIs with their own [sign-in, models, and approval modes](get-started/agents.md).
-[Hand a Task to another agent](tasks/worktrees.md#continue-with-another-agent)
+[Continue a Task's work with another agent](tasks/worktrees.md#continue-with-another-agent)
 in the same worktree.
 
 </section>

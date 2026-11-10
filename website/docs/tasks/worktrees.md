@@ -9,7 +9,7 @@ continue in the worktree.
 
 Ask the agent in the Task, for example:
 
-```text
+```{ .text .cf-prompt }
 Prepare this task in an isolated worktree. Leave my current checkout changes in place. Stop when the worktree is ready.
 ```
 
@@ -17,7 +17,7 @@ The agent prepares the worktree with a tool Caffold gives it, and the turn ends
 there. If the Task's [terminal](terminal.md) was open, it closes, and the next
 one starts in the worktree. Your next prompt runs in the worktree:
 
-```text
+```{ .text .cf-prompt }
 Now review PR #123.
 ```
 
@@ -36,7 +36,7 @@ prepared. Caffold keeps these worktrees under `worktrees/` in its
 By default, staged, unstaged, and untracked changes stay in your checkout. To
 take them along, say so:
 
-```text
+```{ .text .cf-prompt }
 Move this task and my current changes into an isolated worktree.
 ```
 
@@ -57,13 +57,15 @@ rebase, or changes inside a submodule, stop the move instead.
 
 ## Continue with another agent
 
-Open the model picker beside the follow-up prompt. Select another agent, such
-as **Claude**, then choose **Continue with Claude**. Review the model and its
-options in the continuation dialog before continuing.
+Continuing with another agent starts a new Task, run by that agent, on the
+same files. The new Task reads the previous one's history and the current
+files, summarizes where the work stands, and waits for your next request; the
+previous agent is not asked for a summary.
 
-The selected model reads the previous Task's history
-and current files, summarizes the situation, and waits for your next request.
-The previous model is not asked to generate a summary.
+1. Open the model picker beside the follow-up prompt and select another agent,
+   such as **Claude**.
+2. Choose **Continue with Claude**, review the model and its options in the
+   dialog, and continue.
 
 ![Choose another agent from the model picker](../assets/screenshots/task-handoff-picker-light-desktop.png#only-light)
 ![Choose another agent from the model picker](../assets/screenshots/task-handoff-picker-dark-desktop.png#only-dark)
@@ -71,10 +73,10 @@ The previous model is not asked to generate a summary.
 ![Continue with another agent](../assets/screenshots/task-handoff-light-desktop.png#only-light)
 ![Continue with another agent](../assets/screenshots/task-handoff-dark-desktop.png#only-dark)
 
-The same worktree, including uncommitted changes and build output, moves to the
-new Task. The previous Task stays in Active so you can read its conversation;
-its notice links to the Task that can continue working there. For an ordinary
-directory or a worktree Caffold did not prepare, both Tasks remain usable.
+A worktree Caffold prepared moves to the new Task with its uncommitted changes
+and build output, and the previous Task stays in Active so you can read its
+conversation; its notice links to the new Task. In an ordinary directory or a
+worktree Caffold did not prepare, both Tasks remain usable.
 
 Creating the Task and receiving its summary are separate steps. If creation
 succeeds but opening fails, use **Open created Task**. If the connection ends

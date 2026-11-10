@@ -88,26 +88,23 @@ not use a second credit for it.
 
 ## Antigravity
 
-Check the installed CLI and its saved sign-in here. Opening this
-page checks the installation, account, plan, quota, and available models once
-when the CLI is ready and no refresh or runtime restart is running.
-The header **Refresh** repeats that check
-using the CLI's saved sign-in, without sending a model prompt. If sign-in is
-needed, run `agy` in a terminal on the host and complete it there. Usage lists each
-reported model group and period as a percentage used with the reset time in
-your local timezone. **Service status** opens Google AI Studio status.
+The Antigravity page shows your **Usage** for each model group with its reset
+time, the installed **CLI**, the **Google account** and its plan, and whether
+the **Models** catalog is loaded. Caffold reads them when you open the page and
+when you choose **Refresh**, without sending a prompt to a model.
+**Service status** opens Google AI Studio's status page. If you are not signed
+in, run `agy` on the host; see
+[Set up your agents](../get-started/agents.md#antigravity).
 
-**Runtime** shows the runner's PID, build, held sessions and idle timeout.
-**Restart runtime** asks for confirmation, then ends running Antigravity turns
-and starts the installed runner binary. Saved conversations and Google sign-in
-remain; open a Task to resume its conversation.
+**Runtime** shows Caffold's Antigravity runner, the process that keeps
+Antigravity sessions going: whether it runs and its process ID, the
+**Sessions** it holds, its build, and its **Idle timeout**.
+**Restart runtime** asks for confirmation, ends running Antigravity turns, and
+starts the runner again from the installed Caffold. Saved conversations and
+the sign-in remain; open a Task to resume its conversation.
 
 ![Antigravity runtime status and restart control](../assets/screenshots/settings-antigravity-runtime-light-desktop.png#only-light)
 ![Antigravity runtime status and restart control](../assets/screenshots/settings-antigravity-runtime-dark-desktop.png#only-dark)
-
-Refresh and restart progress update while the page is shown.
-Follow [Set up Antigravity](../get-started/agents.md#antigravity) for installation
-and sign-in steps.
 
 ## About Caffold
 

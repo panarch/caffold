@@ -78,7 +78,8 @@ screen, the left Note fills the screen; widening it brings the pair back.
 
 ## Where Notes are kept
 
-Notes are stored with Caffold's data on the host. Caffold does not keep earlier
-versions of a Note, so content an agent rewrites or deletes cannot be
-recovered, and uninstalling with `--zap` deletes every Note. See
-[Data and privacy](../reference/data-and-privacy.md).
+Notes are stored with Caffold's data on the host; see
+[Data and privacy](../reference/data-and-privacy.md). Caffold does not keep
+earlier versions of a Note, so content an agent rewrites or deletes cannot be
+recovered, and [removing Caffold's data](../reference/uninstall.md) deletes
+every Note.
