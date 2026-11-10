@@ -111,7 +111,7 @@ verify_archive_command() {
 # The checksum beside the archive matches, the archive holds exactly the two
 # binaries for this machine, they ask for no newer glibc or libstdc++ than the
 # release supports and for no library outside the system's, and the server
-# answers with the expected version.
+# answers with the expected version and a build ID that names its commit.
 verify_archive() {
   local archive="$1"
   local expected_version="$2"
@@ -207,6 +207,12 @@ verify_serves() {
     exit 1
   fi
   rm -rf -- "${home}"
+  local build_id
+  build_id="$(sed -n 's/.*"buildId":"\([^"]*\)".*/\1/p' <<<"${answered}")"
+  if [[ ! "${build_id}" =~ ^[0-9a-f]{8}(-dirty)?\.[0-9]+$ ]]; then
+    echo "caffold serve answered with build ID ${build_id}, which names no commit; Git could not read the checkout." >&2
+    exit 1
+  fi
 }
 
 metadata() {
@@ -227,6 +233,7 @@ Commands:
   verify-archive [archive] [--expected-version <version>]
                   check an archive against its checksum, this machine, the
                   supported glibc and libstdc++, and its server's version
+                  and build ID
   metadata        print the release identity as key=value pairs
 EOF
 }

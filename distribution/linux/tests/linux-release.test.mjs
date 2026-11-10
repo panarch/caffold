@@ -28,6 +28,7 @@ test("Linux Release builds each architecture in a glibc 2.28 container", () => {
   assert.match(job, /fail-fast: false/);
   const ordered = [
     "ref: ${{ inputs.release_sha || github.sha }}",
+    'git config --global --add safe.directory "${GITHUB_WORKSPACE}"',
     "--default-toolchain 1.96.0",
     "node-version: 26",
     "npm ci --omit=dev",
