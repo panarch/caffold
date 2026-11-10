@@ -308,11 +308,20 @@ test("installs a named version, such as a release candidate", (t) => {
   assert.equal(wrong.stderr, "caffold install: latest is not a Caffold version, such as 0.24.0.\n");
 });
 
-test("says how to put the caffold command on the PATH", (t) => {
+test("says to log in again when this shell cannot run the caffold command", (t) => {
   const user = world(t);
+  const hint =
+    "Log in again to run the caffold command. If it is still not found, add ~/.local/bin to your PATH.";
 
   const result = install(user);
 
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /^Add ~\/\.local\/bin to your PATH to run the caffold command\.$/m);
+  assert.ok(result.stdout.split("\n").includes(hint), result.stdout);
+
+  const onPath = install(user, [], {
+    PATH: [join(user.home, ".local/bin"), join(fixtures, "bin"), join(fixtures, "tailscale"), "/usr/bin", "/bin"].join(":"),
+  });
+
+  assert.equal(onPath.status, 0, onPath.stderr);
+  assert.ok(!onPath.stdout.includes("Log in again"), onPath.stdout);
 });
