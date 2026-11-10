@@ -46,6 +46,7 @@ application, and mobile review workflows.
 - [Contributing](../CONTRIBUTING.md)
 - [Testing](development/testing.md)
 - [macOS Local Application Development](development/macos-local-app.md)
+- [Linux Local Install Check](development/linux-local-install.md)
 - [Mobile and PWA Testing](development/mobile-pwa-testing.md)
 - [Application Update Testing](development/app-update-testing.md)
 
@@ -64,4 +65,4 @@ rules.
 These documents define maintainer procedures for distributing and operating
 supported artifacts.
 
-- [macOS Release Process](operations/macos-release.md)
+- [Release Process](operations/release.md)

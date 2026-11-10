@@ -39,6 +39,9 @@ jobs:
   macos_packaging:
     uses: ./.github/workflows/macos-packaging-contracts.yml
 
+  linux_packaging:
+    uses: ./.github/workflows/linux-packaging-contracts.yml
+
   browser:
     uses: ./.github/workflows/browser-tests.yml
 
@@ -51,6 +54,7 @@ jobs:
       - documentation
       - repository_tooling
       - macos_packaging
+      - linux_packaging
       - browser
       - rust
     permissions:
@@ -59,9 +63,18 @@ jobs:
     with:
       action: ${{ inputs.action }}
 
+  # The macOS job makes the release commit; Linux builds that same commit.
+  linux:
+    needs: macos
+    uses: ./.github/workflows/linux-release.yml
+    with:
+      release_sha: ${{ needs.macos.outputs.release_sha }}
+
   publish_release:
     name: Publish GitHub Release
-    needs: macos
+    needs:
+      - macos
+      - linux
     if: inputs.action != 'dry-run'
     runs-on: macos-26
     timeout-minutes: 15
@@ -86,12 +99,26 @@ jobs:
           name: ${{ needs.macos.outputs.artifact_name }}
           path: target/caffold-server
 
+      - name: Download the verified Linux artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: caffold-linux-*-v${{ needs.macos.outputs.version }}
+          path: target/caffold-linux
+          merge-multiple: true
+
       - name: Verify the downloaded artifact
         run: |
           cd target/caffold-server
           test -f "${RELEASE_ARCHIVE}"
           test -f "${RELEASE_CHECKSUM}"
           shasum -a 256 -c "${RELEASE_CHECKSUM}"
+          cd "${GITHUB_WORKSPACE}/target/caffold-linux"
+          for arch in x86_64 aarch64; do
+            archive="Caffold-${RELEASE_VERSION}-linux-${arch}.tar.gz"
+            test -f "${archive}"
+            test -f "${archive}.sha256"
+            shasum -a 256 -c "${archive}.sha256"
+          done
 
       - name: Publish or verify the immutable GitHub Release
         env:
@@ -99,6 +126,7 @@ jobs:
         run: |
           tag="v${RELEASE_VERSION}"
           artifact_dir="${GITHUB_WORKSPACE}/target/caffold-server"
+          linux_dir="${GITHUB_WORKSPACE}/target/caffold-linux"
 
           if gh release view "${tag}" >/dev/null 2>&1; then
             if ! gh api "repos/${GITHUB_REPOSITORY}/commits/${tag}" --jq .sha >/dev/null 2>&1; then
@@ -118,6 +146,15 @@ jobs:
             desktop/macos/package-app verify-archive \
               "${existing_dir}/${RELEASE_ARCHIVE}" \
               --expected-version "${RELEASE_VERSION}"
+            gh release download "${tag}" \
+              --pattern "Caffold-${RELEASE_VERSION}-linux-*" \
+              --dir "${existing_dir}"
+            (
+              cd "${existing_dir}"
+              for arch in x86_64 aarch64; do
+                shasum -a 256 -c "Caffold-${RELEASE_VERSION}-linux-${arch}.tar.gz.sha256"
+              done
+            )
             cp "${existing_dir}/${RELEASE_ARCHIVE}" "${artifact_dir}/${RELEASE_ARCHIVE}"
             cp "${existing_dir}/${RELEASE_CHECKSUM}" "${artifact_dir}/${RELEASE_CHECKSUM}"
             echo "${tag} already contains valid release artifacts; reusing them."
@@ -125,7 +162,7 @@ jobs:
             release_args=(
               "${tag}"
               "${artifact_dir}/${RELEASE_ARCHIVE}#Caffold Server ${RELEASE_VERSION} for macOS arm64"
-              "${artifact_dir}/${RELEASE_CHECKSUM}#SHA-256 checksum"
+              "${artifact_dir}/${RELEASE_CHECKSUM}#SHA-256 checksum for macOS arm64"
               --title "Caffold ${tag}"
               --generate-notes
             )
@@ -144,6 +181,20 @@ jobs:
               notes_start="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)"
             fi
             release_args+=(--notes-start-tag "${notes_start}")
+            for arch in x86_64 aarch64; do
+              archive="Caffold-${RELEASE_VERSION}-linux-${arch}.tar.gz"
+              release_args+=(
+                "${linux_dir}/${archive}#Caffold ${RELEASE_VERSION} for Linux ${arch}"
+                "${linux_dir}/${archive}.sha256#SHA-256 checksum for Linux ${arch}"
+              )
+            done
+            # A candidate's notes open with the command that installs it on
+            # Linux, with the install script of the same tag.
+            if [[ "${RELEASE_VERSION}" == *-rc.* ]]; then
+              install_script="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${tag}/distribution/linux/install.sh"
+              notes="$(printf 'Install this release candidate on Linux:\n\n```sh\ncurl -fsSL %s | sh -s -- --version %s\n```\n' "${install_script}" "${RELEASE_VERSION}")"
+              release_args+=(--notes "${notes}")
+            fi
             if tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${tag}" --jq .sha 2>/dev/null)"; then
               if [[ "${tag_sha}" != "${RELEASE_SHA}" ]]; then
                 echo "${tag} points to ${tag_sha}, not ${RELEASE_SHA}." >&2

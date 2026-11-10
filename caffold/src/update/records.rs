@@ -1,7 +1,9 @@
+#[cfg(target_os = "macos")]
+use std::path::Path;
 use std::{
     fs::{self, OpenOptions},
     io::{self, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
     time::Duration,
 };
 
@@ -42,10 +44,16 @@ pub(crate) struct Attempt {
 #[serde(rename_all = "camelCase")]
 pub(crate) enum AttemptOutcome {
     Running,
-    /// Homebrew had nothing newer than the app; nothing restarted.
+    /// Nothing newer than the running version was on offer; nothing
+    /// restarted.
     UpToDate,
     /// Homebrew failed and undid its own change; nothing restarted.
+    #[cfg(target_os = "macos")]
     HomebrewFailed,
+    /// The newest release could not be found, downloaded, checked, or unpacked;
+    /// nothing changed.
+    #[cfg(target_os = "linux")]
+    DownloadFailed,
     Succeeded,
     /// The previous app is back on disk and running.
     RolledBack,
@@ -193,14 +201,17 @@ impl AttemptRecords {
         self.directory(id).join(LOG)
     }
 
+    #[cfg(target_os = "macos")]
     pub(super) fn backup(&self, id: &str, app: &Path) -> PathBuf {
         self.bundle_in(id, BACKUP, app)
     }
 
+    #[cfg(target_os = "macos")]
     pub(super) fn failed(&self, id: &str, app: &Path) -> PathBuf {
         self.bundle_in(id, FAILED, app)
     }
 
+    #[cfg(target_os = "macos")]
     /// App bundles older attempts still hold, which `prune` will delete.
     pub(super) fn retired_bundles(&self, current: &str) -> io::Result<Vec<PathBuf>> {
         let mut bundles = Vec::new();
@@ -261,6 +272,7 @@ impl AttemptRecords {
         Ok(age >= LOCK_WITHOUT_RECORD_GRACE)
     }
 
+    #[cfg(target_os = "macos")]
     fn bundle_in(&self, id: &str, kind: &str, app: &Path) -> PathBuf {
         let name = app.file_name().unwrap_or(app.as_os_str());
         self.directory(id).join(kind).join(name)
@@ -505,6 +517,20 @@ mod tests {
     }
 
     #[test]
+    fn keeps_the_ten_newest_attempts() {
+        let (_directory, records) = records();
+        let ids: Vec<String> = (0..12)
+            .map(|_| finished(&records, AttemptOutcome::RolledBack).id)
+            .collect();
+        let current = ids.last().unwrap().clone();
+
+        records.prune(&current).unwrap();
+
+        assert_eq!(records.ids().unwrap(), ids[2..].to_vec());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
     fn keeps_ten_attempts_and_the_newest_bundles() {
         let (_directory, records) = records();
         let app = Path::new("/Applications/Caffold Server.app");
@@ -544,10 +570,12 @@ mod tests {
 
         assert_eq!(records.latest_finished().unwrap(), None);
         assert_eq!(records.running(alive).unwrap(), None);
+        #[cfg(target_os = "macos")]
         assert!(records.retired_bundles("none").unwrap().is_empty());
         records.prune("none").unwrap();
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn names_bundles_after_the_app() {
         let (_directory, records) = records();

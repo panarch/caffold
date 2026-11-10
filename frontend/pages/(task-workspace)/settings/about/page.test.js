@@ -149,6 +149,10 @@ test("tells how the last update ended", () => {
     text: "Homebrew could not update",
     state: "negative",
   });
+  assert.deepEqual(lastUpdateValue(attempt("downloadFailed")), {
+    text: "Could not download the update",
+    state: "negative",
+  });
   assert.deepEqual(lastUpdateValue(attempt("upToDate")), {
     text: "Already up to date",
     state: "",

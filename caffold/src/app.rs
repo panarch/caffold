@@ -37,7 +37,11 @@ pub struct ServeConfig {
     pub data_dir: Option<PathBuf>,
     pub worktree_root: Option<PathBuf>,
     /// The Caffold Server app that runs this server.
+    #[cfg(target_os = "macos")]
     pub app_bundle: Option<PathBuf>,
+    /// The install directory of the systemd service that runs this server.
+    #[cfg(target_os = "linux")]
+    pub install_root: Option<PathBuf>,
 }
 
 pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
@@ -79,7 +83,10 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         fs.clone(),
         update::UpdateConfig {
             data_dir: data_dir.clone(),
+            #[cfg(target_os = "macos")]
             app_bundle: config.app_bundle,
+            #[cfg(target_os = "linux")]
+            install_root: config.install_root,
             port: addr.port(),
         },
     );
@@ -172,7 +179,10 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         fs.clone(),
         update::UpdateConfig {
             data_dir: fs.root().join(".caffold-test"),
+            #[cfg(target_os = "macos")]
             app_bundle: None,
+            #[cfg(target_os = "linux")]
+            install_root: None,
             port: 5_178,
         },
     )

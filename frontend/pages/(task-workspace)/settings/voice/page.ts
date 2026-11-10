@@ -25,7 +25,7 @@ const PROVIDER_CHOICES = Object.freeze([
   {
     id: "whisper",
     label: "Whisper",
-    detail: "Transcribes on this Mac after a one-time model download.",
+    detail: "Transcribes on this host after a one-time model download.",
   },
   {
     id: "openai",
@@ -128,7 +128,7 @@ export class CaffoldSettingsVoicePage extends CaffoldElement {
                 Choose how voice input from the Task composer becomes text.
               </p>
               <p id="settings-voice-provider-note">
-                Whisper runs on this Mac. OpenAI, Gemini, and Grok receive each
+                Whisper runs on this host. OpenAI, Gemini, and Grok receive each
                 recording from this Caffold server.
               </p>
             </div>

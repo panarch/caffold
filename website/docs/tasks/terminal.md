@@ -1,6 +1,6 @@
 # Use the terminal
 
-Each Task and each Section has a terminal: a shell on your Mac that starts in
+Each Task and each Section has a terminal: a shell on the host that starts in
 the Task's working directory, or in the Section's directory. Use it to check
 the agent's work yourself, run a command, or look around the files.
 
@@ -23,7 +23,7 @@ Both keys work while you type and when keyboard navigation is off.
 
 ## Keep it running
 
-The terminal keeps running on your Mac when you close the browser, change
+The terminal keeps running on the host when you close the browser, change
 Tasks, or put your phone away. Open it again, from the same device or another,
 and it shows the same shell and screen, including what a running command
 printed in the meantime.
@@ -78,12 +78,12 @@ browser remembers your choice.
 Type `exit`, press <kbd>Ctrl</kbd>+<kbd>D</kbd>, or choose **Kill terminal**,
 the trash button. The screen goes back to where you were before you opened the
 terminal. A terminal screen you reach with no terminal running, by link or after
-Caffold Server restarted, offers **Open terminal** to start a new one.
+the Caffold server restarted, offers **Open terminal** to start a new one.
 
 A terminal also closes when:
 
 - its Task moves into a [worktree](worktrees.md), so a new one starts there;
 - its Task is [archived](archive-and-delete.md#archive);
-- Caffold Server stops or restarts; or
+- the Caffold server stops or restarts; or
 - more than 10 terminals are open. Caffold closes one that no screen shows,
   preferring one with no command running and the one you used longest ago.

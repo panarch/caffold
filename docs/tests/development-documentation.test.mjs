@@ -106,11 +106,13 @@ function ownedSuites() {
     .map((name) => `npm run ${name}`)
     .sort();
 
-  const macosRunners = readdirSync(resolve(repoRoot, "desktop/macos"), {
-    withFileTypes: true,
-  })
-    .filter((entry) => entry.isFile() && entry.name.startsWith("test-"))
-    .map((entry) => `desktop/macos/${entry.name}`)
+  // Owners that ship a platform keep their suite runners beside it.
+  const platformRunners = ["desktop/macos", "distribution/linux"]
+    .flatMap((directory) =>
+      readdirSync(resolve(repoRoot, directory), { withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.startsWith("test-"))
+        .map((entry) => `${directory}/${entry.name}`),
+    )
     .sort();
 
   // Owners outside the frontend package keep their Node contracts in a tests/
@@ -127,9 +129,9 @@ function ownedSuites() {
     .sort();
 
   assert.ok(packageCommands.length > 0);
-  assert.ok(macosRunners.length > 0);
+  assert.ok(platformRunners.length > 0);
   assert.ok(testRoots.length > 0);
-  return { packageCommands, macosRunners, testRoots };
+  return { packageCommands, platformRunners, testRoots };
 }
 
 function readWorkflow(name, visited = new Set()) {
@@ -147,8 +149,8 @@ function reaches(workflow, root) {
   if (workflow.includes(root)) {
     return true;
   }
-  const { macosRunners } = ownedSuites();
-  return macosRunners.some((runner) => {
+  const { platformRunners } = ownedSuites();
+  return platformRunners.some((runner) => {
     const runnerDirectory = dirname(runner);
     if (!workflow.includes(runner) || !root.startsWith(`${runnerDirectory}/`)) {
       return false;
@@ -163,9 +165,9 @@ test("every owned test command is discoverable in the testing guide", () => {
     resolve(repoRoot, "docs/development/testing.md"),
     "utf8",
   );
-  const { packageCommands, macosRunners, testRoots } = ownedSuites();
+  const { packageCommands, platformRunners, testRoots } = ownedSuites();
 
-  for (const entry of [...packageCommands, ...macosRunners, ...testRoots]) {
+  for (const entry of [...packageCommands, ...platformRunners, ...testRoots]) {
     assert.ok(
       testingGuide.includes(entry),
       `${entry} is missing from the testing guide`,
@@ -192,9 +194,9 @@ test("every owned test suite is run where it can run", () => {
 
   const checks = readWorkflow("checks.yml");
   const release = readWorkflow("release.yml");
-  const { packageCommands, macosRunners, testRoots } = ownedSuites();
+  const { packageCommands, platformRunners, testRoots } = ownedSuites();
 
-  for (const command of [...packageCommands, ...macosRunners]) {
+  for (const command of [...packageCommands, ...platformRunners]) {
     if (outsideCi.has(command)) {
       continue;
     }
@@ -220,7 +222,7 @@ test("every owned test suite is run where it can run", () => {
 
   for (const declared of [...outsideCi.keys(), ...requiresMacos]) {
     assert.ok(
-      [...packageCommands, ...macosRunners].includes(declared),
+      [...packageCommands, ...platformRunners].includes(declared),
       `${declared} no longer exists and can leave the declaration`,
     );
   }
@@ -229,9 +231,9 @@ test("every owned test suite is run where it can run", () => {
 test("the release gate runs everything the pull-request checks run", () => {
   const checks = readWorkflow("checks.yml");
   const release = readWorkflow("release.yml");
-  const { packageCommands, macosRunners, testRoots } = ownedSuites();
+  const { packageCommands, platformRunners, testRoots } = ownedSuites();
 
-  for (const entry of [...packageCommands, ...macosRunners]) {
+  for (const entry of [...packageCommands, ...platformRunners]) {
     if (!checks.includes(entry)) {
       continue;
     }

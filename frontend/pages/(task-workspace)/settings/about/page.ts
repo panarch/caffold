@@ -484,6 +484,10 @@ export function lastUpdateValue(
         state: "negative",
       },
       homebrewFailed: { text: "Homebrew could not update", state: "negative" },
+      downloadFailed: {
+        text: "Could not download the update",
+        state: "negative",
+      },
       upToDate: { text: "Already up to date", state: "" },
       restoreFailed: { text: `Could not restore ${from}`, state: "negative" },
       interrupted: { text: "Interrupted", state: "negative" },

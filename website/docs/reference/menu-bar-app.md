@@ -1,7 +1,9 @@
 # Menu-bar app
 
-**Caffold Server** lives in the menu bar and starts and controls the Caffold
-server. Its menu opens with **Open Caffold**, followed by five groups.
+On a Mac, **Caffold Server** lives in the menu bar and starts and controls the
+Caffold server. Its menu opens with **Open Caffold**, followed by five groups.
+On Linux, the systemd user service `caffold.service` runs the server instead;
+see [Install on Linux](../get-started/install.md#install-on-linux).
 
 ## Server
 

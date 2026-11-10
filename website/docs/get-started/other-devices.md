@@ -1,7 +1,7 @@
 # Use other devices
 
-A phone, a tablet, or another computer opens the same Caffold as the Mac: the
-same Tasks, conversations, and approvals. It reaches the Mac through a private
+A phone, a tablet, or another computer opens the same Caffold as the host: the
+same Tasks, conversations, and approvals. It reaches the host through a private
 HTTPS address that [Tailscale](https://tailscale.com/download) provides, which
 only devices signed in to your tailnet can open.
 
@@ -10,10 +10,13 @@ only devices signed in to your tailnet can open.
 
 ## Turn on private access
 
-1. Install Tailscale on the Mac and connect it to your tailnet.
-2. On the Mac, open Caffold and go to **Settings → Remote Access**. On other
+1. Install Tailscale on the host and connect it to your tailnet.
+2. On the host, open Caffold and go to **Settings → Remote Access**. On other
    devices this page is read-only.
 3. Choose **Enable**.
+
+On Linux, the [install script](install.md#install-on-linux) turns it on. If
+you install Tailscale later, run the script again.
 
 When the page reports **Private access is ready**, it shows the private
 address with **Copy link**, **Open link**, and a QR code for it.
@@ -23,7 +26,7 @@ address with **Copy link**, **Open link**, and a QR code for it.
 1. Install Tailscale on the device and sign in to an account permitted on the
    same tailnet.
 2. Scan the QR code, or open the copied address. On another device, always use
-   this address: `127.0.0.1` on a phone points at the phone, not at the Mac.
+   this address: `127.0.0.1` on a phone points at the phone, not at the host.
 3. To keep Caffold on the home screen, install it as an app. In Safari on an
    iPhone or iPad, choose **Share**, then **Add to Home Screen**. In Chrome,
    open the browser menu and choose **Add to Home screen** or **Install app**.
@@ -31,14 +34,14 @@ address with **Copy link**, **Open link**, and a QR code for it.
 ![A Task on a phone](../assets/screenshots/task-conversation-light-phone.png#only-light){ width="300" }
 ![A Task on a phone](../assets/screenshots/task-conversation-dark-phone.png#only-dark){ width="300" }
 
-The installed app has its own window and icon, and it updates with the Mac.
-You can install the app on the Mac itself as well, from
+The installed app has its own window and icon, and it updates with the host.
+You can install the app on the host itself as well, from
 `http://127.0.0.1:5178`.
 
 To be told when a turn ends while you are away, turn on
 [Notifications](notifications.md) on the device.
 
-## More than one Mac
+## More than one host
 
 If you run Caffold on more than one Mac, give each one its own **Name** under
 **Server Settings...** in its [menu-bar app](../reference/menu-bar-app.md)

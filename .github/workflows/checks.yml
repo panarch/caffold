@@ -30,6 +30,9 @@ jobs:
   macos_packaging:
     uses: ./.github/workflows/macos-packaging-contracts.yml
 
+  linux_packaging:
+    uses: ./.github/workflows/linux-packaging-contracts.yml
+
   browser:
     uses: ./.github/workflows/browser-tests.yml
 

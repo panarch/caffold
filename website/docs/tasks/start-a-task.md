@@ -42,7 +42,7 @@ see larger, and any other file by its name; the X on each takes it out.
 ![New Task with a pasted screenshot and an attached log](../assets/screenshots/composer-attachments-light-desktop.png#only-light)
 ![New Task with a pasted screenshot and an attached log](../assets/screenshots/composer-attachments-dark-desktop.png#only-dark)
 
-Sending uploads the files to the Mac one at a time, into a folder of their own
+Sending uploads the files to the host one at a time, into a folder of their own
 under `.caffold/uploads/` in the Task's working directory, and upload progress
 appears in the message. **Cancel upload** stops it and returns the prompt
 to the Composer; during a running turn, that button is **Stop current turn** and

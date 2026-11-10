@@ -98,7 +98,7 @@ export class CaffoldSettingsJevPage extends CaffoldElement {
               </p>
               <p id="settings-jev-note">
                 Under that mode each request is sent to TypeSafe with these
-                rules. Under every other mode nothing leaves this Mac.
+                rules. Under every other mode nothing leaves this host.
               </p>
             </div>
             <button

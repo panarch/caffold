@@ -11,7 +11,8 @@ The supported contributor baseline is:
 - the Rust toolchain pinned by `rust-toolchain.toml`;
 - Node.js 26 LTS and npm;
 - Git;
-- CMake and the Xcode Command Line Tools on macOS;
+- CMake and the Xcode Command Line Tools on macOS, or CMake and a C and C++
+  compiler on Linux;
 - the authenticated standalone Codex CLI for Codex live work;
 - an authenticated supported Claude Code CLI for Claude live work; and
 - an authenticated Grok CLI for checking Grok against a real installation.
@@ -91,7 +92,9 @@ cargo clippy --all-targets -- -D warnings
 ```
 
 Frontend and protocol changes have additional Node and Playwright suites.
-macOS code has Swift and installer lifecycle checks under `desktop/macos/`.
+macOS code has Swift and installer lifecycle checks under `desktop/macos/`, and
+the Linux distribution has install script and packaging checks under
+`distribution/linux/`.
 Each suite is owned by the thing it verifies rather than by a single package
 manifest, so the [testing guide](docs/development/testing.md) is the index of
 what to run, where to run it from, and what it needs. It also covers the

@@ -70,5 +70,5 @@ Choosing **Ask Jev first** sends information to TypeSafe:
   prompts settled so far.
 
 Under every other approval mode, nothing is sent to TypeSafe. The key and the
-rules are stored on the Mac; see
+rules are stored on the host; see
 [Data and privacy](../reference/data-and-privacy.md).

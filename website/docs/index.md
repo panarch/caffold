@@ -1,7 +1,7 @@
 ---
 template: home.html
 title: One workspace for your coding agents, on every screen.
-description: Run Codex, Claude Code, Grok, and Antigravity on your own Mac. Start Tasks, follow their work, and keep going from a desktop, foldable, tablet, or phone.
+description: Run Codex, Claude Code, Grok, and Antigravity on your own Mac or Linux machine. Start Tasks, follow their work, and keep going from a desktop, foldable, tablet, or phone.
 hide:
   - navigation
   - toc
@@ -13,11 +13,11 @@ hide:
 
 <div class="cf-intro" markdown>
 
-<p class="cf-eyebrow">Caffold · self-hosted on your Mac</p>
+<p class="cf-eyebrow">Caffold · self-hosted on your Mac or Linux machine</p>
 
 # One workspace for your coding agents, on every screen.
 
-<p class="cf-lede">Run Codex, Claude Code, Grok, and Antigravity on your own Mac.
+<p class="cf-lede">Run Codex, Claude Code, Grok, and Antigravity on your own Mac or Linux machine.
 Start Tasks, follow their work, and send the next instruction from a desktop,
 foldable, tablet, or phone.</p>
 
@@ -27,10 +27,13 @@ foldable, tablet, or phone.</p>
 </div>
 
 ```sh
+# macOS
 brew install --cask panarch/tap/caffold
+# Linux
+curl -fsSL https://caffold.dev/install.sh | sh
 ```
 
-<p class="cf-requirements">Apple silicon · macOS 14+ · Apache 2.0</p>
+<p class="cf-requirements">Apple silicon · macOS 14+ · Linux x86_64 and aarch64 · Apache 2.0</p>
 
 </div>
 
@@ -54,7 +57,7 @@ brew install --cask panarch/tap/caffold
 
 <section class="cf-experience" markdown>
 
-## Your Mac does the work. Every screen opens it.
+## Your own machine does the work. Every screen opens it.
 
 <div class="cf-experience-grid" markdown>
 
@@ -62,7 +65,7 @@ brew install --cask panarch/tap/caffold
 
 ### Your environment, your data
 
-Run agents beside your repositories and credentials on your Mac.
+Run agents beside your repositories and credentials on your own machine.
 Caffold stores its data there; each agent keeps its own history.
 [Where data goes](reference/data-and-privacy.md).
 
@@ -264,7 +267,7 @@ Use [worktrees](tasks/worktrees.md) for separate changes,
 ### A shell in your workspace
 
 Open a [terminal](tasks/terminal.md) for a Task or Section.
-It runs on your Mac and stays available from the same workspace.
+It runs on your machine and stays available from the same workspace.
 
 </section>
 

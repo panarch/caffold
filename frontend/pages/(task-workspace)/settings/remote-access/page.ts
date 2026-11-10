@@ -23,12 +23,11 @@ const STATE_COPY: Readonly<
   notInstalled: {
     label: "Tailscale is not installed",
     detail:
-      "Install Tailscale on this Mac to set up optional access from another device. Localhost remains fully available without it.",
+      "Install Tailscale on this host to set up optional access from another device. Localhost remains fully available without it.",
   },
   disconnected: {
     label: "Tailscale is disconnected",
-    detail:
-      "Open Tailscale and connect this Mac to a tailnet before enabling Caffold Serve.",
+    detail: "Connect this host to a tailnet before enabling Caffold Serve.",
   },
   serveOff: {
     label: "Ready to enable",
@@ -150,7 +149,7 @@ export class CaffoldSettingsRemoteAccessPage extends CaffoldElement {
               </p>
               <p>
                 Remote access is optional. Caffold continues to work locally on
-                this Mac without Tailscale.
+                this host without Tailscale.
               </p>
             </div>
             <button
@@ -229,7 +228,7 @@ export class CaffoldSettingsRemoteAccessPage extends CaffoldElement {
             ?hidden=${statusFresh !== true || status?.canManage !== false}
           >
             Serve settings are read-only from this device. To change them, open
-            Caffold on the host Mac using its localhost address.
+            Caffold on the host using its localhost address.
           </p>
           <p
             class="settings-remote-message"

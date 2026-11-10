@@ -2,12 +2,22 @@
 
 ## Caffold does not open
 
+On a Mac:
+
 - Check that **Caffold Server** is in the menu bar. If its **Server** status
   reads **Server · Stopped**, choose **Start Server**. If it reads
   **Server · Not responding**, choose **Restart Server**.
 - Open `http://127.0.0.1:5178`, or the port set in **Server Settings...**, on
   the Mac itself.
 - **Show Logs** opens the log folder, `~/Library/Logs/Caffold`.
+
+On Linux:
+
+- `systemctl --user status caffold` shows whether the service runs, and
+  `systemctl --user restart caffold` restarts it.
+- `journalctl --user -u caffold` shows its log.
+- Open `http://127.0.0.1:5178` on the host itself, or through an SSH tunnel;
+  see [Install on Linux](../get-started/install.md#install-on-linux).
 
 ## An agent is missing from New Task
 
@@ -37,7 +47,7 @@ its Section to the folder's current location:
 
 1. Open the Section and review **Previous location**.
 2. Under **New location**, browse to the moved folder or type its path.
-   This selects a folder on the Mac running Caffold, even from another device.
+   This selects a folder on the host, even from another device.
 3. Finish any running Tasks, then choose **Reconnect folder**.
 
 Caffold keeps the Section and Task order. This works with ordinary folders
@@ -71,7 +81,7 @@ Archived.
   tailnet.
 - If the menu bar shows **Serve port in use**, or **Settings → Remote Access**
   reports a conflict, something else already uses Tailscale Serve's HTTPS port
-  on the Mac. Caffold does not replace it; remove that Serve entry in Tailscale
+  on the host. Caffold does not replace it; remove that Serve entry in Tailscale
   first.
 
 ## Notifications do not arrive
@@ -80,7 +90,7 @@ Archived.
   the browser that should receive them.
 - On an iPhone or iPad,
   [install Caffold as an app](../get-started/other-devices.md#open-caffold-on-another-device) first.
-- The Mac has to be awake and running Caffold when the turn ends.
+- The host has to be awake and running Caffold when the turn ends.
 
 ## The voice button says **Set up voice input**
 
@@ -90,9 +100,10 @@ key is not saved. The button opens **Settings → Voice Input**.
 ## Reporting a problem
 
 **Settings → About Caffold → Copy diagnostics** copies the version and build
-details. Include them, with the relevant part of
-`~/Library/Logs/Caffold/caffold.log`, in an issue on
-[GitHub](https://github.com/panarch/caffold/issues).
+details. Include them, with the relevant part of the log, in an issue on
+[GitHub](https://github.com/panarch/caffold/issues). The log is
+`~/Library/Logs/Caffold/caffold.log` on a Mac and
+`journalctl --user -u caffold` on Linux.
 
-If the server stopped responding, also include any diagnostic reports from
-`~/Library/Application Support/Caffold/data/diagnostics/stalls`.
+If the server stopped responding on a Mac, also include any diagnostic reports
+from `~/Library/Application Support/Caffold/data/diagnostics/stalls`.

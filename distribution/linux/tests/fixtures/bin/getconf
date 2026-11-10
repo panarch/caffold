@@ -1,0 +1,6 @@
+#!/bin/sh
+# Stands in for getconf: FAKE_GLIBC names the glibc version, and an empty one
+# stands for a system without glibc.
+[ "${1:-}" = GNU_LIBC_VERSION ] || exit 1
+[ -n "${FAKE_GLIBC-2.39}" ] || exit 1
+echo "glibc ${FAKE_GLIBC-2.39}"

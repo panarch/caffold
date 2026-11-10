@@ -1,0 +1,4 @@
+#!/bin/sh
+# The install script waits for the server between health checks; the stand-in
+# server answers at once.
+exit 0

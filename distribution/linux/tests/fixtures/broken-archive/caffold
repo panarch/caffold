@@ -1,0 +1,4 @@
+#!/bin/sh
+# Stands in for a caffold binary this system cannot start.
+echo "caffold: version \`GLIBC_2.99' not found" >&2
+exit 1

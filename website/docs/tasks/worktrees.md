@@ -28,8 +28,8 @@ first prompt of a new Task, or later in an existing one.
 ![New Task with the worktree guide, and branch icons on the Tasks that run in worktrees](../assets/screenshots/new-task-dark-desktop.png#only-dark)
 
 In the Task list, a branch icon marks a Task that runs in a worktree Caffold
-prepared. Caffold keeps these worktrees under
-`~/Library/Application Support/Caffold/data/worktrees`.
+prepared. Caffold keeps these worktrees under `worktrees/` in its
+[data folder](../reference/data-and-privacy.md#where-data-is-stored).
 
 ## Bring your uncommitted changes
 

@@ -1,0 +1,9 @@
+#!/bin/sh
+# Stands in for loginctl: FAKE_LINGER answers whether the user lingers, and
+# FAKE_LINGER_REFUSED refuses to turn lingering on.
+echo "$*" >>"${FAKE_STATE}/loginctl.log"
+case "${1:-}" in
+  show-user) echo "${FAKE_LINGER:-no}" ;;
+  --no-ask-password) [ -z "${FAKE_LINGER_REFUSED:-}" ] ;;
+  *) exit 1 ;;
+esac

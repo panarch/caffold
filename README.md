@@ -2,18 +2,18 @@
 
 Caffold is a self-hosted workspace for running and reviewing coding-agent work
 from any screen. Keep Codex, Claude Code, Grok, or Antigravity working on a Mac
-you control, then follow the conversation, answer approvals, inspect commands and tests, and read
+or Linux machine you control, then follow the conversation, answer approvals, inspect commands and tests, and read
 the actual files and diff from a desktop, foldable, tablet, or phone.
 
 The user manual is at [caffold.dev](https://caffold.dev).
 
 The layout adapts to the screen; the workflow stays the same. A Task still
 contains one agent conversation and the repository context needed to judge its
-work. Start on one device, leave the turn running on the Mac, and return from
+work. Start on one device, leave the turn running on the host, and return from
 another to decide what happens next by text or voice.
 
 Caffold is not a hosted agent or a replacement harness. The agent CLIs,
-repositories, credentials, conversations, and execution remain on your Mac.
+repositories, credentials, conversations, and execution remain on your host.
 
 ## What it looks like
 
@@ -59,10 +59,11 @@ different state, transport, and recovery boundaries.
 
 ## How it works
 
-Only one machine does the actual work. Install `Caffold Server.app` on the Mac
-that has the agent CLIs, Git, and your checkouts. The app stays in the menu bar,
-keeps the Caffold backend available, and connects the browser interface to the
-selected agent and the files on that Mac.
+Only one machine does the actual work: the Caffold host, the Mac or Linux
+machine that has the agent CLIs, Git, and your checkouts. On a Mac,
+`Caffold Server.app` stays in the menu bar and keeps the Caffold backend
+available; on Linux, a systemd user service does. The backend connects the
+browser interface to the selected agent and the files on the host.
 
 ```text
                     browser or installed PWA
@@ -71,7 +72,7 @@ selected agent and the files on that Mac.
                       local URL or private
                        Tailscale HTTPS URL
                                 |
-                      Caffold Server on Mac
+                    Caffold server on the host
                                 |
         +---------------+-------+-------+---------------+
         |               |               |               |
@@ -83,13 +84,13 @@ selected agent and the files on that Mac.
                    Git checkouts and worktrees
 ```
 
-On the host Mac, `Open Caffold` opens the local address. On another device,
+On the host, Caffold is at its local address. On another device,
 Tailscale Serve can provide a private HTTPS address. Configure and copy that
 address from **Settings → Remote Access**; the ready page also provides a QR
 code for another permitted device.
 
-Each browser or installed PWA is a window onto the same Mac, not another copy
-of the server. Closing it does not end a turn, but the Mac must stay awake,
+Each browser or installed PWA is a window onto the same host, not another copy
+of the server. Closing it does not end a turn, but the host must stay awake,
 running Caffold, and reachable for remote use.
 
 ## A typical Task
@@ -109,33 +110,42 @@ approval.
 Caffold also keeps the Task connected to its repository, optional managed
 worktree, Git history, and read-only GitHub Issue or Pull Request context. When
 you want to check something yourself, each Task and Section has a terminal in
-its working directory that keeps running on the Mac while you move between
+its working directory that keeps running on the host while you move between
 devices.
 
-## Install on macOS
+## Install
 
-Caffold supports Apple silicon Macs running macOS 14 or later. Install and sign
-in to at least one supported agent:
+Caffold runs on Apple silicon Macs with macOS 14 or later, and on x86_64 and
+aarch64 Linux with glibc 2.28 or later and systemd. Install and sign in to at
+least one supported agent on the host:
 
 - the official standalone Codex CLI `0.155.1` or newer;
-- Claude Code `2.1.259` or newer, available as `claude` on the app's `PATH`; or
-- the Grok CLI `1.0.30` or newer, available as `grok` on the app's `PATH` or
+- Claude Code `2.1.259` or newer, available as `claude` on Caffold's `PATH`; or
+- the Grok CLI `1.0.30` or newer, available as `grok` on Caffold's `PATH` or
   at `~/.grok/bin/grok` or `~/.local/bin/grok`; or
-- Antigravity CLI `1.5.1` or newer, available as `agy` on the app's `PATH`
+- Antigravity CLI `1.5.1` or newer, available as `agy` on Caffold's `PATH`
   or at `~/.local/bin/agy`, installed and signed in separately.
 
 Any of them may be installed, and Caffold will offer the models it can reach.
 [Set up your agents](website/docs/get-started/agents.md) in the user manual has
 the agent-specific setup.
 
-Install Caffold with Homebrew:
+On a Mac, install Caffold with Homebrew, launch `Caffold Server` from
+Applications, then choose `Open Caffold` from its menu-bar menu:
 
 ```sh
 brew install --cask panarch/tap/caffold
 ```
 
-Launch `Caffold Server` from Applications, then choose `Open Caffold` from its
-menu-bar menu.
+On Linux, the install script installs Caffold for your user and runs it as a
+systemd user service:
+
+```sh
+curl -fsSL https://caffold.dev/install.sh | sh
+```
+
+[Install](website/docs/get-started/install.md) in the user manual has the
+details for both.
 
 ## With or without a keyboard
 
@@ -147,9 +157,9 @@ and those codes even while you type. See
 
 You can also work without one. The Task composer supports multilingual voice
 input. Under **Settings → Voice Input**, choose Whisper to transcribe on the
-Mac after a one-time model download (about 1.5 GiB), or OpenAI, Gemini, or
-Grok to transcribe with your own API key. Audio goes from the browser to your
-Mac, which transcribes it or forwards it to the chosen provider; Caffold never
+host after a one-time model download (about 1.5 GiB), or OpenAI, Gemini, or
+Grok to transcribe with your own API key. Audio goes from the browser to the
+host, which transcribes it or forwards it to the chosen provider; Caffold never
 stores the recordings.
 
 Voice is useful here for the same reason the browser interface is useful: much
@@ -157,7 +167,7 @@ of the work is giving direction, reading what happened, and following up.
 
 ## Current limits
 
-Caffold assumes one trusted user, one trusted Mac, and a private network. It
+Caffold assumes one trusted user, one trusted host, and a private network. It
 does not provide authentication for a public deployment or multi-user
 authorization.
 

@@ -1,0 +1,8 @@
+#!/bin/sh
+# Stands in for readelf: -h prints FAKE_READELF_HEADER, -d prints
+# FAKE_READELF_DYNAMIC.
+case "$1" in
+  -h) cat "${FAKE_READELF_HEADER}" ;;
+  -d) cat "${FAKE_READELF_DYNAMIC}" ;;
+  *) exit 1 ;;
+esac
