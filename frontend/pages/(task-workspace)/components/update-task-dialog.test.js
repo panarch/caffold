@@ -47,7 +47,7 @@ test("asks the agent to name the Task, run the command, and recover", () => {
   assert.equal(
     updateTaskPrompt({ to: "0.18.3", command: COMMAND }),
     [
-      "Update Caffold on this Mac to 0.18.3.",
+      "Update Caffold on this host to 0.18.3.",
       "",
       '1. Name this Task exactly "Update Caffold to 0.18.3".',
       "2. Run this command and wait for it to finish. It can take several minutes, and Caffold restarts while it runs:",

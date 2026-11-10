@@ -1,0 +1,9 @@
+
+Dynamic section at offset 0x3a5b8e8 contains 31 entries:
+  Tag        Type                         Name/Library
+ 0x0000000000000001 (NEEDED)             Shared library: [libstdc++.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [libgcc_s.so.1]
+ 0x0000000000000001 (NEEDED)             Shared library: [libm.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [ld-linux-x86-64.so.2]
+ 0x000000000000000c (INIT)               0x6d000

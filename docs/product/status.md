@@ -5,10 +5,13 @@ boundaries.
 
 ## Available today
 
-- `caffold serve` and the macOS menu-bar server wrapper;
-- updating the Homebrew-installed app from the menu bar, or from **Settings →
-  About Caffold** through an agent Task, with the previous app restored when
-  the new one does not start;
+- `caffold serve`, the macOS menu-bar server wrapper on Apple silicon Macs, and
+  the systemd user service the install script sets up on x86_64 and aarch64
+  Linux with glibc 2.28 or later;
+- updating the Homebrew-installed macOS app from the menu bar or from
+  **Settings → About Caffold**, and the install script's Linux installation
+  from **Settings → About Caffold**, through an agent Task, with the previous
+  version restored when the new one does not start;
 - browser/PWA access on the trusted host and tailnet-only Tailscale Serve;
 - responsive **Settings → Remote Access** status, private URL/QR handoff, and
   localhost-only control of Caffold's Tailscale Serve mapping;

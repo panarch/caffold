@@ -6,13 +6,16 @@ When a new version is out, a dot appears on **Settings**. To look for one right
 away, choose **Check for Updates** in **Settings → About Caffold**. Update
 Caffold one of these ways:
 
-- **At the Mac:** choose **Update to Caffold X…** in the menu-bar app.
-- **From another device:** choose **Update Caffold** in **Settings → About
-  Caffold**.
-- **From a terminal:** run `brew upgrade --cask panarch/tap/caffold`, then quit
-  and reopen Caffold Server.
+- **In Caffold:** choose **Update Caffold** in **Settings → About Caffold**,
+  from any device.
+- **In the menu bar, on a Mac:** choose **Update to Caffold X…** in the
+  menu-bar app.
+- **From a terminal:** on a Mac, run `brew upgrade --cask panarch/tap/caffold`,
+  then quit and reopen Caffold Server. On Linux, run the
+  [install script](../get-started/install.md#install-on-linux) again.
 
-The first two back up Caffold and restore it if the new version does not start.
+All but `brew upgrade` put the current version back if the new one does not
+start.
 
 **Update Caffold** starts a Task in which an agent runs the update and stays
 with it. Choose the mode that allows everything, **Full access** or **Allow

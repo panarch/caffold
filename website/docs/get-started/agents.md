@@ -1,11 +1,11 @@
 # Set up your agents
 
-Set up at least one supported coding agent on the Mac. New Task offers the
+Set up at least one supported coding agent on the host. New Task offers the
 models of every agent
 Caffold can reach.
 
 Caffold uses each agent's own sign-in. It never reads or stores your agent
-credentials. Install and sign in to each agent separately on the Mac.
+credentials. Install and sign in to each agent separately on the host.
 
 ## Codex
 
@@ -38,8 +38,8 @@ Update Codex from **Settings → Codex** instead; see
 
 Caffold supports Claude Code `2.1.259` or newer. Install it with its official
 setup, run `claude` once, and complete sign-in. Caffold looks for `claude` on
-its `PATH`, which includes `~/.local/bin`, `/opt/homebrew/bin`, and
-`/usr/local/bin`.
+its `PATH`, which includes `~/.local/bin` and `/usr/local/bin`, and also
+`/opt/homebrew/bin` on a Mac.
 
 **Settings → Claude** shows your usage as Claude reports it, the version and
 path Caffold found, the signed-in account and plan, and the state of Caffold's
@@ -64,7 +64,7 @@ Caffold found, and the signed-in account.
 Install [Antigravity CLI](https://antigravity.google/docs/cli/) `1.5.1` or newer.
 Caffold finds `agy` on its executable search path or at `~/.local/bin/agy`.
 
-1. Run `agy` in a terminal on the Mac running Caffold and finish the CLI's sign-in.
+1. Run `agy` in a terminal on the host and finish the CLI's sign-in.
 2. Open **Settings → Antigravity** to check the installed version, account,
    plan, quota and models. **Refresh** repeats the check.
 3. Choose an Antigravity model in New Task.

@@ -349,7 +349,7 @@ export function updateTaskFrom(
  */
 export function updateTaskPrompt({ to, command }: UpdateTask) {
   return [
-    `Update Caffold on this Mac to ${to}.`,
+    `Update Caffold on this host to ${to}.`,
     "",
     `1. Name this Task exactly "Update Caffold to ${to}".`,
     "2. Run this command and wait for it to finish. It can take several minutes, and Caffold restarts while it runs:",

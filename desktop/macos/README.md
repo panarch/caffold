@@ -50,7 +50,7 @@ target/caffold-server/Caffold-Server-<version>-macos-arm64.zip
 target/caffold-server/Caffold-Server-<version>-macos-arm64.zip.sha256
 ```
 
-Maintainers preparing a distribution should follow the [macOS release process](../../docs/operations/macos-release.md).
+Maintainers preparing a distribution should follow the [release process](../../docs/operations/release.md).
 
 For a local development replacement of `/Applications/Caffold Server.app`, use
 the tracked safe installer and runbook:
@@ -143,4 +143,4 @@ remain native wrapper responsibilities.
 
 The app only restarts a server process that it started. When it connects to an existing Caffold process, choosing a different port starts a separate app-managed server and leaves the external process untouched. Changing only the bind mode on the occupied port remains blocked.
 
-Updates follow the same ownership rule. Caffold refuses to update while connected to an externally managed server, and only a server the app starts, with `--app-bundle`, offers an update Task in the browser. GitHub is only the release-discovery source; Homebrew remains responsible for downloading, checksum verification, installation, and CLI-link replacement. Manually copied app bundles receive a release-page link instead of being overwritten. The procedure and its records are described in [Application update lifecycle](../../docs/operations/macos-release.md#application-update-lifecycle).
+Updates follow the same ownership rule. Caffold refuses to update while connected to an externally managed server, and only a server the app starts, with `--app-bundle`, offers an update Task in the browser. GitHub is only the release-discovery source; Homebrew remains responsible for downloading, checksum verification, installation, and CLI-link replacement. Manually copied app bundles receive a release-page link instead of being overwritten. The procedure and its records are described in [the macOS update lifecycle](../../docs/operations/release.md#on-macos).

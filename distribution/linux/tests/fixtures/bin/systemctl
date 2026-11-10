@@ -1,0 +1,21 @@
+#!/bin/sh
+# Stands in for the user's systemd manager. It records every call, and a
+# restart starts the version ~/.local/bin/caffold names when FAKE_STARTS lists
+# that version.
+echo "$*" >>"${FAKE_STATE}/systemctl.log"
+[ "${1:-}" = --user ] || exit 1
+case "${2:-}" in
+  show-environment)
+    [ -z "${FAKE_NO_SYSTEMD:-}" ]
+    ;;
+  is-active)
+    [ -f "${FAKE_STATE}/running" ]
+    ;;
+  restart)
+    version="$(basename "$(dirname "$(readlink "${HOME}/.local/bin/caffold")")")"
+    case " ${FAKE_STARTS:-} " in
+      *" ${version} "*) echo "${version}" >"${FAKE_STATE}/running" ;;
+      *) rm -f "${FAKE_STATE}/running" ;;
+    esac
+    ;;
+esac

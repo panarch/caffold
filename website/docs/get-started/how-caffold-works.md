@@ -1,7 +1,8 @@
 # How Caffold works
 
-Caffold runs on one Mac: the one that has your coding agents, Git, and your
-repositories. You use it from a browser, on that Mac or on your other devices.
+Caffold runs on one computer, the *Caffold host*: the Mac or Linux machine that
+has your coding agents, Git, and your repositories. You use it from a browser,
+on the host or on your other devices.
 
 ```text
        browser or installed app
@@ -10,7 +11,7 @@ repositories. You use it from a browser, on that Mac or on your other devices.
        local address or private
         Tailscale HTTPS address
                    |
-       Caffold server on the Mac
+       Caffold server on the host
                    |
   +----------+-----+----+----------+
   |          |          |          |
@@ -21,22 +22,23 @@ Codex   Claude Code   Grok    Antigravity
       Git checkouts and worktrees
 ```
 
-## One Mac does the work
+## One host does the work
 
-**Caffold Server** is a menu-bar app that keeps the Caffold server running on
-the Mac. The agents run there, their commands run there, and your repositories
-and credentials stay there.
+On a Mac, **Caffold Server** is a menu-bar app that keeps the Caffold server
+running; on Linux, the systemd user service `caffold.service` does. The agents
+run on the host, their commands run there, and your repositories and
+credentials stay there.
 
 ## Every screen is a window
 
-The Caffold interface is a web app that the Mac serves:
+The Caffold interface is a web app that the host serves:
 
-- on the Mac itself, open `http://127.0.0.1:5178`;
+- on the host itself, open `http://127.0.0.1:5178`;
 - on another desktop, tablet, or phone, open the private HTTPS address that
   Tailscale provides. See [Use other devices](other-devices.md).
 
 Every window shows the same Tasks, and closing one never stops the work: a turn
-keeps running on the Mac. To use Caffold from another device, the Mac has to
+keeps running on the host. To use Caffold from another device, the host has to
 stay awake and reachable, with Caffold running.
 
 ## A Task is one piece of work
@@ -71,7 +73,7 @@ asked, ask again more specifically.
 
 ## Where to go next
 
-- [Install Caffold](install.md) on the Mac.
+- [Install Caffold](install.md) on the host.
 - [Set up at least one agent](agents.md).
 - [Run your first Task](first-task.md).
 

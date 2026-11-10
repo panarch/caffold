@@ -1,0 +1,3 @@
+#!/bin/sh
+# Stands in for objdump -T: prints the dynamic symbols FAKE_OBJDUMP names.
+cat "${FAKE_OBJDUMP}"

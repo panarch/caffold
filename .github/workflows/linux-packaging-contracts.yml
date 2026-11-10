@@ -1,0 +1,31 @@
+name: Linux Packaging Contracts
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  linux_packaging:
+    name: Linux Packaging Contracts
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the requested source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Install Node.js 26
+        uses: actions/setup-node@v7
+        with:
+          node-version: 26
+
+      # These run the install script against a local release and stand-ins for
+      # systemd, and read the packaging script and workflows. The release build
+      # itself runs in Linux Release.
+      - name: Test Linux packaging contracts
+        run: distribution/linux/test-contracts

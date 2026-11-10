@@ -55,6 +55,7 @@ test("leaves every other outcome to other surfaces", () => {
     "succeeded",
     "upToDate",
     "homebrewFailed",
+    "downloadFailed",
     "interrupted",
   ]) {
     assert.equal(updateResultNotice({ outcome, fromVersion: "0.18.2" }), null);

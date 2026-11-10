@@ -1,0 +1,3 @@
+#!/bin/sh
+# Stands in for a caffold binary that starts on this system.
+exit 0

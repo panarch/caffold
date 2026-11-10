@@ -1,0 +1,6 @@
+#!/bin/sh
+# Stands in for uname on the machine the install script inspects.
+case "${1:-}" in
+  -m) echo "${FAKE_MACHINE:-x86_64}" ;;
+  *) echo "${FAKE_KERNEL:-Linux}" ;;
+esac

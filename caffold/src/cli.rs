@@ -7,6 +7,8 @@ use crate::{
     app::{self, ServeConfig},
     update::{self, UpdateRequest},
 };
+#[cfg(target_os = "linux")]
+use crate::{fs::RootedFs, update::caffold_link};
 
 #[derive(Debug, Parser)]
 #[command(name = "caffold")]
@@ -20,8 +22,8 @@ pub struct Cli {
 enum Command {
     /// Serve the Caffold web console.
     Serve(ServeArgs),
-    /// Update the installed Caffold app with Homebrew, and put the current
-    /// version back if the new one does not start.
+    /// Update the installed Caffold to the newest release, and put the
+    /// current version back if the new one does not start.
     Update(UpdateArgs),
 }
 
@@ -49,15 +51,28 @@ struct ServeArgs {
 
     /// The Caffold Server app running this server. Only such a server offers
     /// to update the app.
+    #[cfg(target_os = "macos")]
     #[arg(long, value_name = "PATH")]
     app_bundle: Option<PathBuf>,
+
+    /// The install directory of the systemd service running this server.
+    /// Only such a server offers to update Caffold.
+    #[cfg(target_os = "linux")]
+    #[arg(long, value_name = "PATH")]
+    install_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
 struct UpdateArgs {
     /// The installed Caffold Server app.
+    #[cfg(target_os = "macos")]
     #[arg(long, value_name = "PATH")]
     app: PathBuf,
+
+    /// The install directory the systemd service runs Caffold from.
+    #[cfg(target_os = "linux")]
+    #[arg(long, value_name = "PATH")]
+    install_root: PathBuf,
 
     /// The data directory of the app's server. Attempts are recorded in its
     /// caffold-updates directory.
@@ -69,6 +84,7 @@ struct UpdateArgs {
     port: u16,
 
     /// The menu-bar app started this update and shows its result.
+    #[cfg(target_os = "macos")]
     #[arg(long)]
     from_menu_bar: bool,
 
@@ -99,22 +115,38 @@ pub async fn run() -> anyhow::Result<ExitCode> {
                 root: args.root,
                 data_dir: args.data_dir,
                 worktree_root: args.worktree_root,
+                #[cfg(target_os = "macos")]
                 app_bundle: args.app_bundle,
+                #[cfg(target_os = "linux")]
+                install_root: args.install_root,
             })
             .await?;
             Ok(ExitCode::SUCCESS)
         }
-        Command::Update(args) => Ok(update::run(
-            UpdateRequest {
-                app: args.app,
-                data_dir: args.data_dir,
-                port: args.port,
-                from_menu_bar: args.from_menu_bar,
-            },
-            args.attempt,
-        )
-        .await),
+        Command::Update(args) => Ok(update::run(update_request(&args)?, args.attempt).await),
     }
+}
+
+#[cfg(target_os = "macos")]
+fn update_request(args: &UpdateArgs) -> anyhow::Result<UpdateRequest> {
+    Ok(UpdateRequest {
+        app: args.app.clone(),
+        data_dir: args.data_dir.clone(),
+        port: args.port,
+        from_menu_bar: args.from_menu_bar,
+    })
+}
+
+/// The `caffold` link the update moves is the one the install script put in
+/// this user's home.
+#[cfg(target_os = "linux")]
+fn update_request(args: &UpdateArgs) -> anyhow::Result<UpdateRequest> {
+    Ok(UpdateRequest {
+        install_root: args.install_root.clone(),
+        link: caffold_link(&RootedFs::home_dir()?),
+        data_dir: args.data_dir.clone(),
+        port: args.port,
+    })
 }
 
 #[cfg(test)]
@@ -174,6 +206,7 @@ mod tests {
         assert!(!printed.contains("a hyper error"), "{printed}");
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn serves_for_the_app_that_names_itself() {
         let cli = Cli::try_parse_from([
@@ -200,6 +233,7 @@ mod tests {
         assert_eq!(args.app_bundle, None);
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn reads_an_update_request() {
         let cli = Cli::try_parse_from([
@@ -228,6 +262,7 @@ mod tests {
         assert_eq!(args.attempt, None);
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn needs_the_app_its_data_and_its_port_to_update() {
         for missing in [
@@ -244,5 +279,102 @@ mod tests {
         ] {
             assert!(Cli::try_parse_from(missing).is_err());
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn serves_for_the_service_that_names_its_install() {
+        let cli = Cli::try_parse_from([
+            "caffold",
+            "serve",
+            "--port",
+            "5178",
+            "--install-root",
+            "/home/me/.local/share/caffold",
+        ])
+        .unwrap();
+
+        let Command::Serve(args) = cli.command else {
+            panic!("expected serve");
+        };
+        assert_eq!(
+            args.install_root,
+            Some(PathBuf::from("/home/me/.local/share/caffold"))
+        );
+        let Command::Serve(args) = Cli::try_parse_from(["caffold", "serve"]).unwrap().command
+        else {
+            panic!("expected serve");
+        };
+        assert_eq!(args.install_root, None);
+        assert!(Cli::try_parse_from(["caffold", "serve", "--app-bundle", "/A.app"]).is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn reads_an_update_request() {
+        let cli = Cli::try_parse_from([
+            "caffold",
+            "update",
+            "--install-root",
+            "/home/me/.local/share/caffold",
+            "--data-dir",
+            "/home/me/.caffold",
+            "--port",
+            "5178",
+        ])
+        .unwrap();
+
+        let Command::Update(args) = cli.command else {
+            panic!("expected update");
+        };
+        let request = update_request(&args).unwrap();
+        assert_eq!(
+            request.install_root,
+            PathBuf::from("/home/me/.local/share/caffold")
+        );
+        assert_eq!(request.link, caffold_link(&RootedFs::home_dir().unwrap()));
+        assert_eq!(request.data_dir, PathBuf::from("/home/me/.caffold"));
+        assert_eq!(request.port, 5178);
+        assert_eq!(args.attempt, None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn needs_the_install_its_data_and_its_port_to_update() {
+        for missing in [
+            ["caffold", "update", "--data-dir", "/data", "--port", "5178"],
+            [
+                "caffold",
+                "update",
+                "--install-root",
+                "/c",
+                "--port",
+                "5178",
+            ],
+            [
+                "caffold",
+                "update",
+                "--install-root",
+                "/c",
+                "--data-dir",
+                "/data",
+            ],
+        ] {
+            assert!(Cli::try_parse_from(missing).is_err());
+        }
+        assert!(
+            Cli::try_parse_from([
+                "caffold",
+                "update",
+                "--install-root",
+                "/c",
+                "--data-dir",
+                "/data",
+                "--port",
+                "5178",
+                "--from-menu-bar",
+            ])
+            .is_err()
+        );
     }
 }

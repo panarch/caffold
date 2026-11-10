@@ -8,8 +8,8 @@ Task's follow-up prompt.
 
 Open **Settings → Voice Input** and choose a provider:
 
-- **Whisper** transcribes on the Mac. Choose **Download** to fetch its model,
-  about 1.5 GiB. The download continues on the Mac after you close the page,
+- **Whisper** transcribes on the host. Choose **Download** to fetch its model,
+  about 1.5 GiB. The download continues on the host after you close the page,
   and Caffold checks the model before using it. **Cancel download** stops a
   download in progress, and **Delete model** removes the model.
 - **OpenAI**, **Gemini**, and **Grok** transcribe with your own API key from
@@ -38,7 +38,7 @@ ready, the voice button reads **Set up voice input** and opens
 
 ## Where recordings go
 
-The browser sends each recording to the Mac. With Whisper it stays there; with
-OpenAI, Gemini, or Grok, the Mac forwards it to that provider. Caffold never
+The browser sends each recording to the host. With Whisper it stays there; with
+OpenAI, Gemini, or Grok, the host forwards it to that provider. Caffold never
 stores recordings. Remote devices use the same private address as the rest of
 Caffold, so dictating from a phone needs nothing extra.

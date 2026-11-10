@@ -10,7 +10,7 @@ or Pull Requests.
 
 ## Set up
 
-GitHub views use the [GitHub CLI](https://cli.github.com/) on the Mac, signed
+GitHub views use the [GitHub CLI](https://cli.github.com/) on the host, signed
 in to your account:
 
 ```sh

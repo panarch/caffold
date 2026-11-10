@@ -1,0 +1,104 @@
+name: Linux Release
+
+on:
+  workflow_call:
+    inputs:
+      release_sha:
+        description: The release commit the macOS job verified and pushed.
+        type: string
+        required: true
+  # A change to the packaging, the dependencies, or the toolchain can change
+  # what the binaries ask of a Linux system, so it builds the release here
+  # before it reaches main.
+  pull_request:
+    branches: [main]
+    paths:
+      - "distribution/linux/**"
+      - ".github/workflows/linux-*.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "caffold/Cargo.toml"
+      - "caffold/build.rs"
+      - "runners/caffold/Cargo.toml"
+      - "rust-toolchain.toml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Build and verify Linux ${{ matrix.arch }} release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    # glibc 2.28 and libstdc++ 3.4.25, with a current compiler: the binaries
+    # run on every distribution that has these or newer.
+    container: quay.io/pypa/manylinux_2_28_${{ matrix.arch }}
+    timeout-minutes: 60
+
+    steps:
+      # Git names the build's commit; libclang lets bindgen generate Whisper's
+      # bindings.
+      - name: Install Git and libclang
+        run: dnf install -y git clang-devel
+
+      - name: Check out the release source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release_sha || github.sha }}
+          persist-credentials: false
+
+      - name: Install Rust 1.96
+        run: |
+          curl -fsSL https://sh.rustup.rs | sh -s -- -y \
+            --profile minimal \
+            --default-toolchain 1.96.0
+          echo "${HOME}/.cargo/bin" >>"${GITHUB_PATH}"
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: linux-release-${{ matrix.arch }}
+
+      - name: Install Node.js 26
+        uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          package-manager-cache: false
+
+      # The server embeds Lit and tslib from frontend/node_modules and
+      # compiles its TypeScript modules with the TypeScript installed there.
+      - name: Install frontend build dependencies
+        run: npm ci --omit=dev
+        working-directory: frontend
+
+      - name: Verify native build tools
+        run: |
+          cmake --version
+          g++ --version
+          objdump --version
+          readelf --version
+
+      - name: Read release metadata
+        id: metadata
+        run: distribution/linux/package metadata >>"${GITHUB_OUTPUT}"
+
+      - name: Build and verify the Linux artifact
+        run: distribution/linux/package archive
+
+      - name: Upload the verified Linux artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: caffold-linux-${{ matrix.arch }}-v${{ steps.metadata.outputs.version }}
+          path: |
+            target/caffold-linux/${{ steps.metadata.outputs.archive }}
+            target/caffold-linux/${{ steps.metadata.outputs.checksum }}
+          if-no-files-found: error
+          retention-days: 7

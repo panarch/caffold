@@ -1,0 +1,3 @@
+#!/bin/sh
+# Stands in for the runner shipped beside caffold.
+exit 0

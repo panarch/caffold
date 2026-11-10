@@ -86,17 +86,24 @@ one records where it runs from and what it needs:
 | `desktop/macos/test-runtime` | repository root | macOS, Xcode tools | Swift wrapper lifecycle and external stack capture |
 | `desktop/macos/test-system-status` | repository root | macOS, Xcode tools | Swift system-status behavior |
 | `desktop/macos/test-updater` | repository root | macOS, Xcode tools | Swift updater behavior |
+| `distribution/linux/test-contracts` | repository root | Node | the Linux install script against a local release and stand-ins for systemd, the Linux packaging checks, and the Linux release workflows, from `distribution/linux/tests/` |
 
 The macOS contracts verify shell scripts, workflow definitions, and
 documentation, so they run on any platform and belong in the ordinary pull
 request checks. Only the Swift programs and the one packaging-metadata check
-need a macOS host; that check skips itself elsewhere.
+need a macOS host; that check skips itself elsewhere. The Linux contracts run
+the install script with checked-in stand-ins for `systemctl`, `loginctl`,
+`curl`'s requests to the server, and the ELF tools, so they also run on any
+platform. Building and checking a real Linux archive needs Linux; see
+[Release Process](../operations/release.md#linux-archives), and
+[Linux Local Install Check](linux-local-install.md) to build one and install it
+in a virtual machine from a Mac.
 
 Every test belongs to the thing it verifies. Owners outside the frontend
 package keep their Node contracts in a `tests/` directory of their own and are
 invoked by path: `docs/tests/` verifies the documentation, `scripts/tests/`
-verifies the repository tooling, and `desktop/macos/tests/` verifies the macOS
-application. The frontend package keeps its own under
+verifies the repository tooling, `desktop/macos/tests/` verifies the macOS
+application, and `distribution/linux/tests/` verifies the Linux distribution. The frontend package keeps its own under
 `frontend/tests/contracts/`.
 
 The workspace has two Rust members, and each keeps its tests with it. The
@@ -109,6 +116,11 @@ its own:
 a suite driven by a stand-in agent, which is deterministic and spends no model
 usage, and the opt-in live check above. `cargo test` from the repository root
 covers every member, so neither needs its own job.
+
+Code for one operating system compiles only there. The macOS update procedure
+and its tests build on a Mac, where the macOS release job and local runs test
+them; the Linux update procedure and its tests build on Linux, where Rust
+Checks test them.
 
 A test written in Node does not make it frontend material, and a contract on
 the backend's own boundary belongs to the backend even when a different harness
@@ -124,13 +136,14 @@ verification it performs:
 | Documentation Contracts | `documentation-contracts.yml` | the documentation index, links, and command index, and the user manual's strict build |
 | Repository Tooling Tests | `repository-tooling-tests.yml` | the release version tooling, by calling it |
 | macOS Packaging Contracts | `macos-packaging-contracts.yml` | packaging, release, and installer definitions |
+| Linux Packaging Contracts | `linux-packaging-contracts.yml` | the install script, the Linux packaging checks, and the Linux release definitions |
 | Browser Tests / _project_ | `browser-tests.yml` | browser behavior, one job per Playwright project |
 | Rust Checks | `rust-checks.yml` | formatting, lints, and the Rust suites |
 
 A failing check therefore names its owner without being opened. The contract
 jobs read shell scripts, workflow definitions, and documentation rather than
 running a macOS application, so `macOS Packaging Contracts` needs no macOS host
-and runs on the ordinary Ubuntu runner.
+and runs on the ordinary Ubuntu runner, as `Linux Packaging Contracts` does.
 
 Each owner keeps its `ubuntu-26.04` check in its own reusable workflow. CI uses
 Node.js 26 LTS, matching the repository `.nvmrc`. `checks.yml`
@@ -153,6 +166,11 @@ tests and lints, and the arm64 package build and verification. It uploads the
 package before pushing the verified release commit, or only its tag for a
 release candidate. Browser and other Ubuntu checks therefore run before the
 version bump; macOS checks and packaging verify the final version.
+`.github/workflows/linux-release.yml` then builds and verifies that release
+commit for x86_64 and aarch64 in `manylinux_2_28` containers. It also runs on
+a pull request that changes Linux packaging, the Cargo manifests or lockfile,
+the backend's build script, or the Rust toolchain, because those can change
+what the binaries ask of a Linux system.
 
 The macOS workflow can also be dispatched manually from `main` to verify and
 package that commit. Standalone runs, release `dry-run`, and `resume` do not

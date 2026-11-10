@@ -1,10 +1,14 @@
 # Application Update Testing
 
-`caffold update` is covered by Rust tests with a stand-in for Homebrew and the
-app, and the menu-bar app by `desktop/macos/test-updater`. Neither shows what
-the real Homebrew, LaunchServices, and app do. Run these checks on a Mac with
-Caffold installed through Homebrew when a change touches how the procedure
-calls Homebrew or replaces, starts, or restores the app.
+On macOS, `caffold update` is covered by Rust tests with a stand-in for
+Homebrew and the app, and the menu-bar app by `desktop/macos/test-updater`.
+Neither shows what the real Homebrew, LaunchServices, and app do. Run these
+checks on a Mac with Caffold installed through Homebrew when a change touches
+how the procedure calls Homebrew or replaces, starts, or restores the app.
+
+On Linux, Rust tests cover the procedure with a stand-in for GitHub and the
+systemd service, and with a local release for the download and checksum.
+This document has no live procedure for it.
 
 The checks replace the installed app and edit this Mac's copy of the
 `panarch/tap` tap. Running Tasks keep going, as in any update; open terminals

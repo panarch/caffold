@@ -1,0 +1,4 @@
+#!/bin/sh
+# Stands in for an installed Tailscale CLI; the install script asks Caffold,
+# not this command, to turn Serve on.
+exit 0

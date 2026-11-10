@@ -15,6 +15,7 @@ const sharedWorkflows = {
   documentation: "documentation-contracts.yml",
   repository_tooling: "repository-tooling-tests.yml",
   macos_packaging: "macos-packaging-contracts.yml",
+  linux_packaging: "linux-packaging-contracts.yml",
   browser: "browser-tests.yml",
   rust: "rust-checks.yml",
 };
@@ -259,7 +260,7 @@ test("release checks the source before versioning and packaging on macOS", () =>
 
   // Default success gating carries any source/package/upload/push failure
   // through macOS to both publication jobs, without a skipped push job.
-  assert.match(releaseJob, /^    needs: macos$/m);
+  assert.match(releaseJob, /^    needs:\n      - macos\n      - linux\n/m);
   assert.match(releaseJob, /^    if: inputs\.action != 'dry-run'$/m);
   assert.match(releaseJob, /^\s+contents: write$/m);
   assert.match(releaseJob, /RELEASE_SHA: \$\{\{ needs\.macos\.outputs\.release_sha \}\}/);
@@ -382,10 +383,11 @@ test("failed or skipped checks block the release chain in every mode", () => {
       ? [...list.matchAll(/- (\w+)/g)].map(([, dependency]) => dependency)
       : [job.match(/^    needs: (\w+)$/m)?.[1]];
   };
-  const chain = ["macos", "publish_release", "publish_homebrew", "publish_site"];
+  const chain = ["macos", "linux", "publish_release", "publish_homebrew", "publish_site"];
   const requiredChecks = Object.keys(sharedWorkflows);
   assert.deepEqual(dependencies("macos"), requiredChecks);
-  assert.deepEqual(dependencies("publish_release"), ["macos"]);
+  assert.deepEqual(dependencies("linux"), ["macos"]);
+  assert.deepEqual(dependencies("publish_release"), ["macos", "linux"]);
   assert.deepEqual(dependencies("publish_homebrew"), ["macos", "publish_release"]);
   assert.deepEqual(dependencies("publish_site"), ["macos", "publish_homebrew"]);
   // These jobs intentionally use Actions' default success() condition. A
@@ -396,6 +398,7 @@ test("failed or skipped checks block the release chain in every mode", () => {
   ];
   const conditions = {
     macos: [undefined, () => true],
+    linux: [undefined, () => true],
     publish_release: ["inputs.action != 'dry-run'", (action) => action !== "dry-run"],
     publish_homebrew: stableOrResume,
     publish_site: stableOrResume,
@@ -419,13 +422,15 @@ test("failed or skipped checks block the release chain in every mode", () => {
   ]) {
     const success = runChain(action);
     assert.equal(success.macos, "success");
+    assert.equal(success.linux, "success");
     assert.equal(success.publish_release, action === "dry-run" ? "skipped" : "success");
     assert.equal(success.publish_homebrew, action.startsWith("rc-") ? "skipped" : success.publish_release);
     assert.equal(success.publish_site, success.publish_homebrew);
-    for (const name of [...requiredChecks, "macos", "publish_release", "publish_homebrew"]) {
+    for (const name of [...requiredChecks, "macos", "linux", "publish_release", "publish_homebrew"]) {
       for (const result of ["failure", "cancelled", "skipped"]) {
         const failed = runChain(action, { [name]: result });
         if (requiredChecks.includes(name)) assert.equal(failed.macos, "skipped");
+        if ([...requiredChecks, "macos"].includes(name)) assert.equal(failed.linux, "skipped");
         if (!["publish_release", "publish_homebrew"].includes(name)) {
           assert.equal(failed.publish_release, "skipped");
         }

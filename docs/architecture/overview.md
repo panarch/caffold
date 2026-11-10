@@ -11,6 +11,7 @@ and Git, and exposes Task and review APIs to the browser.
 flowchart TD
     PWA["Browser / PWA / Service Worker"]
     MacWrapper["macOS menu bar wrapper"]
+    LinuxService["Linux systemd user service"]
     Backend["Caffold Rust backend"]
     PushService["Browser vendor Push Service"]
     Proxy["Codex proxy child"]
@@ -31,6 +32,7 @@ flowchart TD
     PWA -->|"terminal WebSocket"| Backend
     PWA -->|"16 kHz mono PCM WAV"| Backend
     MacWrapper -->|"HTTP"| Backend
+    LinuxService -->|"starts and restarts"| Backend
     Backend -->|"JSON-RPC / WebSocket"| Proxy
     Proxy --> AppServer
     Backend -->|"Unix socket"| Runner
@@ -66,6 +68,17 @@ Swift wrapper may expose the same backend-owned setting or action, but they
 must not separately infer its state or implement different mutation semantics.
 Platform failures before the backend is available, macOS lifecycle, and native
 launch behavior remain wrapper-owned.
+
+### Linux service
+
+On Linux, the systemd user unit `caffold.service`, which the install script
+writes, starts the backend with `--install-root`, and restarts it after a
+failure. Its `KillMode=process` stops only the backend when the service stops
+or restarts, so the Codex app-server daemon, the Claude and Antigravity
+runners, the Grok leader, and an update worker outlive a backend replacement
+there as they do under the macOS wrapper. Linux has no host-side status surface
+or settings dialog: the browser is the only control surface, and the install
+script turns on Tailscale Serve through the backend's local API.
 
 ### Rust backend
 

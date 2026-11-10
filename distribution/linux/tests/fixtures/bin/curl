@@ -1,0 +1,19 @@
+#!/bin/sh
+# Stands in for curl. The server on port 5178 answers from FAKE_STATE: its
+# health names the running version, and Tailscale Serve records the request and
+# answers FAKE_TAILSCALE_ANSWER. Every other address goes to the real curl.
+for argument in "$@"; do
+  case "${argument}" in
+    http://127.0.0.1:5178/api/health)
+      [ -f "${FAKE_STATE}/running" ] || exit 7
+      printf '{"version":"%s"}' "$(cat "${FAKE_STATE}/running")"
+      exit 0
+      ;;
+    http://127.0.0.1:5178/api/tailscale/serve)
+      echo "$*" >>"${FAKE_STATE}/tailscale.log"
+      printf '%s' "${FAKE_TAILSCALE_ANSWER:-}"
+      exit 0
+      ;;
+  esac
+done
+exec "${REAL_CURL:-/usr/bin/curl}" "$@"

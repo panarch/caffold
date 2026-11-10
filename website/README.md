@@ -64,7 +64,7 @@ Cloudflare dashboard are:
 
 - **`https://caffold.dev`** serves the `site` branch, the manual of the latest
   release. The release workflow moves that branch to each release commit; see
-  [macOS Release Process](../docs/operations/macos-release.md).
+  [Release Process](../docs/operations/release.md).
 - **Every other branch** is a Preview at `<branch>-caffold.<subdomain>.workers.dev`,
   where `<subdomain>` is the Cloudflare account's workers.dev subdomain. The
   Preview of `main` is the manual of the next release. Every copy outside

@@ -2,7 +2,7 @@
 
 Open **Settings** at the bottom of the navigation pane. What you set in
 **Appearance**, **Keyboard**, and **Files** is saved in each browser;
-everything else is saved on the Mac.
+everything else is saved on the host.
 
 ![Settings → Appearance](../assets/screenshots/settings-appearance-light-desktop.png#only-light)
 ![Settings → Appearance](../assets/screenshots/settings-appearance-dark-desktop.png#only-dark)
@@ -85,7 +85,7 @@ page checks the installation, account, plan, quota, and available models once
 when the CLI is ready and no refresh or runtime restart is running.
 The header **Refresh** repeats that check
 using the CLI's saved sign-in, without sending a model prompt. If sign-in is
-needed, run `agy` in a terminal on the Mac and complete it there. Usage lists each
+needed, run `agy` in a terminal on the host and complete it there. Usage lists each
 reported model group and period as a percentage used with the reset time in
 your local timezone. **Service status** opens Google AI Studio status.
 

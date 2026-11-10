@@ -1,22 +1,29 @@
+//! The update on macOS: Homebrew installs the new Caffold Server app while
+//! the current one keeps running, then the app restarts on the new version,
+//! or on a backup of the current one when the new version does not start.
+
+mod host;
+
 use std::{
-    fs,
-    io::{self, Write},
+    io::Write,
     path::{Path, PathBuf},
     time::Duration,
 };
 
 use semver::Version;
 
-use super::records::{Attempt, AttemptOutcome, AttemptRecords, BeginError};
+use super::{
+    Processes, abandon, follow, log, note,
+    records::{Attempt, AttemptOutcome, AttemptRecords, BeginError},
+};
+pub(super) use host::MacHost;
+pub(crate) use host::homebrew_record;
 
 /// Waits match `desktop/macos/install-local`: 20 seconds for the app to quit
 /// and 30 seconds for a server to answer.
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
 const STOP_POLLS: u32 = 80;
 const SERVE_POLLS: u32 = 120;
-/// How long `caffold update` waits for its worker to take the attempt over.
-const WORKER_START_POLLS: u32 = 40;
-const FOLLOW_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct UpdateRequest {
@@ -46,7 +53,7 @@ pub(super) async fn start(
                     records.directory(&attempt.id).display()
                 ),
             );
-            follow(host, records, attempt, out).await
+            follow(host, records, attempt, out, result_line).await
         }
         Err(refusal) => {
             note(out, &refusal);
@@ -139,76 +146,6 @@ async fn back_up(
         .map_err(|error| format!("Caffold could not back up {}: {error}", app.display()))?;
     host.forget_bundle(&backup).await;
     Ok(())
-}
-
-/// Removes an attempt that never changed anything.
-fn abandon(records: &AttemptRecords, attempt: &Attempt) {
-    let _ = fs::remove_dir_all(records.directory(&attempt.id));
-    let _ = records.release(&attempt.id);
-}
-
-/// Prints the worker's log as it grows, then the outcome.
-async fn follow(
-    host: &impl Host,
-    records: &AttemptRecords,
-    started: Attempt,
-    out: &mut impl Write,
-) -> bool {
-    let mut printed = 0;
-    let mut waited_for_worker = 0;
-    loop {
-        host.sleep(FOLLOW_INTERVAL).await;
-        printed = print_new_log(records, &started.id, printed, out);
-        let Ok(attempt) = records.load(&started.id) else {
-            note(out, "The record of this update disappeared.");
-            return false;
-        };
-        if attempt.outcome != AttemptOutcome::Running {
-            note(out, &result_line(records, &attempt));
-            return matches!(
-                attempt.outcome,
-                AttemptOutcome::Succeeded | AttemptOutcome::UpToDate
-            );
-        }
-        if attempt.pid == host.pid() {
-            waited_for_worker += 1;
-            if waited_for_worker >= WORKER_START_POLLS {
-                let mut attempt = attempt;
-                attempt.finish(
-                    AttemptOutcome::Interrupted,
-                    Some("The update did not start".to_string()),
-                );
-                let _ = records.save(&attempt);
-                let _ = records.release(&attempt.id);
-                note(out, "The update did not start.");
-                return false;
-            }
-        } else if !host.alive(attempt.pid) {
-            note(
-                out,
-                "The update stopped before it finished. The next update marks it interrupted.",
-            );
-            return false;
-        }
-    }
-}
-
-fn print_new_log(
-    records: &AttemptRecords,
-    id: &str,
-    printed: usize,
-    out: &mut impl Write,
-) -> usize {
-    let Ok(log) = fs::read_to_string(records.log(id)) else {
-        return printed;
-    };
-    if let Some(new) = log.get(printed..)
-        && !new.is_empty()
-    {
-        let _ = out.write_all(new.as_bytes());
-        let _ = out.flush();
-    }
-    log.len()
 }
 
 fn result_line(records: &AttemptRecords, attempt: &Attempt) -> String {
@@ -462,16 +399,6 @@ fn last_line(output: &str) -> String {
         .to_string()
 }
 
-/// The worker's output is its log.
-fn log(line: &str) {
-    let _ = writeln!(io::stdout(), "{line}");
-}
-
-fn note(out: &mut impl Write, line: &str) {
-    let _ = writeln!(out, "{line}");
-    let _ = out.flush();
-}
-
 /// What Homebrew records for the `caffold` cask.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum HomebrewRecord {
@@ -483,9 +410,7 @@ pub(crate) enum HomebrewRecord {
 
 /// Everything the update does outside its records: Homebrew, the app bundle,
 /// the running app and its server, and time.
-pub(super) trait Host {
-    fn pid(&self) -> u32;
-    fn alive(&self, pid: u32) -> bool;
+pub(super) trait Host: Processes {
     async fn homebrew_record(&self) -> HomebrewRecord;
     /// Brings Homebrew's copy of its taps up to date and returns what it said.
     async fn homebrew_refresh(&self) -> Result<String, String>;
@@ -509,7 +434,6 @@ pub(super) trait Host {
         id: &str,
         log: &Path,
     ) -> Result<(), String>;
-    async fn sleep(&self, duration: Duration);
 }
 
 #[cfg(test)]
@@ -580,7 +504,7 @@ mod tests {
         }
     }
 
-    impl Host for FakeMac {
+    impl Processes for FakeMac {
         fn pid(&self) -> u32 {
             WORKER_PID
         }
@@ -589,6 +513,10 @@ mod tests {
             pid == WORKER_PID || pid == OWN_PID
         }
 
+        async fn sleep(&self, _duration: Duration) {}
+    }
+
+    impl Host for FakeMac {
         async fn homebrew_record(&self) -> HomebrewRecord {
             if !self.homebrew.get() {
                 return HomebrewRecord::NoHomebrew;
@@ -702,8 +630,6 @@ mod tests {
                 Err("sh: not found".to_string())
             }
         }
-
-        async fn sleep(&self, _duration: Duration) {}
     }
 
     fn version(text: &str) -> Version {
@@ -1005,76 +931,6 @@ mod tests {
             "Caffold could not start the update: sh: not found\n"
         );
         assert_eq!(records.latest_finished().unwrap(), None);
-    }
-
-    #[tokio::test]
-    async fn follows_the_worker_and_reports_its_outcome() {
-        let (_directory, records) = records();
-        let mac = FakeMac::new("0.18.2", "0.18.3");
-        let mut started = records
-            .begin("0.18.2".to_string(), false, OWN_PID, |pid| mac.alive(pid))
-            .unwrap();
-        fs::write(
-            records.log(&started.id),
-            "Upgrading Caffold with Homebrew.\n",
-        )
-        .unwrap();
-        started.pid = WORKER_PID;
-        started.to_version = Some("0.18.3".to_string());
-        started.finish(
-            AttemptOutcome::RolledBack,
-            Some("0.18.3 could not start".to_string()),
-        );
-        records.save(&started).unwrap();
-        let mut out = Vec::new();
-
-        assert!(!follow(&mac, &records, started.clone(), &mut out).await);
-
-        assert_eq!(
-            String::from_utf8(out).unwrap(),
-            "Upgrading Caffold with Homebrew.\nResult: Caffold was rolled back to 0.18.2: 0.18.3 could not start.\n"
-        );
-    }
-
-    #[tokio::test]
-    async fn gives_up_on_a_worker_that_never_takes_the_attempt_over() {
-        let (_directory, records) = records();
-        let mac = FakeMac::new("0.18.2", "0.18.3");
-        let started = records
-            .begin("0.18.2".to_string(), false, WORKER_PID, |pid| {
-                mac.alive(pid)
-            })
-            .unwrap();
-        let mut out = Vec::new();
-
-        assert!(!follow(&mac, &records, started.clone(), &mut out).await);
-
-        let attempt = records.load(&started.id).unwrap();
-        assert_eq!(attempt.outcome, AttemptOutcome::Interrupted);
-        assert_eq!(attempt.reason.as_deref(), Some("The update did not start"));
-        assert_eq!(
-            String::from_utf8(out).unwrap(),
-            "The update did not start.\n"
-        );
-    }
-
-    #[tokio::test]
-    async fn notices_a_worker_that_went_away() {
-        let (_directory, records) = records();
-        let mac = FakeMac::new("0.18.2", "0.18.3");
-        let mut started = records
-            .begin("0.18.2".to_string(), false, OWN_PID, |pid| mac.alive(pid))
-            .unwrap();
-        started.pid = 300;
-        records.save(&started).unwrap();
-        let mut out = Vec::new();
-
-        assert!(!follow(&mac, &records, started, &mut out).await);
-
-        assert_eq!(
-            String::from_utf8(out).unwrap(),
-            "The update stopped before it finished. The next update marks it interrupted.\n"
-        );
     }
 
     #[test]

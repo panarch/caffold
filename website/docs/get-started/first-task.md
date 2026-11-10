@@ -9,7 +9,8 @@ Caffold is [installed](install.md) and at least one
 ![New Task with the model menu open: the agents under Provider, Codex's models, and the reasoning level and speed](../assets/screenshots/new-task-model-picker-light-desktop.png#only-light)
 ![New Task with the model menu open: the agents under Provider, Codex's models, and the reasoning level and speed](../assets/screenshots/new-task-model-picker-dark-desktop.png#only-dark)
 
-1. Choose **Open Caffold** from the menu-bar app.
+1. Open Caffold: on a Mac, choose **Open Caffold** from the menu-bar app; on
+   Linux, open the address the install script showed.
 2. Choose **New Task** (+) at the top of the Task list.
 3. Select the directory above the prompt and choose the repository you want to
    work in from the list, or choose the pencil button and type its path.
