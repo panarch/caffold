@@ -1,4 +1,9 @@
-use std::{net::IpAddr, path::PathBuf, process::ExitCode};
+use std::{
+    io::{self, IsTerminal},
+    net::IpAddr,
+    path::PathBuf,
+    process::ExitCode,
+};
 
 use clap::{Args, Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
@@ -103,6 +108,9 @@ pub async fn run() -> anyhow::Result<ExitCode> {
             EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| EnvFilter::new(DEFAULT_LOG_FILTER)),
         )
+        // Colors are terminal escapes: the macOS app's log file and the
+        // systemd journal would keep them as text inside every line.
+        .with_ansi(io::stdout().is_terminal())
         .init();
 
     let cli = Cli::parse();
