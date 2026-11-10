@@ -79,9 +79,11 @@ main() {
   say "Caffold ${version} is running at http://127.0.0.1:${PORT}."
   keep_running_after_logout
   serve_on_tailnet
+  # Login profiles such as Ubuntu's add ~/.local/bin to the PATH only if it
+  # exists at login, so a shell started before it existed lacks it.
   case ":${PATH}:" in
     *":${HOME}/.local/bin:"*) ;;
-    *) say "Add ~/.local/bin to your PATH to run the caffold command." ;;
+    *) say "Log in again to run the caffold command. If it is still not found, add ~/.local/bin to your PATH." ;;
   esac
 }
 
