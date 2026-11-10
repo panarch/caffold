@@ -1,0 +1,4 @@
+#!/bin/sh
+# Stands in for curl asking the server the packaging check started for its
+# health: answers FAKE_HEALTH.
+printf '%s' "${FAKE_HEALTH}"

@@ -52,7 +52,7 @@ limactl shell caffold-dev -- bash -lc '
 ```
 
 The `/Users` mount lets Git in the container read the checkout's repository,
-so the build ID names its commit.
+so the build ID names its commit, as the archive's check requires.
 
 ## Make a local release
 

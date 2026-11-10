@@ -101,6 +101,28 @@ test("refuses a binary built for another architecture", () => {
   assert.equal(result.stderr, `${binary} is built for AArch64, not x86_64.\n`);
 });
 
+const health = (buildId) => JSON.stringify({ status: "ok", version, buildId });
+
+test("accepts a server that answers with the version and a build ID naming its commit", () => {
+  for (const buildId of ["977af700.1794292206", "977af700-dirty.1794292206"]) {
+    const result = packaging(`verify_serves "${binary}" "${version}"`, { FAKE_HEALTH: health(buildId) });
+
+    assert.equal(result.status, 0, result.stderr);
+  }
+});
+
+test("refuses a build ID that names no commit, as when Git could not read the checkout", () => {
+  const result = packaging(`verify_serves "${binary}" "${version}"`, {
+    FAKE_HEALTH: health("unknown.1794292206"),
+  });
+
+  assert.equal(result.status, 1);
+  assert.equal(
+    result.stderr,
+    "caffold serve answered with build ID unknown.1794292206, which names no commit; Git could not read the checkout.\n",
+  );
+});
+
 test("names its commands and refuses others", () => {
   const help = spawnSync(packageScript, ["--help"], { encoding: "utf8" });
   assert.equal(help.status, 0);

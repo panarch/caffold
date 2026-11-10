@@ -55,6 +55,12 @@ jobs:
           ref: ${{ inputs.release_sha || github.sha }}
           persist-credentials: false
 
+      # The checkout belongs to the runner's user, not to the container's
+      # root, and the checkout action trusts it for its own Git commands only.
+      # The build asks Git for the commit its build ID names.
+      - name: Trust the checkout for Git
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
       - name: Install Rust 1.96
         run: |
           curl -fsSL https://sh.rustup.rs | sh -s -- -y \

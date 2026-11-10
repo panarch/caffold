@@ -77,7 +77,7 @@ file beside it, and then checks that archive as
    symbol newer than `GLIBCXX_3.4.25`, and neither needs a shared library
    outside glibc, `libgcc_s`, and `libstdc++`; and
 4. `caffold serve` from the archive answers `/api/health` with the expected
-   version.
+   version and a build ID that names the source commit.
 
 The symbol ceilings are those of the `manylinux_2_28` image the release builds
 in, so the archives run on every distribution with glibc 2.28 or later. A build
