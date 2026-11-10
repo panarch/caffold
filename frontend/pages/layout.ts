@@ -28,6 +28,7 @@ import {
   routeUrl,
 } from "#app/navigation-routes.js";
 import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "#app/origin-reachability.js";
+import { applyServerIdentity } from "#app/server-identity.js";
 import { getSettings } from "#app/settings.js";
 import { containsAcrossShadowRoots } from "#app/shadow-roots.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
@@ -521,6 +522,15 @@ export class CaffoldAppShell extends CaffoldElement {
     const request = getHealth()
       .then((health) => {
         this.updateBuildStatus(health);
+        if (
+          typeof health.serverName === "string" &&
+          typeof health.serverIcon === "string"
+        ) {
+          applyServerIdentity({
+            name: health.serverName,
+            icon: health.serverIcon,
+          });
+        }
         return health;
       })
       .catch((error: unknown) => {

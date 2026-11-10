@@ -127,6 +127,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/shadow-roots.js"
         )))),
+        "server-identity.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/server-identity.js"
+        )))),
         "popover-focus.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/popover-focus.js"
@@ -524,6 +528,22 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
                 "/frontend/pages/(task-workspace)/settings/notifications/lifecycle.js"
+            ))))
+        }
+        "pages/(task-workspace)/settings/name-and-icon/page.css.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/settings/name-and-icon/page.css.js"
+            ))))
+        }
+        "pages/(task-workspace)/settings/name-and-icon/page.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/name-and-icon/page.js"
+        )))),
+        "pages/(task-workspace)/settings/name-and-icon/lifecycle.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/settings/name-and-icon/lifecycle.js"
             ))))
         }
         "pages/(task-workspace)/settings/remote-access/page.css.js" => {
@@ -2732,6 +2752,7 @@ mod tests {
             "pages/(task-workspace)/settings/jev/page.css",
             "pages/(task-workspace)/settings/keyboard/page.css",
             "pages/(task-workspace)/settings/layout.css",
+            "pages/(task-workspace)/settings/name-and-icon/page.css",
             "pages/(task-workspace)/settings/notifications/page.css",
             "pages/(task-workspace)/settings/remote-access/page.css",
             "pages/(task-workspace)/settings/voice/page.css",
@@ -3019,6 +3040,8 @@ mod tests {
             "pages/(task-workspace)/settings/keyboard/page.js",
             "pages/(task-workspace)/settings/files/page.js",
             "pages/(task-workspace)/settings/notifications/page.js",
+            "pages/(task-workspace)/settings/name-and-icon/page.js",
+            "pages/(task-workspace)/settings/name-and-icon/lifecycle.js",
             "pages/(task-workspace)/settings/remote-access/page.js",
             "pages/(task-workspace)/settings/remote-access/tailscale.js",
             "pages/(task-workspace)/settings/voice/page.js",
@@ -3048,6 +3071,14 @@ mod tests {
         let scroll_scope = get("scroll-scope.js").expect("Scroll scope module asset");
         assert_eq!(scroll_scope.content_type, "text/javascript; charset=utf-8");
         assert!(scroll_scope.body.starts_with(b"import {"));
+
+        // Its only import is a type, so the module opens with its description.
+        let server_identity = get("server-identity.js").expect("server identity module asset");
+        assert_eq!(
+            server_identity.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(server_identity.body.starts_with(b"/**"));
 
         let notification_lifecycle =
             get("pages/(task-workspace)/settings/notifications/lifecycle.js")

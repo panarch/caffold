@@ -2151,6 +2151,7 @@ test("gives every Settings route one page title and landmark hierarchy", { tag: 
     ["/settings/keyboard", "Keyboard", "caffold-settings-keyboard-page"],
     ["/settings/files", "Files", "caffold-settings-files-page"],
     ["/settings/notifications", "Notifications", "caffold-settings-notifications-page"],
+    ["/settings/name-and-icon", "Name & Icon", "caffold-settings-name-and-icon-page"],
     ["/settings/remote-access", "Remote Access", "caffold-settings-remote-access-page"],
     ["/settings/voice", "Voice Input", "caffold-settings-voice-page"],
     ["/settings/codex", "Codex", "caffold-settings-codex-page"],

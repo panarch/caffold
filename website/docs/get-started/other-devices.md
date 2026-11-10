@@ -43,7 +43,7 @@ To be told when a turn ends while you are away, turn on
 
 ## More than one host
 
-If you run Caffold on more than one Mac, give each one its own **Name** under
-**Server Settings...** in its [menu-bar app](../reference/menu-bar-app.md)
-before installing it on a device, so the installed apps can be told apart. An
-app installed earlier keeps its old name until you install it again.
+If you run Caffold on more than one host, give each one its own **Name** and
+icon color under **Settings → Name & Icon** before installing it on a device, so
+the installed apps can be told apart. An app installed earlier keeps its old
+name and icon until you install it again.

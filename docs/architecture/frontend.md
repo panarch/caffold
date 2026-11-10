@@ -364,10 +364,32 @@ under `caffold:update-result-seen`. About's update request goes to the task
 workspace, which owns `caffold-update-task-dialog` and hands the Task it starts
 to the Tasks page's `startTaskCreation`, as Start Task does.
 
+The server owns its name and icon, and the document's head shows them: the
+title, the `application-name` and `apple-mobile-web-app-title` names, the
+`caffold-server-icon` meta, and the `icon` and `apple-touch-icon` links.
+`server-identity.js` reads and writes that head. The page the server renders
+already carries both, but the shell cache keeps the document a build first
+loaded, so every health answer the app shell reads and every answer of
+Settings → Name & Icon is applied to the head. An answer equal to what the head
+shows changes nothing. A changed one dispatches
+`caffold:server-identity-change` on `window`, which
+`caffold-workspace-brand` and About follow through `ServerIdentityController`,
+reading the head again when they connect. Other windows show a change the next
+time they read health. The server draws each icon file at
+`/icons/<icon>/<file>` from the gray meerkat: black stays black, white stays
+white, and a middle gray takes the icon's color, so the meerkat's body is that
+color. The eleven colors share the OKLCH lightness 0.62 at hues 360/11 degrees
+apart from 25, with chroma up to 0.16 as sRGB allows, which gives each body at
+least 3:1 contrast with white, the dark theme's surface, and Chrome's dark
+tab. `/icons/current/<file>` is the icon the server shows when it is asked, for
+the service worker's notifications, which no page draws.
+
 A replacement is `ready` only after its complete shell cache is available, and
-Reload explicitly transitions to that prepared generation. The server sends
-every `/assets/` file except the manifest, which carries the server's name,
-with `Cache-Control: no-cache` and an `ETag` taken from the file's contents.
+Reload explicitly transitions to that prepared generation. The shell cache
+holds the document and every `/assets/` file except the manifest, which
+carries the server's name and icon and so is always read from the server. The
+server sends every `/assets/` file except the manifest with `Cache-Control:
+no-cache` and an `ETag` taken from the file's contents.
 While filling a replacement's shell cache, the service worker asks about each
 file an earlier build's shell cache holds with that copy's tag and keeps the
 copy when the server answers that it is unchanged, so an update downloads only
@@ -598,7 +620,8 @@ pretending to be buttons. Appearance declares non-current Theme radios, its
 Interface and Code typeface selects, and the three size ranges; Files declares
 its non-current ordering radio; Voice Input declares its non-current provider
 radios and each provider's API key textbox; Jev Permissions declares its Extra
-rules and API key textboxes; Keyboard declares its enabled On/Off switch;
+rules and API key textboxes; Name & Icon declares its Name textbox and its
+non-current icon radios; Keyboard declares its enabled On/Off switch;
 Git Compare declares its visible Base and Head selects; and the Branch Review
 Compare Tree declares its comparison-base select while the Review owner injects
 the action meaning. The Branch target remains available while its compared File
@@ -2109,7 +2132,9 @@ a layout box. Appearance registers non-current Theme choices, both typeface
 choices, and its three ranges; Files registers the non-current ordering choice;
 Voice Input registers its non-current provider choices and its enabled API key
 fields; Jev Permissions registers its enabled Extra rules and API key fields;
-and Keyboard registers its switch only while keyboard navigation is enabled.
+Name & Icon registers its enabled Name field and Save and its non-current
+icons; and Keyboard registers its switch only while keyboard navigation is
+enabled.
 These controls keep their native editing, choice, and persistence behavior
 after the Action Hint coordinator hands off focus or click ownership.
 
@@ -2197,6 +2222,29 @@ dispatches `caffold:voice-settings-changed` when the selected provider, the
 installed model, or a configured key changes. Each Composer that supports voice
 input and is not capturing or transcribing a recording then reads voice status
 again.
+
+Settings Name & Icon owns a route-scoped request lifecycle over the server's
+name and icon and the icons it offers. Server responses are the only writers
+of those values, and each response is applied to the document's head, even
+one that lands after the page was left. The icon radios show only the server's
+choice: picking one saves it, the controls lock until the server answers, and
+only one change is in flight at a time, so two never reach the server out of
+order. The name field keeps what was typed until the server saves it; Save is
+offered only for a name that is neither empty nor the saved one. A server
+rejection keeps the settings current and shows its message. Any other failure
+leaves whether the change was saved unknown, so the controls stay locked and
+Retry reads the settings again.
+
+The lifecycle nodes and complete allowed edges are:
+
+- `inactive -> loading`;
+- `loading -> ready | unavailable | inactive`;
+- `ready -> saving | inactive`;
+- `saving -> ready | unavailable | inactive`; and
+- `unavailable -> loading | inactive`.
+
+`loading` owns one settings GET and `saving` owns one PATCH carrying only the
+changed field. Entering `inactive` invalidates the request generation.
 
 ## Physical hierarchy
 

@@ -322,6 +322,58 @@ function followLink(page, href) {
   }, href);
 }
 
+test("a page the service worker kept shows the name and icon the server gives now", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+  await expect
+    .poll(() => page.evaluate(() => navigator.serviceWorker.controller?.state ?? null))
+    .toBe("activated");
+  // Health answers as a server renamed after this build's page was kept.
+  await page.route(/\/api\/health(?:\?|$)/, async (route) => {
+    const response = await route.fetch();
+    return route.fulfill({
+      response,
+      json: { ...(await response.json()), serverName: "Caffold Linux", serverIcon: "teal" },
+    });
+  });
+
+  await page.reload();
+
+  expect(
+    await page.evaluate(async () => {
+      const cache = await caches.open((await caches.keys()).find((key) => key.startsWith("caffold-shell-")));
+      return {
+        page: Boolean(await cache.match("/")),
+        manifest: Boolean(await cache.match("/assets/manifest.webmanifest")),
+      };
+    }),
+  ).toEqual({ page: true, manifest: false });
+  await expect(page).toHaveTitle("Caffold Linux");
+  await expect(page.locator('meta[name="application-name"]')).toHaveAttribute(
+    "content",
+    "Caffold Linux",
+  );
+  await expect(page.locator('meta[name="apple-mobile-web-app-title"]')).toHaveAttribute(
+    "content",
+    "Caffold Linux",
+  );
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
+    "href",
+    "/icons/teal/favicon-32.png",
+  );
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute(
+    "href",
+    "/icons/teal/apple-touch-icon.png",
+  );
+  await expect(
+    page.locator("caffold-task-navigator caffold-workspace-brand .workspace-brand-icon"),
+  ).toHaveAttribute("src", "/icons/teal/favicon-32.png");
+  await page.unrouteAll({ behavior: "wait" });
+});
+
 test("does not serve obsolete standalone application routes", { tag: "@server-steady" }, async ({ request }) => {
   for (const route of [
     "/files",

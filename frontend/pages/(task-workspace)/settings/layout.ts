@@ -34,6 +34,7 @@ import "./grok/page.js";
 import "./antigravity/page.js";
 import "./jev/page.js";
 import "./keyboard/page.js";
+import "./name-and-icon/page.js";
 import "./notifications/page.js";
 import "./remote-access/page.js";
 import "./voice/page.js";
@@ -53,6 +54,7 @@ const TITLES: Readonly<Record<string, string>> = {
   keyboard: "Keyboard",
   files: "Files",
   notifications: "Notifications",
+  "name-and-icon": "Name & Icon",
   "remote-access": "Remote Access",
   voice: "Voice Input",
   jev: "Jev Permissions",
@@ -71,6 +73,7 @@ const ACTIVE_PAGES = [
   "grok",
   "antigravity",
   "notifications",
+  "name-and-icon",
   "remote-access",
   "voice",
   "jev",
@@ -212,6 +215,10 @@ export class CaffoldSettingsWorkspace extends CaffoldElement {
             ${drawn(this.pages.of("notifications"))}
             ?hidden=${presented !== "notifications"}
           ></caffold-settings-notifications-page>
+          <caffold-settings-name-and-icon-page
+            ${drawn(this.pages.of("name-and-icon"))}
+            ?hidden=${presented !== "name-and-icon"}
+          ></caffold-settings-name-and-icon-page>
           <caffold-settings-remote-access-page
             ${drawn(this.pages.of("remote-access"))}
             ?hidden=${presented !== "remote-access"}

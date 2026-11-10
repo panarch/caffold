@@ -4,8 +4,10 @@ import {
   installManualDefaults,
   installManualAntigravity,
   installManualNotifications,
+  installManualServerName,
   installManualSettings,
   MANUAL_JEV_RULES,
+  MANUAL_SERVER_NAME,
 } from "../support/manual-fixture.js";
 import { captureReviewScreenshot } from "../support/task-fixtures.js";
 
@@ -59,6 +61,27 @@ for (const theme of ["light", "dark"]) {
       await expect(jev.getByLabel("Extra rules")).toHaveValue(MANUAL_JEV_RULES);
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await captureReviewScreenshot(page, testInfo, `settings-jev-${theme}`);
+    });
+
+    test("Name & Icon names the host and picks its icon", { tag: "@desktop" }, async ({ page }, testInfo) => {
+      await installManualServerName(page);
+      await page.goto("/settings/name-and-icon");
+
+      const nameAndIcon = page.locator("caffold-settings-name-and-icon-page");
+      await expect(nameAndIcon.getByLabel("Name", { exact: true })).toHaveValue(MANUAL_SERVER_NAME);
+      await expect(nameAndIcon.getByRole("radio")).toHaveCount(12);
+      await expect(nameAndIcon.getByRole("radio", { name: "Default" })).not.toBeChecked();
+      await expect(nameAndIcon.getByRole("radio", { name: "Blue" })).toBeChecked();
+      await expect(
+        page.locator("caffold-settings-navigator caffold-workspace-brand .workspace-brand-icon"),
+      ).toHaveAttribute("src", "/icons/blue/favicon-32.png");
+      await expect.poll(() =>
+        page.locator("caffold-settings-navigator caffold-workspace-brand img, caffold-settings-name-and-icon-page img")
+          .evaluateAll((images) => images.every((image) => image.complete && image.naturalWidth > 0)),
+      ).toBe(true);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await captureReviewScreenshot(page, testInfo, `settings-name-and-icon-${theme}`);
+      await page.unrouteAll({ behavior: "wait" });
     });
 
     test("Notifications lists every subscribed browser", { tag: "@desktop" }, async ({ page }, testInfo) => {

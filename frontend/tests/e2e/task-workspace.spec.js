@@ -40,7 +40,7 @@ test("navigates Settings as responsive master-detail pages with browser history"
   );
   await expect(workspaceBrand.locator(".workspace-brand-icon")).toHaveAttribute(
     "src",
-    "/assets/icons/favicon-32.png",
+    "/icons/default/favicon-32.png",
   );
   await expect(taskWorkspace.getByText("Local to this browser")).toHaveCount(0);
   // The brand and the Settings header sit in the shadow roots of their owners.

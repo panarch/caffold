@@ -231,6 +231,7 @@ test("About offers its update action and the Settings list names the entry with 
     ["keyboard", "Open Keyboard settings"],
     ["files", "Open Files settings"],
     ["notifications", "Open Notifications settings"],
+    ["name-and-icon", "Open Name & Icon settings"],
     ["remote-access", "Open Remote Access settings"],
     ["voice", "Open Voice Input settings"],
     ["jev", "Open Jev Permissions settings"],

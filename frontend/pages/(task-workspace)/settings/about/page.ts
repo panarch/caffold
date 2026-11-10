@@ -15,6 +15,10 @@ import {
 } from "#app/api.js";
 import { BUILD_INFO } from "#app/build-info.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
+import {
+  ServerIdentityController,
+  serverIconUrl,
+} from "#app/server-identity.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/loading-text.js";
 import "../components/detail-list.js";
@@ -91,6 +95,7 @@ export class CaffoldSettingsAboutPage extends CaffoldElement {
   });
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
+  private readonly server = new ServerIdentityController(this);
 
   override disconnectedCallback() {
     super.disconnectedCallback();
@@ -190,7 +195,10 @@ export class CaffoldSettingsAboutPage extends CaffoldElement {
       >
         <div class="settings-content-section">
           <header class="settings-about-heading">
-            <img src="/assets/icons/caffold.png" alt="" />
+            <img
+              src=${serverIconUrl(this.server.identity.icon, "caffold.png")}
+              alt=""
+            />
             <p>A review-first workspace for agent-assisted development.</p>
           </header>
           <section
