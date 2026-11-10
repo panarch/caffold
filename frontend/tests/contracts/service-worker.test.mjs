@@ -14,7 +14,12 @@ test("precaches every bundled runtime asset", () => {
   const shellAssets = appShellAssets(source);
   const moduleStylesheets = stylesheetsImportedAsModules(frontendRoot);
   const documentStylesheets = stylesheetsTheDocumentLoads();
+  // The manifest carries the server's name and icon, so it always comes from
+  // the server.
   const runtimeAssets = runtimeFrontendFiles(frontendRoot).flatMap((relative) => {
+    if (relative === "manifest.webmanifest") {
+      return [];
+    }
     if (!moduleStylesheets.has(relative)) {
       return [assetUrl(relative)];
     }
@@ -26,6 +31,7 @@ test("precaches every bundled runtime asset", () => {
   assert.equal(new Set(shellAssets).size, shellAssets.length);
   const missing = runtimeAssets.filter((asset) => !shellAssets.includes(asset));
   assert.deepEqual(missing, []);
+  assert.ok(!shellAssets.includes("/assets/manifest.webmanifest"));
 });
 
 test("precaches no stylesheet the document does not load", () => {
@@ -108,9 +114,6 @@ function runtimeFrontendFiles(root) {
 function assetUrl(relative) {
   if (relative === "index.html") {
     return "/";
-  }
-  if (relative === "manifest.webmanifest") {
-    return "/assets/manifest.webmanifest";
   }
   // A TypeScript module is served as the JavaScript tsc writes for it.
   return `/assets/${relative.replace(/^assets\//, "").replace(/\.ts$/, ".js")}`;

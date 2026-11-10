@@ -647,6 +647,13 @@ Settings includes:
   entry by name;
 - Notifications controls for the current browser's permission and subscription,
   plus the active browser-installation count, labels, short IDs, and removal;
+- Name & Icon, which sets the host's name and its icon: the gray meerkat
+  (**Default**) or that meerkat in one of eleven colors of the same lightness,
+  shown as a grid of twelve. Browser tabs, the name and icon a browser installs
+  Caffold with, notifications, and Caffold's mark in the navigation and About
+  show them. Any browser that reaches the host can change them: an icon is
+  saved when it is picked and a name with **Save**. An app installed earlier
+  keeps the name and icon it was installed with;
 - Remote Access status and constrained Tailscale Serve controls, with the ready
   private Tailnet URL, copy/open actions, QR handoff, and same-tailnet guidance;
 - Voice provider choice among host-local Whisper, OpenAI, Gemini, and Grok, with

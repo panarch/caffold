@@ -14,9 +14,10 @@ const NOTIFICATION_ACTIVATION_MESSAGE = "caffold:notification-activation";
 // rather than shown.
 const ACTION_REQUIRED_KIND = "actionRequired";
 
+// The manifest is left out: it carries the server's name and icon, which can
+// change within a build, so the browser always asks the server for it.
 const APP_SHELL_ASSETS = [
   "/",
-  "/assets/manifest.webmanifest",
   "/assets/styles.css",
   "/assets/app.js",
   "/assets/build-info.js",
@@ -54,6 +55,7 @@ const APP_SHELL_ASSETS = [
   "/assets/action-hint-scope.js",
   "/assets/element-declarations.js",
   "/assets/shadow-roots.js",
+  "/assets/server-identity.js",
   "/assets/popover-focus.js",
   "/assets/caffold-element.js",
   "/assets/caffold-element/base.css",
@@ -152,6 +154,9 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/settings/notifications/page.css.js",
   "/assets/pages/(task-workspace)/settings/notifications/page.js",
   "/assets/pages/(task-workspace)/settings/notifications/lifecycle.js",
+  "/assets/pages/(task-workspace)/settings/name-and-icon/page.css.js",
+  "/assets/pages/(task-workspace)/settings/name-and-icon/page.js",
+  "/assets/pages/(task-workspace)/settings/name-and-icon/lifecycle.js",
   "/assets/pages/(task-workspace)/settings/remote-access/page.css.js",
   "/assets/pages/(task-workspace)/settings/remote-access/page.js",
   "/assets/pages/(task-workspace)/settings/remote-access/tailscale.js",
@@ -751,7 +756,7 @@ async function showTaskNotification(
   await worker.registration.showNotification(notice.title, {
     body: notice.body,
     tag: notice.tag,
-    icon: "/assets/icons/icon-192.png",
+    icon: "/icons/current/icon-192.png",
     badge: "/assets/icons/favicon-32.png",
     data: { route, threadId: notice.threadId },
   });

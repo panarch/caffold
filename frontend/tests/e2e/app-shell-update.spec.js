@@ -1013,7 +1013,7 @@ test("fills a replacement from the current build's cache after the browser dropp
     // Only the files that carry no tag are downloaded again.
     expect(
       filled.filter(({ status }) => status !== 304).map(({ path }) => path).sort(),
-    ).toEqual(["/", "/assets/build-info.js", "/assets/manifest.webmanifest"]);
+    ).toEqual(["/", "/assets/build-info.js"]);
     expect(
       filled.filter(({ status }) => status === 304).every(({ ifNoneMatch }) => ifNoneMatch),
     ).toBe(true);

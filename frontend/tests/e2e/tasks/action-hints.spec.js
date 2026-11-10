@@ -450,7 +450,13 @@ test("allocates Settings navigation automatically and accepts F inside Hint mode
     (badges) => badges.map((badge) => badge.dataset.actionHintCode),
   );
   expect(codes.length).toBeGreaterThanOrEqual(4);
-  expect(new Set(codes.map((code) => code.length)).size).toBe(1);
+  // More targets than one-letter codes give the last ones two letters, and
+  // no code starts another.
+  expect(
+    codes.filter((code) =>
+      codes.some((other) => other !== code && other.startsWith(code)),
+    ),
+  ).toEqual([]);
   expect(codes.every((code) => !["N", "M", "P", "T"].includes(code[0])))
     .toBe(true);
   const fBadge = dialog.locator('[data-action-hint-code="F"]');

@@ -230,6 +230,17 @@ const ROUTE_DEFINITIONS = [
     parent: () => settingsRoute(),
   }),
   routeDefinition({
+    id: "settings-name-and-icon",
+    kind: "settings",
+    pattern: "/settings/name-and-icon",
+    surface: "task-workspace",
+    target: "name-and-icon",
+    toRoute: () => settingsRoute("name-and-icon"),
+    matchesRoute: (route) =>
+      route?.kind === "settings" && route.section === "name-and-icon",
+    parent: () => settingsRoute(),
+  }),
+  routeDefinition({
     id: "settings-remote-access",
     kind: "settings",
     pattern: "/settings/remote-access",
@@ -1123,6 +1134,7 @@ function settingsRoute(section = ""): ParsedRoute {
       "keyboard",
       "files",
       "notifications",
+      "name-and-icon",
       "remote-access",
       "voice",
       "jev",

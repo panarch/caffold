@@ -1,0 +1,216 @@
+:host {
+  container: settings-name-and-icon / inline-size;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  font-size: var(--interface-font-size);
+  line-height: var(--interface-line-height);
+}
+
+.settings-content-scroll {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding-block: var(--settings-content-padding-block);
+  padding-inline: var(--settings-content-padding-inline);
+}
+
+.settings-content-section {
+  display: grid;
+  gap: var(--interface-space-10);
+  width: min(100%, var(--settings-content-max-width));
+  min-width: 0;
+  margin: 0 auto;
+}
+
+.settings-content-section > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--interface-space-7);
+  padding-bottom: var(--interface-space-6);
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-content-section > header > div {
+  display: grid;
+  gap: var(--interface-space-2);
+  min-width: 0;
+}
+
+p {
+  margin: 0;
+}
+
+.settings-content-section > header p {
+  color: var(--muted);
+  font-size: var(--settings-page-description-size);
+}
+
+button {
+  display: inline-flex;
+  min-height: var(--settings-page-action-size);
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--interface-control-padding-inline);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--control-fg);
+  font: inherit;
+  font-size: var(--settings-small-text-size);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+button:focus-visible {
+  border-color: var(--border-strong);
+  outline: none;
+  background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  button:hover:not(:disabled) {
+    border-color: var(--border-strong);
+    outline: none;
+    background: var(--control-hover-bg);
+  }
+}
+
+button:disabled {
+  color: var(--disabled-text);
+  cursor: default;
+}
+
+.settings-name-and-icon-message {
+  padding: var(--interface-space-5) var(--interface-space-6);
+  border-left: 3px solid var(--danger);
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: var(--settings-small-text-size);
+}
+
+/* Two short fields read best with each label above its control. */
+.settings-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--interface-space-6);
+  margin: 0;
+}
+
+.settings-field-label {
+  font-size: var(--settings-field-label-size);
+  font-weight: 700;
+  line-height: var(--interface-line-height);
+}
+
+/* The name grows with the column; Save keeps its label's width. */
+.settings-name-control {
+  display: flex;
+  align-items: center;
+  gap: var(--interface-space-4);
+  min-width: 0;
+}
+
+.settings-name-control input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--settings-page-action-size);
+  padding: 0 var(--interface-control-padding-inline);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--settings-small-text-size);
+}
+
+.settings-name-control input:focus-visible {
+  border-color: var(--border-strong);
+  outline: none;
+}
+
+.settings-name-control input:disabled {
+  color: var(--disabled-text);
+}
+
+/* Twelve icons fill six equal columns in two rows. The grid stops at 28rem
+   so the squares stay icon-sized on a wide page; a phone gives it less. */
+.settings-icon-choices {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--interface-space-4);
+  max-width: 28rem;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.settings-icon-choices label {
+  position: relative;
+  aspect-ratio: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: var(--interface-space-3);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .settings-icon-choices label:hover:not(:has(input:disabled)) {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
+}
+
+.settings-icon-choices label:has(input:disabled) {
+  cursor: default;
+}
+
+.settings-icon-choices label:has(input:checked) {
+  border-color: var(--focus-ring);
+  background: var(--selection-bg);
+  box-shadow: inset 0 0 0 1px var(--focus-ring);
+}
+
+.settings-icon-choices label:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.settings-icon-choices input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: inherit;
+  opacity: 0;
+}
+
+/* The picture is square, so its width sets its height. WebKit resolves a
+   percentage height here against the square's border box, which would push
+   the square taller by its padding. */
+.settings-icon-choices img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+}
+
+@container settings-name-and-icon (max-width: 44rem) {
+  .settings-content-section > header {
+    align-items: start;
+    flex-direction: column;
+  }
+}
+
+:host([hidden]),
+button[hidden] {
+  display: none;
+}

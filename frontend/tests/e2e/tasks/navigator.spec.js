@@ -1882,7 +1882,7 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   );
   await expect(workspaceBrand.locator(".workspace-brand-icon")).toHaveAttribute(
     "src",
-    "/assets/icons/favicon-32.png",
+    "/icons/default/favicon-32.png",
   );
   await expect(
     navigator.locator('.task-list-section[data-task-section="managed"]'),

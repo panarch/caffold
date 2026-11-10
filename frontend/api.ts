@@ -10,6 +10,22 @@ export async function getHealth() {
   return requestJson<Health>("/api/health");
 }
 
+export async function getServerSettings() {
+  return requestJson<unknown>("/api/server/settings");
+}
+
+/** Changes the fields given; the server keeps the rest. */
+export async function updateServerSettings(changes: {
+  name?: string;
+  icon?: string;
+}) {
+  return requestJson<unknown>(
+    "/api/server/settings",
+    {},
+    { method: "PATCH", body: changes },
+  );
+}
+
 /** The server may ask GitHub first, which it bounds at eight seconds. */
 export async function getCaffoldUpdate() {
   return requestJson<CaffoldUpdateStatus>(
@@ -2200,9 +2216,11 @@ export interface GrokStatus {
   >;
 }
 
-// What the server says about itself: the directories it serves, where New
-// Task starts, and the build it runs.
+// What the server says about itself: its name and icon, the directories it
+// serves, where New Task starts, and the build it runs.
 export interface Health {
+  serverName?: string | null;
+  serverIcon?: string | null;
   root?: string | null;
   homePath?: string | null;
   initialPath?: string | null;

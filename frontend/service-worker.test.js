@@ -148,6 +148,8 @@ test("installs the complete shell without replacing the current worker", async (
     harness.puts.every(({ cache }) => cache === "caffold-shell-test-build"),
   );
   assert.ok(installedAssets.includes("/assets/file-status.js"));
+  assert.ok(installedAssets.includes("/"));
+  assert.ok(!installedAssets.includes("/assets/manifest.webmanifest"));
   assert.ok(installedAssets.includes("/assets/pages/foreground-recovery.js"));
   assert.ok(
     installedAssets.includes(
@@ -474,6 +476,9 @@ test("shows status-only terminal notifications even while clients are open", asy
     route: "/tasks/thread-1",
     threadId: "thread-1",
   });
+  // No page draws a notification, so the server picks the icon it shows now.
+  assert.equal(options.icon, "/icons/current/icon-192.png");
+  assert.equal(options.badge, "/assets/icons/favicon-32.png");
 });
 
 test("falls back to Caffold and status-only copy when the task name is unavailable", async () => {

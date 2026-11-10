@@ -597,6 +597,27 @@ export async function installManualSettings(page) {
   );
 }
 
+export const MANUAL_SERVER_NAME = "Caffold - Mac Studio";
+
+// A host named and given the Blue icon before its apps are installed. Health
+// answers the same, as the server's does, so Caffold's mark is Blue too.
+export async function installManualServerName(page) {
+  const icons = [
+    "Default", "Red", "Orange", "Gold", "Lime", "Green",
+    "Teal", "Sky", "Blue", "Violet", "Purple", "Pink",
+  ].map((label) => ({ id: label.toLowerCase(), label }));
+  await page.route("**/api/server/settings", (route) =>
+    route.fulfill({ json: { name: MANUAL_SERVER_NAME, icon: "blue", icons } }),
+  );
+  await page.route(/\/api\/health(?:\?|$)/, async (route) => {
+    const response = await route.fetch();
+    return route.fulfill({
+      response,
+      json: { ...(await response.json()), serverName: MANUAL_SERVER_NAME, serverIcon: "blue" },
+    });
+  });
+}
+
 // This browser already allowed notifications and is subscribed, beside a
 // phone that is subscribed too.
 export async function installManualNotifications(page) {

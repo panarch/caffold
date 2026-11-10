@@ -27,6 +27,14 @@ Turns **Keyboard navigation** on or off and lists its shortcuts. See
 Orders the file trees in Working Tree, Branch, Git, and GitHub: **Folders first**,
 or **All entries by name**.
 
+## Name & Icon
+
+Sets the **Name** and icon that browser tabs and installed apps show for this
+host. Choose a color, or **Default** for the gray icon.
+
+![Settings → Name & Icon](../assets/screenshots/settings-name-and-icon-light-desktop.png#only-light)
+![Settings → Name & Icon](../assets/screenshots/settings-name-and-icon-dark-desktop.png#only-dark)
+
 ## Notifications, Remote Access, and Voice Input
 
 - [Notifications](../get-started/notifications.md): this browser's notifications,
