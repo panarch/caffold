@@ -11,10 +11,10 @@ or Pull Requests.
 ## Set up
 
 GitHub views use the [GitHub CLI](https://cli.github.com/) on the host, signed
-in to your account:
+in to your account. Install it as its site describes for your system, then
+sign in:
 
 ```sh
-brew install gh
 gh auth login
 ```
 

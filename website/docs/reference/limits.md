@@ -9,12 +9,14 @@ lists what is planned.
   internet; see [Who can use Caffold](data-and-privacy.md#who-can-use-caffold).
   It runs on Apple silicon Macs with macOS 14 or later, and on x86_64 and
   aarch64 Linux with glibc 2.28 or later and systemd.
-- **Four built-in agents.** Caffold works with Codex, Claude Code, Grok, and Antigravity and
-  cannot load other agents. Each Task keeps its agent;
-  [Continue with another agent](../tasks/worktrees.md#continue-with-another-agent)
-  opens a separate Task at the same files. A feature one
-  agent offers may not exist in another; forking supports Codex, Claude, and Grok; Antigravity is excluded.
-  Antigravity requires a pending permission to be answered or the turn stopped before another prompt.
+- **Four built-in agents.** Caffold works with Codex, Claude Code, Grok, and
+  Antigravity, and cannot load other agents. A Task keeps its agent for its
+  whole life;
+  [continuing with another agent](../tasks/worktrees.md#continue-with-another-agent)
+  starts a new Task on the same files. Not every feature exists for every
+  agent: Antigravity cannot be [forked](../tasks/fork.md), and it takes no new
+  prompt while a permission request waits; see
+  [Steer and stop](../tasks/steer-and-stop.md#steer-a-running-turn).
 - **No code editor, and one terminal per Task.** Ask the agent to change
   files, or edit them in the [terminal](../tasks/terminal.md). A terminal
   appears in place of the conversation, not beside it, and closes when the

@@ -5,7 +5,7 @@ directory, and Caffold shows its progress above the Composer. It works the same
 with every agent, and every agent is told about it, so you only have to ask for
 a plan:
 
-```text
+```{ .text .cf-prompt }
 Keep a current plan for this work.
 ```
 

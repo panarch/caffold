@@ -36,9 +36,12 @@ outage.
   **Restart runtime**.
 - **Claude Code:** choose **Restart runtime** in **Settings → Claude**; see
   [Updates](updates.md#claude-code-and-grok).
+- **Antigravity:** choose **Restart runtime** in **Settings → Antigravity**;
+  see [Settings](settings.md#antigravity).
 - A Task shows a warning instead of its conversation when its agent cannot be
-  reached. Choose **Retry** once the agent is available; you can still archive
-  the Task in the meantime.
+  reached. Choose **Retry** once the agent is available. You can still archive
+  the Task in the meantime, except an Antigravity Task; see
+  [Archive](../tasks/archive-and-delete.md#archive).
 
 ## A Section shows a missing-folder warning
 

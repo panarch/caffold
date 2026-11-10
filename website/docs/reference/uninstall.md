@@ -35,7 +35,8 @@ Stop the service and remove Caffold and the `caffold` command:
 
 ```sh
 systemctl --user disable --now caffold
-rm -f ~/.config/systemd/user/caffold.service ~/.local/bin/caffold
+rm -f ~/.config/systemd/user/caffold.service
+rm -f ~/.local/bin/caffold
 rm -rf ~/.local/share/caffold
 ```
 

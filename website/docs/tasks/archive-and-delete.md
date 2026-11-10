@@ -1,8 +1,8 @@
 # Archive, restore, and delete
 
 Archive a Task when you are done with it. Archived Tasks leave the active list
-but can come back. Permanent deletion is also available from the error screen
-of a verified broken worktree.
+but can come back, or be deleted for good. A Task whose worktree is broken can
+also be deleted from its error screen.
 
 ## Archive
 
@@ -18,8 +18,10 @@ Open the Task, choose **Task details** at its top right, and choose
   Archive requires no uncommitted changes, including new files Git does not ignore. Caffold then
   removes the worktree and keeps its branch.
 - Caffold also asks the agent to archive or close its conversation. If the
-  agent cannot be reached, the Task is archived anyway, except Antigravity,
-  whose writer must be confirmed stopped before its files can be removed.
+  agent cannot be reached, the Task is archived anyway. An Antigravity Task is
+  the exception: Caffold archives it only once Antigravity has confirmed it
+  stopped writing to the conversation, so if Antigravity cannot be reached,
+  archive it again once it is available.
 - The Task's [terminal](terminal.md) closes. **Task details** says so above
   **Archive task**.
 

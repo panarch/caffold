@@ -66,8 +66,8 @@ the middle of choosing an action or scrolling. Inside the list,
 
 These keys work while you are typing, in the terminal, and when keyboard
 navigation is off. Each action has two: the first line for keyboards with
-<kbd>⌘</kbd>, the second for keyboards without it, such as on Windows or
-Android.
+<kbd>⌘</kbd>, the second for keyboards without it, such as on Windows, Linux,
+or Android.
 
 | Keys | Does |
 | --- | --- |

@@ -61,8 +61,9 @@ Caffold found, and the signed-in account.
 
 ## Antigravity
 
-Install [Antigravity CLI](https://antigravity.google/docs/cli/) `1.5.1` or newer.
-Caffold finds `agy` on its executable search path or at `~/.local/bin/agy`.
+Caffold supports the [Antigravity CLI](https://antigravity.google/docs/cli/)
+`1.5.1` or newer. Install it with its official setup. Caffold looks for `agy`
+on its `PATH` and at `~/.local/bin/agy`.
 
 1. Run `agy` in a terminal on the host and finish the CLI's sign-in.
 2. Open **Settings → Antigravity** to check the installed version, account,
@@ -73,8 +74,5 @@ Caffold shares the CLI's saved sign-in. Manage that sign-in in the CLI.
 
 ![Antigravity CLI and observed Google account plan](../assets/screenshots/settings-antigravity-light-desktop.png#only-light)
 ![Antigravity CLI and observed Google account plan](../assets/screenshots/settings-antigravity-dark-desktop.png#only-dark)
-
-You can send more instructions while Antigravity works. Answer a pending
-permission, or stop the turn, before sending another prompt.
 
 Next, [run your first Task](first-task.md).

@@ -39,8 +39,7 @@ original Task ID. **Fork task** resolves the Task's current session for you.
 The agent copies its own conversation history. Files, uncommitted changes,
 branches, and worktrees are not copied; the child can
 [move into a worktree](worktrees.md) like any other Task. The source remains
-independent. Claude saves the child through its native local naming command,
-without asking the model to reply.
+independent.
 
 If the child was created but could not be opened, retry opening that child.
 If the connection failed before a creation result arrived, check the Task list

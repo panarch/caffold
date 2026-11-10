@@ -61,7 +61,7 @@ returns from the file to the list.
 Go back to **Conversation** and tell the agent what comes next: a fix for what
 you found, or a commit. For example:
 
-```text
+```{ .text .cf-prompt }
 Commit these changes with a message that explains why.
 ```
 

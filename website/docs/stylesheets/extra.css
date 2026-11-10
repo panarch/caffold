@@ -182,7 +182,6 @@ html:not(.cf-development) [data-md-component="announce"] {
   }
 
   & pre > code {
-    padding-right: 2rem;
     font-size: 0.65rem;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -428,6 +427,11 @@ html:not(.cf-development) [data-md-component="announce"] {
     grid-template-columns: minmax(0, 1fr);
     gap: 1rem;
     padding-top: 1rem;
+
+    /* The Linux install command fits on one line on a 390px-wide phone. */
+    & pre > code {
+      font-size: 0.6rem;
+    }
   }
 
   .cf-intro {
@@ -488,6 +492,19 @@ html:not(.cf-development) [data-md-component="announce"] {
 /* A key combination stays on one line; a table cell lists each on its own. */
 .md-typeset .cf-keys {
   white-space: nowrap;
+}
+
+/* An example prompt is prose, so it wraps instead of scrolling. Its first
+   line, beside the copy button, wraps short of it. */
+.md-typeset .cf-prompt pre > code {
+  white-space: pre-wrap;
+
+  &::before {
+    content: "";
+    float: right;
+    width: 1.5em;
+    height: 1px;
+  }
 }
 
 .md-typeset img[src*="assets/screenshots/"] {

@@ -18,9 +18,9 @@ Caffold is [installed](install.md) and at least one
    the Task.
 5. Describe the change, for example:
 
-   ```text
-   Add a dark theme to the Settings page. Follow the system setting by default, let people override it, and add tests.
-   ```
+    ```{ .text .cf-prompt }
+    Add a dark theme to the Settings page. Follow the system setting by default, let people override it, and add tests.
+    ```
 
 6. Send it.
 
