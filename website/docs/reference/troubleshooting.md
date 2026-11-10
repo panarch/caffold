@@ -83,6 +83,8 @@ Archived.
   reports a conflict, something else already uses Tailscale Serve's HTTPS port
   on the host. Caffold does not replace it; remove that Serve entry in Tailscale
   first.
+- If **Settings → Remote Access** reports **Remote access setup failed**, the
+  line under it is what Tailscale reported, the same line Caffold's log keeps.
 
 ## Notifications do not arrive
 

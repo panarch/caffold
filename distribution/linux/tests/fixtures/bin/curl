@@ -1,7 +1,8 @@
 #!/bin/sh
 # Stands in for curl. The server on port 5178 answers from FAKE_STATE: its
 # health names the running version, and Tailscale Serve records the request and
-# answers FAKE_TAILSCALE_ANSWER. Every other address goes to the real curl.
+# answers FAKE_TAILSCALE_ANSWER, or fails as curl does with
+# FAKE_TAILSCALE_REQUEST_ERROR. Every other address goes to the real curl.
 for argument in "$@"; do
   case "${argument}" in
     http://127.0.0.1:5178/api/health)
@@ -11,6 +12,10 @@ for argument in "$@"; do
       ;;
     http://127.0.0.1:5178/api/tailscale/serve)
       echo "$*" >>"${FAKE_STATE}/tailscale.log"
+      if [ -n "${FAKE_TAILSCALE_REQUEST_ERROR:-}" ]; then
+        echo "${FAKE_TAILSCALE_REQUEST_ERROR}" >&2
+        exit 7
+      fi
       printf '%s' "${FAKE_TAILSCALE_ANSWER:-}"
       exit 0
       ;;

@@ -1,9 +1,14 @@
 #!/bin/sh
 # Stands in for loginctl: FAKE_LINGER answers whether the user lingers, and
-# FAKE_LINGER_REFUSED refuses to turn lingering on.
+# FAKE_LINGER_REFUSED refuses to turn lingering on, as polkit does without a
+# password prompt.
 echo "$*" >>"${FAKE_STATE}/loginctl.log"
 case "${1:-}" in
   show-user) echo "${FAKE_LINGER:-no}" ;;
-  --no-ask-password) [ -z "${FAKE_LINGER_REFUSED:-}" ] ;;
+  --no-ask-password)
+    [ -z "${FAKE_LINGER_REFUSED:-}" ] && exit 0
+    echo "Could not enable linger: Interactive authentication required." >&2
+    exit 1
+    ;;
   *) exit 1 ;;
 esac

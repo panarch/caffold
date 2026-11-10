@@ -48,6 +48,20 @@ test("normalizes every canonical server state and preserves remote read-only acc
   }
 });
 
+test("keeps the server's failure detail as it is and reads its absence as none", () => {
+  const detail =
+    "/usr/bin/tailscale serve --bg exited with code 1: Access denied: serve config denied";
+  assert.equal(
+    normalizeTailscaleStatus(status("failed", { failureDetail: detail })).failureDetail,
+    detail,
+  );
+  assert.equal(normalizeTailscaleStatus(status("failed")).failureDetail, "");
+  assert.equal(
+    normalizeTailscaleStatus(status("failed", { failureDetail: null })).failureDetail,
+    "",
+  );
+});
+
 test("accepts only canonical private HTTPS Tailnet URLs", () => {
   const privateUrl = "https://caffold.example.ts.net/";
   assert.equal(canonicalTailnetUrl(privateUrl), privateUrl);

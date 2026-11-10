@@ -537,6 +537,8 @@ local CLI and accepts only fixed commands for Caffold's localhost target on
 private HTTPS port 443. It refuses a foreign mapping instead of replacing it.
 Status and the private Tailnet URL are readable through the tailnet, but Serve
 mutations require a loopback Host and, for browsers, the matching Origin.
+Status carries a failure's detail as the log records it: the command,
+Tailscale's own output, and what Tailscale reports about the host.
 The read-only QR resource accepts only a bounded canonical `https://*.ts.net/`
 address and returns a fixed SVG image; it cannot change Serve state or encode an
 arbitrary payload. Funnel, arbitrary targets, ACLs, and account administration

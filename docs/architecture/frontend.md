@@ -2144,10 +2144,11 @@ APIs itself.
 
 Remote Access owns a route-scoped Tailscale request lifecycle. Server responses
 are the only writers of canonical status, `canManage`, diagnostics, and the
-Tailnet URL. The browser retains the last canonical status while tracking its
-request phase, retry intent, and transport error separately. During a Serve
-mutation it starts the constrained PUT and polls status concurrently so only a
-server-published configuring or disabling state appears as domain progress.
+Tailnet URL. The page shows a failure's detail as the server wrote it. The
+browser retains the last canonical status while tracking its request phase,
+retry intent, and transport error separately. During a Serve mutation it starts the constrained PUT and polls
+status concurrently so only a server-published configuring or disabling state
+appears as domain progress.
 
 The lifecycle nodes and complete allowed edges are:
 

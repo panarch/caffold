@@ -22,8 +22,9 @@ tests and local checks use.
 
 The script needs x86_64 or aarch64 Linux with glibc 2.28 or later, a systemd
 user manager, `curl`, and `tar`. It stops, changing nothing, when any of these
-is missing or when the downloaded `caffold` cannot start on the host. On
-NixOS, `programs.nix-ld` provides the standard dynamic loader the binaries need.
+is missing or when the downloaded `caffold` cannot start on the host, and then
+prints what `caffold` printed. On NixOS, `programs.nix-ld` provides the
+standard dynamic loader the binaries need.
 
 ## Build
 
@@ -60,7 +61,9 @@ so the server finds `claude`, `codex`, `grok`, `agy`, `git`, `gh`, and
 The script also enables lingering for the user, so the service keeps running
 after the last session ends, and turns on Tailscale Serve through the server's
 local API when `tailscale` is installed. Tailscale must allow the user to change
-Serve, which `sudo tailscale set --operator=$USER` does.
+Serve, which `sudo tailscale set --operator=$USER` does. When either step does
+not succeed, the script prints what `loginctl` or Tailscale said; for Tailscale,
+that is the failure detail the server also logs.
 
 Logs go to the systemd journal: `journalctl --user -u caffold`.
 

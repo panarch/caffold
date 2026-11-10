@@ -161,12 +161,15 @@ checksum() {
 
 # A binary that cannot start here stops the install before anything changes.
 require_runs() {
-  "$1" --help >/dev/null 2>&1 && return 0
+  output="$("$1" --help 2>&1)" && return 0
   rm -rf "$(dirname "$1")"
+  reason="Caffold cannot start on this system${output:+:
+${output}}"
   if [ -e /etc/NIXOS ]; then
-    fail "Caffold cannot start on this NixOS system. Enable programs.nix-ld in your NixOS configuration, then run this script again."
+    fail "${reason}
+Enable programs.nix-ld in your NixOS configuration, then run this script again."
   fi
-  fail "Caffold cannot start on this system. It needs glibc ${GLIBC_MINIMUM} or later and the standard dynamic loader."
+  fail "${reason}"
 }
 
 # Points the link at `$1` in one step, so it always names a version.
@@ -241,9 +244,10 @@ keep_versions() {
 # session ends, such as the SSH session this script runs in.
 keep_running_after_logout() {
   [ "$(loginctl show-user "$(id -un)" --property=Linger --value 2>/dev/null)" = "yes" ] && return 0
-  if loginctl --no-ask-password enable-linger "$(id -un)" >/dev/null 2>&1; then
+  if reason="$(loginctl --no-ask-password enable-linger "$(id -un)" 2>&1)"; then
     say "Caffold keeps running after you log out."
   else
+    say "loginctl enable-linger failed${reason:+: ${reason}}"
     say "To keep Caffold running after you log out, run: sudo loginctl enable-linger $(id -un)"
   fi
 }
@@ -253,15 +257,31 @@ serve_on_tailnet() {
     say "To open Caffold from your other devices, install Tailscale and run this script again."
     return 0
   fi
-  status="$(curl -fsS -X PUT -H "Content-Type: application/json" --data '{"enabled":true}' "http://127.0.0.1:${PORT}/api/tailscale/serve" 2>/dev/null)" || status=""
-  url="$(printf '%s\n' "${status}" | sed -n 's/.*"tailnetUrl":"\([^"]*\)".*/\1/p')"
-  if [ -n "${url}" ] && printf '%s\n' "${status}" | grep -q '"state":"ready"'; then
+  answer="$(curl -sS -X PUT -H "Content-Type: application/json" --data '{"enabled":true}' "http://127.0.0.1:${PORT}/api/tailscale/serve" 2>&1)" || true
+  url="$(json_string tailnetUrl "${answer}")"
+  if [ -n "${url}" ] && printf '%s\n' "${answer}" | grep -q '"state":"ready"'; then
     say "Open Caffold from your other devices at ${url}."
     return 0
   fi
-  message="$(printf '%s\n' "${status}" | sed -n 's/.*"diagnosticMessage":"\([^"]*\)".*/\1/p')"
+  # A status names its reason, a refused request carries an error message, and
+  # a request that did not reach Caffold leaves curl's own error.
+  message="$(json_string diagnosticMessage "${answer}")"
+  [ -n "${message}" ] || message="$(json_string message "${answer}")"
+  [ -n "${message}" ] || message="${answer}"
   say "Tailscale Serve is not on${message:+: ${message}}"
-  say "If Tailscale denied access, run sudo tailscale set --operator=$(id -un), then run this script again."
+  detail="$(json_string failureDetail "${answer}")"
+  if [ -n "${detail}" ]; then
+    say "${detail}"
+    say "Caffold's log has this too: journalctl --user -u caffold"
+  fi
+  say "Run this script again once that is resolved."
+}
+
+# Prints the string field `$1` of the JSON in `$2`, without its escapes.
+json_string() {
+  printf '%s\n' "$2" |
+    sed -n 's/.*"'"$1"'":"\([^"\\]*\(\\.[^"\\]*\)*\)".*/\1/p' |
+    sed 's/\\\(.\)/\1/g'
 }
 
 require_commands() {

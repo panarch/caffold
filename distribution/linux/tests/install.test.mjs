@@ -138,7 +138,10 @@ test("keeps the service running after the user logs out", (t) => {
 
   const refused = install(user, [], { FAKE_LINGER_REFUSED: "1" });
   assert.equal(refused.status, 0, refused.stderr);
-  assert.match(refused.stdout, /^To keep Caffold running after you log out, run: sudo loginctl enable-linger \S+$/m);
+  assert.match(
+    refused.stdout,
+    /^loginctl enable-linger failed: Could not enable linger: Interactive authentication required\.\nTo keep Caffold running after you log out, run: sudo loginctl enable-linger \S+$/m,
+  );
 
   rmSync(join(user.state, "loginctl.log"));
   const lingering = install(user, [], { FAKE_LINGER: "yes" });
@@ -155,23 +158,74 @@ test("turns Tailscale Serve on through the local server", (t) => {
   const ready = install(user);
   assert.equal(ready.status, 0, ready.stderr);
   assert.deepEqual(log(user.state, "tailscale"), [
-    '-fsS -X PUT -H Content-Type: application/json --data {"enabled":true} http://127.0.0.1:5178/api/tailscale/serve',
+    '-sS -X PUT -H Content-Type: application/json --data {"enabled":true} http://127.0.0.1:5178/api/tailscale/serve',
   ]);
   assert.match(ready.stdout, /^Open Caffold from your other devices at https:\/\/host\.example\.ts\.net\.$/m);
-
-  const denied = install(user, [], {
-    FAKE_TAILSCALE_ANSWER:
-      '{"state":"failed","reasonCode":"serveEnableFailed","diagnosticMessage":"Access denied: serve config denied","canManage":true}',
-  });
-  assert.equal(denied.status, 0, denied.stderr);
-  assert.match(denied.stdout, /^Tailscale Serve is not on: Access denied: serve config denied$/m);
-  assert.match(denied.stdout, /sudo tailscale set --operator=\S+, then run this script again\.$/m);
 
   rmSync(join(user.state, "tailscale.log"));
   const absent = install(user, [], {}, { tailscale: false });
   assert.equal(absent.status, 0, absent.stderr);
   assert.deepEqual(log(user.state, "tailscale"), []);
   assert.match(absent.stdout, /^To open Caffold from your other devices, install Tailscale and run this script again\.$/m);
+});
+
+test("shows what Tailscale said when Serve does not turn on, as Caffold logged it", (t) => {
+  const user = world(t);
+  // Its double quotes and backslash reach the script escaped, as JSON.
+  const detail =
+    "/usr/bin/tailscale serve --bg --yes --https=443 http://127.0.0.1:5178 exited with code 1: " +
+    "sending serve config: Access denied: serve config denied Use 'sudo tailscale serve --bg'. " +
+    'To not require root, use "sudo tailscale set --operator=$USER" once.\\; ' +
+    "Tailscale 1.90.0, HTTPS capability present, health: none";
+
+  const denied = install(user, [], {
+    FAKE_TAILSCALE_ANSWER: JSON.stringify({
+      state: "failed",
+      reasonCode: "serveEnableFailed",
+      diagnosticMessage: "Caffold's Tailscale Serve mapping could not be enabled.",
+      tailnetUrl: null,
+      canManage: true,
+      failureDetail: detail,
+    }),
+  });
+
+  assert.equal(denied.status, 0, denied.stderr);
+  assert.ok(
+    denied.stdout.includes(
+      [
+        "Tailscale Serve is not on: Caffold's Tailscale Serve mapping could not be enabled.",
+        detail,
+        "Caffold's log has this too: journalctl --user -u caffold",
+        "Run this script again once that is resolved.",
+        "",
+      ].join("\n"),
+    ),
+    denied.stdout,
+  );
+
+  const busy = install(user, [], {
+    FAKE_TAILSCALE_ANSWER: JSON.stringify({
+      error: {
+        code: "tailscale_operation_in_progress",
+        message: "A Tailscale Serve operation is already in progress.",
+      },
+    }),
+  });
+  assert.equal(busy.status, 0, busy.stderr);
+  assert.match(
+    busy.stdout,
+    /^Tailscale Serve is not on: A Tailscale Serve operation is already in progress\.\nRun this script again once that is resolved\.$/m,
+  );
+
+  const unreachable = install(user, [], {
+    FAKE_TAILSCALE_REQUEST_ERROR:
+      "curl: (7) Failed to connect to 127.0.0.1 port 5178 after 0 ms: Couldn't connect to server",
+  });
+  assert.equal(unreachable.status, 0, unreachable.stderr);
+  assert.match(
+    unreachable.stdout,
+    /^Tailscale Serve is not on: curl: \(7\) Failed to connect to 127\.0\.0\.1 port 5178 after 0 ms: Couldn't connect to server$/m,
+  );
 });
 
 test("running it again installs the newest release and keeps the previous one only", (t) => {
@@ -253,9 +307,9 @@ test("stops before anything changes when the binary cannot start here", (t) => {
   const result = install(user);
 
   assert.equal(result.status, 1);
-  assert.match(
+  assert.equal(
     result.stderr,
-    /^caffold install: Caffold cannot start on this system\. It needs glibc 2\.28 or later and the standard dynamic loader\.$/m,
+    "caffold install: Caffold cannot start on this system:\ncaffold: version `GLIBC_2.99' not found\n",
   );
   assert.equal(existsSync(join(user.home, ".local/bin/caffold")), false);
   assert.deepEqual(versions(user.home), []);
