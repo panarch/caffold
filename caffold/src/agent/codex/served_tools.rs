@@ -12,10 +12,10 @@ use crate::agent::http_mcp::{McpToolSpec, caffold_mcp_tool_specs};
 pub(crate) const LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME: &str = "rename_current_thread";
 
 /// Reconstruct the pre-MCP creation payload for its ignored compatibility test.
-/// That payload had no tool for reading the Task's name.
+/// That payload had no tool for reading the Task's name or agent settings.
 #[cfg(test)]
 pub(super) fn legacy_dynamic_tool_specs() -> [McpToolSpec; 2] {
-    let [rename, isolate, _read_name] = caffold_mcp_tool_specs();
+    let [rename, isolate, _read_name, _read_agent_settings] = caffold_mcp_tool_specs();
     [
         McpToolSpec {
             name: LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
@@ -29,8 +29,8 @@ pub(super) fn legacy_dynamic_tool_specs() -> [McpToolSpec; 2] {
 mod tests {
     use super::*;
     use crate::agent::http_mcp::{
-        ISOLATE_CURRENT_TASK_TOOL_NAME, READ_CURRENT_TASK_NAME_TOOL_NAME,
-        RENAME_CURRENT_TASK_TOOL_NAME,
+        ISOLATE_CURRENT_TASK_TOOL_NAME, READ_CURRENT_TASK_AGENT_SETTINGS_TOOL_NAME,
+        READ_CURRENT_TASK_NAME_TOOL_NAME, RENAME_CURRENT_TASK_TOOL_NAME,
     };
 
     #[test]
@@ -50,7 +50,8 @@ mod tests {
             [
                 RENAME_CURRENT_TASK_TOOL_NAME,
                 ISOLATE_CURRENT_TASK_TOOL_NAME,
-                READ_CURRENT_TASK_NAME_TOOL_NAME
+                READ_CURRENT_TASK_NAME_TOOL_NAME,
+                READ_CURRENT_TASK_AGENT_SETTINGS_TOOL_NAME
             ]
         );
     }

@@ -785,8 +785,8 @@ application.
 
 ## Caffold-served tools and worktrees
 
-Caffold exposes Task naming, managed-worktree isolation, recorded Task history, and Notes through the
-native extension point each agent already understands:
+Caffold exposes Task naming, the Task's recorded agent settings, managed-worktree isolation, recorded
+Task history, and Notes through the native extension point each agent already understands:
 
 - Codex receives Caffold's authenticated HTTP MCP server at `/api/codex/mcp`
   when a thread starts or resumes. New threads do not receive Caffold dynamic
@@ -811,7 +811,8 @@ nor a signing-key failure makes an HTTP MCP agent a prerequisite for a Claude-on
 Caffold service.
 
 All four MCP catalogs use the Task-owned base names `rename_current_task`,
-`isolate_current_task`, `read_current_task_name`, and `read_task_history`; Claude's transport
+`isolate_current_task`, `read_current_task_name`, `read_current_task_agent_settings`, and
+`read_task_history`; Claude's transport
 qualifies them as `mcp__caffold__...` and Grok's as `caffold__...`, while Codex
 presents the base names directly. Only the pre-MCP Codex dynamic-tool
 compatibility path accepts the historical `rename_current_thread` name.
@@ -820,6 +821,17 @@ compatibility path accepts the historical `rename_current_thread` name.
 name from Caffold Redb, the name the Task list shows. The answer is the same
 whichever agent asks, and no agent is consulted for it. The pre-MCP Codex
 dynamic-tool path does not serve it.
+
+`read_current_task_agent_settings` takes no arguments either. It answers with the
+JSON object `{agent, model, reasoningEffort, fastMode, permissionMode}`: `agent`
+is the Task's recorded agent, and the rest are the Task's composer settings in
+Caffold Redb, as its latest successfully started non-steering turn committed them
+([Active Navigator Projection](codex-app-server.md#active-navigator-projection-and-archived-pagination)).
+Each value is the choice as recorded, under the agent's own name for it except
+Caffold's own `caffold:ask-jev-first` permission mode, so a Claude model can be
+an alias such as `opus`; `null` means Caffold holds no record of that setting. No agent is consulted, so a setting changed after the turn started is
+not reflected and an unreachable agent does not change the answer. The pre-MCP
+Codex dynamic-tool path does not serve it.
 
 ### Recorded Task history
 

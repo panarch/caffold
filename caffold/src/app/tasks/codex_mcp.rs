@@ -1235,6 +1235,99 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_bound_connection_reads_its_tasks_agent_settings_without_asking_codex() {
+        let host = memory_host("http://127.0.0.1:5177".to_string());
+        let store = TaskStore::memory().unwrap();
+        store
+            .claim(
+                ManagedThread {
+                    fast_mode: true,
+                    permission_mode: Some("caffold:ask-jev-first".to_string()),
+                    ..ManagedThread::new(
+                        "thread_1",
+                        RunBy::Codex,
+                        None,
+                        Some("gpt-6-astra".to_string()),
+                        Some("max".to_string()),
+                    )
+                },
+                1,
+            )
+            .unwrap();
+        store
+            .claim(
+                ManagedThread::new("thread_2", RunBy::Codex, None, None, None),
+                1,
+            )
+            .unwrap();
+        let client = CodexThreadClient::mock(Vec::new());
+        let (shutdown, _) = broadcast::channel(1);
+        let runtime = TaskRuntime::new(
+            ClaudeClient::mock().0,
+            GrokClient::unreachable(),
+            AntigravityClient::uninstalled(),
+            TaskSessions::default(),
+            TaskEvents::default(),
+            store.clone(),
+            shutdown,
+        );
+        runtime.install_test_client(1, client.clone()).await;
+        host.attach_runtime(runtime);
+        let recorded = bind_thread(&host, "thread_1").await;
+        let unrecorded = bind_thread(&host, "thread_2").await;
+        let unmanaged = bind_thread(&host, "thread_3").await;
+        let read_settings = |arguments: Value| {
+            json!({
+                "jsonrpc": "2.0",
+                "id": 7,
+                "method": "tools/call",
+                "params": { "name": "read_current_task_agent_settings", "arguments": arguments },
+            })
+        };
+
+        for nothing in [json!({}), Value::Null] {
+            let read =
+                response_json(bound_request(&host, &recorded, read_settings(nothing)).await).await;
+            assert_eq!(read["result"]["isError"], false, "{read}");
+            assert_eq!(
+                read["result"]["content"][0]["text"],
+                r#"{"agent":"codex","model":"gpt-6-astra","reasoningEffort":"max","fastMode":true,"permissionMode":"caffold:ask-jev-first"}"#
+            );
+        }
+
+        let read =
+            response_json(bound_request(&host, &unrecorded, read_settings(json!({}))).await).await;
+        assert_eq!(
+            read["result"]["content"][0]["text"],
+            r#"{"agent":"codex","model":null,"reasoningEffort":null,"fastMode":false,"permissionMode":null}"#
+        );
+
+        let with_arguments = response_json(
+            bound_request(
+                &host,
+                &recorded,
+                read_settings(json!({ "threadId": "thread_2" })),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(with_arguments["result"]["isError"], true);
+        assert_eq!(
+            with_arguments["result"]["content"][0]["text"],
+            "`read_current_task_agent_settings` takes no arguments."
+        );
+
+        let refused =
+            response_json(bound_request(&host, &unmanaged, read_settings(json!({}))).await).await;
+        assert_eq!(refused["result"]["isError"], true);
+        assert_eq!(
+            refused["result"]["content"][0]["text"],
+            "Caffold can only read the agent settings of a task that it manages."
+        );
+        assert!(client.mock_requests().await.is_empty());
+    }
+
+    #[tokio::test]
     async fn a_binding_cannot_be_redirected_by_model_supplied_task_identity() {
         let host = memory_host("http://127.0.0.1:5177".to_string());
         let store = TaskStore::memory().unwrap();

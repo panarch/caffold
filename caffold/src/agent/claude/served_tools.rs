@@ -13,6 +13,7 @@ use super::{
     ClaudeClient, ClaudeError, ClaudeRuntimeEvent, ControlRequestFrame, Session, protocol,
 };
 use crate::agent::history::{HistoryArguments, READ_TASK_HISTORY_TOOL_NAME};
+use crate::agent::http_mcp::READ_CURRENT_TASK_AGENT_SETTINGS_TOOL_NAME;
 use crate::agent::notes_tools::{NotesToolCall, notes_tool_call};
 
 /// One call of a Caffold-served tool, carrying everything answering it needs.
@@ -41,6 +42,7 @@ pub(crate) enum AskedTool {
         include_changes: bool,
     },
     ReadTaskName,
+    ReadTaskAgentSettings,
     ReadTaskHistory(HistoryArguments),
     Notes(NotesToolCall),
 }
@@ -195,6 +197,11 @@ fn tool_ask(message: &Value, request_id: &str, mcp_id: &Value) -> Result<ToolAsk
         protocol::READ_CURRENT_TASK_NAME_TOOL_NAME => match params.get("arguments") {
             None | Some(Value::Null) => AskedTool::ReadTaskName,
             Some(Value::Object(given)) if given.is_empty() => AskedTool::ReadTaskName,
+            Some(_) => return Err(format!("`{tool}` takes no arguments.")),
+        },
+        READ_CURRENT_TASK_AGENT_SETTINGS_TOOL_NAME => match params.get("arguments") {
+            None | Some(Value::Null) => AskedTool::ReadTaskAgentSettings,
+            Some(Value::Object(given)) if given.is_empty() => AskedTool::ReadTaskAgentSettings,
             Some(_) => return Err(format!("`{tool}` takes no arguments.")),
         },
         tool => return Err(format!("Caffold does not serve the tool `{tool}`.")),
@@ -576,6 +583,62 @@ mod tests {
         assert_eq!(
             result["content"][0]["text"],
             "`read_current_task_name` takes no arguments."
+        );
+    }
+
+    #[tokio::test]
+    async fn a_read_agent_settings_call_is_published_for_the_application_to_answer() {
+        let (_client, runner, mut events) = watching().await;
+
+        for params in [
+            json!({ "name": "read_current_task_agent_settings" }),
+            json!({ "name": "read_current_task_agent_settings", "arguments": {} }),
+        ] {
+            runner
+                .say(SESSION, mcp_frame(10, "tools/call", params.clone()))
+                .await;
+
+            let ask = tokio::time::timeout(REPORT_TIMEOUT, async {
+                loop {
+                    if let Ok(ClaudeRuntimeEvent::ToolAsked { ask, .. }) = events.recv().await {
+                        return ask;
+                    }
+                }
+            })
+            .await
+            .expect("the ask reaches the application");
+            assert!(
+                matches!(ask.asked, AskedTool::ReadTaskAgentSettings),
+                "{params}: {:?}",
+                ask.asked
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_read_agent_settings_call_carrying_arguments_is_refused_with_nobody_asked() {
+        let (_client, runner, _events) = watching().await;
+
+        runner
+            .say(
+                SESSION,
+                mcp_frame(
+                    11,
+                    "tools/call",
+                    json!({
+                        "name": "read_current_task_agent_settings",
+                        "arguments": { "taskId": "another" },
+                    }),
+                ),
+            )
+            .await;
+
+        let refused = wrote(&runner, |frame| mcp_response_in(frame)["id"] == 11).await;
+        let result = &mcp_response_in(&refused)["result"];
+        assert_eq!(result["isError"], true);
+        assert_eq!(
+            result["content"][0]["text"],
+            "`read_current_task_agent_settings` takes no arguments."
         );
     }
 }

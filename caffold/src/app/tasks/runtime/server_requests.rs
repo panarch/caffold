@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::Display, path::PathBuf, sync::Arc};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 
 use super::{ApprovalResolveError, TaskAgent, TaskRuntime};
@@ -12,7 +12,8 @@ use crate::agent::codex::{
 use crate::agent::driver::REVIEWED_PERMISSION_MODE;
 use crate::agent::history::{HistoryArguments, READ_TASK_HISTORY_TOOL_NAME};
 use crate::agent::http_mcp::{
-    ISOLATE_CURRENT_TASK_TOOL_NAME, READ_CURRENT_TASK_NAME_TOOL_NAME, RENAME_CURRENT_TASK_TOOL_NAME,
+    ISOLATE_CURRENT_TASK_TOOL_NAME, READ_CURRENT_TASK_AGENT_SETTINGS_TOOL_NAME,
+    READ_CURRENT_TASK_NAME_TOOL_NAME, RENAME_CURRENT_TASK_TOOL_NAME,
 };
 use crate::agent::notes_tools::{NotesToolCall, notes_tool_call};
 use crate::agent::{
@@ -929,12 +930,12 @@ impl TaskRuntime {
             return self.execute_notes_tool(thread_id, call?).await;
         }
         if tool == READ_CURRENT_TASK_NAME_TOOL_NAME {
-            match &arguments {
-                JsonValue::Null => {}
-                JsonValue::Object(given) if given.is_empty() => {}
-                _ => return Err(format!("`{tool}` takes no arguments.")),
-            }
+            takes_no_arguments(tool, &arguments)?;
             return self.current_task_name(thread_id).await;
+        }
+        if tool == READ_CURRENT_TASK_AGENT_SETTINGS_TOOL_NAME {
+            takes_no_arguments(tool, &arguments)?;
+            return self.current_task_agent_settings(thread_id).await;
         }
         let tool = mcp_task_tool(tool)?;
         let Some(managed) = self.managed_thread(thread_id).await? else {
@@ -1221,6 +1222,28 @@ impl TaskRuntime {
         }
     }
 
+    /// The agent and the settings Caffold recorded for the Task that asked,
+    /// as its latest started turn left them. Like the name, they are Caffold's
+    /// own record, so no agent is asked and an unreachable one changes nothing.
+    pub(super) async fn current_task_agent_settings(
+        &self,
+        thread_id: &str,
+    ) -> Result<String, String> {
+        let Some(managed) = self.managed_thread(thread_id).await? else {
+            return Err(
+                "Caffold can only read the agent settings of a task that it manages.".to_string(),
+            );
+        };
+        serde_json::to_string(&TaskAgentSettings {
+            agent: managed.run_by.provider().as_str(),
+            model: managed.model,
+            reasoning_effort: managed.reasoning_effort,
+            fast_mode: managed.fast_mode,
+            permission_mode: managed.permission_mode,
+        })
+        .map_err(|error| error.to_string())
+    }
+
     /// Read the requested managed source, without opening its conversation.
     pub(super) async fn read_task_history(
         &self,
@@ -1462,6 +1485,26 @@ fn withdrawn_approval_outcome(
             status: ThreadStatus::Idle | ThreadStatus::SystemError,
         } => expired,
         _ => None,
+    }
+}
+
+/// What `read_current_task_agent_settings` answers, in the order an agent
+/// reads it.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskAgentSettings {
+    agent: &'static str,
+    model: Option<String>,
+    reasoning_effort: Option<String>,
+    fast_mode: bool,
+    permission_mode: Option<String>,
+}
+
+fn takes_no_arguments(tool: &str, arguments: &JsonValue) -> Result<(), String> {
+    match arguments {
+        JsonValue::Null => Ok(()),
+        JsonValue::Object(given) if given.is_empty() => Ok(()),
+        _ => Err(format!("`{tool}` takes no arguments.")),
     }
 }
 

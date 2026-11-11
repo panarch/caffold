@@ -21,9 +21,10 @@ use uuid::Uuid;
 mod served_tools;
 mod signer;
 
+pub(in crate::agent) use served_tools::read_current_task_agent_settings_tool;
 pub(crate) use served_tools::{
-    ISOLATE_CURRENT_TASK_TOOL_NAME, READ_CURRENT_TASK_NAME_TOOL_NAME,
-    RENAME_CURRENT_TASK_TOOL_NAME, caffold_mcp_tools,
+    ISOLATE_CURRENT_TASK_TOOL_NAME, READ_CURRENT_TASK_AGENT_SETTINGS_TOOL_NAME,
+    READ_CURRENT_TASK_NAME_TOOL_NAME, RENAME_CURRENT_TASK_TOOL_NAME, caffold_mcp_tools,
 };
 #[cfg(test)]
 pub(in crate::agent) use served_tools::{McpToolSpec, caffold_mcp_tool_specs};

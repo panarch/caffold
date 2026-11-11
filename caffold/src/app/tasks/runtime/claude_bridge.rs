@@ -275,6 +275,7 @@ impl TaskRuntime {
                 .await
             }
             AskedTool::ReadTaskName => self.current_task_name(thread_id).await,
+            AskedTool::ReadTaskAgentSettings => self.current_task_agent_settings(thread_id).await,
             AskedTool::ReadTaskHistory(arguments) => {
                 self.read_task_history(thread_id, arguments).await
             }
@@ -533,7 +534,7 @@ mod tests {
     use crate::app::tasks::test_support::task_state_with_agents;
     use crate::app::tasks::{TaskDetailPublication, TaskState};
     use crate::fs::RootedFs;
-    use crate::task_store::{ManagedThread, RunBy};
+    use crate::task_store::{ComposerSettings, ManagedThread, RunBy};
 
     const SESSION: &str = "claude-thread-1";
     const WAIT: Duration = Duration::from_secs(2);
@@ -1096,6 +1097,70 @@ mod tests {
         runner.say(SESSION, read_name_call(13)).await;
         let answered = call_answered(&runner, 13).await;
         assert_eq!(answered["content"][0]["text"], "A better name");
+    }
+
+    fn read_agent_settings_call(id: u64) -> Value {
+        json!({
+            "type": "control_request",
+            "request_id": format!("agent-{id}"),
+            "request": {
+                "subtype": "mcp_message",
+                "server_name": "caffold",
+                "message": {
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "method": "tools/call",
+                    "params": { "name": "read_current_task_agent_settings", "arguments": {} },
+                },
+            },
+        })
+    }
+
+    #[tokio::test]
+    async fn the_agent_reads_the_settings_its_task_last_started_a_turn_with() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, runner) = watched(root.path()).await;
+        state
+            .task_store
+            .claim(
+                ManagedThread {
+                    model: Some("opus[1m]".to_string()),
+                    reasoning_effort: Some("xhigh".to_string()),
+                    permission_mode: Some("auto".to_string()),
+                    ..managed_claude_row(root.path())
+                },
+                1,
+            )
+            .unwrap();
+
+        runner.say(SESSION, read_agent_settings_call(21)).await;
+        let answered = call_answered(&runner, 21).await;
+        assert!(answered.get("isError").is_none(), "{answered}");
+        assert_eq!(
+            answered["content"][0]["text"],
+            r#"{"agent":"claude","model":"opus[1m]","reasoningEffort":"xhigh","fastMode":false,"permissionMode":"auto"}"#
+        );
+
+        state
+            .task_store
+            .transaction(|tables| {
+                tables.update_managed_thread_composer_settings(
+                    SESSION,
+                    &ComposerSettings {
+                        model: Some("sonnet".to_string()),
+                        reasoning_effort: None,
+                        fast_mode: true,
+                        permission_mode: Some("caffold:ask-jev-first".to_string()),
+                    },
+                )
+            })
+            .unwrap();
+        runner.say(SESSION, read_agent_settings_call(22)).await;
+        let answered = call_answered(&runner, 22).await;
+        assert_eq!(
+            answered["content"][0]["text"],
+            r#"{"agent":"claude","model":"sonnet","reasoningEffort":null,"fastMode":true,"permissionMode":"caffold:ask-jev-first"}"#
+        );
     }
 
     #[tokio::test]

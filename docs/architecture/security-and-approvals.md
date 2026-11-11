@@ -89,8 +89,9 @@ existing ownership; Caffold adds no clarification ledger or waiting-state overla
 
 ## Caffold-Served Tools
 
-Task naming, managed-worktree preparation, and Notes are Caffold-owned
-operations, not general agent permissions. Caffold declares that closed tool set
+Task naming, reading the Task's recorded agent settings, managed-worktree
+preparation, and Notes are Caffold-owned operations, not general agent
+permissions. Caffold declares that closed tool set
 through each agent's native extension point and allows those calls without
 adding another Caffold approval card. Antigravity may ask before an MCP call
 through its own permission flow. Each tool still enforces its own checks, such as
@@ -153,8 +154,8 @@ install-issued capability fails closed without preventing a Caffold service
 that lacks one of the agents from starting.
 
 All four supported agents expose the same MCP base names: the Task-owned
-`rename_current_task`, `isolate_current_task`, and `read_current_task_name`,
-plus the Notes tools listed in
+`rename_current_task`, `isolate_current_task`, `read_current_task_name`, and
+`read_current_task_agent_settings`, plus the Notes tools listed in
 [Agent Runtimes](agent-runtimes.md#caffold-served-tools-and-worktrees).
 Claude's provider transport qualifies those names as `mcp__caffold__...` and
 Grok's as `caffold__...`;
