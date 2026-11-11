@@ -1,4 +1,4 @@
-//! The tools Caffold serves, as both agents' MCP addresses list them: the
+//! The tools Caffold serves, as its HTTP MCP addresses list them: the
 //! Task-owned tools defined here and the Notes tools every agent shares.
 
 use serde_json::{Value, json};
@@ -8,6 +8,8 @@ use crate::agent::notes_tools::notes_tool_specs;
 pub(crate) const RENAME_CURRENT_TASK_TOOL_NAME: &str = "rename_current_task";
 pub(crate) const ISOLATE_CURRENT_TASK_TOOL_NAME: &str = "isolate_current_task";
 pub(crate) const READ_CURRENT_TASK_NAME_TOOL_NAME: &str = "read_current_task_name";
+pub(crate) const READ_CURRENT_TASK_AGENT_SETTINGS_TOOL_NAME: &str =
+    "read_current_task_agent_settings";
 
 pub(in crate::agent) struct McpToolSpec {
     pub(in crate::agent) name: &'static str,
@@ -37,11 +39,12 @@ fn listed_tool(name: &str, description: &str, input_schema: Value) -> Value {
     })
 }
 
-pub(in crate::agent) fn caffold_mcp_tool_specs() -> [McpToolSpec; 3] {
+pub(in crate::agent) fn caffold_mcp_tool_specs() -> [McpToolSpec; 4] {
     [
         rename_current_task_tool(),
         isolate_current_task_tool(),
         read_current_task_name_tool(),
+        read_current_task_agent_settings_tool(),
     ]
 }
 
@@ -95,6 +98,19 @@ fn read_current_task_name_tool() -> McpToolSpec {
     McpToolSpec {
         name: READ_CURRENT_TASK_NAME_TOOL_NAME,
         description: "Read the user-facing name of the current Caffold task, as Caffold shows it. The result is the name alone, as plain text.",
+        input_schema: json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+        }),
+    }
+}
+
+/// Claude lists this one from here too, so its description has one home.
+pub(in crate::agent) fn read_current_task_agent_settings_tool() -> McpToolSpec {
+    McpToolSpec {
+        name: READ_CURRENT_TASK_AGENT_SETTINGS_TOOL_NAME,
+        description: "Read which agent runs the current Caffold task and the settings Caffold started the task's latest turn with: the model, the reasoning effort, whether fast mode was on, and the permission mode. Each value is the choice exactly as Caffold recorded it, under the agent's own name for it except Caffold's own `caffold:ask-jev-first` permission mode, so a model can be an alias such as `opus` rather than an exact version. A null value means Caffold has no record of that setting, so the agent's own default applied. Caffold does not ask the agent, and a setting changed after the turn started is not reflected. The result is JSON.",
         input_schema: json!({
             "type": "object",
             "additionalProperties": false,

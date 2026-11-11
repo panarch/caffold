@@ -565,6 +565,89 @@ mod tests {
         );
     }
 
+    /// The answer is Caffold's record, so an agent that cannot be reached
+    /// answers the same as one that can.
+    #[tokio::test]
+    async fn grok_and_antigravity_tasks_read_their_agent_settings_while_unreachable() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().display().to_string();
+        let cases = [
+            (
+                HttpMcpHost::grok("http://127.0.0.1:5177", McpSessionSigner::memory()),
+                RunBy::Grok { cwd: cwd.clone() },
+                ("grok-4.6", "xhigh", "autoMode"),
+                r#"{"agent":"grok","model":"grok-4.6","reasoningEffort":"xhigh","fastMode":false,"permissionMode":"autoMode"}"#,
+            ),
+            (
+                HttpMcpHost::antigravity("http://127.0.0.1:5177", McpSessionSigner::memory()),
+                RunBy::Antigravity { cwd },
+                ("gemini-3.8-flash", "high", "default"),
+                r#"{"agent":"antigravity","model":"gemini-3.8-flash","reasoningEffort":"high","fastMode":false,"permissionMode":"default"}"#,
+            ),
+        ];
+        for (host, run_by, (model, effort, mode), expected) in cases {
+            let store = TaskStore::memory().unwrap();
+            store
+                .claim(
+                    ManagedThread {
+                        run_by,
+                        permission_mode: Some(mode.to_string()),
+                        ..ManagedThread::new(
+                            "thread_1",
+                            RunBy::Codex,
+                            None,
+                            Some(model.to_string()),
+                            Some(effort.to_string()),
+                        )
+                    },
+                    1,
+                )
+                .unwrap();
+            let (shutdown, _) = broadcast::channel(1);
+            host.attach_runtime(TaskRuntime::new(
+                ClaudeClient::mock().0,
+                GrokClient::unreachable(),
+                AntigravityClient::uninstalled(),
+                TaskSessions::default(),
+                TaskEvents::default(),
+                store,
+                shutdown,
+            ));
+            let binding = host.bindings.bind("thread_1");
+            let path = host.agent.path();
+            let session = session_header(
+                &send(
+                    host.router(),
+                    path,
+                    Some(&binding),
+                    None,
+                    initialize("2025-06-18"),
+                )
+                .await,
+            );
+
+            let read = response_json(
+                send(
+                    host.router(),
+                    path,
+                    Some(&binding),
+                    Some(&session),
+                    json!({
+                        "jsonrpc": "2.0",
+                        "id": 5,
+                        "method": "tools/call",
+                        "params": { "name": "read_current_task_agent_settings", "arguments": {} },
+                    }),
+                )
+                .await,
+            )
+            .await;
+
+            assert_eq!(read["result"]["isError"], false, "{read}");
+            assert_eq!(read["result"]["content"][0]["text"], expected);
+        }
+    }
+
     fn git(path: &Path, args: &[&str]) {
         let output = Command::new("git")
             .args(args)

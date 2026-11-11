@@ -21,6 +21,8 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::agent::CAFFOLD_SESSION_INSTRUCTIONS;
+use crate::agent::history;
+use crate::agent::http_mcp::read_current_task_agent_settings_tool;
 use crate::agent::notes_tools::notes_tool_specs;
 
 /// The oldest CLI Caffold drives.
@@ -61,6 +63,8 @@ pub(crate) const BASE_ARGUMENTS: &[&str] = &[
     ISOLATE_CURRENT_TASK_QUALIFIED_NAME,
     "--allowedTools",
     READ_CURRENT_TASK_NAME_QUALIFIED_NAME,
+    "--allowedTools",
+    READ_CURRENT_TASK_AGENT_SETTINGS_QUALIFIED_NAME,
     "--allowedTools",
     "mcp__caffold__list_notes",
     "--allowedTools",
@@ -654,6 +658,11 @@ pub(crate) const READ_CURRENT_TASK_NAME_TOOL_NAME: &str = "read_current_task_nam
 pub(crate) const READ_CURRENT_TASK_NAME_QUALIFIED_NAME: &str =
     "mcp__caffold__read_current_task_name";
 
+/// The read-agent-settings tool under the name the model calls it by. Its base
+/// name and description are the shared catalog's.
+pub(crate) const READ_CURRENT_TASK_AGENT_SETTINGS_QUALIFIED_NAME: &str =
+    "mcp__caffold__read_current_task_agent_settings";
+
 /// Answer one MCP request with its result.
 pub(crate) fn mcp_result(request_id: &str, mcp_id: &Value, result: Value) -> Value {
     control_response(
@@ -716,8 +725,9 @@ pub(crate) fn mcp_initialize_result(message: &Value) -> Value {
 /// name until the model chooses to load it — and a model instructed to call
 /// this one sometimes would not bother, measured as the first-turn rename
 /// landing on some runs and not others. A Notes tool answers a request the
-/// user makes, so it stays in the pool until the model looks for it; so does
-/// reading the Task's name, which nothing instructs the model to do.
+/// user makes, so it stays in the pool until the model looks for it; so do the
+/// tools reading the Task's name and agent settings, which nothing instructs
+/// the model to call.
 pub(crate) fn mcp_tool_listing() -> Value {
     let mut listing = serde_json::json!({
         "tools": [
@@ -774,20 +784,23 @@ pub(crate) fn mcp_tool_listing() -> Value {
             },
         ],
     });
-    listing["tools"]
+    let tools = listing["tools"]
         .as_array_mut()
-        .expect("the listing starts as an array of the Task tools")
-        .extend(notes_tool_specs().into_iter().map(|tool| {
-            serde_json::json!({
-                "name": tool.name,
-                "description": tool.description,
-                "inputSchema": tool.input_schema,
-            })
-        }));
-    listing["tools"]
-        .as_array_mut()
-        .expect("the listing contains tools")
-        .push(crate::agent::history::tool_definition());
+        .expect("the listing starts as an array of the Task tools");
+    let agent_settings = read_current_task_agent_settings_tool();
+    tools.push(serde_json::json!({
+        "name": agent_settings.name,
+        "description": agent_settings.description,
+        "inputSchema": agent_settings.input_schema,
+    }));
+    tools.extend(notes_tool_specs().into_iter().map(|tool| {
+        serde_json::json!({
+            "name": tool.name,
+            "description": tool.description,
+            "inputSchema": tool.input_schema,
+        })
+    }));
+    tools.push(history::tool_definition());
     listing
 }
 
@@ -815,6 +828,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::agent::http_mcp::READ_CURRENT_TASK_AGENT_SETTINGS_TOOL_NAME;
 
     fn frame(value: Value) -> StreamFrame {
         serde_json::from_value(value).expect("a frame Caffold can read")
@@ -1081,6 +1095,10 @@ mod tests {
             READ_CURRENT_TASK_NAME_QUALIFIED_NAME,
             format!("mcp__{MCP_SERVER_NAME}__{READ_CURRENT_TASK_NAME_TOOL_NAME}")
         );
+        assert_eq!(
+            READ_CURRENT_TASK_AGENT_SETTINGS_QUALIFIED_NAME,
+            format!("mcp__{MCP_SERVER_NAME}__{READ_CURRENT_TASK_AGENT_SETTINGS_TOOL_NAME}")
+        );
     }
 
     #[test]
@@ -1190,10 +1208,22 @@ mod tests {
     }
 
     #[test]
+    fn the_listing_serves_the_shared_read_agent_settings_tool_not_loaded_up_front() {
+        let listing = mcp_tool_listing();
+        let tool = &listing["tools"][3];
+        let spec = read_current_task_agent_settings_tool();
+        assert_eq!(tool["name"], READ_CURRENT_TASK_AGENT_SETTINGS_TOOL_NAME);
+        assert_eq!(tool["description"], spec.description);
+        assert_eq!(tool["inputSchema"], spec.input_schema);
+        assert_eq!(tool["inputSchema"]["properties"], json!({}));
+        assert!(tool.get("_meta").is_none());
+    }
+
+    #[test]
     fn the_listing_serves_every_notes_tool_after_the_task_tools_without_loading_them_up_front() {
         let listing = mcp_tool_listing();
         let tools = listing["tools"].as_array().unwrap();
-        let notes = &tools[3..tools.len() - 1];
+        let notes = &tools[4..tools.len() - 1];
         let specs = notes_tool_specs();
         assert_eq!(notes.len(), specs.len());
         for (tool, spec) in notes.iter().zip(specs) {

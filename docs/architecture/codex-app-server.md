@@ -248,7 +248,8 @@ persist a second task ledger.
   entry supplied in request-scoped config for `thread/start` and
   `thread/resume`. Caffold does not advertise `dynamicTools` on new threads.
   The MCP catalog uses the same Task-owned base names as Claude and Grok:
-  `rename_current_task`, `isolate_current_task`, and `read_current_task_name`.
+  `rename_current_task`, `isolate_current_task`, `read_current_task_name`, and
+  `read_current_task_agent_settings`.
   The MCP `initialize` result also carries Caffold's provider-neutral session
   instructions, the
   [current-plan document convention](../product/workflows.md#current-plan-documents)
