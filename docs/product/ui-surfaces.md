@@ -236,8 +236,9 @@ about the most and has Jev hold back only what an automatic mode would stop for,
 plus whatever the extra rules in Settings name. A Grok session fixes its mode when the conversation starts, so choosing
 it there changes who answers rather than what Grok asks about. A Grok Task's follow-up
 composer shows the session's approval mode and does not let it change,
-including on an empty Task. New Task reports that the task is starting until
-the empty Task is durably created, and the answer opens the Task without
+including on an empty Task. Until the empty Task is durably created, New Task
+keeps the sent prompt and attachments in its locked Composer, and a turning
+progress icon takes the send arrow's place; the answer opens the Task without
 waiting for a turn. The retained New Task submission then moves into
 that Task's Composer and is sent through the ordinary prompt flow.
 Managed-worktree preparation happens explicitly from the resulting Task; it

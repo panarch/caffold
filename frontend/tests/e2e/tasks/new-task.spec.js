@@ -19,6 +19,8 @@ import {
   taskPresentation,
 } from "../support/task-fixtures.js";
 
+const LOADER_CIRCLE_ICON = 'svg path[d="M21 12a9 9 0 1 1-6.2-8.6"]';
+
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
@@ -1045,7 +1047,7 @@ test("does not carry an older-history cursor into a newly created task", { tag: 
   await expect(tasksPage.locator(".task-history-error")).toHaveCount(0);
 });
 
-test("says that a new task is starting until creation is answered", { tag: "@all-viewports" }, async ({
+test("keeps what was sent in place and turns Send until creation is answered", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const scenario = await installTaskLoopFixture(page, { holdCreateResponse: true });
@@ -1059,33 +1061,42 @@ test("says that a new task is starting until creation is answered", { tag: "@all
   const prompt = composer.locator('textarea[name="prompt"]');
   await prompt.fill("Inspect the planner changes");
   await pasteImage(prompt, "planner-layout.png");
-  await expect(composer.locator(".task-composer-attachment")).toHaveCount(1);
-  const panelTop = () =>
-    composer
-      .locator(".task-composer-panel")
-      .evaluate((element) => Math.round(element.getBoundingClientRect().top));
-  const topBeforeSubmit = await panelTop();
-  await expect(composer.locator(".task-primary-action-button")).toBeEnabled();
+  const attachment = composer.locator(".task-composer-attachment");
+  await expect(attachment).toHaveCount(1);
+  const panelBox = () =>
+    composer.locator(".task-composer-panel").evaluate((element) => {
+      const { top, height } = element.getBoundingClientRect();
+      return { top: Math.round(top), height: Math.round(height) };
+    });
+  const boxBeforeSubmit = await panelBox();
+  const send = composer.locator(".task-primary-action-button");
+  await expect(send).toBeEnabled();
   await prompt.press("Enter");
 
   await scenario.createRequested;
-  const status = composer.locator(".task-composer-create-status");
-  await expect(status).toHaveText("Starting the task...");
-  await expect(prompt).toBeDisabled();
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "new");
-  // The notice reports on the request the Composer is holding, so it grows the
-  // panel downward instead of moving the panel the prompt was submitted from.
-  expect(await panelTop()).toBe(topBeforeSubmit);
-  // It also has to stay inside the surface and unclipped at every width the
-  // New Task surface is used at.
+  await expect(prompt).toBeDisabled();
+  await expect(prompt).toHaveValue("Inspect the planner changes");
+  await expect(attachment).toHaveCount(1);
+  await expect(attachment.locator(".task-composer-attachment-remove")).toHaveCount(0);
+  await expect(send).toBeDisabled();
+  await expect(send).toHaveAttribute("data-primary-action-icon", "LoaderCircle");
+  await expect(send.locator(LOADER_CIRCLE_ICON)).toHaveCount(1);
+  await expect(send.locator(".task-primary-action-icon")).toHaveCSS(
+    "animation-name",
+    "caffold-busy-spin",
+  );
+  // The notice is read out but not drawn, so nothing in the surface moves.
+  const status = composer.locator(".task-composer-create-status");
+  await expect(status).toHaveAttribute("role", "status");
+  await expect(status).toHaveText("Starting the task...");
   expect(
-    await status.evaluate((element) => ({
-      clipped: element.scrollWidth > element.clientWidth,
-      overflowing:
-        element.getBoundingClientRect().right >
-        document.documentElement.clientWidth,
-    })),
-  ).toEqual({ clipped: false, overflowing: false });
+    await status.evaluate((element) => {
+      const { width, height } = element.getBoundingClientRect();
+      return { width, height };
+    }),
+  ).toEqual({ width: 1, height: 1 });
+  expect(await panelBox()).toEqual(boxBeforeSubmit);
   await captureReviewScreenshot(page, testInfo, "tasks-new-task-starting");
 
   scenario.releaseCreateResponse();
@@ -1093,6 +1104,36 @@ test("says that a new task is starting until creation is answered", { tag: "@all
   await expect(page).toHaveURL(`/tasks/${scenario.threadId}`);
   await expect(status).toHaveCount(0);
   expect(scenario.pageErrors).toEqual([]);
+});
+
+test("keeps a held file's name inside its chip once its remove control is gone", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page, { holdCreateResponse: true });
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
+
+  const composer = page.locator("caffold-tasks-page .task-new-form");
+  await composer.locator(".task-model-button").click();
+  await composer.locator('.task-model-popover [data-effort="xhigh"]').click();
+  const prompt = composer.locator('textarea[name="prompt"]');
+  await prompt.fill("Inspect the planner changes");
+  await composer.locator("input[data-composer-file-input]").setInputFiles([
+    { name: "server.log", mimeType: "text/plain", buffer: Buffer.from("log") },
+  ]);
+  const file = composer.locator(".task-composer-file");
+  await expect(file).toHaveCount(1);
+  await prompt.press("Enter");
+
+  await scenario.createRequested;
+  await expect(file).toHaveCount(1);
+  await expect(file.locator(".task-composer-file-remove")).toHaveCount(0);
+  const insets = await file.evaluate((chip) => {
+    const box = chip.getBoundingClientRect();
+    const icon = chip.querySelector(".task-composer-file-icon").getBoundingClientRect();
+    const name = chip.querySelector(".task-composer-file-name").getBoundingClientRect();
+    return { start: icon.left - box.left, end: box.right - name.right };
+  });
+  expect(insets.end).toBeCloseTo(insets.start, 0);
 });
 
 test("restores the exact new task draft when creation is rejected", { tag: "@server-steady" }, async ({
@@ -1117,8 +1158,14 @@ test("restores the exact new task draft when creation is rejected", { tag: "@ser
   const error = page.locator("caffold-task-create .task-create-status");
   await expect(error).toContainText("Task creation failed");
   await expect(prompt).toHaveValue("Inspect the planner changes");
+  await expect(prompt).toBeEnabled();
   await expect(composer.locator(".task-composer-attachment")).toHaveCount(1);
+  await expect(composer.locator(".task-composer-attachment-remove")).toHaveCount(1);
   await expect(composer.locator('input[name="effort"]')).toHaveValue("xhigh");
+  await expect(composer.locator(".task-primary-action-button")).toHaveAttribute(
+    "data-primary-action-icon",
+    "ArrowUp",
+  );
   expect(scenario.createTaskRequests).toBe(1);
   expect(scenario.initialPromptRequests).toBe(0);
   expect(scenario.pageErrors).toEqual([]);

@@ -194,6 +194,10 @@ const IMAGE_INPUT_TYPES = new Set([
 export class CaffoldTaskComposer extends CaffoldElement {
   static override styles = [
     scopedStyle(busySpin, ".task-voice-button.is-busy > .task-voice-icon"),
+    scopedStyle(
+      busySpin,
+      ".task-primary-action-button.is-busy > .task-primary-action-icon",
+    ),
     styles,
   ];
 
@@ -568,13 +572,16 @@ export class CaffoldTaskComposer extends CaffoldElement {
     const optionsReady = Boolean(this.turnOptions()?.readyForSubmission());
     const send = ({
       disabled = false,
+      busy = false,
       label = this.context.submitLabel,
     }: {
       disabled?: boolean;
+      busy?: boolean;
       label?: string;
     } = {}) => ({
       kind: "send" as const,
-      icon: "ArrowUp",
+      icon: busy ? "LoaderCircle" : "ArrowUp",
+      busy,
       label,
       title: transportBlocked
         ? "Caffold server is reconnecting."
@@ -594,6 +601,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
     } = {}) => ({
       kind: "stop" as const,
       icon: "Square",
+      busy: false,
       label,
       title: transportBlocked ? "Caffold server is reconnecting." : title,
       disabled: transportBlocked || disabled,
@@ -612,8 +620,10 @@ export class CaffoldTaskComposer extends CaffoldElement {
         label: this.context.turnActive ? "Stop current turn" : "Cancel upload",
       });
     }
+    // A new Task being started has no conversation to wait in yet, so Send
+    // turns instead.
     if (submitting) {
-      return send({ disabled: true });
+      return send({ disabled: true, busy: this.context.mode === "create" });
     }
     if (voicePhase === "requesting" || voicePhase === "transcribing") {
       return send({ disabled: true });
@@ -699,7 +709,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
           >${
             creating
               ? html`<p
-                  class="task-composer-create-status"
+                  class="task-composer-create-status sr-only"
                   role="status"
                 >Starting the task...</p>`
               : nothing
@@ -883,7 +893,11 @@ export class CaffoldTaskComposer extends CaffoldElement {
                     label: action.label,
                     action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
                   })}
-                  class="task-primary-action-button"
+                  class=${
+                    action.busy
+                      ? "task-primary-action-button is-busy"
+                      : "task-primary-action-button"
+                  }
                   type=${action.kind === "send" ? "submit" : "button"}
                   data-primary-action=${action.kind}
                   data-composer-action=${
@@ -907,13 +921,20 @@ export class CaffoldTaskComposer extends CaffoldElement {
     `;
   }
 
-  // After each drawing the attachments and the prompt field catch up.
+  // After each drawing the attachments and the prompt field catch up. While a
+  // new Task is being started they show what was sent, which the draft no
+  // longer holds.
   override updated() {
     if (this.dataset.composerMode !== this.context.mode) {
       this.dataset.composerMode = this.context.mode;
     }
-    this.attachmentStrip.value?.setAttachments(this.state.attachments);
-    this.syncPromptField();
+    const held =
+      this.context.mode === "create" ? this.activeSubmissionFor() : null;
+    this.attachmentStrip.value?.setAttachments(
+      held?.attachments ?? this.state.attachments,
+      !held,
+    );
+    this.syncPromptField(held?.prompt ?? this.state.prompt);
   }
 
   // An owner that sizes around the Composer hears that it may have changed.
@@ -925,7 +946,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
     this.notifyLayoutChange();
   }
 
-  private syncPromptField() {
+  private syncPromptField(prompt: string) {
     const textarea = this.promptField.value;
     if (!textarea) {
       return;
@@ -934,12 +955,12 @@ export class CaffoldTaskComposer extends CaffoldElement {
       this.drewWhileComposing = true;
       return;
     }
-    if (textarea.value === this.state.prompt) {
+    if (textarea.value === prompt) {
       return;
     }
     const focused = this.shadowRoot?.activeElement === textarea;
     const { selectionStart, selectionEnd } = textarea;
-    textarea.value = this.state.prompt;
+    textarea.value = prompt;
     if (focused) {
       textarea.setSelectionRange(selectionStart, selectionEnd);
     }
@@ -1028,9 +1049,11 @@ export class CaffoldTaskComposer extends CaffoldElement {
       : null;
   }
 
+  // A locked field holds only what the Composer wrote into it, which may be a
+  // submission being started rather than the draft.
   private captureCurrentState() {
     const textarea = this.promptField.value;
-    if (!textarea) {
+    if (!textarea || textarea.disabled) {
       return;
     }
     this.state.prompt = textarea.value;

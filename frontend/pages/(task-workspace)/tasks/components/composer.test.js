@@ -104,6 +104,45 @@ test("stops an upload in place of the disabled Send, and names what it stops", (
   assert.deepEqual(action(), { kind: "send", label: "Send prompt", disabled: true });
 });
 
+test("turns Send while a new Task is being started, and only then", () => {
+  const owner = composerHost({
+    turnOptions: () => ({ readyForSubmission: () => true }),
+    activeSubmissionFor: () => ({ id: "held" }),
+  });
+  owner.voice.phase = "idle";
+  const action = () => {
+    const { kind, icon, busy, disabled } = owner.primaryActionView();
+    return { kind, icon, busy, disabled };
+  };
+
+  assert.deepEqual(action(), { kind: "send", icon: "LoaderCircle", busy: true, disabled: true });
+  owner.context.mode = "follow-up";
+  assert.deepEqual(action(), { kind: "send", icon: "ArrowUp", busy: false, disabled: true });
+});
+
+test("gives a refused new Task's request back to the draft once, though its locked field still shows it", () => {
+  const submission = {
+    id: "create:1",
+    prompt: "Inspect the planner changes",
+    attachments: [{ id: "planner-layout" }],
+    options: {},
+    restorePromptFocusOnRejection: false,
+  };
+  const owner = composerHost({
+    promptField: {
+      value: { disabled: true, value: submission.prompt, selectionStart: 0, selectionEnd: 0 },
+    },
+    activeSubmissions: new Map([[submission.id, submission]]),
+  });
+  owner.state.activeSubmissionId = submission.id;
+
+  assert.equal(owner.resolveSubmission(submission.id, { status: "rejected", error: "Task creation failed" }), true);
+
+  assert.equal(owner.state.prompt, "Inspect the planner changes");
+  assert.deepEqual(owner.state.attachments.map(({ id }) => id), ["planner-layout"]);
+  assert.equal(owner.context.requestError, "Task creation failed");
+});
+
 test("puts a suggested request after what is being written, ready to read and send", () => {
   const focused = [];
   let locked = false;
