@@ -1890,7 +1890,10 @@ Global New owns its editable cwd, and Section New owns a fixed cwd. Both mount
 the same Tasks-owned Task Create behavior, which draws the directory above the
 Composer and owns the Composer and its creation-rejection presentation. On
 submit, Task Create passes an exact submission snapshot to the persistent Tasks
-page without removing the Composer's local in-flight state. The page owns the
+page without removing the Composer's local in-flight state. Until creation
+answers, that Composer draws the held submission in its locked prompt field and
+attachment strip while its draft stays empty, and it does not read the locked
+field back into the draft. The page owns the
 creation request across Task and Section route changes, so replacing a Section
 Task Create cannot abandon the first prompt. When the empty Task answer arrives,
 the page gives its snapshot to Detail before navigation; Detail then sends it

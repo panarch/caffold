@@ -436,6 +436,7 @@ test("busy elements turn through one registered spin with reduced-motion fallbac
     "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn .task-active-turn-spinner",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions .task-detail-action-icon.is-busy",
     "pages/(task-workspace)/tasks/components/archived-task-list .task-archived-action-button.is-loading > .task-archived-action-icon",
+    "pages/(task-workspace)/tasks/components/composer .task-primary-action-button.is-busy > .task-primary-action-icon",
     "pages/(task-workspace)/tasks/components/composer .task-voice-button.is-busy > .task-voice-icon",
     "pages/(task-workspace)/tasks/components/task-status-chip .task-status-spinner",
     "pages/(task-workspace)/tasks/components/task-turn-options .task-picker-spinner",

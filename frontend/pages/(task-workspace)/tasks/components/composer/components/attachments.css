@@ -138,6 +138,10 @@
   font-size: var(--interface-meta-font-size);
 }
 
+.task-composer-file:not(:has(.task-composer-file-remove)) {
+  padding-inline-end: 0.5rem;
+}
+
 .task-composer-file-icon {
   display: block;
   flex: none;

@@ -48,6 +48,7 @@ export class CaffoldTaskComposerAttachments extends CaffoldElement {
   private accessor thumbnails: ReadonlyMap<string, string> = new Map();
 
   private attachments: ComposerAttachment[] = [];
+  private removable = true;
   private thumbnailQueue = Promise.resolve();
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
@@ -62,10 +63,11 @@ export class CaffoldTaskComposerAttachments extends CaffoldElement {
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
 
-  // `attachments` is the Composer's list as it stands. The strip draws it at
-  // once, as part of the Composer's own drawing.
-  setAttachments(attachments: ComposerAttachment[]) {
-    if (attachments === this.attachments) {
+  // `attachments` is the Composer's list as it stands, and `removable` whether
+  // it still takes removals. The strip draws it at once, as part of the
+  // Composer's own drawing.
+  setAttachments(attachments: ComposerAttachment[], removable: boolean) {
+    if (attachments === this.attachments && removable === this.removable) {
       return;
     }
     const added = attachments.filter(
@@ -74,6 +76,7 @@ export class CaffoldTaskComposerAttachments extends CaffoldElement {
         !this.attachments.some((shown) => shown.id === attachment.id),
     );
     this.attachments = attachments;
+    this.removable = removable;
     this.thumbnails = new Map(
       [...this.thumbnails].filter(([id]) => this.holds(id)),
     );
@@ -133,24 +136,28 @@ export class CaffoldTaskComposerAttachments extends CaffoldElement {
       ><img
           alt=""
           src=${this.thumbnails.get(image.id) ?? nothing}
-        ></button><button
-        ${this.hints.button({
-          id: `remove-image:${image.id}`,
-          label: `Remove ${image.name}`,
-          action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-        })}
-        type="button"
-        class="task-composer-attachment-remove"
-        data-attachment-action="remove-image"
-        data-attachment-id=${image.id}
-        aria-label=${`Remove ${image.name}`}
-        title="Remove image"
-        @click=${(event: Event) => this.requestRemoval(event, image)}
-      >${inlineIcon(
-        "X",
-        "Remove image",
-        "task-composer-attachment-remove-icon",
-      )}</button></figure>`;
+        ></button>${
+          this.removable
+            ? html`<button
+              ${this.hints.button({
+                id: `remove-image:${image.id}`,
+                label: `Remove ${image.name}`,
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              })}
+              type="button"
+              class="task-composer-attachment-remove"
+              data-attachment-action="remove-image"
+              data-attachment-id=${image.id}
+              aria-label=${`Remove ${image.name}`}
+              title="Remove image"
+              @click=${(event: Event) => this.requestRemoval(event, image)}
+            >${inlineIcon(
+              "X",
+              "Remove image",
+              "task-composer-attachment-remove-icon",
+            )}</button>`
+            : nothing
+        }</figure>`;
   }
 
   // The extension stays whole when a long name is cut short, so a file is
@@ -168,24 +175,28 @@ export class CaffoldTaskComposerAttachments extends CaffoldElement {
           class="task-composer-file-stem"
         >${stem}</span><span
           class="task-composer-file-extension"
-        >${extension}</span></span><button
-        ${this.hints.button({
-          id: `remove-file:${file.id}`,
-          label: `Remove ${file.name}`,
-          action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-        })}
-        type="button"
-        class="task-composer-file-remove"
-        data-attachment-action="remove-file"
-        data-attachment-id=${file.id}
-        aria-label=${`Remove ${file.name}`}
-        title="Remove file"
-        @click=${(event: Event) => this.requestRemoval(event, file)}
-      >${inlineIcon(
-        "X",
-        "Remove file",
-        "task-composer-file-remove-icon",
-      )}</button></span>`;
+        >${extension}</span></span>${
+          this.removable
+            ? html`<button
+              ${this.hints.button({
+                id: `remove-file:${file.id}`,
+                label: `Remove ${file.name}`,
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              })}
+              type="button"
+              class="task-composer-file-remove"
+              data-attachment-action="remove-file"
+              data-attachment-id=${file.id}
+              aria-label=${`Remove ${file.name}`}
+              title="Remove file"
+              @click=${(event: Event) => this.requestRemoval(event, file)}
+            >${inlineIcon(
+              "X",
+              "Remove file",
+              "task-composer-file-remove-icon",
+            )}</button>`
+            : nothing
+        }</span>`;
   }
 
   private preview(event: Event, image: ComposerAttachment) {
