@@ -61,7 +61,7 @@ test("shows archived time without execution status", { tag: "@server-steady" }, 
   await expect(row.getByRole("button", { name: "Restore Archived task", exact: true })).toBeEnabled();
 });
 
-test("confirms permanent deletion and removes the archived row only after success", { tag: "@all-viewports" }, async ({
+test("confirms permanent deletion and removes the archived row only after success, and the emptied section with it", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const task = archivedTask("thread_delete", "Delete archived task");
@@ -151,6 +151,11 @@ test("confirms permanent deletion and removes the archived row only after succes
 
   releaseDelete();
   await expect(row).toHaveCount(0);
+  await expect(
+    page.locator(
+      'caffold-task-navigator .task-list-section[data-task-section="archived"]',
+    ),
+  ).toHaveCount(0);
 });
 
 test("activates Archived retry, paging, restore, and Task-list scrolling through the workspace", { tag: "@all-viewports" }, async ({

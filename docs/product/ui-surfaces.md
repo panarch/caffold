@@ -74,6 +74,9 @@ The Task navigator provides:
 - exclusive Task and Section reorder modes for the persistent Active order;
 - Task Switcher, New Task, Archive, Restore, and eligible delete actions.
 
+The Archived section is left out while no Task is archived; an Archived list
+that could not be read keeps the section to show its error.
+
 Archived rows show their last completion or activity time alongside Restore
 and Delete. They carry no running, approval, input, error, or background-work
 badge. Restore and Delete retain their own request progress and failure
