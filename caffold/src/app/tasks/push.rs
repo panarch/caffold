@@ -85,10 +85,11 @@ struct TerminalPayload {
 
 /// What a Task waiting on a person tells a browser.
 ///
-/// It names the Task and says nothing of the question. Which question is
-/// waiting lives only inside the hash the tag is made of, because routing
-/// needs the Task and the browser needs one notification per question, and
-/// neither needs the agent's name for what it asked.
+/// It names the Task and says nothing of the question. Its tag is the Task's,
+/// like a finished turn's, and which question is waiting lives only inside
+/// the hash the provider topic is made of, because routing needs the Task and
+/// delivery needs to tell two questions apart, and neither needs the agent's
+/// name for what it asked.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ActionRequiredPayload {
@@ -156,26 +157,25 @@ impl PushService {
             eprintln!("Web Push route identifiers were invalid; terminal delivery skipped");
             return 0;
         }
-        let topic = delivery_topic(&[thread_id, turn_id, status.as_str()]);
         self.enqueue(
-            topic.clone(),
+            hashed_name(&[thread_id, turn_id, status.as_str()]),
             &TerminalPayload {
                 thread_id: thread_id.to_owned(),
                 turn_id: turn_id.to_owned(),
                 status,
                 task_name: truncated_task_name(task_name),
-                tag: topic,
+                tag: task_notification_tag(thread_id),
             },
         )
     }
 
     /// Tell every subscribed browser that a Task is waiting on a person.
     ///
-    /// The approval identity decides the tag and nothing else. A second
-    /// question therefore raises a second notification, and the same question
-    /// asked again replaces the one already on screen instead of stacking
-    /// beside it — which is what a connection replaced mid-question produces,
-    /// because the agent asks again with the identity it asked under.
+    /// The approval identity decides the provider topic and nothing else, so
+    /// the same question asked again — which is what a connection replaced
+    /// mid-question produces, because the agent asks again with the identity
+    /// it asked under — is the same delivery, while a second question is a
+    /// new one.
     pub(super) fn notify_action_required(
         &self,
         thread_id: &str,
@@ -186,14 +186,13 @@ impl PushService {
             eprintln!("Web Push route identifier was invalid; waiting delivery skipped");
             return 0;
         }
-        let topic = delivery_topic(&[thread_id, approval_id, ACTION_REQUIRED_KIND]);
         self.enqueue(
-            topic.clone(),
+            hashed_name(&[thread_id, approval_id, ACTION_REQUIRED_KIND]),
             &ActionRequiredPayload {
                 kind: ACTION_REQUIRED_KIND,
                 thread_id: thread_id.to_owned(),
                 task_name: truncated_task_name(task_name),
-                tag: topic,
+                tag: task_notification_tag(thread_id),
             },
         )
     }
@@ -521,12 +520,23 @@ impl RecentDeliveries {
     }
 }
 
-/// One deterministic name for one notice, for the provider and the browser.
+/// The tag every notice about one Task carries.
 ///
-/// What the notice is about is hashed rather than written out, so an
-/// identifier Caffold does not send a browser can still tell two notices
-/// apart.
-fn delivery_topic(parts: &[&str]) -> String {
+/// A browser replaces the notification already showing under a tag instead
+/// of stacking another beside it. One tag per Task therefore bounds how many
+/// Caffold notifications a device holds by how many Tasks sent one, which
+/// matters where the platform drops whatever an app posts past its limit, as
+/// Android does.
+fn task_notification_tag(thread_id: &str) -> String {
+    hashed_name(&[thread_id])
+}
+
+/// One deterministic name for what the parts identify: a notice, for the
+/// provider's topic, or a Task, for the browser's tag.
+///
+/// The parts are hashed rather than written out, so an identifier Caffold
+/// does not send a browser can still tell two notices apart.
+fn hashed_name(parts: &[&str]) -> String {
     let mut hash = Sha256::new();
     for part in parts {
         hash.update(part.as_bytes());
@@ -967,25 +977,25 @@ mod tests {
 
     #[test]
     fn topic_and_payload_name_are_deterministic_bounded_and_unicode_safe() {
-        let ended = delivery_topic(&["thread", "turn", TerminalPushStatus::Completed.as_str()]);
+        let ended = hashed_name(&["thread", "turn", TerminalPushStatus::Completed.as_str()]);
         assert_eq!(ended.len(), 32);
         assert_eq!(
             ended,
-            delivery_topic(&["thread", "turn", TerminalPushStatus::Completed.as_str()])
+            hashed_name(&["thread", "turn", TerminalPushStatus::Completed.as_str()])
         );
         assert_ne!(
             ended,
-            delivery_topic(&["thread", "turn", TerminalPushStatus::Failed.as_str()])
+            hashed_name(&["thread", "turn", TerminalPushStatus::Failed.as_str()])
         );
-        let waiting = delivery_topic(&["thread", "approval-1", ACTION_REQUIRED_KIND]);
+        let waiting = hashed_name(&["thread", "approval-1", ACTION_REQUIRED_KIND]);
         assert_eq!(
             waiting,
-            delivery_topic(&["thread", "approval-1", ACTION_REQUIRED_KIND])
+            hashed_name(&["thread", "approval-1", ACTION_REQUIRED_KIND])
         );
         assert_ne!(
             waiting,
-            delivery_topic(&["thread", "approval-2", ACTION_REQUIRED_KIND]),
-            "two questions on one Task are two notifications"
+            hashed_name(&["thread", "approval-2", ACTION_REQUIRED_KIND]),
+            "two questions on one Task are two notices"
         );
         assert_ne!(waiting, ended);
         let long = "작".repeat(MAX_TASK_NAME_CHARS + 20);
@@ -1155,9 +1165,9 @@ mod tests {
                 "kind": "actionRequired",
                 "threadId": "thread",
                 "taskName": "Review Web Push",
-                "tag": first.topic,
+                "tag": task_notification_tag("thread"),
             }),
-            "the payload carries the Task and the tag, and nothing of the question"
+            "the payload carries the Task and its tag, and nothing of the question"
         );
         let second = receiver.try_recv().unwrap();
         assert_eq!(second.client_id, second_id);
@@ -1171,6 +1181,54 @@ mod tests {
             "a thread id that cannot be routed to is not sent anywhere"
         );
         assert!(receiver.try_recv().is_err());
+    }
+
+    /// A device keeps one notification per Task, while the provider still
+    /// tells each notice apart.
+    #[test]
+    fn every_notice_of_one_task_shares_its_tag_while_the_provider_topic_stays_per_notice() {
+        let store = TaskStore::memory().unwrap();
+        store
+            .upsert_push_installation(
+                subscription(
+                    "00000000-0000-4000-8000-000000000001",
+                    "https://push.example.test/first",
+                ),
+                1_000,
+            )
+            .unwrap();
+        let (sender, mut receiver) = mpsc::channel(8);
+        let service = PushService::new(store, "public-key".to_owned(), sender);
+
+        for queued in [
+            service.notify_terminal("thread", "turn-1", TerminalPushStatus::Completed, "Task"),
+            service.notify_terminal("thread", "turn-2", TerminalPushStatus::Failed, "Task"),
+            service.notify_action_required("thread", "approval-1", "Task"),
+            service.notify_terminal("other", "turn-1", TerminalPushStatus::Completed, "Other"),
+        ] {
+            assert_eq!(queued, 1);
+        }
+        let notices = std::iter::from_fn(|| receiver.try_recv().ok())
+            .map(|job| {
+                let payload: JsonValue = serde_json::from_slice(&job.payload).unwrap();
+                (payload["tag"].as_str().unwrap().to_owned(), job.topic)
+            })
+            .collect::<Vec<_>>();
+        let [completed, failed, waiting, other] = notices.as_slice() else {
+            panic!("four notices were queued: {notices:?}");
+        };
+
+        assert_eq!(completed.0, failed.0);
+        assert_eq!(completed.0, waiting.0);
+        assert_ne!(
+            completed.0, other.0,
+            "another Task keeps its own notification"
+        );
+        assert_eq!(
+            HashSet::from([&completed.1, &failed.1, &waiting.1, &other.1]).len(),
+            4,
+            "each notice keeps its own provider topic"
+        );
     }
 
     #[test]

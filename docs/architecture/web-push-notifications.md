@@ -90,11 +90,15 @@ delivery bounds are four concurrent provider calls, a five-second connect
 timeout, a fifteen-second overall timeout, no redirects, normal urgency, and a
 24-hour TTL.
 
-The deterministic Push `Topic` and notification `tag` are derived from the Task
-conversation ID with the turn ID and terminal status, or with the approval
-identity for a waiting Task. A second question therefore raises a second
-notification, while the same question replaces the one already on screen. A
-bounded in-process recent-delivery set suppresses common replays. HTTP 404 and 410 delete the
+The deterministic Push `Topic` is derived from the Task conversation ID with the
+turn ID and terminal status, or with the approval identity for a waiting Task,
+so every notice has its own. The notification `tag` is derived from the Task
+conversation ID alone: every notice about a Task takes the place of the
+notification that Task already shows, and `renotify` makes it alert as a new
+notification would. A device therefore holds at most one Caffold notification
+per Task, which keeps the count under per-app limits such as Android's, past
+which new notifications are dropped. A bounded in-process recent-delivery set
+suppresses common replays. HTTP 404 and 410 delete the
 subscription only when the stored client ID and endpoint still match the
 attempted job; a replacement subscription cannot be deleted by an older
 in-flight response. Other Push-provider, network, encoding, queue-capacity, and
@@ -117,10 +121,10 @@ A finished turn's encrypted payload contains only:
 A waiting Task's encrypted payload contains only its kind, the Task
 conversation ID, the same bounded display name, and the same deterministic tag.
 Which question is waiting is not sent at all: the approval identity travels
-only inside the hash the tag is made of, which is enough to tell two questions
-apart and cannot be read back. The notification says `Approval required`
-without naming the tool, command, requested path, working directory, network
-destination, or the agent's reason.
+only inside the hash the Push `Topic` is made of, which is enough to tell two
+questions apart and cannot be read back. The notification says
+`Approval required` without naming the tool, command, requested path, working
+directory, network destination, or the agent's reason.
 
 Neither payload contains prompts, generated content, repository paths, or
 working directories. A display name carrying a control character is omitted,
@@ -149,8 +153,8 @@ Delivery is deliberately best-effort:
   despite the deterministic provider/browser identifiers;
 - a question still waiting when the backend is replaced is announced again for
   the same reason, because the waiting list it is recovered onto is also
-  process-local. The deterministic tag means the browser replaces the earlier
-  notification rather than showing a second one;
+  process-local. It takes the place of that Task's notification and alerts
+  again;
 - VAPID rotation and reliable background subscription renewal are not
   implemented. Opening Notifications remains the explicit reconciliation path.
 

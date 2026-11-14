@@ -707,6 +707,7 @@ mod tests {
         let runtime =
             runtime_with_events_and_store(TaskEvents::default(), store).with_push_service(push);
 
+        let mut task_tag = None;
         for (status, expected) in [
             ("completed", "completed"),
             ("failed", "failed"),
@@ -726,7 +727,11 @@ mod tests {
             assert_eq!(payload["threadId"], "managed");
             assert_eq!(payload["status"], expected);
             assert_eq!(payload["taskName"], "Current task name");
-            assert_eq!(payload["tag"], delivery.topic);
+            let tag = task_tag.get_or_insert_with(|| payload["tag"].clone());
+            assert_eq!(
+                &payload["tag"], tag,
+                "every turn of one Task takes its one notification"
+            );
         }
 
         let outside = reported(

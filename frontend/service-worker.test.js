@@ -472,6 +472,7 @@ test("shows status-only terminal notifications even while clients are open", asy
   assert.equal(title, "Review Web Push");
   assert.equal(options.body, "Completed");
   assert.equal(options.tag, "topic_123");
+  assert.equal(options.renotify, true);
   assert.deepEqual({ ...options.data }, {
     route: "/tasks/thread-1",
     threadId: "thread-1",
@@ -499,6 +500,7 @@ test("falls back to Caffold and status-only copy when the task name is unavailab
   const [title, options] = harness.notifications[0];
   assert.equal(title, "Caffold");
   assert.equal(options.body, "Task failed");
+  assert.equal(options.renotify, true);
 });
 
 test("shows a waiting task under its own name and generic copy", async () => {
@@ -530,18 +532,21 @@ test("shows a waiting task under its own name and generic copy", async () => {
     title,
     options.body,
     options.tag,
+    options.renotify,
     { ...options.data },
   ]), [
     [
       "Review Web Push",
       "Approval required",
       "topic_456",
+      true,
       { route: "/tasks/thread-1", threadId: "thread-1" },
     ],
     [
       "Caffold",
       "Approval required",
       "topic_789",
+      true,
       { route: "/tasks/thread-2", threadId: "thread-2" },
     ],
   ]);
