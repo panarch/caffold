@@ -62,6 +62,42 @@ test("draws nothing and stays hidden until its navigator reveals it", () => {
   assert.deepEqual([...list.classes], []);
 });
 
+test("stays hidden while the server has answered that no Task is archived", () => {
+  const list = archivedHost({ revealed: true, loaded: true });
+  const visible = () => {
+    list.updated();
+    const drawn = templateHtml(list.render()) !== "";
+    assert.equal(drawn, !list.hidden);
+    return drawn;
+  };
+
+  assert.equal(visible(), false);
+  assert.deepEqual(list.attributes, {});
+
+  list.loading = true;
+  assert.equal(visible(), false, "a refresh does not show it to say Loading");
+  list.loading = false;
+
+  list.taskOperations = { ...ready, key: "blocked", blocked: true, message: "The Task store is unavailable." };
+  assert.equal(visible(), false);
+  list.taskOperations = ready;
+
+  list.nextCursor = "cursor-2";
+  assert.equal(visible(), true, "a further page may hold Tasks");
+  list.nextCursor = null;
+  assert.equal(visible(), false);
+
+  list.archivedTasks = [archivedTask()];
+  assert.equal(visible(), true);
+  assert.equal(list.attributes.role, "region");
+  list.archivedTasks = [];
+  assert.equal(visible(), false);
+
+  list.loaded = false;
+  list.error = new Error("Archive unavailable.");
+  assert.equal(visible(), true, "an unread list says why");
+});
+
 test("draws each archived Task with its time, availability and two actions", () => {
   const list = archivedHost({
     revealed: true,

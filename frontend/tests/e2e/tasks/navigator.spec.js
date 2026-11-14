@@ -260,6 +260,10 @@ test("shows active Tasks first and appends a settled Archived section without re
       latestTurnStatus: "inProgress",
     }),
   );
+  const archivedTask = initialNavigatorTask(
+    "thread_archived_after_active",
+    "Archived after active",
+  );
   const gates = await installInitialTaskListGates(page);
 
   await page.goto("/tasks");
@@ -279,13 +283,13 @@ test("shows active Tasks first and appends a settled Archived section without re
     window.__initialActiveSpinner = row.querySelector(".task-status-spinner");
   });
 
-  gates.settleArchived({ tasks: [], nextCursor: null });
+  gates.settleArchived({ tasks: [archivedListTask(archivedTask)], nextCursor: null });
   const archivedSection = navigator.locator(
     '.task-list-section[data-task-section="archived"]',
   );
   await expect(archivedSection).toBeVisible();
-  await expect(archivedSection.locator(".task-list-section-count")).toHaveText("0");
-  await expect(archivedSection).toContainText("No archived Caffold tasks.");
+  await expect(archivedSection.locator(".task-list-section-count")).toHaveText("1");
+  await expect(archivedSection).toContainText("Archived after active");
   expect(await activeRow.evaluate((row) =>
     row === window.__initialActiveRow &&
     row.querySelector(".task-status-spinner") === window.__initialActiveSpinner,
@@ -314,11 +318,15 @@ test("subscribes to Task list updates once active Tasks settle, before Archived"
   );
   await expect(archivedSection).toHaveCount(0);
 
-  gates.settleArchived({ tasks: [], nextCursor: null });
+  const archivedTask = initialNavigatorTask(
+    "thread_archived_after_stream",
+    "Archived after the stream opens",
+  );
+  gates.settleArchived({ tasks: [archivedListTask(archivedTask)], nextCursor: null });
   await expect(archivedSection).toBeVisible();
 });
 
-test("reveals confirmed empty active and Archived states only after both initial requests settle", { tag: "@server-changes" }, async ({
+test("reveals a confirmed empty active state only after both initial requests settle, without an Archived section", { tag: "@server-changes" }, async ({
   page,
 }) => {
   await installEventSourceMock(page);
@@ -338,11 +346,11 @@ test("reveals confirmed empty active and Archived states only after both initial
 
   gates.settleActive({ tasks: [], nextCursor: null });
   await expect(navigator).toContainText("No Caffold tasks yet.");
-  const archivedSection = navigator.locator(
-    '.task-list-section[data-task-section="archived"]',
-  );
-  await expect(archivedSection).toContainText("No archived Caffold tasks.");
-  await expect(archivedSection.locator(".task-list-section-count")).toHaveText("0");
+  await expect(navigator.locator("caffold-archived-task-list")).toBeHidden();
+  await expect(
+    navigator.locator('.task-list-section[data-task-section="archived"]'),
+  ).toHaveCount(0);
+  await expect(navigator.getByText("Archived", { exact: true })).toHaveCount(0);
 });
 
 test("holds an initial Archived failure until active Tasks settle", { tag: "@server-changes" }, async ({ page }) => {
@@ -2113,9 +2121,9 @@ test("keeps an idle task active when the archive request fails", { tag: "@server
   ).toContainText("Archive failure stays active");
   await expect(
     page.locator(
-      'caffold-task-navigator .task-list-section[data-task-section="archived"]',
+      'caffold-task-navigator .task-archived-row[data-thread-id="thread_archive_failure"]',
     ),
-  ).not.toContainText("Archive failure stays active");
+  ).toHaveCount(0);
 });
 
 test("keeps a task archived when restore fails", { tag: "@server-steady" }, async ({ page }) => {
@@ -2429,9 +2437,6 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
   );
   const rows = tasksPage.locator(".task-row");
   const managedHeader = tasksPage.locator(".task-list-primary-header");
-  const archivedHeader = tasksPage.locator(
-    '.task-list-section[data-task-section="archived"] .task-list-section-header',
-  );
   const newTaskButton = managedHeader.getByRole("button", {
     name: "New Task",
   });
@@ -2463,7 +2468,6 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
     brandIconMetrics.rootFontSize * -0.0625,
     2,
   );
-  await expect(archivedHeader.locator(":scope > span")).toHaveText("0");
   const headerActionAlignment = await page.locator(".task-list-new-task").evaluate((button) => {
     const header = button.closest(".task-list-section-header");
     const headerBounds = header.getBoundingClientRect();
@@ -3481,6 +3485,76 @@ test("keeps an archived Task out when a list read taken before the archive answe
   holding = false;
   heldReads[1]();
   await expect(archivedRow).toHaveCount(0);
+});
+
+test("brings the Archived section in once the first Task archived elsewhere is read", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page, {
+    sourceKey: "__taskListEventSource",
+    autoOpen: true,
+  });
+  await mockAgentModels(page);
+  const kept = initialNavigatorTask("thread_first_archive_kept", "Kept Task");
+  const archived = initialNavigatorTask(
+    "thread_first_archive",
+    "First Task archived on another device",
+  );
+  let activeTasks = [archived, kept];
+  let archivedTasks = [];
+  const refreshStarted = deferred();
+  const refreshRelease = deferred();
+  let archivedReads = 0;
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection(activeTasks) }),
+  );
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, async (route) => {
+    archivedReads += 1;
+    if (archivedReads > 1) {
+      refreshStarted.resolve();
+      await refreshRelease.promise;
+    }
+    return route.fulfill({
+      json: { tasks: archivedTasks.map(archivedListTask), nextCursor: null },
+    });
+  });
+
+  await page.goto("/tasks");
+  const navigator = page.locator("caffold-task-navigator");
+  const archivedList = navigator.locator("caffold-archived-task-list");
+  const activeRow = navigator.locator(
+    `.task-row[data-thread-id="${archived.threadId}"]`,
+  );
+  await expect(activeRow).toBeVisible();
+  await expect
+    .poll(() => archivedList.evaluate((list) => list.initialRequestSettled))
+    .toBe(true);
+  await expect(archivedList).toBeHidden();
+  await expect
+    .poll(() => page.evaluate(() => Boolean(window.__taskListEventSource)))
+    .toBe(true);
+
+  activeTasks = [kept];
+  archivedTasks = [archived];
+  await page.evaluate((threadId) => {
+    window.__taskListEventSource.emit("task-removed", {
+      threadId,
+      reason: "archived",
+    });
+  }, archived.threadId);
+  await refreshStarted.promise;
+  await expect(activeRow).toHaveCount(0);
+  await expect(archivedList).toBeHidden();
+  await expect(navigator.getByText("Loading...", { exact: true })).toHaveCount(0);
+
+  refreshRelease.resolve();
+  const archivedSection = navigator.locator(
+    '.task-list-section[data-task-section="archived"]',
+  );
+  await expect(
+    archivedSection.locator(`.task-archived-row[data-thread-id="${archived.threadId}"]`),
+  ).toBeVisible();
+  await expect(archivedSection.locator(".task-list-section-count")).toHaveText("1");
 });
 
 test("patches Task rows in place without reordering and preserves a running spinner", { tag: "@server-changes" }, async ({

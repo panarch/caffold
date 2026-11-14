@@ -69,7 +69,8 @@ export interface ArchivedTaskRestoredDetail {
  * first, a page at a time, each with Restore and Delete.
  *
  * It stays hidden until its navigator reveals it, once both lists have first
- * answered, so the two do not arrive one after the other.
+ * answered, so the two do not arrive one after the other. It also stays hidden
+ * while the server has answered that no Task is archived.
  */
 @customElement("caffold-archived-task-list")
 export class CaffoldArchivedTaskList extends CaffoldElement {
@@ -293,7 +294,7 @@ export class CaffoldArchivedTaskList extends CaffoldElement {
   }
 
   override render() {
-    if (!this.revealed) {
+    if (!this.shown) {
       return nothing;
     }
     const tasks = sortTasksByRecency(this.archivedTasks);
@@ -347,15 +348,15 @@ export class CaffoldArchivedTaskList extends CaffoldElement {
     `;
   }
 
-  // The host is a region only while revealed; `hidden` says which it is now.
+  // The host is a region only while shown; `hidden` says which it is now.
   override updated() {
-    const revealed = this.revealed;
-    if (this.hidden !== revealed) {
+    const shown = this.shown;
+    if (this.hidden !== shown) {
       return;
     }
-    this.hidden = !revealed;
-    this.classList.toggle("task-list-section", revealed);
-    if (revealed) {
+    this.hidden = !shown;
+    this.classList.toggle("task-list-section", shown);
+    if (shown) {
       this.dataset.taskSection = "archived";
       this.setAttribute("role", "region");
       this.setAttribute("aria-label", "Archived Caffold Tasks");
@@ -364,6 +365,14 @@ export class CaffoldArchivedTaskList extends CaffoldElement {
       this.removeAttribute("role");
       this.removeAttribute("aria-label");
     }
+  }
+
+  // A list that has not answered, or could not be read, is not known to be
+  // empty, so it still shows its loading or its error.
+  private get shown() {
+    const knownEmpty =
+      this.loaded && !this.archivedTasks.length && !this.nextCursor;
+    return this.revealed && !knownEmpty;
   }
 
   private draw() {

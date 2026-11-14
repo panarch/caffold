@@ -551,7 +551,7 @@ export class CaffoldTaskNavigator extends CaffoldElement {
     this.publishListState();
   }
 
-  // The Archived list shows once both lists have first answered.
+  // The Archived list is revealed once both lists have first answered.
   private listSettled(event: Event) {
     event.stopPropagation();
     this.archivedTaskList.setRevealed(
