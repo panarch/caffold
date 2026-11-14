@@ -1031,9 +1031,11 @@ mod tests {
             .unwrap();
         assert_eq!(stale.status(), StatusCode::NO_CONTENT);
 
-        let mut ready_watches = HashSet::new();
-        tokio::time::timeout(Duration::from_millis(500), async {
-            while ready_watches.len() < 2 {
+        // A Watch channel opens before it starts watching files, so this wait
+        // does not depend on how fast the file watcher starts.
+        let mut open_watches = HashSet::new();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while open_watches.len() < 2 {
                 let frame = body.next().await.expect("gateway remains open").unwrap();
                 let frame = std::str::from_utf8(&frame).unwrap();
                 let Some(payload) = frame
@@ -1043,15 +1045,15 @@ mod tests {
                     continue;
                 };
                 let payload: serde_json::Value = serde_json::from_str(payload).unwrap();
-                if payload["channel"] == "watch" && payload["type"] == "ready" {
-                    ready_watches.insert(payload["subscriptionId"].as_str().unwrap().to_string());
+                if payload["channel"] == "watch" && payload["type"] == "channel-open" {
+                    open_watches.insert(payload["subscriptionId"].as_str().unwrap().to_string());
                 }
             }
         })
         .await
-        .expect("both Watch channels become ready");
+        .expect("both Watch channels open");
         assert_eq!(
-            ready_watches,
+            open_watches,
             HashSet::from(["first".to_string(), "second".to_string()])
         );
 
