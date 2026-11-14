@@ -1082,6 +1082,7 @@ mod tests {
                 "active",
                 RunBy::Claude {
                     cwd: "/old/sub".into(),
+                    config_dir: None,
                 },
                 false,
             ),
@@ -1134,6 +1135,7 @@ mod tests {
         let reopened = TaskStore::redb(&database).unwrap();
         originals[0].run_by = RunBy::Claude {
             cwd: "/new/sub".into(),
+            config_dir: None,
         };
         originals[1].run_by = RunBy::Grok { cwd: "/new".into() };
         assert_eq!(reopened.get("active").unwrap(), Some(originals[0].clone()));

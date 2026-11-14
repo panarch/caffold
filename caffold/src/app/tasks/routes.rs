@@ -35,7 +35,7 @@ mod uploads;
 
 use agent::{agent_installations, agent_models, agent_permissions};
 use archived::ArchivedTaskRecord;
-use claude::{claude_restart, claude_status};
+use claude::{claude_restart, claude_settings, claude_status, update_claude_settings};
 use codex::{
     codex_mcp_diagnostics, codex_readiness, codex_reset_credit_consume, codex_restart,
     codex_status, codex_update, codex_updates,
@@ -301,6 +301,10 @@ pub(super) fn router(state: TaskState) -> Router {
         .route("/api/codex/update", post(codex_update))
         .route("/api/claude/status", get(claude_status))
         .route("/api/claude/restart", post(claude_restart))
+        .route(
+            "/api/claude/settings",
+            get(claude_settings).patch(update_claude_settings),
+        )
         .route("/api/grok/status", get(grok_status))
         .route("/api/antigravity/status", get(antigravity::status))
         .route("/api/antigravity/restart", post(antigravity::restart))

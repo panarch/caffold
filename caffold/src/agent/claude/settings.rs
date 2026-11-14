@@ -14,7 +14,8 @@ use tokio::sync::oneshot;
 use super::protocol::{BASE_ARGUMENTS, StreamFrame};
 use super::{
     ANSWER_TIMEOUT, ClaudeClient, ClaudeError, ClaudeTurnOptions, Introduction, ModelOption,
-    PermissionModeOption, PermissionModes, Session, SessionEventKind, SessionState, protocol,
+    PermissionModeOption, PermissionModes, Session, SessionEventKind, SessionState, config_dir,
+    protocol,
 };
 
 /// The mode that stops for every call the agent is not sure about.
@@ -251,10 +252,23 @@ impl ClaudeClient {
     /// The model list and the usage report are the ones so far. Each costs a
     /// process start and no tokens, and there is no daemon holding the answer,
     /// so a process is started for the question — through the start door, like
-    /// every authenticating start — and ended with it.
+    /// every authenticating start — and ended with it. It is asked under the
+    /// config directory new Tasks run under, the account Settings shows.
     pub(super) async fn ask_one_off(&self, body: Value) -> Result<Value, ClaudeError> {
         use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+        let config_dir = self.config_dir()?;
+        let mut asked = tokio::process::Command::new("claude");
+        asked
+            .args(BASE_ARGUMENTS.iter().filter(|argument| {
+                // The permission callback needs a conversation to belong to.
+                !matches!(**argument, "--permission-prompt-tool" | "stdio")
+            }))
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true);
+        config_dir::apply(&mut asked, config_dir.as_deref());
         let mut child = {
             // The door is held to the spawn and no further. Holding it for
             // the answer would let one wedged question stand in front of
@@ -271,17 +285,7 @@ impl ClaudeClient {
                         )));
                     }
                 };
-            match tokio::process::Command::new("claude")
-                .args(BASE_ARGUMENTS.iter().filter(|argument| {
-                    // The permission callback needs a conversation to belong to.
-                    !matches!(**argument, "--permission-prompt-tool" | "stdio")
-                }))
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null())
-                .kill_on_drop(true)
-                .spawn()
-            {
+            match asked.spawn() {
                 Ok(child) => child,
                 Err(error) => {
                     // Nothing began, so nothing needs spacing behind it.

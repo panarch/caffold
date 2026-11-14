@@ -245,6 +245,7 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/settings/claude/page.css.js",
   "/assets/pages/(task-workspace)/settings/claude/page.js",
   "/assets/pages/(task-workspace)/settings/claude/display.js",
+  "/assets/pages/(task-workspace)/settings/claude/lifecycle.js",
   "/assets/pages/(task-workspace)/settings/components/runtime/components/runtime-restart-dialog.css.js",
   "/assets/pages/(task-workspace)/settings/components/runtime/components/runtime-restart-dialog.js",
   "/assets/pages/(task-workspace)/settings/components/runtime.js",

@@ -151,8 +151,9 @@ impl TaskAgent {
     pub(in crate::app::tasks) fn run_by(&self, cwd: &str) -> RunBy {
         match self {
             Self::Codex(_) => RunBy::Codex,
-            Self::Claude { .. } => RunBy::Claude {
+            Self::Claude { driver } => RunBy::Claude {
                 cwd: cwd.to_string(),
+                config_dir: driver.claude_config_dir().map(str::to_string),
             },
             Self::Grok { .. } => RunBy::Grok {
                 cwd: cwd.to_string(),
@@ -247,7 +248,7 @@ impl TaskRuntime {
                         .await?
                         .cwd
                 }
-                RunBy::Claude { cwd } => self
+                RunBy::Claude { cwd, .. } => self
                     .claude
                     .working_directory(&managed.thread_id)
                     .await
@@ -670,7 +671,7 @@ impl TaskRuntime {
         managed: &ManagedThread,
     ) -> Result<TaskAgent, AgentError> {
         match &managed.run_by {
-            RunBy::Claude { cwd } => {
+            RunBy::Claude { cwd, config_dir } => {
                 let home = cwd.clone();
                 let store = self.task_store.clone();
                 let thread_id = managed.thread_id.clone();
@@ -685,7 +686,7 @@ impl TaskRuntime {
                     .map(|worktree| worktree.worktree_path)
                     .unwrap_or(home);
                 Ok(TaskAgent::Claude {
-                    driver: self.claude.driver(cwd),
+                    driver: self.claude.driver(cwd, config_dir.clone()),
                 })
             }
             RunBy::Codex => Ok(TaskAgent::Codex(self.connection().await?)),

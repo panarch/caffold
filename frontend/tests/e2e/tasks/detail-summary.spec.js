@@ -211,6 +211,7 @@ test("keeps long Task titles clipped in the header and readable in Info", { tag:
   await expect(worktreeRows).toHaveCount(2);
   await expect(worktreeRows.first()).toBeHidden();
   await expect(worktreeRows.last()).toBeHidden();
+  await expect(popover.locator("[data-task-info-claude-config-dir]")).toBeHidden();
   await expect
     .poll(() =>
       taskValue.evaluate((element) => {
@@ -230,6 +231,48 @@ test("keeps long Task titles clipped in the header and readable in Info", { tag:
     )
     .toBe(true);
   await captureReviewScreenshot(page, testInfo, "tasks-summary-long-title-info");
+});
+
+test("shows the config directory a Claude Task runs under in Task details", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const threadId = "thread_summary_claude_config_dir";
+  const configDir =
+    "/Users/someone/Library/Application Support/Claude Accounts/work-account-with-a-long-name/.claude";
+  const task = {
+    ...summaryTask(threadId, "Work account Task", "repo-claude", 100),
+    worktree: null,
+    claudeConfigDir: configDir,
+  };
+  await installEventSourceMock(page, {
+    registryKey: "__taskSummaryEventSources",
+    autoOpen: true,
+  });
+  await mockAgentModels(page);
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({ json: summaryDetail(task, 1, "claude") }),
+  );
+
+  await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(task, 1, "claude"));
+  const summary = page.locator("caffold-task-detail-summary");
+  await summary.getByRole("button", { name: /Task details/ }).click();
+  const popover = summary.locator(".task-detail-popover");
+  const row = popover.locator("[data-task-info-claude-config-dir]");
+  const value = popover.locator('[data-task-info-field="claude-config-dir"]');
+
+  await expect(row).toBeVisible();
+  await expect(row.locator("dt")).toHaveText("Config directory");
+  await expect(value).toHaveText(configDir);
+  await expect
+    .poll(() =>
+      value.evaluate((element) => element.scrollWidth <= element.clientWidth),
+    )
+    .toBe(true);
+  await captureReviewScreenshot(page, testInfo, "tasks-summary-claude-config-dir-info");
 });
 
 test("keeps the task info leaf and popover stable across canonical sync", { tag: "@all-viewports" }, async ({

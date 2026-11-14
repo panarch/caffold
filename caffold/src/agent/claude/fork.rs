@@ -19,13 +19,17 @@ use crate::agent::{
 };
 
 impl ClaudeClient {
-    pub(crate) async fn read_fork_source(&self, id: &str) -> Result<ForkSource, AgentError> {
+    /// The conversation `id` as Claude keeps it under `config_dir`.
+    pub(crate) async fn read_fork_source(
+        &self,
+        id: &str,
+        config_dir: Option<&str>,
+    ) -> Result<ForkSource, AgentError> {
         Uuid::parse_str(id)
             .map_err(|_| AgentError::Failed("A Claude Session ID must be a UUID".into()))?;
-        let projects = self
-            .projects()
-            .ok_or_else(|| AgentError::Failed("Cannot locate Claude's projects directory".into()))?
-            .to_path_buf();
+        let projects = self.projects(config_dir).ok_or_else(|| {
+            AgentError::Failed("Cannot locate Claude's projects directory".into())
+        })?;
         let wanted = id.to_string();
         let mut source = tokio::task::spawn_blocking(move || read_source(&projects, &wanted))
             .await
@@ -34,7 +38,7 @@ impl ClaudeClient {
             source.conversation.status = live.status;
             source.conversation.background_work = live.background_work;
             let known = self
-                .driver(&source.conversation.cwd)
+                .driver(&source.conversation.cwd, config_dir.map(str::to_string))
                 .read_settings(&self.settings_of(id).await);
             source.settings = TurnOptions {
                 model: known.model.or(source.settings.model),
@@ -44,10 +48,13 @@ impl ClaudeClient {
         Ok(source)
     }
 
+    /// Fork `source` into `cwd`. Claude copies the transcript within one
+    /// config directory, so `config_dir` is the one the source was read from.
     pub(crate) async fn create_fork(
         &self,
         source: &ForkSource,
         cwd: &str,
+        config_dir: Option<&str>,
         title: &str,
         options: &TurnOptions,
     ) -> Result<ForkedConversation, AgentError> {
@@ -66,15 +73,15 @@ impl ClaudeClient {
         };
         let result = async {
             let session = self
-                .open_session(&id, cwd, SessionStart::Fork(path), &options)
+                .open_session(&id, cwd, config_dir, SessionStart::Fork(path), &options)
                 .await?;
             self.apply_settings(&session, &options).await?;
             // Titles are one native command argument, never additional lines.
             let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
             self.ask_quietly(&session, &format!("/rename {title}"))
                 .await?;
-            let child = self.read_fork_source(&id).await?;
-            if child.conversation.cwd != cwd || !self.was_written_down(cwd, &id).await {
+            let child = self.read_fork_source(&id, config_dir).await?;
+            if child.conversation.cwd != cwd || !self.was_written_down(cwd, config_dir, &id).await {
                 return Err(AgentError::Failed(
                     "Claude did not persist the fork in its target directory".into(),
                 ));
@@ -90,12 +97,14 @@ impl ClaudeClient {
             Ok(ForkedConversation {
                 conversation,
                 turns_page: child.turns_page.unwrap_or_default(),
-                settings: self.driver(cwd).read_settings(&self.settings_of(&id).await),
+                settings: self
+                    .driver(cwd, config_dir.map(str::to_string))
+                    .read_settings(&self.settings_of(&id).await),
             })
         }
         .await;
         if result.is_err()
-            && let Err(error) = self.erase(&id, cwd).await
+            && let Err(error) = self.erase(&id, cwd, config_dir).await
         {
             eprintln!("failed to delete unclaimed Claude fork {id}: {error}");
         }
@@ -236,16 +245,16 @@ mod tests {
         let id = Uuid::now_v7().to_string();
         let contents = transcript(&id, "/source");
         client.write_test_transcript("/source", &id, &contents);
-        let source = client.read_fork_source(&id).await.unwrap();
+        let source = client.read_fork_source(&id, None).await.unwrap();
         assert_eq!(source.conversation.cwd, "/source");
         assert_eq!(source.conversation.status, ThreadStatus::NotLoaded);
         assert_eq!(source.turns_page.as_ref().unwrap().turns.len(), 1);
         assert!(client.inner.sessions.lock().await.is_empty());
         client.write_test_transcript("/duplicate", &id, &contents);
-        assert!(client.read_fork_source(&id).await.is_err());
+        assert!(client.read_fork_source(&id, None).await.is_err());
         fs::remove_file(transcript::locate(root.path(), "/duplicate", &id).unwrap()).unwrap();
         client.write_test_transcript("/source", &id, "not-json\n");
-        assert!(client.read_fork_source(&id).await.is_err());
+        assert!(client.read_fork_source(&id, None).await.is_err());
     }
 
     #[tokio::test]
@@ -255,11 +264,11 @@ mod tests {
         let id = Uuid::now_v7().to_string();
         let contents = transcript(&id, "/source");
         client.write_test_transcript("/source", &id, &contents);
-        let source = client.read_fork_source(&id).await.unwrap();
+        let source = client.read_fork_source(&id, None).await.unwrap();
         let forker = client.clone();
         let child = tokio::spawn(async move {
             forker
-                .create_fork(&source, "/target", "Fork of source", &source.settings)
+                .create_fork(&source, "/target", None, "Fork of source", &source.settings)
                 .await
         });
         let child_id = tokio::time::timeout(std::time::Duration::from_secs(3), async {
@@ -308,8 +317,8 @@ mod tests {
             fs::read_to_string(transcript::locate(root.path(), "/source", &id).unwrap()).unwrap(),
             contents
         );
-        client.erase(&child_id, "/target").await.unwrap();
-        assert!(client.was_written_down("/source", &id).await);
-        assert!(!client.was_written_down("/target", &child_id).await);
+        client.erase(&child_id, "/target", None).await.unwrap();
+        assert!(client.was_written_down("/source", None, &id).await);
+        assert!(!client.was_written_down("/target", None, &child_id).await);
     }
 }

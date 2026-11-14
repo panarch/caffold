@@ -1,5 +1,6 @@
 import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { live } from "lit/directives/live.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -19,6 +20,10 @@ import {
   usageWindowLabel,
   usageWindowValue,
 } from "./display.js";
+import {
+  ClaudeSettingsLifecycle,
+  type ClaudeSettingsSnapshot,
+} from "./lifecycle.js";
 
 import "../components/runtime.js";
 import type { CaffoldSettingsRuntime } from "../components/runtime.js";
@@ -52,10 +57,27 @@ export class CaffoldSettingsClaudePage extends CaffoldElement {
   @state()
   private accessor statusState: "idle" | "loading" | "loaded" | "unavailable" =
     "idle";
+  @state()
+  private accessor configDir: ClaudeSettingsSnapshot = {
+    settings: null,
+    ready: false,
+    busy: false,
+    retry: false,
+    message: "",
+  };
+  // The folder as typed and not yet saved. While there is none, the field
+  // shows the saved folder.
+  @state()
+  private accessor draft: string | null = null;
 
   static override styles = styles;
 
   private readonly runtime = new DrawnRef<CaffoldSettingsRuntime>(this);
+  private readonly configDirLifecycle = new ClaudeSettingsLifecycle({
+    onChange: (snapshot) => {
+      this.configDir = snapshot;
+    },
+  });
   private operation = 0;
   private active = false;
   private readonly hints: ActionHints = new ActionHints(this, {
@@ -77,6 +99,7 @@ export class CaffoldSettingsClaudePage extends CaffoldElement {
       return;
     }
     this.active = true;
+    this.configDirLifecycle.activate();
     void this.reconcile();
   }
 
@@ -84,6 +107,8 @@ export class CaffoldSettingsClaudePage extends CaffoldElement {
     if (!this.active) return;
     this.active = false;
     this.operation += 1;
+    this.draft = null;
+    this.configDirLifecycle.deactivate();
     this.runtime.value?.close();
   }
 
@@ -116,6 +141,11 @@ export class CaffoldSettingsClaudePage extends CaffoldElement {
   override render() {
     const unanswered = this.unansweredRows();
     const restarting = this.restartState === "restarting";
+    const configDir = this.configDir;
+    const saved = configDir.settings?.configDir ?? "";
+    const typed = this.draft ?? saved;
+    const changed = this.draft !== null && typed.trim() !== saved;
+    const defaultConfigDir = configDir.settings?.defaultConfigDir;
     return html`
       <div
         ${drawn(this.scrollport)}
@@ -152,6 +182,86 @@ export class CaffoldSettingsClaudePage extends CaffoldElement {
               data-claude-usage
               .rows=${unanswered ?? this.usageRows()}
             ></caffold-settings-detail-list>
+          </section>
+          <section
+            class="settings-claude-config-dir"
+            aria-labelledby="settings-claude-config-dir-title"
+            aria-busy=${String(configDir.busy)}
+          >
+            <h3 id="settings-claude-config-dir-title">Config directory</h3>
+            <p
+              id="settings-claude-config-dir-description"
+              class="settings-claude-config-dir-description"
+            >
+              The folder Claude Code keeps its sign-in, settings, and
+              conversations in (<code>CLAUDE_CONFIG_DIR</code>). Leave it empty
+              for the default. New Tasks use the folder set when they are
+              created; existing Tasks keep theirs.
+            </p>
+            <p
+              class="settings-claude-config-dir-message"
+              role="alert"
+              ?hidden=${!configDir.message}
+            >${configDir.message}</p>
+            <form
+              class="settings-claude-config-dir-control"
+              @submit=${this.saveConfigDir}
+            >
+              <input
+                ${this.hints.textbox({
+                  id: "config-dir",
+                  label: "Focus Config directory",
+                  action: ACTION_HINT_ACTION.CONTROL_TEXTBOX_FOCUS,
+                })}
+                aria-labelledby="settings-claude-config-dir-title"
+                aria-describedby="settings-claude-config-dir-description"
+                name="configDir"
+                autocomplete="off"
+                autocapitalize="off"
+                spellcheck="false"
+                placeholder=${defaultConfigDir ? `Default · ${defaultConfigDir}` : "Default"}
+                .value=${live(typed)}
+                ?disabled=${!configDir.ready}
+                @input=${(event: Event) => {
+                  this.draft = (event.target as HTMLInputElement).value;
+                }}
+              >
+              <div class="settings-claude-config-dir-actions">
+                <button
+                  ${this.hints.button({
+                    id: "save-config-dir",
+                    label: "Save the config directory",
+                    action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                  })}
+                  type="submit"
+                  data-action="save-config-dir"
+                  ?disabled=${!configDir.ready || !changed}
+                >Save</button>
+                <button
+                  ${this.hints.button({
+                    id: "use-default-config-dir",
+                    label: "Use the default config directory",
+                    action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                  })}
+                  type="button"
+                  data-action="use-default-config-dir"
+                  ?hidden=${!saved}
+                  ?disabled=${!configDir.ready}
+                  @click=${this.useDefaultConfigDir}
+                >Use default</button>
+                <button
+                  ${this.hints.button({
+                    id: "retry-config-dir",
+                    label: "Retry loading the config directory",
+                    action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                  })}
+                  type="button"
+                  data-action="retry-config-dir"
+                  ?hidden=${!configDir.retry}
+                  @click=${() => this.configDirLifecycle.retry()}
+                >Retry</button>
+              </div>
+            </form>
           </section>
           <section aria-labelledby="settings-claude-agent-title">
             <h3 id="settings-claude-agent-title">Agent</h3>
@@ -303,6 +413,27 @@ export class CaffoldSettingsClaudePage extends CaffoldElement {
   private refresh(event: Event) {
     event.stopPropagation();
     void this.reconcile();
+  }
+
+  // The account and usage belong to the folder, so a saved folder reads them
+  // again.
+  private async saveConfigDir(event: Event) {
+    event.preventDefault();
+    if (this.draft === null) return;
+    await this.keepConfigDir(this.draft.trim());
+  }
+
+  // An empty folder is the default, and what was typed is let go with it.
+  private async useDefaultConfigDir(event: Event) {
+    event.stopPropagation();
+    await this.keepConfigDir("");
+  }
+
+  private async keepConfigDir(configDir: string) {
+    if (await this.configDirLifecycle.save(configDir)) {
+      this.draft = null;
+      void this.reconcile();
+    }
   }
 
   private requestRestart(event: Event) {

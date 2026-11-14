@@ -1765,6 +1765,7 @@ mod tests {
                     "notes-claude",
                     RunBy::Claude {
                         cwd: root.path().display().to_string(),
+                        config_dir: None,
                     },
                     None,
                     None,
@@ -2066,6 +2067,7 @@ mod tests {
             "claude-reviewed",
             RunBy::Claude {
                 cwd: format!("{cwd}/claimed-elsewhere"),
+                config_dir: None,
             },
             None,
             None,
@@ -2079,7 +2081,7 @@ mod tests {
         runtime.spawn_claude_bridge(runtime.shutdown.subscribe());
         runtime
             .claude()
-            .open_conversation("claude-reviewed", &cwd, &ClaudeTurnOptions::default())
+            .open_conversation("claude-reviewed", &cwd, None, &ClaudeTurnOptions::default())
             .await
             .unwrap();
         let mut events = state.task_events.subscribe();
@@ -2347,7 +2349,10 @@ mod tests {
             .claim(
                 ManagedThread::new(
                     "claude-approval",
-                    RunBy::Claude { cwd: cwd.clone() },
+                    RunBy::Claude {
+                        cwd: cwd.clone(),
+                        config_dir: None,
+                    },
                     None,
                     None,
                     None,
@@ -2358,7 +2363,7 @@ mod tests {
         runtime.watch_claude();
         runtime
             .claude()
-            .open_conversation("claude-approval", &cwd, &ClaudeTurnOptions::default())
+            .open_conversation("claude-approval", &cwd, None, &ClaudeTurnOptions::default())
             .await
             .unwrap();
         let mut events = state.task_events.subscribe();

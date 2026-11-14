@@ -63,6 +63,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use super::config_dir;
 use super::protocol::{ContentBlock, Message, MessageContent};
 use super::translate::{
     ToolCalls, answers_tool_calls, message_items, prompt_content, prompt_item, steer_item,
@@ -265,15 +266,20 @@ pub(crate) enum BackgroundTaskDelivery {
     HandBack { turn_id: String },
 }
 
-/// Where the agent keeps every project's conversations.
+/// Where the agent keeps every project's conversations under `config_dir`, or
+/// under its default `~/.claude` for none.
 ///
-/// Read once, when a client is built, rather than at each use: a backend whose
-/// environment has no home has nowhere to read or remove conversations, and
-/// finding that out at the moment of a delete would mean reporting one that
-/// removed nothing as done.
-pub(crate) fn projects_root() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME").filter(|home| !home.is_empty())?;
-    Some(Path::new(&home).join(".claude").join("projects"))
+/// The default is read once, when a client is built, rather than at each use:
+/// a backend whose environment has no home has nowhere to read or remove such
+/// conversations, and finding that out at the moment of a delete would mean
+/// reporting one that removed nothing as done.
+pub(crate) fn projects_root(config_dir: Option<&str>) -> Option<PathBuf> {
+    match config_dir {
+        Some(config_dir) => Some(Path::new(config_dir).join("projects")),
+        None => Some(
+            Path::new(&config_dir::default_dir(config_dir::home().as_deref())?).join("projects"),
+        ),
+    }
 }
 
 /// Where the agent keeps this session's conversation.
@@ -990,6 +996,19 @@ mod tests {
         std::fs::write(&duplicate, "").unwrap();
         assert_eq!(resolve(projects.path(), "/known", id).unwrap(), known);
         assert!(resolve(projects.path(), "/moved", id).is_err());
+    }
+
+    #[test]
+    fn conversations_are_kept_under_the_config_dir_they_were_started_in() {
+        assert_eq!(
+            projects_root(Some("/Volumes/work/.claude")),
+            Some(PathBuf::from("/Volumes/work/.claude/projects"))
+        );
+        let home = std::env::var("HOME").unwrap();
+        assert_eq!(
+            projects_root(None),
+            Some(Path::new(&home).join(".claude").join("projects"))
+        );
     }
 
     /// Measured against CLI 2.1.236: `/Users/x/a_b.c d` is filed as

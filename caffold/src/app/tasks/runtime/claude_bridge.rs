@@ -326,7 +326,7 @@ impl TaskRuntime {
         let Some(managed) = managed else {
             return Err("Caffold can only isolate a task that it manages.".to_string());
         };
-        let RunBy::Claude { cwd } = &managed.run_by else {
+        let RunBy::Claude { cwd, .. } = &managed.run_by else {
             return Err("Caffold can only isolate a task that it manages.".to_string());
         };
         let task_name = {
@@ -560,6 +560,7 @@ mod tests {
             .open_conversation(
                 SESSION,
                 &cwd.display().to_string(),
+                None,
                 &ClaudeTurnOptions::default(),
             )
             .await
@@ -571,6 +572,7 @@ mod tests {
         ManagedThread {
             run_by: RunBy::Claude {
                 cwd: cwd.display().to_string(),
+                config_dir: None,
             },
             display_name: "The name before".to_string(),
             ..ManagedThread::new(SESSION, RunBy::Codex, Some(1_000), None, None)
@@ -619,7 +621,7 @@ mod tests {
             .task_store
             .claim(managed_claude_row(root.path()), 1)
             .unwrap();
-        let driver = state.task_runtime.claude().driver(cwd.clone());
+        let driver = state.task_runtime.claude().driver(cwd.clone(), None);
         let _viewer = state
             .task_sessions
             .acquire_viewer(&driver, CLAUDE_GENERATION, SESSION)
@@ -750,7 +752,7 @@ mod tests {
             })
             .to_string(),
         );
-        let driver = state.task_runtime.claude().driver(cwd);
+        let driver = state.task_runtime.claude().driver(cwd, None);
         let _viewer = state
             .task_sessions
             .acquire_viewer(&driver, CLAUDE_GENERATION, SESSION)

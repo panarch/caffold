@@ -1,7 +1,7 @@
 use super::commands::{require_codex_thread_client, task_cwd};
-use crate::agent::PermissionModes;
 use crate::agent::codex::codex_installation;
 use crate::agent::driver::reviewed_permission_option;
+use crate::agent::{AgentError, PermissionModes};
 use crate::app::error::ApiError;
 use crate::app::tasks::TaskState;
 use axum::Json;
@@ -148,7 +148,13 @@ pub(super) async fn agent_permissions(
 ) -> Result<Json<PermissionModes>, ApiError> {
     let cwd = task_cwd(&state, query.cwd.as_deref())?;
     let driver = match query.provider.as_deref().map(str::trim) {
-        Some("claude") => state.task_runtime.claude().driver(&cwd),
+        Some("claude") => {
+            let claude = state.task_runtime.claude();
+            let config_dir = claude
+                .config_dir()
+                .map_err(|error| ApiError::from(AgentError::from(error)))?;
+            claude.driver(&cwd, config_dir)
+        }
         Some("grok") => state.task_runtime.grok().driver(),
         Some("antigravity") => state.task_runtime.antigravity().driver(),
         None | Some("") | Some("codex") => require_codex_thread_client(&state).await?.driver(),

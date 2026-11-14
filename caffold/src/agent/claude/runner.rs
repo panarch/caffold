@@ -10,7 +10,7 @@ use caffold_runner::{SOCKET_NAME, protocol};
 use serde_json::Value;
 use serde_json::value::RawValue;
 
-use super::ClaudeError;
+use super::{ClaudeError, config_dir};
 use crate::agent::runner::{
     RunnerClient as TransportClient, RunnerError, SessionEvents, SessionFrames as TransportFrames,
 };
@@ -35,8 +35,13 @@ pub(crate) enum SessionFrames {
 }
 
 impl RunnerClient {
+    /// Sessions run under the config directory their Task names and nothing
+    /// else, so the runner that starts them inherits none.
     pub(crate) fn in_data_dir(data_dir: &Path) -> Self {
-        Self::Socket(TransportClient::at_socket(data_dir.join(SOCKET_NAME)))
+        Self::Socket(
+            TransportClient::at_socket(data_dir.join(SOCKET_NAME))
+                .withholding(&[config_dir::ENVIRONMENT_NAME]),
+        )
     }
 
     pub(crate) async fn open(

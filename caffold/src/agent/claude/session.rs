@@ -6,7 +6,7 @@
 //! with a past is greeted, which is where the agent says what it was doing
 //! and hands over every question it is still held up by.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64};
@@ -22,7 +22,7 @@ use super::protocol::{BASE_ARGUMENTS, SESSION_ENVIRONMENT};
 use super::runner::RunnerSession;
 use super::{
     ANSWER_TIMEOUT, ClaudeClient, ClaudeError, ClaudeRuntimeEvent, ClaudeTurnOptions, Session,
-    SessionActivity, SessionState, now_ms, protocol, take_up_turn,
+    SessionActivity, SessionState, config_dir, now_ms, protocol, take_up_turn,
 };
 
 /// What asking a session to move came to.
@@ -51,10 +51,11 @@ impl ClaudeClient {
         &self,
         id: &str,
         cwd: &str,
+        config_dir: Option<&str>,
         start: SessionStart<'_>,
         options: &ClaudeTurnOptions,
     ) -> Result<Arc<Session>, ClaudeError> {
-        self.open_session_at(id, cwd, cwd, start, options)
+        self.open_session_at(id, cwd, cwd, config_dir, start, options)
             .await
             .map(|(session, _)| session)
     }
@@ -67,16 +68,14 @@ impl ClaudeClient {
         id: &str,
         cwd: &str,
         spawn_cwd: &str,
+        config_dir: Option<&str>,
         start: SessionStart<'_>,
         options: &ClaudeTurnOptions,
     ) -> Result<(Arc<Session>, bool), ClaudeError> {
         let spawn = caffold_runner::protocol::SpawnRequest {
             argv: session_argv(id, start, options),
             cwd: spawn_cwd.to_string(),
-            env: SESSION_ENVIRONMENT
-                .iter()
-                .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
-                .collect(),
+            env: session_environment(config_dir),
         };
         // Every open passes the start door alone. The runner's create is
         // idempotent, and its answer says whether it began a process or handed
@@ -122,6 +121,7 @@ impl ClaudeClient {
         let session = Arc::new(Session {
             id: id.to_string(),
             cwd: AsyncMutex::new(cwd.to_string()),
+            config_dir: config_dir.map(str::to_string),
             relocation: RwLock::new(()),
             frames: AsyncMutex::new(frames),
             state: AsyncMutex::new(SessionState {
@@ -192,14 +192,15 @@ impl ClaudeClient {
         &self,
         id: &str,
         original: &str,
+        config_dir: Option<&str>,
         destination: &str,
     ) -> Result<Conversation, ClaudeError> {
         if let Some(session) = self.session(id).await {
             return Ok(self.conversation_of(&session).await);
         }
-        let history_cwd = if self.was_written_down(original, id).await {
+        let history_cwd = if self.was_written_down(original, config_dir, id).await {
             original
-        } else if self.was_written_down(destination, id).await {
+        } else if self.was_written_down(destination, config_dir, id).await {
             destination
         } else {
             return Err(ClaudeError::History(format!(
@@ -219,6 +220,7 @@ impl ClaudeClient {
                 id,
                 history_cwd,
                 &spawn_cwd,
+                config_dir,
                 SessionStart::Resume,
                 &ClaudeTurnOptions::default(),
             )
@@ -257,7 +259,7 @@ impl ClaudeClient {
                 }
             }
         }
-        if !self.was_written_down(destination, id).await {
+        if !self.was_written_down(destination, config_dir, id).await {
             if spawned {
                 self.close_conversation(id).await?;
             }
@@ -370,7 +372,9 @@ impl ClaudeClient {
             Some(SessionActivity::Running | SessionActivity::RequiresAction)
         ) {
             let cwd = session.cwd.lock().await.clone();
-            let filed = self.newest_filed_turn(&cwd, &session.id).await;
+            let filed = self
+                .newest_filed_turn(&cwd, session.config_dir.as_deref(), &session.id)
+                .await;
             let mut state = session.state.lock().await;
             if let Some(turn) = filed {
                 take_up_turn(&mut state, turn);
@@ -424,6 +428,23 @@ fn session_argv(id: &str, start: SessionStart<'_>, options: &ClaudeTurnOptions) 
     argv
 }
 
+/// What one session is started with beyond the runner's own environment. The
+/// runner is started without `CLAUDE_CONFIG_DIR`, so a session without one
+/// runs under Claude's default.
+fn session_environment(config_dir: Option<&str>) -> BTreeMap<String, String> {
+    let mut environment: BTreeMap<String, String> = SESSION_ENVIRONMENT
+        .iter()
+        .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+        .collect();
+    if let Some(config_dir) = config_dir {
+        environment.insert(
+            config_dir::ENVIRONMENT_NAME.to_string(),
+            config_dir.to_string(),
+        );
+    }
+    environment
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::{ClaudeClient, ClaudeRuntimeEvent, ClaudeTurnOptions, protocol, status_of};
@@ -446,7 +467,7 @@ mod tests {
             .await;
 
         client
-            .open_conversation(SESSION, CWD, &options("opus"))
+            .open_conversation(SESSION, CWD, None, &options("opus"))
             .await
             .expect("the conversation opens");
 
@@ -458,6 +479,42 @@ mod tests {
                 "Claude is started with its activity protocol enabled"
             );
         }
+        assert_eq!(
+            spawned.env.get("CLAUDE_CONFIG_DIR"),
+            None,
+            "a Task under Claude's default names no config directory"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_session_is_started_under_its_tasks_config_dir() {
+        let (client, runner) = ClaudeClient::mock();
+        runner
+            .greet_next_session_with(vec![init_frame(SESSION)])
+            .await;
+
+        client
+            .open_conversation(
+                SESSION,
+                CWD,
+                Some("/Users/someone/.claude-work"),
+                &options("opus"),
+            )
+            .await
+            .expect("the conversation opens");
+
+        let spawned = runner.spawned(SESSION).await.expect("the process");
+        assert_eq!(
+            spawned.env.get("CLAUDE_CONFIG_DIR").map(String::as_str),
+            Some("/Users/someone/.claude-work")
+        );
+        assert_eq!(
+            spawned
+                .env
+                .get("CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS")
+                .map(String::as_str),
+            Some("1")
+        );
     }
 
     #[tokio::test]
@@ -472,7 +529,7 @@ mod tests {
             .await;
 
         client
-            .open_conversation(SESSION, CWD, &options("opus"))
+            .open_conversation(SESSION, CWD, None, &options("opus"))
             .await
             .expect("the conversation opens");
         next_session_event(&mut events, "settings").await;
@@ -518,7 +575,7 @@ mod tests {
         let (client, _runner, mut events) = taken_up_running(projects.path().to_path_buf()).await;
 
         let page = client
-            .read_turns(SESSION, CWD, None, 8)
+            .read_turns(SESSION, CWD, None, None, 8)
             .await
             .expect("the written turns are readable");
         let running = page.turns.first().expect("the turn it was working on");
@@ -560,7 +617,7 @@ mod tests {
             .greet_next_session_with(vec![init_frame(SESSION)])
             .await;
         client
-            .open_conversation(SESSION, CWD, &options("opus"))
+            .open_conversation(SESSION, CWD, None, &options("opus"))
             .await
             .expect("the conversation opens");
 
@@ -607,7 +664,7 @@ mod tests {
             .await;
 
         client
-            .open_conversation(SESSION, CWD, &options("opus"))
+            .open_conversation(SESSION, CWD, None, &options("opus"))
             .await
             .expect("the conversation opens");
 
@@ -628,7 +685,7 @@ mod tests {
         );
 
         let page = client
-            .read_turns(SESSION, CWD, None, 8)
+            .read_turns(SESSION, CWD, None, None, 8)
             .await
             .expect("the written turns are readable");
         let held_up = page.turns.first().expect("the turn it was working on");
@@ -648,12 +705,12 @@ mod tests {
             .await;
 
         client
-            .open_conversation(SESSION, CWD, &options("opus"))
+            .open_conversation(SESSION, CWD, None, &options("opus"))
             .await
             .expect("the conversation opens");
 
         let page = client
-            .read_turns(SESSION, CWD, None, 8)
+            .read_turns(SESSION, CWD, None, None, 8)
             .await
             .expect("the written turns are readable");
         assert!(
@@ -683,7 +740,7 @@ mod tests {
             .await;
 
         let conversation = client
-            .start_conversation(CWD, &options("opus"))
+            .start_conversation(CWD, None, &options("opus"))
             .await
             .expect("the conversation starts");
 
@@ -723,7 +780,7 @@ mod tests {
             .await;
 
         client
-            .open_conversation(SESSION, CWD, &ClaudeTurnOptions::default())
+            .open_conversation(SESSION, CWD, None, &ClaudeTurnOptions::default())
             .await
             .expect("the conversation opens");
 
@@ -746,7 +803,7 @@ mod tests {
     async fn a_fresh_session_declares_what_caffold_serves_before_anything_else() {
         let (client, runner) = ClaudeClient::mock();
         let conversation = client
-            .start_conversation(CWD, &options("opus"))
+            .start_conversation(CWD, None, &options("opus"))
             .await
             .expect("the conversation opens");
 

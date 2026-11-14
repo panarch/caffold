@@ -18,7 +18,7 @@ use std::{collections::BTreeMap, ffi::OsStr, io};
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use super::{ANSWER_TIMEOUT, ClaudeClient};
+use super::{ANSWER_TIMEOUT, ClaudeClient, config_dir};
 use crate::agent::driver::AgentInstallation;
 
 /// The whole report, one block per source. A block a source could not fill is
@@ -117,9 +117,13 @@ impl ClaudeClient {
         if self.inner.runner.is_mock() {
             return stand_in_status();
         }
+        let config_dir = self.config_dir();
         let (executable, auth, usage, runner) = tokio::join!(
             probe(executable_report()),
-            probe(auth_report()),
+            probe(async {
+                let config_dir = config_dir.map_err(|error| error.to_string())?;
+                auth_report(OsStr::new("claude"), config_dir.as_deref()).await
+            }),
             // Not probed twice: the one-off holds its own deadlines, door
             // and answer both, and says which question went dark.
             usage_report(self),
@@ -226,14 +230,24 @@ enum VersionProblem {
     Silent,
 }
 
+/// Whether `program` is signed in when run under `config_dir`.
+pub(super) async fn signed_in(program: &OsStr, config_dir: &str) -> Result<bool, String> {
+    probe(auth_report(program, Some(config_dir)))
+        .await
+        .map(|auth| auth.logged_in)
+}
+
 /// The account, in the agent's own `auth status --json` words.
 ///
 /// Read from what is already on this machine, not asked of the service —
 /// measured against CLI 2.1.239: it answers in ~0.2s, no time for a
 /// credential refresh's round trip — which is why it does not pass the
 /// start door the authenticating starts do.
-async fn auth_report() -> Result<Auth, String> {
-    let output = run(OsStr::new("claude"), &["auth", "status", "--json"])
+async fn auth_report(program: &OsStr, config_dir: Option<&str>) -> Result<Auth, String> {
+    let mut asked = command(program, &["auth", "status", "--json"]);
+    config_dir::apply(&mut asked, config_dir);
+    let output = asked
+        .output()
         .await
         .map_err(|error| format!("could not run claude: {error}"))?;
     // Parsed regardless of the exit code: logged out is a report, not an
@@ -260,12 +274,16 @@ async fn usage_report(client: &ClaudeClient) -> Result<Usage, String> {
 /// probe that asked: a command still running when nobody is waiting anymore
 /// is a process this report leaks.
 async fn run(program: &OsStr, arguments: &[&str]) -> io::Result<std::process::Output> {
-    tokio::process::Command::new(program)
+    command(program, arguments).output().await
+}
+
+fn command(program: &OsStr, arguments: &[&str]) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(program);
+    command
         .args(arguments)
         .stdin(std::process::Stdio::null())
-        .kill_on_drop(true)
-        .output()
-        .await
+        .kill_on_drop(true);
+    command
 }
 
 /// The auth answer, read tolerantly — except for the one load-bearing field:
@@ -590,6 +608,40 @@ mod tests {
             answering("fake-claude-silent").await,
             AgentInstallation::Unavailable { version: None },
             "an empty answer is not a version"
+        );
+    }
+
+    #[tokio::test]
+    async fn sign_in_is_asked_under_the_config_dir_given() {
+        use std::path::Path;
+
+        let claude = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src/agent/claude/status/fixtures/fake-claude-auth");
+        let root = tempfile::tempdir().unwrap();
+        let work = root.path().join("work");
+        std::fs::create_dir(&work).unwrap();
+        std::fs::write(work.join("signed-in"), "").unwrap();
+
+        assert_eq!(
+            signed_in(claude.as_os_str(), work.to_str().unwrap()).await,
+            Ok(true)
+        );
+        assert_eq!(
+            signed_in(claude.as_os_str(), root.path().to_str().unwrap()).await,
+            Ok(false),
+            "logged out is an answer, whatever the exit code"
+        );
+        let auth = auth_report(claude.as_os_str(), Some(work.to_str().unwrap()))
+            .await
+            .unwrap();
+        assert_eq!(auth.email.as_deref(), Some("work@example.test"));
+        assert!(
+            signed_in(
+                root.path().join("claude").as_os_str(),
+                work.to_str().unwrap()
+            )
+            .await
+            .is_err()
         );
     }
 }

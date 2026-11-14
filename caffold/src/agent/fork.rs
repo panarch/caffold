@@ -69,7 +69,12 @@ impl Driver {
                     revision: ForkRevision::Codex(thread.updated_at),
                 })
             }
-            Self::Claude(claude) => claude.client.read_fork_source(id).await,
+            Self::Claude(claude) => {
+                claude
+                    .client
+                    .read_fork_source(id, claude.config_dir.as_deref())
+                    .await
+            }
             Self::Grok(client) => client.read_fork_source(id, external).await,
             Self::Antigravity(_) => Err(AgentError::Failed(
                 "Antigravity conversation fork is not supported".into(),
@@ -100,7 +105,12 @@ impl Driver {
                     },
                 })
             }
-            Self::Claude(claude) => claude.client.create_fork(source, cwd, title, options).await,
+            Self::Claude(claude) => {
+                claude
+                    .client
+                    .create_fork(source, cwd, claude.config_dir.as_deref(), title, options)
+                    .await
+            }
             Self::Grok(client) => client.create_fork(source, cwd, title).await,
             Self::Antigravity(_) => Err(AgentError::Failed(
                 "Antigravity conversation fork is not supported".into(),

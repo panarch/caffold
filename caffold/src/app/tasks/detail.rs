@@ -598,6 +598,7 @@ impl DetailContext {
         let managed = self.store_get(&thread_id).await?;
         if let Some(current) = managed {
             task.title = current.display_name.clone();
+            task.claude_config_dir = current.run_by.claude_config_dir().map(str::to_string);
             task.last_completed_ms = task.last_completed_ms.max(current.last_completed_at_ms);
             task.unseen = task.last_completed_ms.is_some_and(|completed_ms| {
                 current
@@ -3614,6 +3615,7 @@ mod request_tests {
                 last_completed_ms: None,
                 last_event_summary: Some("canonical assistant response".to_string()),
                 unseen: false,
+                claude_config_dir: None,
             }),
             events: vec![task_event_record(
                 thread_id,

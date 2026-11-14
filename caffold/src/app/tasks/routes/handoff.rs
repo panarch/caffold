@@ -226,6 +226,7 @@ mod tests {
                         &source,
                         RunBy::Claude {
                             cwd: repo.display().to_string(),
+                            config_dir: None,
                         },
                         Some(1),
                         None,
@@ -311,7 +312,8 @@ mod tests {
         assert_eq!(
             source_row.run_by,
             RunBy::Claude {
-                cwd: cwd.display().to_string()
+                cwd: cwd.display().to_string(),
+                config_dir: None
             }
         );
         assert!(source_row.archived_at_ms.is_none());

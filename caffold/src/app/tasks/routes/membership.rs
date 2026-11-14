@@ -363,13 +363,16 @@ pub(super) async fn task_provider_driver(
             .await
             .map(|connection| connection.driver())
             .map_err(agent::AgentError::from)),
-        RunBy::Claude { cwd } => {
+        RunBy::Claude { cwd, config_dir } => {
             let worktree = task_store_worktree_for_thread(state, &managed.thread_id).await?;
             let cwd = worktree
                 .as_ref()
                 .map(|worktree| worktree.worktree_path.as_str())
                 .unwrap_or(cwd);
-            Ok(Ok(state.task_runtime.claude().driver(cwd)))
+            Ok(Ok(state
+                .task_runtime
+                .claude()
+                .driver(cwd, config_dir.clone())))
         }
         RunBy::Grok { .. } => Ok(Ok(state.task_runtime.grok().driver())),
         RunBy::Antigravity { .. } => Ok(Ok(state.task_runtime.antigravity().driver())),
@@ -1208,7 +1211,7 @@ mod tests {
         state
             .task_runtime
             .claude()
-            .driver(worktree.worktree_path.as_str())
+            .driver(worktree.worktree_path.as_str(), None)
             .delete_conversation(id)
             .await
             .unwrap();
@@ -2477,6 +2480,7 @@ mod tests {
                 task_store::ManagedThread {
                     run_by: task_store::RunBy::Claude {
                         cwd: cwd.display().to_string(),
+                        config_dir: None,
                     },
                     display_name: "A Claude Task".to_string(),
                     ..task_store::ManagedThread::new(

@@ -126,6 +126,7 @@ impl DetailContext {
         let mut record = task_record_from_conversation(&conversation, &events, resolved.as_ref());
         record.title = managed.display_name.clone();
         record.unseen = managed.unseen();
+        record.claude_config_dir = managed.run_by.claude_config_dir().map(str::to_string);
         let mut detail = loading_detail(task, baseline, Some(&managed));
         detail.workspace_access = Some(access);
         detail.task = Some(record);

@@ -532,7 +532,7 @@ mod tests {
             })])
             .await;
         claude
-            .open_conversation(thread_id, cwd, &Default::default())
+            .open_conversation(thread_id, cwd, None, &Default::default())
             .await
             .expect("the conversation opens");
         claude
@@ -558,6 +558,7 @@ mod tests {
                     "claude-1",
                     RunBy::Claude {
                         cwd: cwd.to_string(),
+                        config_dir: None,
                     },
                     Some(500),
                     None,
@@ -576,7 +577,7 @@ mod tests {
             })])
             .await;
         claude
-            .open_conversation("claude-1", cwd, &Default::default())
+            .open_conversation("claude-1", cwd, None, &Default::default())
             .await
             .expect("the conversation opens");
         tokio::time::timeout(Duration::from_secs(2), async {
@@ -624,6 +625,7 @@ mod tests {
                     "claude-1",
                     RunBy::Claude {
                         cwd: cwd.to_string(),
+                        config_dir: None,
                     },
                     Some(500),
                     None,
@@ -678,6 +680,7 @@ mod tests {
                     "claude-1",
                     RunBy::Claude {
                         cwd: cwd.to_string(),
+                        config_dir: None,
                     },
                     Some(500),
                     None,
@@ -689,7 +692,7 @@ mod tests {
         let claude = watching_a_claude_conversation("claude-1", cwd).await;
         let sessions = sessions::TaskSessions::default();
         sessions
-            .ensure_subscribed(&claude.driver(cwd), 1, "claude-1")
+            .ensure_subscribed(&claude.driver(cwd, None), 1, "claude-1")
             .await
             .expect("the Claude session subscribes on its own generation");
 
@@ -737,6 +740,7 @@ mod tests {
                     "claude-quiet",
                     RunBy::Claude {
                         cwd: "/Users/example/project".to_string(),
+                        config_dir: None,
                     },
                     Some(500),
                     None,
@@ -776,6 +780,7 @@ mod tests {
                     "claude-isolated",
                     RunBy::Claude {
                         cwd: cwd.to_string(),
+                        config_dir: None,
                     },
                     Some(500),
                     None,
@@ -821,6 +826,7 @@ mod tests {
                     "claude-1",
                     RunBy::Claude {
                         cwd: cwd.to_string(),
+                        config_dir: None,
                     },
                     Some(500),
                     None,

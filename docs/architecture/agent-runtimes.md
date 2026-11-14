@@ -348,6 +348,24 @@ it, so the next request asks the binary installed now, under the account
 signed in now; a composer receives that list the next time its model menu
 opens.
 
+Claude keeps its sign-in, settings, and conversations in one config
+directory: `~/.claude`, or the directory `CLAUDE_CONFIG_DIR` names. **Settings
+→ Claude** saves the directory new Tasks run under in the data directory's
+`claude/settings.json`, as an absolute path with `~` expanded and no trailing
+`/`, once `claude auth status` run under it reports a sign-in. Empty, or the
+default however it is spelled, is Claude's default. A Claude Task records the
+directory it was created under in `managed_threads.claude_config_dir` and keeps
+it, because Claude finds a conversation only in the directory it was written
+in; a fork keeps its source's. The Task's sessions are started with that
+`CLAUDE_CONFIG_DIR`, and its transcript is read and removed there. The
+variable is passed only for a directory other than the default: whenever it is
+set, Claude names the keychain item holding its sign-in after the variable's
+text, so the default spelled out would look for a sign-in nobody made. The
+runner is started without the backend's own `CLAUDE_CONFIG_DIR`, and every
+one-off `claude` (`auth status`, usage, the model list) runs under the saved
+directory, so an inherited value is never used. Saving another directory
+forgets the model list, which belongs to the account it was asked under.
+
 A newly created Claude Task legitimately has no transcript until its first
 ordinary prompt materializes provider history. A backend replacement reattaches
 to the runner's exact live session when that session survived. If both the live
@@ -965,7 +983,7 @@ caffold/src/agent/history.rs            recorded-history tool, item projection, 
 caffold/src/agent/codex.rs              Codex entry point
 caffold/src/agent/codex/                app-server transport, protocol, readiness, contract, MCP bindings
 caffold/src/agent/claude.rs             Claude entry point and live session state
-caffold/src/agent/claude/               protocol, transcript, settings, tools, instruction carrier, runner client
+caffold/src/agent/claude/               protocol, transcript, settings, config directory, tools, instruction carrier, runner client
 caffold/src/agent/grok.rs               Grok entry point, sessions, MCP carrier, and the Settings report
 caffold/src/agent/grok/                 leader transport, protocol, binding, history, translation, worktree switch
 caffold/src/agent/antigravity.rs        CLI ACP client, native history and account observations

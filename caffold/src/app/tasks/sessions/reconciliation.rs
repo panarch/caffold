@@ -461,7 +461,7 @@ mod tests {
     #[test]
     fn an_agent_reporting_its_own_posture_does_not_replace_the_reviewed_mode() {
         let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
-        let driver = claude.driver(".");
+        let driver = claude.driver(".", None);
         let mut state = SessionState {
             permission_mode: Some(REVIEWED_PERMISSION_MODE.to_string()),
             ..SessionState::default()
@@ -480,7 +480,7 @@ mod tests {
     #[test]
     fn an_agent_reporting_its_own_posture_replaces_one_of_its_own_modes() {
         let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
-        let driver = claude.driver(".");
+        let driver = claude.driver(".", None);
         let mut state = SessionState {
             permission_mode: Some("acceptEdits".to_string()),
             ..SessionState::default()

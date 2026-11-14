@@ -10,6 +10,7 @@ use crate::agent::{ItemKind, ThreadStatus, TurnPage};
 use crate::app::error::ApiError;
 use crate::app::tasks::TaskState;
 use crate::app::tasks::lifecycle::{ForkTask, ForkTaskSource};
+use crate::app::tasks::runtime::TaskAgent;
 use crate::task_store::{ManagedSection, ManagedThread, RunBy, TaskProvider};
 use axum::extract::State;
 use axum::routing::post;
@@ -97,7 +98,13 @@ async fn fork_task_owned(
         })?
         .display()
         .to_string();
-    let agent = new_task_agent(&state, Some(provider_name(source.run_by.provider())), &cwd).await?;
+    let agent = fork_agent(
+        &state,
+        provider_name(source.run_by.provider()),
+        Some(&source),
+        &cwd,
+    )
+    .await?;
     let created = state
         .lifecycle
         .fork_task(
@@ -127,7 +134,8 @@ async fn preview_task_fork_source(
 ) -> Result<Json<TaskForkSourcePreview>, ApiError> {
     let source_id = task_fork_source_id(&request.provider, &request.source_id)?;
     ensure_task_fork_source_provider(&state, &source_id, &request.provider).await?;
-    let agent = new_task_agent(&state, Some(request.provider.trim()), "").await?;
+    let owner = task_store_get(&state, &source_id).await?;
+    let agent = fork_agent(&state, request.provider.trim(), owner.as_ref(), "").await?;
     let source = agent
         .driver()
         .read_fork_source(&source_id, true, true)
@@ -200,11 +208,11 @@ async fn create_task_fork_owned(
             }
         }
     }
+    let agent = fork_agent(&state, request.provider.trim(), owner.as_ref(), &cwd).await?;
     let source = ForkTaskSource::External {
         thread_id: source_id,
         owner: owner.map(Box::new),
     };
-    let agent = new_task_agent(&state, Some(request.provider.trim()), &cwd).await?;
     let created = state
         .lifecycle
         .fork_task(
@@ -226,6 +234,25 @@ async fn create_task_fork_owned(
         active_task: created.active_task,
         active_top_placement: created.placement,
     }))
+}
+
+/// The agent a fork reads its source through and creates its child with.
+///
+/// Claude forks within one config directory, so a conversation a Caffold Task
+/// owns is read from that Task's, and the child is created there too. Any other
+/// conversation is looked for where new Tasks run.
+async fn fork_agent(
+    state: &TaskState,
+    provider: &str,
+    owner: Option<&ManagedThread>,
+    cwd: &str,
+) -> Result<TaskAgent, ApiError> {
+    match owner.map(|owner| &owner.run_by) {
+        Some(RunBy::Claude { config_dir, .. }) if provider == "claude" => Ok(TaskAgent::Claude {
+            driver: state.task_runtime.claude().driver(cwd, config_dir.clone()),
+        }),
+        _ => new_task_agent(state, Some(provider), cwd).await,
+    }
 }
 
 fn fork_created_but_unreadable(thread_id: &str, error: ApiError) -> ApiError {
@@ -1088,6 +1115,7 @@ mod tests {
                         source_thread_id,
                         RunBy::Claude {
                             cwd: root.path().display().to_string(),
+                            config_dir: None,
                         },
                         Some(1_000),
                         None,
@@ -1214,6 +1242,49 @@ mod tests {
                 .read(|tables| tables.active_managed_threads())
                 .unwrap()
                 .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_claude_fork_works_in_the_config_dir_its_source_is_kept_in() {
+        let root = tempfile::tempdir().unwrap();
+        let state = task_state_with_codex_client(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        state
+            .task_runtime
+            .claude()
+            .run_new_tasks_under("/Volumes/settings/.claude")
+            .await;
+        let cwd = root.path().display().to_string();
+        let owner = ManagedThread {
+            run_by: RunBy::Claude {
+                cwd: cwd.clone(),
+                config_dir: Some("/Volumes/work/.claude".to_string()),
+            },
+            ..ManagedThread::new("source", RunBy::Codex, Some(1), None, None)
+        };
+
+        let owned = fork_agent(&state, "claude", Some(&owner), &cwd)
+            .await
+            .unwrap();
+        assert_eq!(
+            owned.run_by(&cwd),
+            RunBy::Claude {
+                cwd: cwd.clone(),
+                config_dir: Some("/Volumes/work/.claude".to_string()),
+            }
+        );
+        let unowned = fork_agent(&state, "claude", None, &cwd).await.unwrap();
+        assert_eq!(
+            unowned.run_by(&cwd),
+            RunBy::Claude {
+                cwd,
+                config_dir: Some("/Volumes/settings/.claude".to_string()),
+            },
+            "a conversation no Task owns is looked for where new Tasks run"
         );
     }
 

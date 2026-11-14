@@ -78,6 +78,104 @@
   line-height: var(--interface-line-height);
 }
 
+.settings-claude-config-dir {
+  display: grid;
+  gap: var(--interface-space-4);
+}
+
+.settings-claude-config-dir-description,
+.settings-claude-config-dir-message {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--settings-small-text-size);
+  line-height: var(--interface-line-height);
+}
+
+.settings-claude-config-dir-message {
+  padding: var(--interface-space-5) var(--interface-space-6);
+  border-left: 3px solid var(--danger);
+  background: var(--surface-subtle);
+  overflow-wrap: anywhere;
+}
+
+/* The folder grows with the column; the buttons keep their labels' width and
+   stay together. A long path scrolls inside the field. Where the field would
+   drop below 16rem, too short to read a folder's last part, the buttons move
+   to the next line as one group, at its right edge where Save sat. */
+.settings-claude-config-dir-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--interface-space-4);
+  min-width: 0;
+  margin: 0;
+}
+
+.settings-claude-config-dir-control input {
+  flex: 1 1 16rem;
+  min-width: 0;
+  min-height: var(--settings-page-action-size);
+  padding: 0 var(--interface-control-padding-inline);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--settings-small-text-size);
+}
+
+.settings-claude-config-dir-control input:focus-visible {
+  border-color: var(--border-strong);
+  outline: none;
+}
+
+.settings-claude-config-dir-control input:disabled {
+  color: var(--disabled-text);
+}
+
+.settings-claude-config-dir-actions {
+  display: flex;
+  flex: none;
+  gap: var(--interface-space-4);
+  margin-left: auto;
+}
+
+.settings-claude-config-dir-control button {
+  display: inline-flex;
+  min-height: var(--settings-page-action-size);
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--interface-control-padding-inline);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--control-fg);
+  font: inherit;
+  font-size: var(--settings-small-text-size);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.settings-claude-config-dir-control button:focus-visible {
+  border-color: var(--border-strong);
+  outline: none;
+  background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  .settings-claude-config-dir-control button:hover:not(:disabled) {
+    border-color: var(--border-strong);
+    outline: none;
+    background: var(--control-hover-bg);
+  }
+}
+
+.settings-claude-config-dir-control button:disabled {
+  color: var(--disabled-text);
+  cursor: default;
+}
+
 @container settings-claude (max-width: 520px) {
   .settings-content-section > header {
     align-items: start;
@@ -85,6 +183,8 @@
   }
 }
 
-:host([hidden]) {
+:host([hidden]),
+.settings-claude-config-dir-control button[hidden],
+.settings-claude-config-dir-message[hidden] {
   display: none;
 }

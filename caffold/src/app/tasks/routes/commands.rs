@@ -558,9 +558,13 @@ pub(super) async fn new_task_agent(
         None | Some("codex") => Ok(TaskAgent::Codex(
             require_codex_thread_connection(state).await?,
         )),
-        Some("claude") => Ok(TaskAgent::Claude {
-            driver: state.task_runtime.claude().driver(cwd),
-        }),
+        Some("claude") => {
+            let claude = state.task_runtime.claude();
+            let config_dir = claude.config_dir().map_err(AgentError::from)?;
+            Ok(TaskAgent::Claude {
+                driver: claude.driver(cwd, config_dir),
+            })
+        }
         Some("grok") => Ok(TaskAgent::Grok {
             driver: state.task_runtime.grok().driver(),
         }),
@@ -611,6 +615,7 @@ pub(super) fn managed_thread_from_task_record(
 
 pub(super) fn apply_managed_thread_metadata(task: &mut TaskRecord, managed: &ManagedThread) {
     task.title = managed.display_name.clone();
+    task.claude_config_dir = managed.run_by.claude_config_dir().map(str::to_string);
     task.last_completed_ms = task.last_completed_ms.max(managed.last_completed_at_ms);
     task.unseen = task.last_completed_ms.is_some_and(|completed_ms| {
         managed
@@ -4080,6 +4085,7 @@ mod claude_tests {
     use crate::task_store::{ManagedThread, RunBy};
 
     use super::http_calls::{call, post};
+    use super::new_task_agent;
 
     const SESSION: &str = "claude-thread-1";
     const WAIT: Duration = Duration::from_secs(5);
@@ -4719,6 +4725,54 @@ mod claude_tests {
     }
 
     #[tokio::test]
+    async fn a_claude_task_keeps_the_config_dir_it_was_created_under() {
+        let root = tempfile::tempdir().unwrap();
+        let config_dirs = tempfile::tempdir().unwrap();
+        let work = config_dirs.path().join("work").display().to_string();
+        let settings = config_dirs.path().join("settings").display().to_string();
+        let (state, runner) = claude_task_under(root.path(), Some(&work)).await;
+        let claude = state.task_runtime.claude();
+        let cwd = root.path().display().to_string();
+        let app = router(state.clone());
+
+        claude.run_new_tasks_under(&settings).await;
+        assert_eq!(
+            new_task_agent(&state, Some("claude"), &cwd)
+                .await
+                .unwrap()
+                .run_by(&cwd),
+            RunBy::Claude {
+                cwd: cwd.clone(),
+                config_dir: Some(settings.clone()),
+            },
+            "a new Task takes what Settings names"
+        );
+        let (status, started) = call(&app, prompt("Say hello.")).await;
+        assert_eq!(status, StatusCode::OK, "{started}");
+
+        claude
+            .restart_runtime()
+            .await
+            .expect("the runtime restarts");
+        until(&state, "the restart lets go of the Task", |snapshot| {
+            snapshot.lifecycle != SessionLifecycle::Subscribed
+        })
+        .await;
+        let (status, prompted) = call(&app, prompt("Are you still there?")).await;
+
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        let spawn = runner.spawned(SESSION).await.expect("a session again");
+        assert_eq!(
+            spawn.env.get("CLAUDE_CONFIG_DIR"),
+            Some(&work),
+            "the Task resumes where its conversation is kept, not where Settings points now"
+        );
+        let (status, read) = call(&app, detail()).await;
+        assert_eq!(status, StatusCode::OK, "{read}");
+        assert_eq!(read["task"]["claudeConfigDir"], work.as_str());
+    }
+
+    #[tokio::test]
     async fn a_prompt_after_the_claude_runtime_restarted_resumes_the_task() {
         let root = tempfile::tempdir().unwrap();
         let (state, runner) = claude_task(root.path()).await;
@@ -4827,6 +4881,14 @@ mod claude_tests {
     /// handed over after that take-up has subscribed it: a take-up still on
     /// its way would subscribe it again behind whatever the test does next.
     async fn claude_task(root: &Path) -> (TaskState, MockRunnerHandle) {
+        claude_task_under(root, None).await
+    }
+
+    /// A watched Claude Task created under `config_dir`.
+    async fn claude_task_under(
+        root: &Path,
+        config_dir: Option<&str>,
+    ) -> (TaskState, MockRunnerHandle) {
         let (state, runner) = task_state_with_agents(
             RootedFs::new(root).unwrap(),
             CodexThreadClient::mock(Vec::new()),
@@ -4837,7 +4899,10 @@ mod claude_tests {
             .task_store
             .claim(
                 ManagedThread {
-                    run_by: RunBy::Claude { cwd: cwd.clone() },
+                    run_by: RunBy::Claude {
+                        cwd: cwd.clone(),
+                        config_dir: config_dir.map(str::to_string),
+                    },
                     ..ManagedThread::new(SESSION, RunBy::Codex, Some(1_000), None, None)
                 },
                 1,
@@ -4846,7 +4911,7 @@ mod claude_tests {
         state
             .task_runtime
             .claude()
-            .open_conversation(SESSION, &cwd, &ClaudeTurnOptions::default())
+            .open_conversation(SESSION, &cwd, config_dir, &ClaudeTurnOptions::default())
             .await
             .expect("the conversation opens");
         state.task_runtime.watch_claude();
