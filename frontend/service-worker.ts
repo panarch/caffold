@@ -754,13 +754,18 @@ async function showTaskNotification(
   if (!route) {
     return;
   }
-  await worker.registration.showNotification(notice.title, {
+  // The tag is the Task's, so a newer notice takes the place of the one on
+  // screen, and renotify alerts for it as for a new one. Chromium reads
+  // renotify, which TypeScript's NotificationOptions leaves out.
+  const options: NotificationOptions & { renotify: boolean } = {
     body: notice.body,
     tag: notice.tag,
+    renotify: true,
     icon: "/icons/current/icon-192.png",
     badge: "/assets/icons/favicon-32.png",
     data: { route, threadId: notice.threadId },
-  });
+  };
+  await worker.registration.showNotification(notice.title, options);
 }
 
 function readTerminalPayload(payload: NoticePayload) {

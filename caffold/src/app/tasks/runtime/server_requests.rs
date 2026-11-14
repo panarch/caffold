@@ -1953,7 +1953,7 @@ mod tests {
                 "kind": "actionRequired",
                 "threadId": "thread_1",
                 "taskName": "Review Web Push",
-                "tag": asked.topic,
+                "tag": payload["tag"],
             }),
             "the command, its cwd, and the agent's reason stay out of the payload"
         );
@@ -1985,6 +1985,11 @@ mod tests {
                 .try_recv()
                 .unwrap_or_else(|_| panic!("{kind} is a question like any other"));
             assert_ne!(next.topic, asked.topic);
+            let next_payload: JsonValue = serde_json::from_slice(&next.payload).unwrap();
+            assert_eq!(
+                next_payload["tag"], payload["tag"],
+                "{kind} takes the Task's one notification"
+            );
         }
 
         deliver(
