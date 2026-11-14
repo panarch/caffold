@@ -202,7 +202,7 @@ mod tests {
                 "claude_code_version": "9.9.9",
             })])
             .await;
-        let driver = client.driver("/Users/example/project");
+        let driver = client.driver("/Users/example/project", None);
         std::mem::forget(
             sessions
                 .acquire_viewer(&driver, generation, thread_id)

@@ -219,7 +219,7 @@ impl Driver {
             }),
             Self::Claude(claude) => Ok(claude
                 .client
-                .read_recorded_history(task, &claude.cwd, before)
+                .read_recorded_history(task, &claude.cwd, claude.config_dir.as_deref(), before)
                 .await?),
             Self::Grok(client) => Ok(client.read_recorded_history(task, before).await?),
             Self::Antigravity(client) => Ok(client.read_recorded_history(task, before).await?),
@@ -411,7 +411,10 @@ mod tests {
             "the Caffold MCP server's read_task_history tool"
         );
         assert_eq!(
-            ClaudeClient::mock().0.driver("/").history_tool_reference(),
+            ClaudeClient::mock()
+                .0
+                .driver("/", None)
+                .history_tool_reference(),
             "mcp__caffold__read_task_history"
         );
         assert_eq!(

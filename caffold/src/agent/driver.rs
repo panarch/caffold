@@ -99,11 +99,13 @@ pub(crate) enum Driver {
 /// Codex holds a thread's working directory and answers for it. Claude does
 /// not: a session is a process, resuming one starts a new process, and the new
 /// process works wherever it was started. So a driver for a Claude Task carries
-/// where that Task works, which is why the store keeps it.
+/// where that Task works, which is why the store keeps it — and the config
+/// directory its conversation is kept in, `None` for Claude's default.
 #[derive(Clone)]
 pub(crate) struct ClaudeConversation {
     pub(crate) client: ClaudeClient,
     pub(crate) cwd: String,
+    pub(crate) config_dir: Option<String>,
 }
 
 /// A conversation as it stands, and the most recent of its turns.
@@ -468,6 +470,15 @@ fn image_paths(images: &[PromptImage]) -> Vec<String> {
 }
 
 impl Driver {
+    /// The config directory a Claude Task's conversation is kept in. No other
+    /// agent is started under one.
+    pub(crate) fn claude_config_dir(&self) -> Option<&str> {
+        match self {
+            Self::Claude(claude) => claude.config_dir.as_deref(),
+            Self::Codex(_) | Self::Grok(_) | Self::Antigravity(_) => None,
+        }
+    }
+
     pub(crate) async fn accept_turn_options(
         &self,
         options: &TurnOptions,
@@ -645,7 +656,10 @@ impl Driver {
             }
             Self::Claude(claude) => {
                 let agreed = options.claude()?;
-                let conversation = claude.client.start_conversation(cwd, agreed).await?;
+                let conversation = claude
+                    .client
+                    .start_conversation(cwd, claude.config_dir.as_deref(), agreed)
+                    .await?;
                 Ok(StartedConversation {
                     conversation,
                     settings: options.applied.clone(),
@@ -860,7 +874,12 @@ impl Driver {
             Self::Claude(claude) => Ok(Some(
                 claude
                     .client
-                    .prepare_directory_reconnection(conversation_id, &claude.cwd, destination)
+                    .prepare_directory_reconnection(
+                        conversation_id,
+                        &claude.cwd,
+                        claude.config_dir.as_deref(),
+                        destination,
+                    )
                     .await?,
             )),
             Self::Codex(_) | Self::Grok(_) | Self::Antigravity(_) => {
@@ -1012,13 +1031,24 @@ impl Driver {
                 };
                 let conversation = claude
                     .client
-                    .open_conversation(conversation_id, &claude.cwd, &options)
+                    .open_conversation(
+                        conversation_id,
+                        &claude.cwd,
+                        claude.config_dir.as_deref(),
+                        &options,
+                    )
                     .await?;
                 let turns_page = match with_turns {
                     true => Some(
                         claude
                             .client
-                            .read_turns(conversation_id, &claude.cwd, None, INITIAL_TURNS_PAGE)
+                            .read_turns(
+                                conversation_id,
+                                &claude.cwd,
+                                claude.config_dir.as_deref(),
+                                None,
+                                INITIAL_TURNS_PAGE,
+                            )
                             .await?,
                     ),
                     false => None,
@@ -1068,7 +1098,13 @@ impl Driver {
             )),
             Self::Claude(claude) => claude
                 .client
-                .read_turns(conversation_id, &claude.cwd, cursor, limit)
+                .read_turns(
+                    conversation_id,
+                    &claude.cwd,
+                    claude.config_dir.as_deref(),
+                    cursor,
+                    limit,
+                )
                 .await
                 .map_err(Into::into),
             Self::Grok(client) => client
@@ -1144,7 +1180,11 @@ impl Driver {
             // looking — which is the only way this agent can be asked.
             Self::Claude(claude) => match claude
                 .client
-                .recorded_conversation_exists(&claude.cwd, conversation_id)
+                .recorded_conversation_exists(
+                    &claude.cwd,
+                    claude.config_dir.as_deref(),
+                    conversation_id,
+                )
                 .await?
             {
                 true => Ok(None),
@@ -1173,7 +1213,10 @@ impl Driver {
         match self {
             Self::Antigravity(client) => Ok(client.erase(conversation_id).await?),
             Self::Codex(client) => Ok(client.delete_thread(conversation_id).await?),
-            Self::Claude(claude) => Ok(claude.client.erase(conversation_id, &claude.cwd).await?),
+            Self::Claude(claude) => Ok(claude
+                .client
+                .erase(conversation_id, &claude.cwd, claude.config_dir.as_deref())
+                .await?),
             Self::Grok(client) => Ok(client.erase(conversation_id).await?),
         }
     }
@@ -1194,7 +1237,10 @@ impl Driver {
                 Ok(()) | Err(AgentError::ConversationGone(_)) => Ok(()),
                 Err(error) => Err(error),
             },
-            Self::Claude(claude) => Ok(claude.client.erase(conversation_id, &claude.cwd).await?),
+            Self::Claude(claude) => Ok(claude
+                .client
+                .erase(conversation_id, &claude.cwd, claude.config_dir.as_deref())
+                .await?),
             Self::Grok(client) => Ok(client.erase_sessions(conversation_id).await?),
         }
     }
@@ -1226,7 +1272,11 @@ impl Driver {
             Self::Claude(claude) => {
                 claude
                     .client
-                    .recorded_conversation_exists(&claude.cwd, conversation_id)
+                    .recorded_conversation_exists(
+                        &claude.cwd,
+                        claude.config_dir.as_deref(),
+                        conversation_id,
+                    )
                     .await?
             }
             Self::Grok(client) => client.conversation_exists(conversation_id).await,

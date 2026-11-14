@@ -67,8 +67,12 @@ runtime restart or update.
   installation that is not ready, and offers **Restart runtime** and
   **Update Codex**. See
   [Updates](updates.md#codex).
-- **Claude** offers **Restart runtime**. See
-  [Updates](updates.md#claude-code-and-grok).
+- **Claude** offers **Config directory**, the folder Claude Code keeps its
+  sign-in, settings, and conversations in (the same folder as
+  `CLAUDE_CONFIG_DIR`). Leave it empty for the default. Caffold saves a folder
+  only when Claude Code is signed in with it. New Tasks use the folder set when
+  they are created; existing Tasks keep theirs. Claude also offers **Restart
+  runtime**. See [Updates](updates.md#claude-code-and-grok).
 - **Grok** shows Caffold's Grok leader and the connection to it.
 
 ### Codex reset credits

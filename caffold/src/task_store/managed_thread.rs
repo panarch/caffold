@@ -52,14 +52,18 @@ impl TaskProvider {
 /// process, and that process works wherever it is started — so a Claude Task
 /// that names no directory is a Task nothing can run.
 ///
-/// The table keeps them as two nullable columns, because that is what a table
-/// has. Everything above the row conversion holds this instead, where the
+/// The table keeps them as nullable columns, because that is what a table has.
+/// Everything above the row conversion holds this instead, where the
 /// combination that cannot be run cannot be written down either.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RunBy {
     Codex,
+    /// `config_dir` is the `CLAUDE_CONFIG_DIR` the Task was created under, or
+    /// none for Claude's default. The conversation lives in that directory, so
+    /// it is fixed for the Task's life.
     Claude {
         cwd: String,
+        config_dir: Option<String>,
     },
     /// A Grok Task's binding says which native session it runs on and where;
     /// the row keeps where the Task began so that lists and archives can
@@ -86,18 +90,36 @@ impl RunBy {
     pub(crate) fn cwd(&self) -> Option<&str> {
         match self {
             Self::Codex => None,
-            Self::Claude { cwd } | Self::Grok { cwd } | Self::Antigravity { cwd } => Some(cwd),
+            Self::Claude { cwd, .. } | Self::Grok { cwd } | Self::Antigravity { cwd } => Some(cwd),
         }
     }
 
-    /// Read the pair of columns the table keeps, refusing a pair no agent can
-    /// be run from.
-    fn from_row(provider: &str, cwd: Option<String>) -> Result<Self> {
+    /// The config directory a Claude Task runs under, `None` for Claude's
+    /// default and for every other agent.
+    pub(crate) fn claude_config_dir(&self) -> Option<&str> {
+        match self {
+            Self::Claude { config_dir, .. } => config_dir.as_deref(),
+            Self::Codex | Self::Grok { .. } | Self::Antigravity { .. } => None,
+        }
+    }
+
+    /// Read the columns the table keeps, refusing a combination no agent can be
+    /// run from.
+    fn from_row(provider: &str, cwd: Option<String>, config_dir: Option<String>) -> Result<Self> {
+        if config_dir.is_some() && provider != "claude" {
+            return Err(TaskStoreError::InvalidRow("claude_config_dir"));
+        }
+        if config_dir
+            .as_deref()
+            .is_some_and(|config_dir| config_dir.trim().is_empty())
+        {
+            return Err(TaskStoreError::InvalidRow("claude_config_dir"));
+        }
         match provider {
             "codex" => Ok(Self::Codex),
             "claude" => cwd
                 .filter(|cwd| !cwd.trim().is_empty())
-                .map(|cwd| Self::Claude { cwd })
+                .map(|cwd| Self::Claude { cwd, config_dir })
                 .ok_or(TaskStoreError::InvalidRow("cwd")),
             "grok" => cwd
                 .filter(|cwd| !cwd.trim().is_empty())
@@ -247,6 +269,7 @@ const COLUMN_DEFINITIONS: &[&str] = &[
     "permission_mode TEXT NULL",
     "permission_instructions TEXT NULL",
     "pin_position INTEGER NULL",
+    "claude_config_dir TEXT NULL",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -367,6 +390,7 @@ pub(super) struct ManagedThreadRow {
     pub pin_position: Option<i64>,
     pub provider: String,
     pub cwd: Option<String>,
+    pub claude_config_dir: Option<String>,
 }
 
 impl TryFrom<&ManagedThread> for ManagedThreadRow {
@@ -379,6 +403,7 @@ impl TryFrom<&ManagedThread> for ManagedThreadRow {
             thread_id: thread.thread_id.clone(),
             provider: thread.run_by.provider().as_str().to_string(),
             cwd: thread.run_by.cwd().map(str::to_string),
+            claude_config_dir: thread.run_by.claude_config_dir().map(str::to_string),
             display_name: validate_display_name(&thread.display_name)?.to_string(),
             section_id,
             position_in_section,
@@ -418,7 +443,7 @@ impl TryFrom<ManagedThreadRow> for ManagedThread {
     fn try_from(row: ManagedThreadRow) -> Result<Self> {
         Ok(Self {
             thread_id: row.thread_id,
-            run_by: RunBy::from_row(&row.provider, row.cwd)?,
+            run_by: RunBy::from_row(&row.provider, row.cwd, row.claude_config_dir)?,
             display_name: validate_display_name(&row.display_name)?.to_string(),
             placement: Placement::from_row(
                 row.section_id,
@@ -1818,6 +1843,56 @@ mod tests {
     }
 
     #[test]
+    fn a_config_dir_is_read_only_for_a_claude_task_and_never_blank() {
+        // Another agent with a Claude config directory, or a blank one, is a
+        // row this release did not write. Reading it would start a session
+        // under an account nobody chose.
+        let mut row = stored_row("thread-1");
+        row.claude_config_dir = Some("/Users/example/.claude-work".to_string());
+        assert!(matches!(
+            ManagedThread::try_from(row.clone()),
+            Err(TaskStoreError::InvalidRow("claude_config_dir"))
+        ));
+
+        row.provider = "claude".to_string();
+        row.cwd = Some("/Users/example/project".to_string());
+        assert_eq!(
+            ManagedThread::try_from(row.clone()).unwrap().run_by,
+            RunBy::Claude {
+                cwd: "/Users/example/project".to_string(),
+                config_dir: Some("/Users/example/.claude-work".to_string()),
+            }
+        );
+
+        row.claude_config_dir = Some("  ".to_string());
+        assert!(matches!(
+            ManagedThread::try_from(row),
+            Err(TaskStoreError::InvalidRow("claude_config_dir"))
+        ));
+    }
+
+    #[test]
+    fn a_task_keeps_the_config_dir_it_was_claimed_under() {
+        let mut glue = memory();
+        let claude = ManagedThread {
+            run_by: RunBy::Claude {
+                cwd: "/Users/example/project".to_string(),
+                config_dir: Some("/Users/example/.claude-work".to_string()),
+            },
+            ..ManagedThread::new("thread-1", RunBy::Codex, Some(10), None, None)
+        };
+        claim(&mut glue, claude.clone(), 100).unwrap();
+        update_display_name(&mut glue, "thread-1", "Renamed").unwrap();
+        archive(&mut glue, "thread-1", 200).unwrap();
+        restore(&mut glue, "thread-1").unwrap();
+
+        assert_eq!(
+            get(&mut glue, "thread-1").unwrap().unwrap().run_by,
+            claude.run_by
+        );
+    }
+
+    #[test]
     fn a_provider_this_release_does_not_drive_is_refused_rather_than_guessed() {
         // The migration wrote a provider into every row that existed, so an
         // unrecognized one was written by a Caffold that drives an agent this
@@ -1844,6 +1919,7 @@ mod tests {
         let claude = ManagedThread {
             run_by: RunBy::Claude {
                 cwd: "/Users/example/project".to_string(),
+                config_dir: None,
             },
             ..ManagedThread::new("thread-1", RunBy::Codex, Some(10), None, None)
         };
@@ -1866,6 +1942,7 @@ mod tests {
             thread_id: "fully-populated".to_string(),
             run_by: RunBy::Claude {
                 cwd: "/Users/example/project".to_string(),
+                config_dir: Some("/Users/example/.claude-work".to_string()),
             },
             display_name: "Fully populated".to_string(),
             placement: None,

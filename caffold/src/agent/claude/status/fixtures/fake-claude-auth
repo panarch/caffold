@@ -1,0 +1,11 @@
+#!/bin/sh
+# Signed in only under a CLAUDE_CONFIG_DIR that holds a `signed-in` file.
+if [ "$1 $2 $3" != "auth status --json" ]; then
+  exit 2
+fi
+if [ -n "$CLAUDE_CONFIG_DIR" ] && [ -f "$CLAUDE_CONFIG_DIR/signed-in" ]; then
+  echo '{"loggedIn":true,"authMethod":"claude.ai","email":"work@example.test"}'
+else
+  echo '{"loggedIn":false,"authMethod":"none"}'
+  exit 1
+fi

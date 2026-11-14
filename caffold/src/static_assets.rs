@@ -722,6 +722,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/settings/claude/display.js"
         )))),
+        "pages/(task-workspace)/settings/claude/lifecycle.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/claude/lifecycle.js"
+        )))),
         "pages/(task-workspace)/settings/voice/page.css.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/settings/voice/page.css.js"
@@ -3052,6 +3056,7 @@ mod tests {
             "pages/(task-workspace)/codex-status/components/reset-credit-dialog.js",
             "pages/(task-workspace)/settings/claude/page.js",
             "pages/(task-workspace)/settings/claude/display.js",
+            "pages/(task-workspace)/settings/claude/lifecycle.js",
             "pages/(task-workspace)/settings/components/runtime/components/runtime-restart-dialog.js",
             "pages/(task-workspace)/settings/components/runtime.js",
             "pages/(task-workspace)/settings/grok/page.js",

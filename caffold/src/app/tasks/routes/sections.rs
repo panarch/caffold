@@ -640,6 +640,7 @@ mod tests {
                         id,
                         RunBy::Claude {
                             cwd: cwd.to_string_lossy().into_owned(),
+                            config_dir: None,
                         },
                         Some(1),
                         None,
@@ -978,6 +979,7 @@ mod tests {
                     "archived-claude",
                     RunBy::Claude {
                         cwd: outside.to_string_lossy().into_owned(),
+                        config_dir: None,
                     },
                     Some(1),
                     None,
@@ -1159,6 +1161,7 @@ mod tests {
                             id,
                             RunBy::Claude {
                                 cwd: source.to_string_lossy().into_owned(),
+                                config_dir: None,
                             },
                             Some(1),
                             None,
@@ -1180,6 +1183,7 @@ mod tests {
             let mut expected = thread;
             expected.run_by = RunBy::Claude {
                 cwd: moved.to_string_lossy().into_owned(),
+                config_dir: None,
             };
             if archived {
                 assert_eq!(state.task_store.get_archived(id).unwrap(), Some(expected));
@@ -1222,7 +1226,7 @@ mod tests {
                 );
             }
             let page = claude
-                .read_turns(id, &moved.to_string_lossy(), None, 8)
+                .read_turns(id, &moved.to_string_lossy(), None, None, 8)
                 .await
                 .unwrap();
             assert!(

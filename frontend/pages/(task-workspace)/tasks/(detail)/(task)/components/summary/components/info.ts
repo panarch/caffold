@@ -128,6 +128,7 @@ export class CaffoldTaskDetailInfo extends CaffoldElement {
     const statusLabel = canonical ? formatTaskStatus(task) : "unavailable";
     const showsStatus = Boolean(canonical) && taskStatusView(task) !== null;
     const worktree = canonical?.worktree ?? null;
+    const claudeConfigDir = canonical?.claudeConfigDir ?? "";
     const directory = canonical
       ? canonical.cwdPath || canonical.cwd || this.snapshot.contextPath
       : "";
@@ -194,6 +195,10 @@ export class CaffoldTaskDetailInfo extends CaffoldElement {
             <dd data-task-info-field="worktree-ref">${worktreeRef(
               worktree,
             )}</dd>
+          </div>
+          <div data-task-info-claude-config-dir ?hidden=${!claudeConfigDir}>
+            <dt>Config directory</dt>
+            <dd data-task-info-field="claude-config-dir">${claudeConfigDir}</dd>
           </div>
         </dl>
         <caffold-task-detail-info-actions

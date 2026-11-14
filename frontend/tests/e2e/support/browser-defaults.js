@@ -261,6 +261,14 @@ export async function installBrowserDefaults(page) {
     }),
   );
 
+  // Every browser test shares one server, so its Claude config directory is
+  // answered here instead of read or changed there.
+  await page.route(/\/api\/claude\/settings(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: { configDir: null, defaultConfigDir: "/Users/example/.claude" },
+    }),
+  );
+
   await page.route(/\/api\/grok\/status(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",

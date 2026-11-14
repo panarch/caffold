@@ -289,6 +289,10 @@ Task Detail presents the selected conversation, command requests,
 follow-up Composer, and Task actions. Integrated Review, Git, and GitHub remain
 shared repository surfaces.
 
+Task details names a Claude Task's **Config directory** when the Task was
+created under one other than Claude's default; a Task keeps that directory for
+its life.
+
 Task actions open from the Task details control. Each shows an icon before its
 label. While a button reports progress, such as **Forking...**, a turning
 progress icon takes the icon's place. A Task whose next turn runs under Ask Jev
@@ -683,7 +687,12 @@ Settings includes:
 - Claude installation status, shown and never gated on: the plan's usage
   windows as the agent itself reports them, the binary's version and path, the
   signed-in account and plan, and the runner's process state, with a
-  **Refresh** action; plus an explicit, confirmed restart that stops the runner
+  **Refresh** action; the **Config directory** new Claude Tasks run under,
+  directly above the Agent block, saved only once Claude reports a sign-in there
+  and empty for Claude's default, which its placeholder names; while another
+  folder is saved, **Use default** beside **Save** returns to the default; after
+  a save the account and usage are read again; plus an explicit, confirmed
+  restart that stops the runner
   and every Claude session it holds, starts a fresh runner on the installed
   binary, makes the model menu offer the models that binary lists, and lets
   conversations resume when their Tasks are opened;

@@ -1072,6 +1072,7 @@ mod tests {
                     "claude-only",
                     RunBy::Claude {
                         cwd: root.path().display().to_string(),
+                        config_dir: None,
                     },
                     Some(1_000),
                     None,
@@ -1113,7 +1114,7 @@ mod tests {
         state
             .task_runtime
             .claude()
-            .open_conversation(thread_id, &cwd, &Default::default())
+            .open_conversation(thread_id, &cwd, None, &Default::default())
             .await
             .expect("the conversation opens");
         state
@@ -1121,7 +1122,10 @@ mod tests {
             .claim(
                 ManagedThread::new(
                     thread_id,
-                    RunBy::Claude { cwd: cwd.clone() },
+                    RunBy::Claude {
+                        cwd: cwd.clone(),
+                        config_dir: None,
+                    },
                     Some(1_000),
                     None,
                     None,

@@ -33,9 +33,11 @@
 //! and each larger concern lives with its own module: [`session`] opens and
 //! takes back up, [`starting`] paces every authenticating start, [`reading`]
 //! interprets everything the agent says, [`served_tools`] answers for the
-//! tools Caffold serves it, and [`settings`] carries what a person chose to a
-//! running session.
+//! tools Caffold serves it, [`settings`] carries what a person chose to a
+//! running session, and [`config_dir`] says which directory Claude keeps a
+//! Task's sign-in and conversation in.
 
+mod config_dir;
 mod fork;
 pub(crate) mod protocol;
 mod reading;
@@ -75,6 +77,7 @@ use crate::agent::{
     ThreadStatus, TokenCount, TokenUsage, Turn, TurnOrigin, TurnPage, TurnState, TurnStatus,
 };
 
+pub(crate) use self::config_dir::{ConfigDirRefusal, ConfigDirSaveError};
 pub(crate) use self::served_tools::{AskedTool, ToolAsk};
 pub(crate) use self::session::WorkingDirectoryMove;
 
@@ -118,6 +121,10 @@ pub(crate) enum ClaudeError {
     /// A turn was asked for while the agent is running one.
     #[error("{0}")]
     TurnRunning(String),
+    /// The config directory Settings saved cannot be read, so which account a
+    /// new start would run as is not known.
+    #[error("Claude settings cannot be read: {0}")]
+    Settings(String),
 }
 
 /// The agent Caffold drives when a Task belongs to Claude.
@@ -132,15 +139,18 @@ struct ClaudeClientInner {
     /// runner spawns, or a one-off question asked directly. Why one:
     /// [`starting`].
     starts: starting::StartGate,
-    /// Where the agent keeps every project's conversations. Absent when this
-    /// installation's environment names no home, in which case a conversation
-    /// can be neither read nor removed and neither is reported as done.
+    /// Where the agent keeps every project's conversations under its default
+    /// config directory. Absent when this installation's environment names no
+    /// home, in which case such a conversation can be neither read nor removed
+    /// and neither is reported as done.
     projects: Option<std::path::PathBuf>,
+    /// The config directory new Tasks run under.
+    config_dir: config_dir::ConfigDirSetting,
     sessions: AsyncMutex<HashMap<String, Arc<Session>>>,
     events: broadcast::Sender<ClaudeRuntimeEvent>,
     /// The model list, once asked for. Asking costs a process start; a runtime
-    /// restart, which is how another installed binary or another signed-in
-    /// account is taken up, forgets it.
+    /// restart, which is how another installed binary is taken up, and saving
+    /// another config directory, which is how another account is, forget it.
     models: AsyncMutex<Option<Vec<ModelOption>>>,
 }
 
@@ -205,6 +215,9 @@ struct Session {
     /// which follows a moved session. Moves once at most, when the Task is
     /// isolated into a worktree.
     cwd: AsyncMutex<String>,
+    /// The config directory the session runs under, which holds its
+    /// transcript. `None` is Claude's default.
+    config_dir: Option<String>,
     /// Held for writing while the agent is asked to move, and for reading
     /// while [`ClaudeClient::read_turns`] reads the transcript. The agent
     /// moves what it wrote before it answers the move, so a read between the
@@ -456,28 +469,41 @@ struct Introduction {
 }
 
 impl ClaudeClient {
-    /// This agent, driving the Task that works in `cwd`.
+    /// This agent, driving the Task that works in `cwd` under `config_dir`.
     ///
     /// A Claude session is a process with a working directory, and resuming one
     /// starts a new process wherever it is told to, so the driver carries where
-    /// the Task works.
-    pub(crate) fn driver(&self, cwd: impl Into<String>) -> Driver {
+    /// the Task works — and the config directory its conversation is kept in,
+    /// which the new process has to be started under to find it.
+    pub(crate) fn driver(&self, cwd: impl Into<String>, config_dir: Option<String>) -> Driver {
         Driver::Claude(ClaudeConversation {
             client: self.clone(),
             cwd: cwd.into(),
+            config_dir,
         })
     }
 
     /// The agent as reached through the runner in this data directory.
     pub(crate) fn in_data_dir(data_dir: &std::path::Path) -> Self {
-        Self::with_runner(RunnerClient::in_data_dir(data_dir))
+        Self::with_runner_and_projects(
+            RunnerClient::in_data_dir(data_dir),
+            transcript::projects_root(None),
+            config_dir::ConfigDirSetting::open(data_dir.join("claude")),
+        )
     }
 
     /// The agent as reached through a stand-in runner, for a test.
     #[cfg(test)]
     pub(crate) fn mock() -> (Self, MockRunnerHandle) {
         let (runner, handle) = RunnerClient::mock();
-        (Self::with_runner(runner), handle)
+        (
+            Self::with_runner_and_projects(
+                runner,
+                transcript::projects_root(None),
+                config_dir::ConfigDirSetting::unsaved(),
+            ),
+            handle,
+        )
     }
 
     /// A client that keeps conversations somewhere a test owns.
@@ -485,7 +511,11 @@ impl ClaudeClient {
     pub(crate) fn mock_writing_to(projects: std::path::PathBuf) -> (Self, MockRunnerHandle) {
         let (runner, handle) = RunnerClient::mock();
         (
-            Self::with_runner_and_projects(runner, Some(projects)),
+            Self::with_runner_and_projects(
+                runner,
+                Some(projects),
+                config_dir::ConfigDirSetting::unsaved(),
+            ),
             handle,
         )
     }
@@ -496,9 +526,9 @@ impl ClaudeClient {
     #[cfg(test)]
     pub(crate) fn write_test_transcript(&self, cwd: &str, conversation_id: &str, contents: &str) {
         let projects = self
-            .projects()
+            .projects(None)
             .expect("the test client has a projects directory");
-        transcript::plant(projects, cwd, conversation_id, contents);
+        transcript::plant(&projects, cwd, conversation_id, contents);
     }
 
     /// Whether the agent is in a turn it began on its own that is not on the
@@ -517,13 +547,10 @@ impl ClaudeClient {
         self.inner.starts.one_at_a_time().await
     }
 
-    fn with_runner(runner: RunnerClient) -> Self {
-        Self::with_runner_and_projects(runner, transcript::projects_root())
-    }
-
     fn with_runner_and_projects(
         runner: RunnerClient,
         projects: Option<std::path::PathBuf>,
+        config_dir: config_dir::ConfigDirSetting,
     ) -> Self {
         let (events, _) = broadcast::channel(256);
         let starts = starting::StartGate::spaced();
@@ -540,6 +567,7 @@ impl ClaudeClient {
                 runner,
                 starts,
                 projects,
+                config_dir,
                 sessions: AsyncMutex::new(HashMap::new()),
                 events,
                 models: AsyncMutex::new(None),
@@ -547,9 +575,63 @@ impl ClaudeClient {
         }
     }
 
-    /// Where this client reads and removes conversations.
-    fn projects(&self) -> Option<&std::path::Path> {
-        self.inner.projects.as_deref()
+    /// Where this client reads and removes the conversations kept under
+    /// `config_dir`.
+    fn projects(&self, config_dir: Option<&str>) -> Option<std::path::PathBuf> {
+        match config_dir {
+            Some(config_dir) => transcript::projects_root(Some(config_dir)),
+            None => self.inner.projects.clone(),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Config directory
+    // -----------------------------------------------------------------------
+
+    /// The config directory new Tasks run under. `None` is Claude's default;
+    /// an error is a saved setting that cannot be read.
+    pub(crate) fn config_dir(&self) -> Result<Option<String>, ClaudeError> {
+        self.inner.config_dir.get().map_err(ClaudeError::Settings)
+    }
+
+    /// Claude's own default, which an empty setting runs under.
+    pub(crate) fn default_config_dir(&self) -> Option<String> {
+        config_dir::default_dir(config_dir::home().as_deref())
+    }
+
+    /// Make what a person typed the config directory new Tasks run under,
+    /// once Claude shows it is signed in there. Tasks that already exist keep
+    /// theirs.
+    pub(crate) async fn save_config_dir(
+        &self,
+        typed: &str,
+    ) -> Result<Option<String>, ConfigDirSaveError> {
+        let config_dir = config_dir::validate(
+            std::ffi::OsStr::new("claude"),
+            typed,
+            config_dir::home().as_deref(),
+        )
+        .await?;
+        self.keep_config_dir(config_dir.clone()).await?;
+        Ok(config_dir)
+    }
+
+    /// Run new Tasks under `config_dir`, as a saved setting would, without
+    /// asking Claude whether it is signed in there.
+    #[cfg(test)]
+    pub(crate) async fn run_new_tasks_under(&self, config_dir: &str) {
+        self.keep_config_dir(Some(config_dir.to_string()))
+            .await
+            .expect("a test client keeps its setting in memory");
+    }
+
+    /// The model list belongs to the account it was asked under, so another
+    /// directory forgets it.
+    async fn keep_config_dir(&self, config_dir: Option<String>) -> std::io::Result<()> {
+        if self.inner.config_dir.save(config_dir)? {
+            *self.inner.models.lock().await = None;
+        }
+        Ok(())
     }
 
     pub(crate) fn subscribe(&self) -> broadcast::Receiver<ClaudeRuntimeEvent> {
@@ -573,11 +655,12 @@ impl ClaudeClient {
     pub(crate) async fn start_conversation(
         &self,
         cwd: &str,
+        config_dir: Option<&str>,
         options: &ClaudeTurnOptions,
     ) -> Result<Conversation, ClaudeError> {
         let id = uuid::Uuid::new_v4().to_string();
         let session = self
-            .open_session(&id, cwd, SessionStart::Fresh, options)
+            .open_session(&id, cwd, config_dir, SessionStart::Fresh, options)
             .await?;
         Ok(self.conversation_of(&session).await)
     }
@@ -591,13 +674,20 @@ impl ClaudeClient {
         &self,
         conversation_id: &str,
         cwd: &str,
+        config_dir: Option<&str>,
         options: &ClaudeTurnOptions,
     ) -> Result<Conversation, ClaudeError> {
         if let Some(session) = self.session(conversation_id).await {
             return Ok(self.conversation_of(&session).await);
         }
         let session = self
-            .open_session(conversation_id, cwd, SessionStart::Resume, options)
+            .open_session(
+                conversation_id,
+                cwd,
+                config_dir,
+                SessionStart::Resume,
+                options,
+            )
             .await?;
         Ok(self.conversation_of(&session).await)
     }
@@ -695,10 +785,15 @@ impl ClaudeClient {
     ///
     /// Asked once per row of a list, and answered by a disk that may be a
     /// network away, so the look happens off the runtime's own threads.
-    pub(crate) async fn was_written_down(&self, cwd: &str, conversation_id: &str) -> bool {
+    pub(crate) async fn was_written_down(
+        &self,
+        cwd: &str,
+        config_dir: Option<&str>,
+        conversation_id: &str,
+    ) -> bool {
         let Some(path) = self
-            .projects()
-            .and_then(|projects| transcript::locate(projects, cwd, conversation_id))
+            .projects(config_dir)
+            .and_then(|projects| transcript::locate(&projects, cwd, conversation_id))
         else {
             return false;
         };
@@ -712,9 +807,10 @@ impl ClaudeClient {
     pub(crate) async fn recorded_conversation_exists(
         &self,
         cwd: &str,
+        config_dir: Option<&str>,
         conversation_id: &str,
     ) -> Result<bool, ClaudeError> {
-        let Some(projects) = self.projects().map(|projects| projects.to_path_buf()) else {
+        let Some(projects) = self.projects(config_dir) else {
             return Ok(false);
         };
         let id = conversation_id.to_string();
@@ -735,23 +831,24 @@ impl ClaudeClient {
     ///
     /// The session is closed first, because a process still writing to a file
     /// that has been removed would write the conversation back.
-    pub(crate) async fn erase(&self, conversation_id: &str, cwd: &str) -> Result<(), ClaudeError> {
+    pub(crate) async fn erase(
+        &self,
+        conversation_id: &str,
+        cwd: &str,
+        config_dir: Option<&str>,
+    ) -> Result<(), ClaudeError> {
         self.close_conversation(conversation_id).await?;
         // Not knowing where it is, is not the same as it being gone. Reporting
         // this as done would delete the only row pointing at a conversation
         // that is still on disk.
-        let Some(written) = self
-            .projects()
-            .and_then(|projects| transcript::locate(projects, cwd, conversation_id))
-        else {
+        let Some((projects, written)) = self.projects(config_dir).and_then(|projects| {
+            let written = transcript::locate(&projects, cwd, conversation_id)?;
+            Some((projects, written))
+        }) else {
             return Err(ClaudeError::Runner(format!(
                 "cannot work out where conversation {conversation_id} is written down"
             )));
         };
-        let projects = self
-            .projects()
-            .expect("the transcript path requires a projects directory")
-            .to_path_buf();
         let id = conversation_id.to_string();
         tokio::task::spawn_blocking(move || {
             let written = match std::fs::symlink_metadata(&written) {
@@ -800,10 +897,15 @@ impl ClaudeClient {
     }
 
     /// The newest turn the conversation on disk holds.
-    async fn newest_filed_turn(&self, cwd: &str, id: &str) -> Option<Turn> {
+    async fn newest_filed_turn(
+        &self,
+        cwd: &str,
+        config_dir: Option<&str>,
+        id: &str,
+    ) -> Option<Turn> {
         let path = self
-            .projects()
-            .and_then(|projects| transcript::locate(projects, cwd, id))?;
+            .projects(config_dir)
+            .and_then(|projects| transcript::locate(&projects, cwd, id))?;
         let reading = tokio::task::spawn_blocking(move || transcript::read(&path, None, 1))
             .await
             .ok()?
@@ -823,14 +925,15 @@ impl ClaudeClient {
     async fn filed_own_turn(
         &self,
         cwd: &str,
+        config_dir: Option<&str>,
         id: &str,
         reported: &[String],
         backgrounded: &[String],
         steered: &[Steered],
     ) -> Option<(Turn, Answers)> {
         let path = self
-            .projects()
-            .and_then(|projects| transcript::locate(projects, cwd, id))?;
+            .projects(config_dir)
+            .and_then(|projects| transcript::locate(&projects, cwd, id))?;
         let reading = tokio::task::spawn_blocking(move || transcript::read(&path, None, 2))
             .await
             .ok()?
@@ -1186,20 +1289,24 @@ impl ClaudeClient {
         &self,
         conversation_id: &str,
         cwd: &str,
+        config_dir: Option<&str>,
         cursor: Option<&str>,
     ) -> Result<RecordedPage, ClaudeError> {
         let session = self.session(conversation_id).await;
-        let (cwd, _settled) = match &session {
+        let (cwd, config_dir, _settled) = match &session {
             Some(session) => {
                 let settled = session.relocation.read().await;
-                (session.cwd.lock().await.clone(), Some(settled))
+                (
+                    session.cwd.lock().await.clone(),
+                    session.config_dir.as_deref(),
+                    Some(settled),
+                )
             }
-            None => (cwd.to_string(), None),
+            None => (cwd.to_string(), config_dir, None),
         };
         let projects = self
-            .projects()
-            .ok_or_else(|| ClaudeError::History("Cannot locate the recorded transcript.".into()))?
-            .to_path_buf();
+            .projects(config_dir)
+            .ok_or_else(|| ClaudeError::History("Cannot locate the recorded transcript.".into()))?;
         let id = conversation_id.to_string();
         let watched = session.is_some();
         let cursor = cursor.map(str::to_string);
@@ -1263,20 +1370,25 @@ impl ClaudeClient {
         &self,
         conversation_id: &str,
         cwd: &str,
+        config_dir: Option<&str>,
         cursor: Option<&str>,
         limit: usize,
     ) -> Result<TurnPage, ClaudeError> {
         let session = self.session(conversation_id).await;
-        let (cwd, settled) = match &session {
+        let (cwd, config_dir, settled) = match &session {
             Some(session) => {
                 let settled = session.relocation.read().await;
-                (session.cwd.lock().await.clone(), Some(settled))
+                (
+                    session.cwd.lock().await.clone(),
+                    session.config_dir.as_deref(),
+                    Some(settled),
+                )
             }
-            None => (cwd.to_string(), None),
+            None => (cwd.to_string(), config_dir, None),
         };
         let path = self
-            .projects()
-            .and_then(|projects| transcript::locate(projects, &cwd, conversation_id))
+            .projects(config_dir)
+            .and_then(|projects| transcript::locate(&projects, &cwd, conversation_id))
             .ok_or_else(|| {
                 ClaudeError::History(format!(
                     "cannot work out where conversation {conversation_id} is written down"
@@ -1486,7 +1598,8 @@ impl From<ClaudeError> for AgentError {
             ClaudeError::Protocol(_)
             | ClaudeError::Agent(_)
             | ClaudeError::History(_)
-            | ClaudeError::NoSuchApproval(_) => AgentError::Failed(error.to_string()),
+            | ClaudeError::NoSuchApproval(_)
+            | ClaudeError::Settings(_) => AgentError::Failed(error.to_string()),
         }
     }
 }
@@ -1948,7 +2061,7 @@ mod test_support {
             .greet_next_session_with(vec![init_frame(SESSION)])
             .await;
         client
-            .open_conversation(SESSION, CWD, &options("opus"))
+            .open_conversation(SESSION, CWD, None, &options("opus"))
             .await
             .expect("the conversation opens");
         (client, runner, events)
@@ -1963,7 +2076,7 @@ mod test_support {
             .greet_next_session_with(vec![init_frame(SESSION)])
             .await;
         client
-            .open_conversation(SESSION, CWD, &options("opus"))
+            .open_conversation(SESSION, CWD, None, &options("opus"))
             .await
             .expect("the conversation opens");
         let mut events = events;
@@ -1982,7 +2095,7 @@ mod test_support {
             .greet_next_session_with(vec![init_frame(SESSION)])
             .await;
         client
-            .open_conversation(SESSION, CWD, &options("opus"))
+            .open_conversation(SESSION, CWD, None, &options("opus"))
             .await
             .expect("the conversation opens");
         next_session_event(&mut events, "settings").await;
@@ -2174,7 +2287,7 @@ mod tests {
             let client = client.clone();
             async move {
                 client
-                    .open_conversation(SESSION, CWD, &options("opus"))
+                    .open_conversation(SESSION, CWD, None, &options("opus"))
                     .await
             }
         });
@@ -2421,7 +2534,7 @@ mod tests {
             .greet_next_session_with(vec![init_frame(SESSION)])
             .await;
         first
-            .open_conversation(SESSION, CWD, &options("opus"))
+            .open_conversation(SESSION, CWD, None, &options("opus"))
             .await
             .expect("the first backend opens the conversation");
         assert!(
@@ -2429,9 +2542,13 @@ mod tests {
             "the open that spawned the session counts as a start"
         );
 
-        let second = ClaudeClient::with_runner(first.inner.runner.clone());
+        let second = ClaudeClient::with_runner_and_projects(
+            first.inner.runner.clone(),
+            transcript::projects_root(None),
+            config_dir::ConfigDirSetting::unsaved(),
+        );
         second
-            .open_conversation(SESSION, CWD, &options("opus"))
+            .open_conversation(SESSION, CWD, None, &options("opus"))
             .await
             .expect("the second backend takes the session up");
 
@@ -2450,14 +2567,18 @@ mod tests {
         // prompt, starting a fresh conversation, or consulting message content.
         let (first, runner) = ClaudeClient::mock();
         let conversation = first
-            .start_conversation(CWD, &ClaudeTurnOptions::default())
+            .start_conversation(CWD, None, &ClaudeTurnOptions::default())
             .await
             .expect("the empty conversation starts");
         assert!(runner.prompts(&conversation.id).await.is_empty());
 
-        let second = ClaudeClient::with_runner(first.inner.runner.clone());
+        let second = ClaudeClient::with_runner_and_projects(
+            first.inner.runner.clone(),
+            transcript::projects_root(None),
+            config_dir::ConfigDirSetting::unsaved(),
+        );
         let resumed = second
-            .open_conversation(&conversation.id, CWD, &ClaudeTurnOptions::default())
+            .open_conversation(&conversation.id, CWD, None, &ClaudeTurnOptions::default())
             .await
             .expect("the replacement client takes up the live session");
 
@@ -2932,7 +3053,7 @@ mod tests {
         // the same place.
         let (client, runner, mut events) = watching().await;
         let opened = client
-            .open_conversation(SESSION, CWD, &ClaudeTurnOptions::default())
+            .open_conversation(SESSION, CWD, None, &ClaudeTurnOptions::default())
             .await
             .expect("the conversation opens");
         assert!(opened.created_at_ms > 0, "a conversation has a beginning");
@@ -2942,7 +3063,7 @@ mod tests {
         next_session_event(&mut events, "turn end").await;
 
         let moved = client
-            .open_conversation(SESSION, CWD, &ClaudeTurnOptions::default())
+            .open_conversation(SESSION, CWD, None, &ClaudeTurnOptions::default())
             .await
             .expect("the conversation opens");
         assert!(
@@ -2963,11 +3084,20 @@ mod tests {
             .greet_next_session_with(vec![init_frame(SESSION)])
             .await;
         client
-            .open_conversation(SESSION, CWD, &options("opus"))
+            .open_conversation(SESSION, CWD, None, &options("opus"))
             .await
             .unwrap();
-        let cold = ClaudeClient::with_runner(client.inner.runner.clone());
-        assert!(cold.driver(CWD).handoff_source(SESSION).await.is_err());
+        let cold = ClaudeClient::with_runner_and_projects(
+            client.inner.runner.clone(),
+            transcript::projects_root(None),
+            config_dir::ConfigDirSetting::unsaved(),
+        );
+        assert!(
+            cold.driver(CWD, None)
+                .handoff_source(SESSION)
+                .await
+                .is_err()
+        );
         assert!(runner.spawned(SESSION).await.is_some());
     }
 
@@ -2976,23 +3106,26 @@ mod tests {
         let projects = written_conversation();
         let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
         let page = client
-            .read_recorded_history(SESSION, "/worktrees/new-owner", None)
+            .read_recorded_history(SESSION, "/worktrees/new-owner", None, None)
             .await
             .unwrap();
         assert!(!page.page.turns.is_empty());
         assert!(
             client
-                .recorded_conversation_exists("/worktrees/new-owner", SESSION)
+                .recorded_conversation_exists("/worktrees/new-owner", None, SESSION)
                 .await
                 .unwrap()
         );
         assert!(runner.spawned(SESSION).await.is_none());
         let path = transcript::locate(projects.path(), CWD, SESSION).unwrap();
-        client.erase(SESSION, "/worktrees/new-owner").await.unwrap();
+        client
+            .erase(SESSION, "/worktrees/new-owner", None)
+            .await
+            .unwrap();
         assert!(!path.exists());
         assert!(
             !client
-                .recorded_conversation_exists("/worktrees/new-owner", SESSION)
+                .recorded_conversation_exists("/worktrees/new-owner", None, SESSION)
                 .await
                 .unwrap()
         );
@@ -3006,7 +3139,7 @@ mod tests {
         let before =
             std::fs::read(transcript::locate(projects.path(), CWD, SESSION).unwrap()).unwrap();
         let page = client
-            .read_recorded_history(SESSION, CWD, None)
+            .read_recorded_history(SESSION, CWD, None, None)
             .await
             .unwrap();
         assert_eq!(page.page.turns.len(), 1);
@@ -3014,7 +3147,7 @@ mod tests {
         assert!(runner.spawned(SESSION).await.is_none());
         assert!(
             client
-                .read_recorded_history("missing", CWD, None)
+                .read_recorded_history("missing", CWD, None, None)
                 .await
                 .is_err()
         );
@@ -3038,12 +3171,12 @@ mod tests {
             .greet_next_session_with(vec![init_frame(SESSION)])
             .await;
         client
-            .open_conversation(SESSION, CWD, &options("opus"))
+            .open_conversation(SESSION, CWD, None, &options("opus"))
             .await
             .expect("the conversation opens");
 
         let page = client
-            .read_turns(SESSION, WORKTREE, None, 8)
+            .read_turns(SESSION, WORKTREE, None, None, 8)
             .await
             .expect("the conversation is read");
 
@@ -3066,7 +3199,7 @@ mod tests {
             .greet_next_session_with(vec![init_frame(SESSION)])
             .await;
         client
-            .open_conversation(SESSION, CWD, &options("opus"))
+            .open_conversation(SESSION, CWD, None, &options("opus"))
             .await
             .expect("the conversation opens");
         client.write_test_transcript(
@@ -3080,7 +3213,7 @@ mod tests {
             .expect("the session moves");
 
         let page = client
-            .read_turns(SESSION, CWD, None, 8)
+            .read_turns(SESSION, CWD, None, None, 8)
             .await
             .expect("the conversation is read");
 
@@ -3101,7 +3234,7 @@ mod tests {
             .greet_next_session_with(vec![init_frame(SESSION)])
             .await;
         client
-            .open_conversation(SESSION, CWD, &options("opus"))
+            .open_conversation(SESSION, CWD, None, &options("opus"))
             .await
             .expect("the conversation opens");
         runner.hold_next_move_answer(SESSION).await;
@@ -3121,7 +3254,7 @@ mod tests {
 
         let mut reading = tokio::spawn({
             let client = client.clone();
-            async move { client.read_turns(SESSION, CWD, None, 8).await }
+            async move { client.read_turns(SESSION, CWD, None, None, 8).await }
         });
         tokio::time::timeout(Duration::from_millis(10), &mut reading)
             .await
@@ -3151,7 +3284,7 @@ mod tests {
         let (client, _runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
 
         let missing = client
-            .read_turns(SESSION, CWD, None, 8)
+            .read_turns(SESSION, CWD, None, None, 8)
             .await
             .expect("the agent has not written this transcript yet");
         assert!(missing.turns.is_empty());
@@ -3168,7 +3301,7 @@ mod tests {
             .to_string(),
         );
         let error = client
-            .read_turns(SESSION, CWD, Some("a turn id is not a cursor"), 8)
+            .read_turns(SESSION, CWD, None, Some("a turn id is not a cursor"), 8)
             .await
             .expect_err("the cursor cannot be verified");
 
@@ -3197,7 +3330,7 @@ mod tests {
         std::fs::create_dir(&path).expect("an unreadable transcript stand-in");
 
         let error = client
-            .read_turns(SESSION, CWD, None, 8)
+            .read_turns(SESSION, CWD, None, None, 8)
             .await
             .expect_err("the canonical source is unavailable");
 
@@ -3207,15 +3340,82 @@ mod tests {
     #[tokio::test]
     async fn an_unknown_transcript_root_is_not_an_empty_transcript() {
         let (runner, _handle) = RunnerClient::mock();
-        let client = ClaudeClient::with_runner_and_projects(runner, None);
+        let client = ClaudeClient::with_runner_and_projects(
+            runner,
+            None,
+            config_dir::ConfigDirSetting::unsaved(),
+        );
 
         let error = client
-            .read_turns(SESSION, CWD, None, 8)
+            .read_turns(SESSION, CWD, None, None, 8)
             .await
             .expect_err("there is no canonical location to read");
 
         assert!(
             matches!(error, ClaudeError::History(ref message) if message.contains("cannot work out where"))
         );
+    }
+
+    #[tokio::test]
+    async fn a_conversation_under_another_config_dir_is_read_and_erased_there() {
+        let default = tempfile::tempdir().unwrap();
+        let work = tempfile::tempdir().unwrap();
+        let work_dir = work.path().to_str().unwrap();
+        transcript::plant(
+            &work.path().join("projects"),
+            CWD,
+            SESSION,
+            include_str!("claude/transcript/a-session-claude-wrote.jsonl"),
+        );
+        let (client, _runner) = ClaudeClient::mock_writing_to(default.path().to_path_buf());
+
+        assert!(client.was_written_down(CWD, Some(work_dir), SESSION).await);
+        assert!(!client.was_written_down(CWD, None, SESSION).await);
+        assert!(
+            client
+                .recorded_conversation_exists(CWD, Some(work_dir), SESSION)
+                .await
+                .unwrap()
+        );
+        let page = client
+            .read_turns(SESSION, CWD, Some(work_dir), None, 8)
+            .await
+            .unwrap();
+        assert!(!page.turns.is_empty());
+        let recorded = client
+            .read_recorded_history(SESSION, CWD, Some(work_dir), None)
+            .await
+            .unwrap();
+        assert!(!recorded.page.turns.is_empty());
+
+        client.erase(SESSION, CWD, Some(work_dir)).await.unwrap();
+
+        assert!(!client.was_written_down(CWD, Some(work_dir), SESSION).await);
+    }
+
+    #[tokio::test]
+    async fn another_config_dir_forgets_the_model_list_and_the_same_one_keeps_it() {
+        let (client, _runner) = ClaudeClient::mock();
+        *client.inner.models.lock().await = Some(Vec::new());
+
+        client.keep_config_dir(None).await.unwrap();
+        assert!(client.inner.models.lock().await.is_some());
+
+        client
+            .keep_config_dir(Some("/Volumes/work/.claude".to_string()))
+            .await
+            .unwrap();
+        assert!(client.inner.models.lock().await.is_none());
+        assert_eq!(
+            client.config_dir().unwrap().as_deref(),
+            Some("/Volumes/work/.claude")
+        );
+
+        *client.inner.models.lock().await = Some(Vec::new());
+        client
+            .keep_config_dir(Some("/Volumes/work/.claude".to_string()))
+            .await
+            .unwrap();
+        assert!(client.inner.models.lock().await.is_some());
     }
 }

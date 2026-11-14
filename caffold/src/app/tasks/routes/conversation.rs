@@ -156,6 +156,7 @@ fn unavailable_task_record(managed: &ManagedThread) -> TaskRecord {
         last_completed_ms: managed.last_completed_at_ms,
         last_event_summary: None,
         unseen: managed.unseen(),
+        claude_config_dir: managed.run_by.claude_config_dir().map(str::to_string),
     }
 }
 
@@ -369,6 +370,7 @@ mod tests {
                 ManagedThread {
                     run_by: RunBy::Claude {
                         cwd: root.path().display().to_string(),
+                        config_dir: None,
                     },
                     ..ManagedThread::new(thread_id, RunBy::Codex, Some(1_000), None, None)
                 },
@@ -413,6 +415,7 @@ mod tests {
                     thread_id,
                     RunBy::Claude {
                         cwd: root.path().display().to_string(),
+                        config_dir: None,
                     },
                     Some(1_000),
                     None,

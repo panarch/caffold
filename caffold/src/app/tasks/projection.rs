@@ -33,6 +33,10 @@ pub(in crate::app) struct TaskRecord {
     pub(in crate::app::tasks) last_completed_ms: Option<u64>,
     pub(in crate::app::tasks) last_event_summary: Option<String>,
     pub(in crate::app::tasks) unseen: bool,
+    /// The config directory a Claude Task runs under, when it is not Claude's
+    /// default. Caffold's row says it, so it is filled where the row is read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(in crate::app::tasks) claude_config_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -98,6 +102,7 @@ pub(in crate::app::tasks) fn task_record_from_conversation(
         last_completed_ms: None,
         last_event_summary,
         unseen: false,
+        claude_config_dir: None,
     }
 }
 
@@ -111,7 +116,7 @@ pub(in crate::app::tasks) fn task_record_from_conversation(
 pub(in crate::app::tasks) fn conversation_from_row(
     managed: &ManagedThread,
 ) -> Result<Conversation, ApiError> {
-    let (RunBy::Claude { cwd } | RunBy::Grok { cwd } | RunBy::Antigravity { cwd }) =
+    let (RunBy::Claude { cwd, .. } | RunBy::Grok { cwd } | RunBy::Antigravity { cwd }) =
         &managed.run_by
     else {
         return Err(ApiError::Internal(format!(

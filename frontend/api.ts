@@ -99,6 +99,19 @@ export async function getClaudeStatus() {
   return requestJson<ClaudeStatus>("/api/claude/status");
 }
 
+export async function getClaudeSettings() {
+  return requestJson<unknown>("/api/claude/settings");
+}
+
+/** An empty `configDir` returns new Tasks to Claude's default. */
+export async function updateClaudeSettings(configDir: string) {
+  return requestJson<unknown>(
+    "/api/claude/settings",
+    {},
+    { method: "PATCH", body: { configDir } },
+  );
+}
+
 export async function getGrokStatus() {
   return requestJson<GrokStatus>("/api/grok/status");
 }
@@ -1674,6 +1687,8 @@ export interface Task {
   recencyMs: number | null;
   lastCompletedMs: number | null;
   unseen: boolean;
+  /** A Claude Task's config directory, absent for Claude's default. */
+  claudeConfigDir?: string;
 }
 
 // The Archived listing can name the original repository after its worktree

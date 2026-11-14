@@ -1042,6 +1042,207 @@ test("a source that could not answer costs its block and no more", { tag: "@serv
   );
 });
 
+// Answers Settings → Claude's config directory as the server would, holding a
+// save until the test lets it through when asked to.
+async function installClaudeSettings(page, { refuse = null, hold = null } = {}) {
+  const state = { configDir: null, defaultConfigDir: "/Users/example/.claude" };
+  const sent = [];
+  await page.route(/\/api\/claude\/settings(?:\?|$)/, async (route) => {
+    const request = route.request();
+    if (request.method() !== "PATCH") {
+      return route.fulfill({ json: state });
+    }
+    const body = request.postDataJSON();
+    sent.push(body);
+    await hold?.promise;
+    if (refuse) {
+      return route.fulfill({ status: 400, json: { error: refuse } });
+    }
+    state.configDir = body.configDir.replace(/^~/, "/Users/example") || null;
+    return route.fulfill({ json: state });
+  });
+  return { state, sent };
+}
+
+test("saves the config directory new Claude Tasks run under and reads the account again", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  let release = () => {};
+  const hold = { promise: new Promise((resolve) => { release = resolve; }) };
+  const { sent } = await installClaudeSettings(page, { hold });
+  let statusReads = 0;
+  await page.route(/\/api\/claude\/status(?:\?|$)/, (route) => {
+    statusReads += 1;
+    const work = sent.length > 0;
+    return route.fulfill({
+      json: mockClaudeStatus(
+        work
+          ? {
+              auth: {
+                loggedIn: true,
+                method: "claude.ai",
+                email: "work@example.com",
+                subscription: "team",
+              },
+            }
+          : {},
+      ),
+    });
+  });
+
+  await page.goto("/settings/claude");
+  const settings = page.locator("caffold-settings-claude-page");
+  const field = settings.getByRole("textbox", { name: "Config directory" });
+  const save = settings.getByRole("button", { name: "Save", exact: true });
+  const useDefault = settings.getByRole("button", { name: "Use default", exact: true });
+  await expect(field).toHaveValue("");
+  await expect(field).toHaveAttribute(
+    "placeholder",
+    "Default · /Users/example/.claude",
+  );
+  await expect(save).toBeDisabled();
+  await expect(useDefault).toBeHidden();
+  await expect(settings).toContainText("user@example.com · claude.ai");
+  const readsBeforeSave = statusReads;
+
+  await field.fill("~/.claude-work");
+  await expect(save).toBeEnabled();
+  await field.press("Enter");
+  await expect.poll(() => sent).toEqual([{ configDir: "~/.claude-work" }]);
+  await expect(field).toBeDisabled();
+  await expect(save).toBeDisabled();
+  await expect(settings.locator(".settings-claude-config-dir")).toHaveAttribute(
+    "aria-busy",
+    "true",
+  );
+
+  release();
+  await expect(field).toHaveValue("/Users/example/.claude-work");
+  await expect(field).toBeEnabled();
+  await expect(save).toBeDisabled();
+  await expect(useDefault).toBeVisible();
+  await expect(useDefault).toBeEnabled();
+  await expect.poll(() => statusReads).toBeGreaterThan(readsBeforeSave);
+  await expect(settings).toContainText("work@example.com · claude.ai");
+
+  // What was typed is let go with the folder it was replacing.
+  await field.fill("/Users/example/.claude-other");
+  await useDefault.click();
+  await expect.poll(() => sent.at(-1)).toEqual({ configDir: "" });
+  await expect(field).toHaveValue("");
+  await expect(useDefault).toBeHidden();
+  await expect(save).toBeDisabled();
+});
+
+test("a config directory Claude is not signed in with is refused and stays as typed", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const message =
+    "Claude Code is not signed in with this folder. Sign in from a terminal with CLAUDE_CONFIG_DIR=/Users/example/.claude-work claude, then save again.";
+  await installClaudeSettings(page, {
+    refuse: { code: "claude_config_dir_signed_out", message },
+  });
+
+  await page.goto("/settings/claude");
+  const settings = page.locator("caffold-settings-claude-page");
+  const field = settings.getByRole("textbox", { name: "Config directory" });
+  await expect(field).toBeEnabled();
+  await field.fill("/Users/example/.claude-work");
+  await settings.getByRole("button", { name: "Save", exact: true }).click();
+
+  await expect(settings.getByRole("alert")).toHaveText(message);
+  await expect(field).toHaveValue("/Users/example/.claude-work");
+  await expect(field).toBeEnabled();
+  await expect(settings.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+});
+
+test("lays out the Config directory field above Agent without clipping a long folder", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  await page.route(/\/api\/claude\/settings(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        configDir:
+          "/Users/example/Library/Application Support/Claude Accounts/work-account-with-a-long-name/.claude",
+        defaultConfigDir: "/Users/example/.claude",
+      },
+    }),
+  );
+
+  await page.goto("/settings/claude");
+  const settings = page.locator("caffold-settings-claude-page");
+  const section = settings.locator(".settings-claude-config-dir");
+  const field = settings.getByRole("textbox", { name: "Config directory" });
+  const save = settings.getByRole("button", { name: "Save", exact: true });
+  await expect(field).toHaveValue(/work-account-with-a-long-name/);
+
+  const headings = await settings
+    .locator(".settings-content-section > section h3")
+    .allTextContents();
+  expect(headings.indexOf("Config directory")).toBe(headings.indexOf("Agent") - 1);
+  await expect(save).toBeVisible();
+  await expect(
+    settings.getByRole("button", { name: "Use default", exact: true }),
+  ).toBeVisible();
+  const layout = await section.evaluate((element) => {
+    const box = (selector) => element.querySelector(selector).getBoundingClientRect();
+    const scrollport = element.closest(".settings-content-scroll");
+    const save = element.querySelector('[data-action="save-config-dir"]');
+    const useDefault = element.querySelector('[data-action="use-default-config-dir"]');
+    return {
+      overflow: scrollport.scrollWidth - scrollport.clientWidth,
+      input: box("input").toJSON(),
+      save: box('[data-action="save-config-dir"]').toJSON(),
+      useDefault: box('[data-action="use-default-config-dir"]').toJSON(),
+      labelsFit: [save, useDefault].every(
+        (button) => button.scrollWidth <= button.clientWidth,
+      ),
+    };
+  });
+  expect(layout.overflow).toBeLessThanOrEqual(0);
+  expect(layout.labelsFit).toBe(true);
+  // Save and Use default stay together, Use default after Save.
+  expect(layout.save.top).toBe(layout.useDefault.top);
+  expect(layout.save.right).toBeLessThanOrEqual(layout.useDefault.left);
+  if (testInfo.project.name === "phone") {
+    // Too narrow for the field and both buttons: the buttons drop below it,
+    // ending where the field ends.
+    expect(layout.save.top).toBeGreaterThanOrEqual(layout.input.bottom);
+    expect(Math.round(layout.useDefault.right)).toBe(Math.round(layout.input.right));
+  } else {
+    expect(layout.save.top).toBeLessThan(layout.input.bottom);
+    expect(layout.input.right).toBeLessThanOrEqual(layout.save.left);
+  }
+  await captureReviewScreenshot(page, testInfo, "settings-claude-config-dir");
+});
+
+test("offers the Config directory field, Save, and Use default as Action Hints", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const { state } = await installClaudeSettings(page);
+  state.configDir = "/Users/example/.claude-work";
+
+  await page.goto("/settings/claude");
+  const settings = page.locator("caffold-settings-claude-page");
+  const field = settings.getByRole("textbox", { name: "Config directory" });
+  await expect(field).toBeEnabled();
+  await expect.poll(() => workspaceTargets(page, "settings:claude:")).toEqual(
+    expect.arrayContaining([
+      ["config-dir", "Focus Config directory"],
+      ["use-default-config-dir", "Use the default config directory"],
+    ]),
+  );
+
+  await activateActionHint(page, /Focus Config directory$/);
+  await expect(field).toBeFocused();
+  await page.keyboard.type("/Volumes/work/.claude");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => workspaceTargets(page, "settings:claude:")).toContainEqual([
+    "save-config-dir",
+    "Save the config directory",
+  ]);
+});
+
 test("shows what the Grok installation is on its Settings page", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
@@ -2201,7 +2402,7 @@ test("puts Usage first on the Codex, Claude, and Grok Settings pages", { tag: "@
 }, testInfo) => {
   const pages = [
     ["codex", ["Usage", "Agent", "Runtime", "Updates", "CLI and diagnostics", "Diagnostic"]],
-    ["claude", ["Usage", "Agent", "Runtime"]],
+    ["claude", ["Usage", "Config directory", "Agent", "Runtime"]],
     ["grok", ["Usage", "Agent", "Account", "Leader", "Connection"]],
   ];
   const shapes = [];

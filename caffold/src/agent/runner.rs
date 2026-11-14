@@ -72,6 +72,10 @@ const MAX_SOCKET_PATH_BYTES: usize = 107;
 #[derive(Clone)]
 pub(crate) struct RunnerClient {
     socket: Arc<PathBuf>,
+    /// Variables of the backend's own environment the runner is started
+    /// without, so that no session inherits them. Which ones is the driver's
+    /// call; the runner only carries out the start.
+    withheld_environment: &'static [&'static str],
     /// The one subscribed connection every session shares, once one is up.
     wire: Arc<AsyncMutex<Option<Arc<Wire>>>>,
 }
@@ -167,8 +171,15 @@ impl RunnerClient {
     pub(crate) fn at_socket(socket: PathBuf) -> Self {
         Self {
             socket: Arc::new(socket),
+            withheld_environment: &[],
             wire: Arc::new(AsyncMutex::new(None)),
         }
+    }
+
+    /// Start the runner without these variables of the backend's environment.
+    pub(crate) fn withholding(mut self, environment: &'static [&'static str]) -> Self {
+        self.withheld_environment = environment;
+        self
     }
 
     fn socket(&self) -> &Path {
@@ -220,7 +231,19 @@ impl RunnerClient {
     /// — so a signal sent to Caffold's group must not take it along.
     async fn spawn_runner(&self, socket: &Path) -> Result<(), RunnerError> {
         let executable = runner_executable()?;
-        let mut command = Command::new(&executable);
+        self.runner_command(&executable, socket)
+            .spawn()
+            .map_err(|error| {
+                RunnerError::Unavailable(format!(
+                    "could not start the Caffold runner at {}: {error}",
+                    executable.display()
+                ))
+            })?;
+        Ok(())
+    }
+
+    fn runner_command(&self, executable: &Path, socket: &Path) -> Command {
+        let mut command = Command::new(executable);
         command
             .arg("daemon")
             .arg("run")
@@ -229,15 +252,12 @@ impl RunnerClient {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        for name in self.withheld_environment {
+            command.env_remove(name);
+        }
         #[cfg(unix)]
         command.process_group(0);
-        command.spawn().map_err(|error| {
-            RunnerError::Unavailable(format!(
-                "could not start the Caffold runner at {}: {error}",
-                executable.display()
-            ))
-        })?;
-        Ok(())
+        command
     }
 
     /// Attach to a session, creating it from `spawn` when it does not exist.
@@ -1127,6 +1147,34 @@ mod tests {
     /// An absolute socket path of exactly `bytes`.
     fn socket_of(bytes: usize) -> PathBuf {
         PathBuf::from(format!("/{}", "a".repeat(bytes - 1)))
+    }
+
+    #[test]
+    fn the_runner_starts_without_the_variables_its_driver_withholds() {
+        use std::ffi::OsStr;
+
+        let executable = Path::new("/opt/caffold/caffold-runner");
+        let socket = Path::new("/tmp/runner.sock");
+        let inheriting = RunnerClient::at_socket(socket.to_path_buf());
+        assert_eq!(
+            inheriting
+                .runner_command(executable, socket)
+                .get_envs()
+                .count(),
+            0
+        );
+
+        let withholding = RunnerClient::at_socket(socket.to_path_buf())
+            .withholding(&["CLAUDE_CONFIG_DIR", "OTHER"]);
+        let command = withholding.runner_command(executable, socket);
+        assert_eq!(
+            command.get_envs().collect::<Vec<_>>(),
+            vec![
+                (OsStr::new("CLAUDE_CONFIG_DIR"), None),
+                (OsStr::new("OTHER"), None)
+            ]
+        );
+        assert_eq!(command.get_program(), executable);
     }
 
     #[test]

@@ -194,7 +194,14 @@ impl ClaudeClient {
         };
         let cwd = session.cwd.lock().await.clone();
         let filed = self
-            .filed_own_turn(&cwd, &session.id, &reported, &backgrounded, &steered)
+            .filed_own_turn(
+                &cwd,
+                session.config_dir.as_deref(),
+                &session.id,
+                &reported,
+                &backgrounded,
+                &steered,
+            )
             .await;
         let opened = {
             let mut state = session.state.lock().await;
@@ -591,7 +598,10 @@ impl ClaudeClient {
             state.active_turn.clone()
         };
         let cwd = session.cwd.lock().await.clone();
-        let Some(filed) = self.newest_filed_turn(&cwd, &session.id).await else {
+        let Some(filed) = self
+            .newest_filed_turn(&cwd, session.config_dir.as_deref(), &session.id)
+            .await
+        else {
             return;
         };
         let mut state = session.state.lock().await;
@@ -1937,7 +1947,7 @@ mod tests {
             .await;
 
         client
-            .open_conversation(SESSION, CWD, &options("opus"))
+            .open_conversation(SESSION, CWD, None, &options("opus"))
             .await
             .expect("the conversation opens");
 
@@ -3488,7 +3498,7 @@ mod tests {
             .await;
 
         client
-            .open_conversation(SESSION, CWD, &ClaudeTurnOptions::default())
+            .open_conversation(SESSION, CWD, None, &ClaudeTurnOptions::default())
             .await
             .expect("the conversation opens");
 
@@ -3509,7 +3519,7 @@ mod tests {
         runner.greet_next_session_with(vec![greeting]).await;
 
         client
-            .open_conversation(SESSION, CWD, &ClaudeTurnOptions::default())
+            .open_conversation(SESSION, CWD, None, &ClaudeTurnOptions::default())
             .await
             .expect("the conversation opens");
 

@@ -621,7 +621,8 @@ Interface and Code typeface selects, and the three size ranges; Files declares
 its non-current ordering radio; Voice Input declares its non-current provider
 radios and each provider's API key textbox; Jev Permissions declares its Extra
 rules and API key textboxes; Name & Icon declares its Name textbox and its
-non-current icon radios; Keyboard declares its enabled On/Off switch;
+non-current icon radios; Claude declares its Config directory textbox;
+Keyboard declares its enabled On/Off switch;
 Git Compare declares its visible Base and Head selects; and the Branch Review
 Compare Tree declares its comparison-base select while the Review owner injects
 the action meaning. The Branch target remains available while its compared File
@@ -2140,8 +2141,9 @@ choices, and its three ranges; Files registers the non-current ordering choice;
 Voice Input registers its non-current provider choices and its enabled API key
 fields; Jev Permissions registers its enabled Extra rules and API key fields;
 Name & Icon registers its enabled Name field and Save and its non-current
-icons; and Keyboard registers its switch only while keyboard navigation is
-enabled.
+icons; Claude registers its enabled Config directory field, Save, and Use
+default; and
+Keyboard registers its switch only while keyboard navigation is enabled.
 These controls keep their native editing, choice, and persistence behavior
 after the Action Hint coordinator hands off focus or click ownership.
 
@@ -2164,6 +2166,22 @@ re-reads the report. Its confirmed Restart intent is forwarded to the
 workspace's single Claude restart dialog; that mutation ends every runner-held
 session, starts a replacement runner, and refreshes the diagnostic report. The
 page does not read credentials or call provider APIs itself.
+
+Its **Config directory** field has a route-scoped request lifecycle of its own
+over the server's saved directory and Claude's default. Server responses are
+the only writers of those values. The field keeps what was typed until the
+server saves it; Save is offered only for text other than the saved directory,
+and empty is a request for the default. **Use default** is shown only while a
+directory is saved and makes the same request, letting go of anything typed.
+Save and Use default stay together and move below the field as one group where
+the field would be narrower than 16rem. Checking the sign-in can take seconds,
+so the field and its buttons lock until the server answers and only one save is
+in flight at a time. A server rejection keeps the saved directory and shows its
+message. Any other failure leaves whether the directory was saved unknown, so
+the field stays locked and Retry reads it again. A saved directory changes the
+account the diagnostic report describes, so the page reads that report again.
+The lifecycle has the nodes and edges of Name & Icon's below; `loading` owns
+one settings GET and `saving` owns one PATCH.
 
 Settings Grok owns a route-scoped diagnostic request for the installed
 executable, the leader on Caffold's socket, Caffold's connection, the

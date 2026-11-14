@@ -521,6 +521,7 @@ mod tests {
                 ManagedThread {
                     run_by: RunBy::Claude {
                         cwd: root.path().display().to_string(),
+                        config_dir: None,
                     },
                     ..ManagedThread::new(thread_id, RunBy::Codex, None, None, None)
                 },
