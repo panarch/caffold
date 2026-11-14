@@ -480,8 +480,13 @@ export class CaffoldTaskReview extends CaffoldElement {
     const contextKey = reviewContextKey(task);
     const contextChanged = contextKey !== this.contextKey;
     const previousRoute = this.route;
-    const nextRoute = normalizeReviewRoute(route, task);
+    // Review applies the route fitted to the Task and the file, so the route
+    // it compares the next one with is always one it showed; an address that
+    // names another is corrected afterwards.
+    const requestedRoute = normalizeReviewRoute(route, task);
+    const nextRoute = normalizeForTask(requestedRoute, task);
     const nextRouteKey = reviewRouteKey(nextRoute);
+    const addressDiffers = reviewRouteKey(requestedRoute) !== nextRouteKey;
     const routeChanged = Boolean(
       this.previousRouteKey && this.previousRouteKey !== nextRouteKey,
     );
@@ -499,6 +504,9 @@ export class CaffoldTaskReview extends CaffoldElement {
       // branch and HEAD for later requests without restarting any load.
       this.task = task;
       this.syncChildContexts();
+      if (addressDiffers) {
+        this.requestRoute(nextRoute);
+      }
       return false;
     }
     if (contextChanged) {
@@ -512,18 +520,15 @@ export class CaffoldTaskReview extends CaffoldElement {
     this.route = nextRoute;
     this.previousRouteKey = nextRouteKey;
     this.syncChildContexts();
-
-    const normalizedForTask = normalizeForTask(nextRoute, task);
-    if (reviewRouteKey(normalizedForTask) !== nextRouteKey) {
-      this.requestRoute(normalizedForTask);
-      return true;
-    }
     this.syncReview({
       contextChanged,
       routeChanged,
       scopeChanged,
       revealFileSelection,
     });
+    if (addressDiffers) {
+      this.requestRoute(nextRoute);
+    }
     return true;
   }
 

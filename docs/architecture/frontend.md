@@ -1727,9 +1727,13 @@ Integrated Review uses a bounded cache keyed by explicit Task or Section
 identity. Disconnecting an inactive entry invalidates its requests and releases
 its root watch. Selected path and current-branch root watch remain unique to
 that cached review instance. Detail hands the active entry its context again
-with every subject snapshot; a handoff with the same identity, roots, and route
-keeps the newer Task fields, such as branch and HEAD, for later requests and
-starts no request.
+with every subject snapshot. Review fits the route it is handed to the bound
+Task and the selected file, such as a representation the file lacks giving way
+to its pair, and applies, records, and compares only the fitted route. A
+handoff with the same identity, roots, and fitted route keeps the newer Task
+fields, such as branch and HEAD, for later requests and starts no request.
+Whenever the handed route differs from the fitted one, Review asks for the
+fitted route's address.
 
 Each changes component tracks how far its read has come in one explicit graph
 (`changes-reading.ts`): no data, a first read, a failed first read, data read
