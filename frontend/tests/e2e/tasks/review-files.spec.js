@@ -9,6 +9,8 @@ import {
   popoverActionHintDialog,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
+import { installTaskReviewFixture } from "../support/task-review-fixture.js";
 import {
   openCompletedTaskForReview,
   showReviewNavigator,
@@ -1149,6 +1151,102 @@ test("selects supported source and preview representations for images", { tag: "
     await expect(viewer.locator("img.image-preview")).toBeVisible();
   } finally {
     await rm(rasterPath, { force: true });
+  }
+});
+
+// The pictures below go into a directory other tests keep collapsed, so only
+// the Files navigator's reveal of the selected file opens it.
+test("reveals in Files the file of an opened route whose representation Review corrects", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const imageName = "planner/review-image-corrected-address.png";
+  const imagePath = repositoryPath("frontend/tests/e2e/fixtures/home/src", imageName);
+  await copyFile(repositoryPath("frontend/assets/icons/favicon-32.png"), imagePath);
+  try {
+    await installTaskReviewFixture(page);
+    const taskScenario = await installTaskLoopFixture(page, {
+      threadId: "thread_corrected_address",
+    });
+    await taskScenario.seedCompletedTask();
+    await page.goto(
+      `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=${imageName}`,
+    );
+    const taskReview = page.locator("caffold-tasks-page caffold-task-review");
+    const navigator = taskReview.locator("caffold-file-navigator");
+    await expect(navigator.locator('button[data-file-tree-path="src/planner"]'))
+      .toHaveAttribute("aria-expanded", "true");
+    await expect(navigator.locator(`button[data-file-tree-path="src/${imageName}"]`))
+      .toHaveAttribute("aria-current", "true");
+    await expect(
+      taskReview.locator("caffold-review-file-viewer img.image-preview"),
+    ).toBeVisible();
+    await expect(page).toHaveURL(
+      `/tasks/${taskScenario.threadId}/review?nav=files&view=preview&file=planner%2Freview-image-corrected-address.png`,
+    );
+  } finally {
+    await rm(imagePath, { force: true });
+  }
+});
+
+test("reveals a conversation link's corrected file in Files after Review showed another", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const imageName = "planner/review-image-corrected-link.png";
+  const imagePath = repositoryPath("frontend/tests/e2e/fixtures/home/src", imageName);
+  await copyFile(repositoryPath("frontend/assets/icons/favicon-32.png"), imagePath);
+  try {
+    const links = [
+      { label: "Planner source", taskRelativePath: "planner.rs" },
+      { label: "Planner picture", taskRelativePath: imageName },
+    ];
+    await installTaskReviewFixture(page);
+    const taskScenario = await installTaskLoopFixture(page, {
+      completedAssistantResponse: links
+        .map(({ label, taskRelativePath }) => `[${label}](${taskRelativePath})`)
+        .join("\n\n"),
+      fileLinks: links.map(({ taskRelativePath }, linkId) => ({
+        eventId: "item-10",
+        linkId,
+        target: taskRelativePath,
+        status: "resolved",
+        path: `src/${taskRelativePath}`,
+        taskRelativePath,
+      })),
+      threadId: "thread_corrected_file_link",
+    });
+    await taskScenario.seedCompletedTask();
+    await page.goto(`/tasks/${taskScenario.threadId}`);
+    const tasksPage = page.locator("caffold-tasks-page");
+    const answer = tasksPage.locator(".task-assistant-message caffold-task-markdown");
+    const navigator = tasksPage.locator("caffold-task-review caffold-file-navigator");
+
+    await answer.getByRole("link", { name: "Planner source", exact: true }).click();
+    await expect(page).toHaveURL(
+      `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=planner.rs`,
+    );
+    await expect(navigator.locator('button[data-file-tree-path="src/planner.rs"]'))
+      .toHaveAttribute("aria-current", "true");
+
+    const pictureRoute =
+      `/tasks/${taskScenario.threadId}/review?nav=files&view=preview&file=planner%2Freview-image-corrected-link.png`;
+    await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
+    await answer.getByRole("link", { name: "Planner picture", exact: true }).click();
+    await expect(navigator.locator('button[data-file-tree-path="src/planner"]'))
+      .toHaveAttribute("aria-expanded", "true");
+    await expect(navigator.locator(`button[data-file-tree-path="src/${imageName}"]`))
+      .toHaveAttribute("aria-current", "true");
+    await expect(page).toHaveURL(pictureRoute);
+
+    // The same link while Review already shows the picture still ends at the
+    // address of what Review shows.
+    await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
+    await answer.getByRole("link", { name: "Planner picture", exact: true }).click();
+    await expect(page).toHaveURL(pictureRoute);
+
+    await page.goBack();
+    await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}`);
+  } finally {
+    await rm(imagePath, { force: true });
   }
 });
 
