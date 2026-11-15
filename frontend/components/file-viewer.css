@@ -448,9 +448,13 @@ dd {
 }
 
 @media (max-width: 560px) {
+  /* The leading button's visible box starts where the Detail header's content
+     does; its touch reach extends past that line. */
   .viewer-panel > header {
-    padding: 0.25rem 0.5rem;
-    padding-right: var(--review-pane-action-clearance, 0.5rem);
+    padding-left: calc(
+      var(--task-detail-header-padding-inline, 0.5rem) -
+      var(--interface-compact-hit-outset)
+    );
   }
 
   .viewer-title-row {
@@ -505,10 +509,6 @@ dd {
 }
 
 @media (max-width: 520px) {
-  .viewer-panel > header {
-    padding-left: 0.625rem;
-  }
-
   .viewer-meta-popover {
     /* The initial `normal` anchors to the opener only with position-area set. */
     position-anchor: auto;
