@@ -318,6 +318,7 @@ test("keeps one compact file-navigation header on phone", { tag: "@phone" }, asy
     );
     return {
       closeVisualHeight: closeRect.height - closeInset * 2,
+      closeVisualLeft: closeRect.left + closeInset,
       closeVisualWidth: closeRect.width - closeInset * 2,
       headerHeight: headerRect.height,
       hitHeight: closeRect.height,
@@ -343,6 +344,14 @@ test("keeps one compact file-navigation header on phone", { tag: "@phone" }, asy
   expect(geometry.hitHeight).toBeGreaterThanOrEqual(40);
   expect(geometry.headerHeight).toBeLessThanOrEqual(42);
   expect(Math.abs(geometry.titleCenter - geometry.headerCenter)).toBeLessThanOrEqual(1);
+  // The Detail header's start padding also makes room for Back to tasks.
+  const detailContentStart = await page
+    .locator("caffold-detail-layout .detail-layout-summary")
+    .evaluate((header) =>
+      header.getBoundingClientRect().left +
+      Number.parseFloat(getComputedStyle(header).paddingRight),
+    );
+  expect(geometry.closeVisualLeft).toBeCloseTo(detailContentStart, 0);
 
   await captureReviewScreenshot(page, testInfo, "tasks-review-phone-file");
   await backButtons.click();
