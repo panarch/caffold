@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { actionHintDialog } from "../support/action-hints.js";
 import {
   installManualDefaults,
+  installManualLanguageServers,
   installManualRepository,
   installManualTasks,
   MANUAL_TASKS,
@@ -58,6 +60,50 @@ for (const theme of ["light", "dark"]) {
       await captureReviewScreenshot(page, testInfo, `git-compare-${theme}`);
     });
 
+    test("a name in a diff opens its menu, and Find references lists where it is declared and used", { tag: "@desktop" }, async ({ page }, testInfo) => {
+      await installManualLanguageServers(page);
+      await openSettingsPageDiff(page);
+
+      const review = page.locator("caffold-task-review");
+      await review
+        .locator('caffold-diff-viewer .diff-row[data-new-line="7"] .code-name')
+        .filter({ hasText: /^useThemePreference$/ })
+        .click();
+      const menu = review.locator("caffold-code-name-menu");
+      await expect(menu.getByRole("button")).toHaveText(["Go to definition", "Find references"]);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await captureReviewScreenshot(page, testInfo, `review-name-menu-${theme}`);
+
+      await menu.getByRole("button", { name: "Find references" }).click();
+      const places = review.locator("caffold-review-places");
+      await expect(places.getByRole("heading", { level: 2 })).toHaveText("References");
+      await expect(places.locator(".review-places-meta")).toHaveText("useThemePreference · 4");
+      await expect(places.locator(".review-places-file-name")).toHaveText([
+        "theme.ts",
+        "SettingsPage.tsx",
+        "AppearancePreview.tsx",
+      ]);
+      await expect(places.getByRole("button", { name: "Close references" })).toBeVisible();
+      await captureReviewScreenshot(page, testInfo, `review-references-${theme}`);
+    });
+
+    test("G puts codes on the names in view", { tag: "@desktop" }, async ({ page }, testInfo) => {
+      await installManualLanguageServers(page);
+      await openSettingsPageDiff(page);
+      const name = page
+        .locator('caffold-task-review caffold-diff-viewer .diff-row[data-new-line="7"] .code-name')
+        .filter({ hasText: /^useThemePreference$/ });
+      await expect(name).toBeVisible();
+
+      await page.locator(".task-workspace-surface").evaluate((element) => element.focus({ preventScroll: true }));
+      await page.keyboard.press("g");
+      const dialog = actionHintDialog(page);
+      await expect(dialog).toHaveAttribute("data-look", "names");
+      await expect(dialog.getByLabel(/ — useThemePreference, line 7$/)).toBeVisible();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await captureReviewScreenshot(page, testInfo, `review-name-hints-${theme}`);
+    });
+
     test("a Pull Request offers Start Task", { tag: "@desktop" }, async ({ page }, testInfo) => {
       await page.goto(`/tasks/${MANUAL_TASKS.darkTheme.threadId}/github/pulls/214`);
 
@@ -70,4 +116,15 @@ for (const theme of ["light", "dark"]) {
       await captureReviewScreenshot(page, testInfo, `github-pull-request-${theme}`);
     });
   });
+}
+
+// Opens the Working Tree diff of SettingsPage.tsx the way a person does.
+async function openSettingsPageDiff(page) {
+  await page.goto(`/tasks/${MANUAL_TASKS.darkTheme.threadId}`);
+  await page.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const review = page.locator("caffold-task-review");
+  await review
+    .locator('button[data-file-tree-relative-path="src/settings/SettingsPage.tsx"]')
+    .click();
+  await expect(review.locator("caffold-diff-viewer")).toContainText("useThemePreference");
 }

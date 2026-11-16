@@ -59,6 +59,8 @@ export const ACTION_HINT_ACTION = Object.freeze({
   DIALOG_TEXTBOX_FOCUS: "dialog.textbox.focus",
   TERMINAL_OPEN: "navigation.terminal.open",
   TERMINAL_FOCUS: "terminal.focus",
+  // A name in a code viewer, which `G` shows instead of the other actions.
+  CODE_NAME: "code.name.open",
 });
 
 export type ActionHintAction =
@@ -163,6 +165,10 @@ const ACTION_HINT_ACTION_POLICY = Object.freeze({
   }),
   [ACTION_HINT_ACTION.LINK_OPEN]: Object.freeze({
     controlKind: "link",
+    allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
+  }),
+  [ACTION_HINT_ACTION.CODE_NAME]: Object.freeze({
+    controlKind: "button",
     allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
   }),
   ...samePolicy(

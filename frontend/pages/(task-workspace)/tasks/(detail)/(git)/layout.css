@@ -22,7 +22,10 @@
   align-items: center;
   gap: var(--interface-space-3);
   min-height: var(--task-workspace-header-size);
-  padding: 0 var(--task-detail-header-padding-inline);
+  /* Back and the last control stand at the workspace's edge inset, as the
+     Detail header's corner controls do. */
+  padding: 0 var(--task-workspace-edge-padding) 0
+    var(--task-workspace-edge-inset);
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }

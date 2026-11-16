@@ -183,6 +183,12 @@ find or change an entry, so a native watcher that never finishes starting or
 stopping holds up only that scope's subscribers. Once the last of them leaves,
 a new subscription to the same scope starts a new native watcher.
 
+The backend also publishes the set of open canonical scopes, changed under the
+same lock as a scope is added or removed. The language server supervisor reads
+it to tell which repositories a screen shows; see
+[Language Servers](language-servers.md#lifetime). It never reaches into a
+scope's watcher or subscribers.
+
 Paths outside the configured RootedFs boundary, including traversal and symlink
 escapes, are rejected. Native watcher failure does not start polling. Active
 surfaces retain current content and expose manual Refresh or Retry.

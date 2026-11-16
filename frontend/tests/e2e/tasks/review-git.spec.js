@@ -7,6 +7,7 @@ import {
   workspaceTargets,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { elementHandles } from "../support/element-handles.js";
 import {
   openCompletedTaskForReview,
   selectTaskReviewScope,
@@ -1485,7 +1486,7 @@ test("keeps compact review controls and available panes inside the workspace", {
       compareHeaderMetrics.titleFontSize - changesHeaderMetrics.titleFontSize,
     ),
   ).toBeLessThanOrEqual(0.1);
-  const changesAlignment = await taskReview.evaluate((review) => {
+  const changesAlignment = await taskReview.evaluate((review, [summary, summaryInfo]) => {
     const pane = review.shadowRoot.querySelector(".task-review-navigator-pane");
     const changesTree = review.shadowRoot
       .querySelector("caffold-review-working-tree-changes")
@@ -1500,20 +1501,27 @@ test("keeps compact review controls and available panes inside the workspace", {
     const paneRect = pane.getBoundingClientRect();
     const controlsRect = controls.getBoundingClientRect();
     const rootStyle = getComputedStyle(document.documentElement);
+    const info = summaryInfo.getBoundingClientRect();
     return {
-      headerLeftPadding: Number.parseFloat(getComputedStyle(header).paddingLeft),
+      // The Detail header's last button stands this far from its end.
+      detailRightInset:
+        summary.getBoundingClientRect().right -
+        (info.right - Number.parseFloat(getComputedStyle(summaryInfo, "::before").right)),
       controlRightInset: paneRect.right - controlsRect.right,
       labelGap: controlsRect.left - count.getBoundingClientRect().right,
       expectedLabelGap:
         Number.parseFloat(rootStyle.getPropertyValue("--interface-space-5")) *
         Number.parseFloat(rootStyle.fontSize),
     };
-  });
+  }, await elementHandles(page.locator("caffold-detail-layout"), [
+    ".detail-layout-summary",
+    ".task-detail-info-button",
+  ]));
   expect(
     Math.abs(
-      changesAlignment.controlRightInset - changesAlignment.headerLeftPadding,
+      changesAlignment.controlRightInset - changesAlignment.detailRightInset,
     ),
-  ).toBeLessThanOrEqual(1);
+  ).toBeLessThan(0.1);
   expect(changesAlignment.labelGap).toBeGreaterThanOrEqual(
     changesAlignment.expectedLabelGap - 1,
   );

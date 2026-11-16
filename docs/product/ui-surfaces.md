@@ -163,6 +163,9 @@ current context:
   scroll down and up by a tenth of its height, `D` and `U` by half of it, and
   `H` and `L` left and right. `S` chooses another area, `F` switches to
   actions, and `Escape` leaves.
+- `G` puts codes on the names in code that can go to their definition, in a
+  Review file whose repository has language servers on. The code around them
+  dims. Typing a code opens that name's menu with Go to definition chosen.
 - `T` opens the [Task Switcher](#task-switcher) on the Tasks surface.
 - `?` opens the keyboard shortcut help, which lists these keys, and closes it
   again. `F` and `S` work inside it too.
@@ -305,6 +308,23 @@ nothing yet.
 Task actions offer **Pin task**, or **Unpin task** for a pinned Task, once the
 Task list has placed the Task in a Section. The button shows its progress until
 the Task list has read the change back.
+
+When **Settings → Language Servers** has a language on and the Task's
+repository holds a project of it, Task actions offer **Turn on language
+servers** for that repository, or **Turn off language servers**. While on, a
+line for each language says whether its server is getting ready, with the
+server's progress, ready, with its memory, sleeping, or that it is not
+installed, for Rust in the repository's toolchain, could not start, with what
+it printed below, or stopped. Servers that
+are not installed add one **Ask an agent to install** button, with the
+server's name or how many, which opens a dialog like the update one listing
+each server, its toolchain, and its install command, and starts a Task in the
+home folder that installs them on the host. Opening the details, or showing
+the repository in Review, looks again for a server that failed, so one
+installed since then gets ready without turning servers off and on. Turning
+on keeps the button busy
+until every server is ready; [Integrated Review](#integrated-review) then lets
+names be pressed.
 
 An idle Codex, Claude, or Grok Task exposes **Fork task** in Task actions. It performs the same
 native fork without an ID lookup, places the child at the source Task's Section
@@ -498,6 +518,19 @@ a file in both Working Tree groups counted where it first shows; a card opens
 its file as the list does. Git Compare, a commit, and Pull Request files end
 their files the same way.
 
+When the repository has language servers on, the names in Source and on the
+new side of Diff can be pressed. A name opens a small menu with Go to
+definition and Find references; while the server is still getting ready, the
+menu says so and waits. Cmd or Ctrl and a click goes straight to the
+definition. One definition opens in Source at its line, even outside the
+repository, such as in a toolchain; none, or a server's failure, is said at
+the name. Several definitions, and the references with the line that declares
+the name among them, open a list in the navigator's place, grouped by file, each line with its code and the name in
+bold; choosing one opens it, and its × button brings the navigator back. On a phone
+the list takes the file's place, and on a foldable it opens over the file.
+Commits, Compare, the old side of a diff, and Pull Request files have no
+pressable names, since a language server knows only the working tree.
+
 ### Git
 
 The shared Git child contains only behavior not duplicated by Integrated
@@ -653,6 +686,9 @@ Settings includes:
   and lists the shortcuts it provides;
 - Files, which orders shared file trees either folders first or with every
   entry by name;
+- Language Servers, which turns each language on or off, naming its server,
+  and lists the running servers with their repository, state, and memory, a
+  total, and **Turn off**;
 - Notifications controls for the current browser's permission and subscription,
   plus the active browser-installation count, labels, short IDs, and removal;
 - Name & Icon, which sets the host's name and its icon: the gray meerkat

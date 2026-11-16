@@ -36,6 +36,7 @@ contracts.
 - [Frontend Structure](architecture/frontend.md)
 - [Navigation Routing](architecture/navigation.md)
 - [Terminals](architecture/terminal.md)
+- [Language Servers](architecture/language-servers.md)
 - [Security and Approvals](architecture/security-and-approvals.md)
 
 ## Development

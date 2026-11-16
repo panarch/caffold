@@ -16,7 +16,10 @@ import {
   imageUrl,
 } from "../api.js";
 import { type FetchedFile, fetchInChunks } from "../chunked-fetch.js";
-import { KeyboardContexts } from "../keyboard-navigation.js";
+import {
+  KeyboardContexts,
+  mergeKeyboardNavigationContexts,
+} from "../keyboard-navigation.js";
 import "../keyboard-navigation/components/presentation.js";
 import {
   mergeScrollSurfaceScopes,
@@ -32,6 +35,10 @@ import {
   formatLineStats,
   formatModified,
 } from "./dom.js";
+import type {
+  CodeNamePosition,
+  CodeNamesState,
+} from "./file-viewer/code-names.js";
 import "./file-viewer/components/code-viewer.js";
 import type {
   CaffoldCodeViewer,
@@ -244,6 +251,12 @@ type OpenOptions = ViewerPositionOptions & {
 };
 
 // The action a notice offers, which its owner carries out.
+export type {
+  CodeNameIntentDetail,
+  CodeNamePosition,
+  CodeNamesState,
+} from "./file-viewer/code-names.js";
+
 export interface FileViewerNoticeActionDetail {
   action: string;
 }
@@ -354,6 +367,10 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   };
   @state()
   private accessor wrap = false;
+  // Whether names in Source and the new side of a diff can be pressed; only
+  // an owner that shows the working tree hands this over.
+  @state()
+  private accessor codeNames: CodeNamesState | null = null;
   @state()
   private accessor adjacentFiles: AdjacentFiles = {
     previous: null,
@@ -745,6 +762,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
               .diff=${state.diff}
               .position=${state.position}
               .wrap=${this.wrap}
+              .names=${this.codeNames}
             >${adjacentFiles}</caffold-diff-viewer>
           </section>
         `;
@@ -817,6 +835,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
               .file=${state.file}
               .position=${state.position}
               .wrap=${this.wrap}
+              .names=${this.codeNames}
             >${adjacentFiles}</caffold-code-viewer>
           </section>
         `;
@@ -1135,6 +1154,14 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
         scopeId: `${pull.scopeId}:visual`,
         clipRoots,
       }),
+      this.codeViewer.value?.actionHintScope({
+        scopeId: `${pull.scopeId}:source`,
+        clipRoots,
+      }),
+      this.diffViewer.value?.actionHintScope({
+        scopeId: `${pull.scopeId}:diff`,
+        clipRoots,
+      }),
       this.documentViewer.value?.actionHintScope?.({
         ...pull,
         scopeId: `${pull.scopeId}:document`,
@@ -1180,10 +1207,32 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   }
 
   keyboardNavigationContexts({ scopeId = "" }: { scopeId?: string } = {}) {
-    return this.keyboard.contexts({
-      scopeId,
-      actionHints: (pull) => this.hints.scope(pull),
-    });
+    return mergeKeyboardNavigationContexts(
+      this.keyboard.contexts({
+        scopeId,
+        actionHints: (pull) => this.hints.scope(pull),
+      }),
+      this.codeViewer.value?.keyboardNavigationContexts({
+        scopeId: `${scopeId}:source`,
+      }),
+      this.diffViewer.value?.keyboardNavigationContexts({
+        scopeId: `${scopeId}:diff`,
+      }),
+    );
+  }
+
+  setCodeNames(state: CodeNamesState | null) {
+    this.codeNames = state;
+  }
+
+  // Shows `message` at the pressed name in Source or the diff, when the
+  // definition asked for leads nowhere.
+  showCodeNameMessage(position: CodeNamePosition, message: string) {
+    const viewer =
+      this.state.status === "diff"
+        ? this.diffViewer.value
+        : this.codeViewer.value;
+    return viewer?.showNameMessage(position, message) ?? false;
   }
 
   // Every new state closes the details popover, and only a preview or Visual

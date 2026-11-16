@@ -11,6 +11,8 @@ import { CaffoldElement } from "#app/caffold-element.js";
 import type {
   AdjacentFiles,
   CaffoldReviewFileViewer,
+  CodeNamePosition,
+  CodeNamesState,
   FileViewerNoticeActionDetail,
   ReadingPosition,
 } from "#components/file-viewer.js";
@@ -134,6 +136,14 @@ export class CaffoldReviewSelectedFile extends CaffoldElement {
 
   keyboardNavigationContexts(options: { scopeId?: string } = {}) {
     return this.viewer.keyboardNavigationContexts(options);
+  }
+
+  setCodeNames(state: CodeNamesState | null) {
+    this.viewer.setCodeNames(state);
+  }
+
+  showCodeNameMessage(position: CodeNamePosition, message: string) {
+    return this.viewer.showCodeNameMessage(position, message);
   }
 
   private chooseRepresentation(

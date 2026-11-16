@@ -14,6 +14,17 @@ import {
 
 export type ReviewScope = "working" | "branch";
 export type ReviewNavigator = "changes" | "files";
+export type ReviewFindKind = "references" | "definitions";
+
+// The places Review lists for a name in place of its navigator: the name's
+// file as a Review file path, its one-based line, and its zero-based UTF-16
+// offset in that line.
+export interface ReviewFind {
+  kind: ReviewFindKind;
+  path: string;
+  line: number;
+  character: number;
+}
 
 // The reloadable part of Review: which changes, navigator, and representation
 // it shows, and which file at which line.
@@ -24,6 +35,7 @@ export interface ReviewRoute {
   path: string;
   line: number | null;
   baseRef: string;
+  find: ReviewFind | null;
   threadId?: string;
 }
 
@@ -35,6 +47,8 @@ export interface ReviewRouteInput {
   path?: string;
   line?: number | string | null;
   baseRef?: string | null;
+  reviewFind?: string;
+  reviewFindAt?: string;
 }
 
 export function normalizeReviewRoute(
@@ -49,6 +63,7 @@ export function normalizeReviewRoute(
     path,
     line: path ? positiveLine(route?.line) : null,
     baseRef: `${route?.baseRef ?? ""}`,
+    find: reviewFind(route?.reviewFind, route?.reviewFindAt),
     ...(task ? { threadId: taskThreadId(task) } : {}),
   };
 }
@@ -64,6 +79,8 @@ export function taskRouteForReview(threadId: string, state: ReviewRoute) {
     path: state.path,
     line: state.line,
     baseRef: state.baseRef,
+    reviewFind: state.find?.kind ?? "",
+    reviewFindAt: state.find ? reviewFindAt(state.find) : "",
   };
 }
 
@@ -96,6 +113,7 @@ export function reviewRouteKey(route: ReviewRoute) {
     route.path,
     route.line,
     route.baseRef,
+    route.find ? `${route.find.kind}:${reviewFindAt(route.find)}` : "",
   ].join("\u0000");
 }
 
@@ -121,6 +139,28 @@ export function reviewContextKey(task: ReviewTask | null) {
     taskRootPath(task),
     taskWorktreeRootPath(task),
   ].join("\u0000");
+}
+
+// Where a find's name is, as the address writes it: `<file>:<line>:<column>`
+// with a one-based column.
+export function reviewFindAt({ path, line, character }: ReviewFind) {
+  return `${path}:${line}:${character + 1}`;
+}
+
+function reviewFind(
+  kind: string | undefined,
+  at: string | undefined,
+): ReviewFind | null {
+  if (kind !== "references" && kind !== "definitions") {
+    return null;
+  }
+  const match = `${at ?? ""}`.match(/^(.+):(\d+):(\d+)$/);
+  const path = reviewFilePath(match?.[1]);
+  const line = positiveLine(match?.[2]);
+  const column = positiveLine(match?.[3]);
+  return path && line && column
+    ? { kind, path, line, character: column - 1 }
+    : null;
 }
 
 function positiveLine(line: number | string | null | undefined) {

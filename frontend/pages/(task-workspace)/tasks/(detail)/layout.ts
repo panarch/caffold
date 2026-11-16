@@ -96,6 +96,8 @@ type TaskRoute = {
   reviewScope?: string;
   reviewNavigator?: string;
   reviewViewer?: string;
+  reviewFind?: string;
+  reviewFindAt?: string;
   path?: string;
   line?: number | null;
   baseRef?: string;
@@ -1723,6 +1725,8 @@ function reviewFields(route: Partial<TaskRoute> | null | undefined) {
     reviewScope: route?.reviewScope === "branch" ? "branch" : "working",
     reviewNavigator: route?.reviewNavigator === "files" ? "files" : "changes",
     reviewViewer: isReviewViewer(viewer) ? viewer : "diff",
+    reviewFind: `${route?.reviewFind ?? ""}`,
+    reviewFindAt: `${route?.reviewFindAt ?? ""}`,
     path: `${route?.path ?? ""}`,
     line: route?.line ?? null,
     baseRef: `${route?.baseRef ?? ""}`,

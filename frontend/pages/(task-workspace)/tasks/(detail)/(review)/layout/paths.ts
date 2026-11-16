@@ -46,7 +46,13 @@ export function relativeTaskPath(
   ].join("/");
 }
 
+// A Review file path that starts with `/` names a file from Caffold's root,
+// such as a definition outside the Task's folder; any other is relative to
+// the Task's root.
 export function joinLogicalPath(root: string, relative: string) {
+  if (isRootFilePath(relative)) {
+    return reviewFilePath(relative).slice(1);
+  }
   const segments = logicalSegments(cleanLogicalPath(root) || ".");
   for (const segment of reviewFilePath(relative).split("/")) {
     if (!segment) {
@@ -65,6 +71,7 @@ export function joinLogicalPath(root: string, relative: string) {
 }
 
 export function reviewFilePath(path: string | null | undefined) {
+  const fromRoot = isRootFilePath(path);
   const segments: string[] = [];
   for (const segment of `${path ?? ""}`.replaceAll("\\", "/").split("/")) {
     if (!segment || segment === ".") {
@@ -73,14 +80,28 @@ export function reviewFilePath(path: string | null | undefined) {
     if (segment === "..") {
       if (segments.length && segments.at(-1) !== "..") {
         segments.pop();
-      } else {
+      } else if (!fromRoot) {
         segments.push(segment);
       }
     } else {
       segments.push(segment);
     }
   }
-  return segments.join("/");
+  const joined = segments.join("/");
+  return fromRoot && joined ? `/${joined}` : joined;
+}
+
+// A Review file path for the logical `path`: relative to the Task's root
+// when it lies inside it, else from Caffold's root.
+export function reviewPathFor(path: string, rootPath: string) {
+  const relative = relativeTaskPath(path, rootPath);
+  return relative && !relative.startsWith("..")
+    ? relative
+    : `/${cleanLogicalPath(path)}`;
+}
+
+function isRootFilePath(path: string | null | undefined) {
+  return `${path ?? ""}`.replaceAll("\\", "/").startsWith("/");
 }
 
 function logicalSegments(path: string) {

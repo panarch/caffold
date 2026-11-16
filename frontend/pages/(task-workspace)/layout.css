@@ -27,6 +27,16 @@
   );
   /* Room a header leaves between the corner controls and its own content. */
   --task-workspace-route-control-clearance: 0.625rem;
+  /* How far a header's first and last controls stand in from the
+     workspace's edges: their drawn squares stand here, and a touch target's
+     extra reach goes outward. */
+  --task-workspace-edge-inset: var(--interface-space-6);
+  /* A header's end padding before a compact button, so the button's drawn
+     square stands at the edge inset. */
+  --task-workspace-edge-padding: calc(
+    var(--task-workspace-edge-inset) -
+    var(--interface-compact-hit-outset)
+  );
   --task-header-leading-space: 0rem;
   --task-header-block-space: 0rem;
   position: relative;
@@ -188,7 +198,10 @@
 .task-workspace-route-controls {
   position: absolute;
   top: calc(var(--interface-space-4) - var(--interface-compact-hit-outset));
-  left: calc(var(--interface-space-6) - var(--interface-compact-hit-outset));
+  left: calc(
+    var(--task-workspace-edge-inset) -
+    var(--interface-compact-hit-outset)
+  );
   z-index: 6;
   display: flex;
   gap: var(--task-workspace-route-control-gap);
@@ -412,6 +425,10 @@
 }
 
 @media (max-width: 520px) {
+  :host {
+    --task-workspace-edge-inset: var(--interface-space-4);
+  }
+
   :host([data-workspace-route-control-visible]) {
     --task-header-leading-space: calc(
       var(--interface-compact-hit-size) +
@@ -423,7 +440,6 @@
 
   .task-workspace-route-controls {
     top: calc(0.4375rem - var(--interface-compact-hit-outset));
-    left: calc(var(--interface-space-4) - var(--interface-compact-hit-outset));
   }
 }
 

@@ -1751,6 +1751,47 @@ loading text. After reading Git data again, the viewer reloads a diff, source,
 or preview already on screen without the loading state and keeps its reading
 position.
 
+#### Names in code
+
+When its repository has [language servers](language-servers.md) on, Review
+lets the names in Source and on the new side of Diff be pressed.
+
+- Review reads the Task root's repository status when it activates, when its
+  context changes, and on `caffold:language-servers-changed`, and again every
+  second while a server is starting or asleep. The read as it activates or
+  its context changes looks again for failed servers first, so one installed
+  meanwhile starts. From the status and the
+  extensions each server reads, `layout/code-names.ts` gives the selected file
+  ready, getting ready with the server's progress, or nothing; Review hands it
+  down to the code and diff viewers. A file outside the repository, such as a
+  definition from a toolchain, has none.
+- `syntaxLine` marks each identifier outside comments, keywords, and strings,
+  constants included and a number's tail such as the `u32` of `10u32` left
+  out, as a `.code-name` with its UTF-16 offset in the line. The
+  `CodeNames` controller each viewer holds turns a press that moved no more
+  than four pixels into the `caffold-code-name-menu` popover at the name, Go
+  to definition and Find references, held off while the server gets ready,
+  and keeps the name underlined while the menu is open, since a touch leaves
+  no hover; Cmd or Ctrl goes straight to the definition. It raises
+  `caffold:code-name-intent` with the line and offset.
+- Review asks the server. One definition opens in Source at its line; a
+  definition outside the Task root opens by a Review path that starts with `/`,
+  from Caffold's root. None, a failure, or one outside the browsing root
+  comes back to the viewer as a message in the same popover.
+- Several definitions and any references open `caffold-review-places` in the
+  navigator's place. The route keeps it as `find=references|definitions` and
+  the name's place as `at=<file>:<line>:<column>`, so the list reloads by
+  asking again, and its × button removes only those. On a phone the list takes the
+  file's place; in the drawer widths it opens the drawer. Choosing a place
+  opens it in Source at its line.
+- `G` starts an Action Hint session over the names in view: each viewer's
+  Action Hint scope includes them under `code.name.open`, which the keyboard
+  coordinator keeps for `G` and leaves out for `F`. The dialog's names look
+  dims the code around them and sets a small translucent badge over the start
+  of each. Choosing one
+  opens the menu with Go to definition focused, so Enter goes; the menu does
+  not carry the session on.
+
 ### Git
 
 `caffold-task-git-layout` is a direct shared Detail child under the pathless
@@ -1796,7 +1837,7 @@ choice to give the Detail header's height to the terminal, which each browser
 keeps in `localStorage`.
 [Terminals](terminal.md#browser) owns the control model and the backend
 contract. The bar is as tall as the review file viewer's header. Detail passes
-the terminal page its header's inline padding and control gap, so the bar ends
+the terminal page its header's end padding and control gap, so the bar ends
 where the header does and, on a Task, its last two buttons stand under the
 terminal and Task details buttons.
 
@@ -2114,7 +2155,9 @@ update finishes. Its request generation rejects reports invalidated by hiding
 or a newer read.
 
 Claude, Codex, Grok, and About request a read on entry, re-entry, and foreground
-return. They do not poll while left open. Manual Refresh and runtime-action
+return. They do not poll while left open. Language Servers reads its languages
+on entry and the running servers again every three seconds while it is shown,
+each in one explicit graph in `settings/language-servers/lifecycle.ts`. Manual Refresh and runtime-action
 completion keep their existing reads. Failure uses the existing error
 presentation; another entry, foreground return, or manual Refresh can retry.
 
@@ -2141,7 +2184,8 @@ choices, and its three ranges; Files registers the non-current ordering choice;
 Voice Input registers its non-current provider choices and its enabled API key
 fields; Jev Permissions registers its enabled Extra rules and API key fields;
 Name & Icon registers its enabled Name field and Save and its non-current
-icons; Claude registers its enabled Config directory field, Save, and Use
+icons; Language Servers registers its language switches, its running servers'
+path fields, and Turn off buttons; Claude registers its enabled Config directory field, Save, and Use
 default; and
 Keyboard registers its switch only while keyboard navigation is enabled.
 These controls keep their native editing, choice, and persistence behavior

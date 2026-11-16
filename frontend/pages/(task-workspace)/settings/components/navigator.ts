@@ -27,6 +27,11 @@ const ITEMS: readonly SettingsNavigatorEntry[] = [
   { section: "appearance", label: "Appearance", icon: "Palette" },
   { section: "keyboard", label: "Keyboard", icon: "Keyboard" },
   { section: "files", label: "Files", icon: "File" },
+  {
+    section: "language-servers",
+    label: "Language Servers",
+    icon: "CodeXml",
+  },
   { section: "notifications", label: "Notifications", icon: "Bell" },
   { section: "name-and-icon", label: "Name & Icon", icon: "IdCard" },
   { section: "remote-access", label: "Remote Access", icon: "Link" },

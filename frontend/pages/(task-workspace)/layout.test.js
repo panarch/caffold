@@ -197,6 +197,7 @@ test("composes the keyboard contexts of the shown workspace mode", () => {
     codexRuntimeUpdateDialog: dialog,
     codexResetCreditDialog: dialog,
     updateTaskDialog: dialog,
+    languageServerInstallDialog: dialog,
     archivedDeleteDialog: dialog,
     taskSwitcherDialog: dialog,
   };

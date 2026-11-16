@@ -1,7 +1,10 @@
-import { html } from "lit";
+import { html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
-import type { ActionHintSessionTarget } from "../../action-hints.js";
+import type {
+  ActionHintLook,
+  ActionHintSessionTarget,
+} from "../../action-hints.js";
 import { CaffoldElement } from "../../caffold-element.js";
 import { DrawnRef, DrawnRefs, drawn } from "../../components/drawn-refs.js";
 import { focusedElement } from "../../shadow-roots.js";
@@ -40,6 +43,7 @@ export class CaffoldActionHintDialog extends CaffoldElement {
   private readonly descriptionId: string;
   private targets: readonly ActionHintSessionTarget[] = [];
   private viewportRect: Rect | null = null;
+  private look: ActionHintLook = "actions";
   private progress: Pick<HintProgress, "buffer" | "matches" | "status"> = {
     buffer: "",
     matches: [],
@@ -95,6 +99,7 @@ export class CaffoldActionHintDialog extends CaffoldElement {
       aria-labelledby=${this.titleId}
       aria-describedby=${this.descriptionId}
       tabindex="-1"
+      data-look=${this.look}
       data-input-state=${status}
       data-input=${buffer}
       @click=${this.handleClick}
@@ -110,6 +115,7 @@ export class CaffoldActionHintDialog extends CaffoldElement {
       <output class="action-hint-input-status sr-only" aria-live="polite"
         >${buffer ? `Typed ${buffer}` : ""}</output
       >
+      ${this.look === "names" ? this.nameShade() : nothing}
       <div class="action-hint-badges">${repeat(
         this.targets,
         (target) => target.code,
@@ -125,7 +131,11 @@ export class CaffoldActionHintDialog extends CaffoldElement {
     </dialog>`;
   }
 
-  open(targets: readonly ActionHintSessionTarget[], viewportRect: Rect | null) {
+  open(
+    targets: readonly ActionHintSessionTarget[],
+    viewportRect: Rect | null,
+    look: ActionHintLook = "actions",
+  ) {
     const dialog = this.dialog.value;
     if (!dialog) {
       return;
@@ -135,6 +145,7 @@ export class CaffoldActionHintDialog extends CaffoldElement {
     }
     this.targets = [...targets];
     this.viewportRect = viewportRect;
+    this.look = look;
     this.badgeSizes = new WeakMap();
     this.progress = {
       buffer: "",
@@ -154,6 +165,7 @@ export class CaffoldActionHintDialog extends CaffoldElement {
     }
     this.targets = [];
     this.viewportRect = null;
+    this.look = "actions";
     this.draw();
   }
 
@@ -268,7 +280,12 @@ export class CaffoldActionHintDialog extends CaffoldElement {
       const position = clampBadgePosition(
         {
           left: target.badgeAtEnd ? rect.right - bounds.width : rect.left,
-          top: rect.top,
+          // A name's badge sits on the name's own line, over its first
+          // letters, so it reads as that name's and leaves the lines around it.
+          top:
+            this.look === "names"
+              ? rect.top + (rect.height - bounds.height) / 2
+              : rect.top,
         },
         bounds,
         this.viewportRect,
@@ -278,10 +295,76 @@ export class CaffoldActionHintDialog extends CaffoldElement {
     }
   }
 
+  // Dims the code the names sit in, leaving each name clear: one layer over
+  // the code with a hole at every name.
+  private nameShade() {
+    const area = shadeArea(this.targets);
+    if (!area) {
+      return nothing;
+    }
+    const outline = `M0 0H${area.width}V${area.height}H0Z`;
+    const holes = this.targets
+      .map(({ visibleRect: rect }) => {
+        const left = rect.left - area.left;
+        const top = rect.top - area.top;
+        return `M${left} ${top}H${left + rect.width}V${top + rect.height}H${left}Z`;
+      })
+      .join("");
+    return html`<div
+      class="action-hint-name-shade"
+      style=${`left:${area.left}px;top:${area.top}px;width:${area.width}px;height:${area.height}px;clip-path:path(evenodd,"${outline}${holes}")`}
+    ></div>`;
+  }
+
   private draw() {
     this.requestUpdate();
     this.performUpdate();
   }
+}
+
+// The part of the window the names' code shows in: where their clip roots
+// overlap, across every name.
+function shadeArea(targets: readonly ActionHintSessionTarget[]) {
+  let area: {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+  } | null = null;
+  for (const { clipRoots } of targets) {
+    const clip = clipRoots.reduce(
+      (overlap, root) => {
+        const rect = root.getBoundingClientRect();
+        return {
+          left: Math.max(overlap.left, rect.left),
+          top: Math.max(overlap.top, rect.top),
+          right: Math.min(overlap.right, rect.right),
+          bottom: Math.min(overlap.bottom, rect.bottom),
+        };
+      },
+      { left: -Infinity, top: -Infinity, right: Infinity, bottom: Infinity },
+    );
+    area = area
+      ? {
+          left: Math.min(area.left, clip.left),
+          top: Math.min(area.top, clip.top),
+          right: Math.max(area.right, clip.right),
+          bottom: Math.max(area.bottom, clip.bottom),
+        }
+      : clip;
+  }
+  if (
+    !area ||
+    !Number.isFinite(area.left + area.top + area.right + area.bottom)
+  ) {
+    return null;
+  }
+  return {
+    left: area.left,
+    top: area.top,
+    width: Math.max(0, area.right - area.left),
+    height: Math.max(0, area.bottom - area.top),
+  };
 }
 
 declare global {

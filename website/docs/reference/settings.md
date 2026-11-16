@@ -27,6 +27,16 @@ Turns **Keyboard navigation** on or off and lists its shortcuts. See
 Orders the file trees in Working Tree, Branch, Git, and GitHub: **Folders first**,
 or **All entries by name**.
 
+## Language Servers
+
+Turns on the languages whose names you can
+[look up in Review](../review/changes.md#go-to-a-definition): Rust and
+TypeScript/JavaScript, each with the server it uses. **Running** lists the
+servers that are on, with their memory and a **Turn off** button. A server
+that isn't installed is installed from the Task details of a repository that
+uses it; see [Turn it on](../review/changes.md#turn-it-on) for the whole
+setup.
+
 ## Name & Icon
 
 Sets the **Name** and icon that browser tabs and installed apps show for this

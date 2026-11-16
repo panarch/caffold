@@ -151,8 +151,9 @@ details for both.
 
 Every action in Caffold works from the keyboard. If one doesn't, that's a bug.
 Press `F` and a short code appears on each action in view; `S` does the same
-for areas that scroll, and key combinations reach the terminal, the side panel,
-and those codes even while you type. See
+for areas that scroll, `G` for the names in code you can look up, and key
+combinations reach the terminal, the side panel, and those codes even while you
+type. See
 [Keyboard navigation](website/docs/keyboard.md).
 
 You can also work without one. The Task composer supports multilingual voice

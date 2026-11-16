@@ -1,10 +1,16 @@
 import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property } from "lit/decorators.js";
+import type { ActionHintPull } from "#app/action-hints.js";
 import type { SyntaxSpan } from "#app/api.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "../../drawn-refs.js";
 import { readPageAnchor, scrollToPageAnchor } from "../../page-anchor.js";
+import {
+  type CodeNamePosition,
+  CodeNames,
+  type CodeNamesState,
+} from "../code-names.js";
 import { syntaxLine } from "../syntax-spans.js";
 import type { CodePosition, ViewerPosition } from "./code-viewer.js";
 
@@ -37,6 +43,8 @@ const EMPTY_DIFF_MESSAGE = "No diff for this file.";
 // Rows of file text, which the server's `syntaxSpans` color by their line in
 // the diff.
 const SOURCE_ROWS = new Set<DiffRowType>(["added", "removed", "context"]);
+// Rows of the working tree's file, whose names a language server knows.
+const NEW_ROWS = new Set<DiffRowType>(["added", "context"]);
 
 @customElement("caffold-diff-viewer")
 export class CaffoldDiffViewer extends CaffoldElement {
@@ -47,9 +55,21 @@ export class CaffoldDiffViewer extends CaffoldElement {
   // Long lines wrap at the viewer's width instead of scrolling sideways.
   @property({ type: Boolean, reflect: true })
   accessor wrap = false;
+  // Whether names on the new side can be pressed to find their definition and
+  // references.
+  @property({ attribute: false })
+  accessor names: CodeNamesState | null = null;
 
   static override styles = styles;
 
+  private readonly codeNames = new CodeNames(
+    this,
+    (row) => {
+      const line = Number((row as HTMLElement).dataset.newLine);
+      return Number.isInteger(line) && line > 0 ? line : null;
+    },
+    () => this.scrollport.value,
+  );
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly table = new DrawnRef<HTMLDivElement>(this);
@@ -77,6 +97,7 @@ export class CaffoldDiffViewer extends CaffoldElement {
     const rows = parseUnifiedDiff(this.diff.diff ?? "");
     const oldDigits = diffLineNumberDigits(rows, "oldLine");
     const newDigits = diffLineNumberDigits(rows, "newLine");
+    const names = Boolean(this.names);
     const drawnRows = rows.length
       ? rows.map((row) => {
           const sourceLine = row.newLine ?? row.oldLine;
@@ -84,6 +105,7 @@ export class CaffoldDiffViewer extends CaffoldElement {
             <div
               class="diff-row diff-row-${row.type}"
               data-source-line=${sourceLine || nothing}
+              data-new-line=${(NEW_ROWS.has(row.type) && row.newLine) || nothing}
             >
               <span class="diff-gutter">
                 <span class="diff-old-line">${row.oldLine ?? ""}</span>
@@ -92,7 +114,9 @@ export class CaffoldDiffViewer extends CaffoldElement {
               </span>
               <span class="diff-code">${
                 SOURCE_ROWS.has(row.type)
-                  ? syntaxLine(row.content, spans?.[row.index])
+                  ? syntaxLine(row.content, spans?.[row.index], {
+                      names: names && NEW_ROWS.has(row.type),
+                    })
                   : row.content
               }</span>
             </div>
@@ -129,13 +153,25 @@ export class CaffoldDiffViewer extends CaffoldElement {
             ${drawn(this.table)}
             class="diff-table"
             style="--diff-code-width: ${diffCodeColumns(rows)}ch;"
+            @pointerdown=${this.codeNames.pressStart}
+            @click=${this.codeNames.press}
           >
             ${drawnRows}
           </div>
           <slot name="end"></slot>
         </div>
+        ${names ? this.codeNames.menuTemplate() : nothing}
       </section>
     `;
+  }
+
+  override willUpdate(changed: PropertyValues) {
+    if (changed.has("names")) {
+      this.codeNames.state = this.names;
+      if (!this.names) {
+        this.codeNames.hide();
+      }
+    }
   }
 
   // The rows stay in place from one diff to the next, so a diff that keeps
@@ -151,6 +187,21 @@ export class CaffoldDiffViewer extends CaffoldElement {
 
   getScrollState() {
     return this.captureScroll();
+  }
+
+  // Shows `message` at the name at `position` on the new side, when the
+  // definition the owner was asked for leads nowhere.
+  showNameMessage(position: CodeNamePosition, message: string) {
+    return this.codeNames.showMessage(position, message);
+  }
+
+  keyboardNavigationContexts(pull: { scopeId?: string } = {}) {
+    return this.codeNames.keyboardNavigationContexts(pull);
+  }
+
+  // The names in view on the new side, for `G`.
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.codeNames.actionHintScope(pull);
   }
 
   readingPosition() {

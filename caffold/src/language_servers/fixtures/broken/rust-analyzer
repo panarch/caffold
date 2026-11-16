@@ -1,0 +1,4 @@
+#!/bin/sh
+# A rust-analyzer the project's toolchain has, but that does not run.
+echo "rust-analyzer: could not load the toolchain sysroot (fixture)" >&2
+exit 1

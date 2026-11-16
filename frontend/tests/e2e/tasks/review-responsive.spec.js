@@ -82,6 +82,17 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
         infoRect.right - infoVisualInset -
           rightmostPaneControl.getBoundingClientRect().right,
       ),
+      // Each visible pane control stands from its pane's end as the Detail
+      // header's last button stands from the header's.
+      paneEndDeltas: visiblePaneControls.map((control) => {
+        const pane = control
+          .closest(".task-review-navigator-pane, .task-review-viewer-pane")
+          .getBoundingClientRect();
+        return Math.abs(
+          pane.right - control.getBoundingClientRect().right -
+            (summaryRect.right - (infoRect.right - infoVisualInset)),
+        );
+      }),
       rootFontSize: Number.parseFloat(
         getComputedStyle(document.documentElement).fontSize,
       ),
@@ -99,7 +110,39 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
   expect(before.summaryActionsContained).toBe(true);
   expect(before.navigatorVisible).toBe(true);
   expect(before.viewerVisible).toBe(testInfo.project.name !== "phone");
-  expect(before.actionEdgeDelta).toBeLessThanOrEqual(1);
+  expect(before.actionEdgeDelta).toBeLessThan(0.1);
+  // The Detail header's last button stands as far from its end as the
+  // workspace's first corner control stands from its start.
+  const headerEnds = await page.evaluate(([workspace, summary, summaryInfo]) => {
+    const drawn = (element) => {
+      const rect = element.getBoundingClientRect();
+      const before = getComputedStyle(element, "::before");
+      return {
+        left: rect.left + Number.parseFloat(before.left),
+        right: rect.right - Number.parseFloat(before.right),
+      };
+    };
+    const corner = [
+      ...workspace.shadowRoot.querySelectorAll(".task-workspace-route-control"),
+    ]
+      .filter((control) => control.checkVisibility())
+      .map(drawn)
+      .sort((a, b) => a.left - b.left)[0];
+    const header = summary.getBoundingClientRect();
+    return {
+      start: corner.left - header.left,
+      end: header.right - drawn(summaryInfo).right,
+    };
+  }, [
+    await page.locator("caffold-task-workspace").elementHandle(),
+    await page.locator("caffold-detail-layout .detail-layout-summary").elementHandle(),
+    await page.locator("caffold-detail-layout .task-detail-info-button").elementHandle(),
+  ]);
+  expect(Math.abs(headerEnds.start - headerEnds.end)).toBeLessThan(0.1);
+  expect(before.paneEndDeltas.length).toBe(testInfo.project.name === "phone" ? 1 : 2);
+  for (const delta of before.paneEndDeltas) {
+    expect(delta).toBeLessThan(0.1);
+  }
   expect(before.taskTitleFontSize).toBeLessThan(before.rootFontSize);
   expect(before.taskTitleFontSize).toBeGreaterThanOrEqual(before.rootFontSize * 0.8);
   const reviewSeparator = taskReview.getByRole("separator", {
@@ -153,7 +196,7 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
   if (testInfo.project.name !== "desktop") {
     await expect(taskReview.locator(".task-review-navigator-pane")).toBeHidden();
   }
-  const after = await taskReview.evaluate((review, [git, github]) => {
+  const after = await taskReview.evaluate((review, [git, github, summary, summaryInfo]) => {
     const navigator = review.shadowRoot.querySelector(".task-review-navigator-pane");
     const viewer = review.shadowRoot.querySelector(".task-review-viewer-pane");
     const viewerHeader = review
@@ -177,6 +220,12 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
     const viewerInfoBounds = visualBounds(viewerInfo, "::after");
     const viewerWrapBounds = visualBounds(viewerWrap, "::before");
     return {
+      viewerEndDelta: Math.abs(
+        viewer.getBoundingClientRect().right -
+          viewerAxis.getBoundingClientRect().right -
+          (summary.getBoundingClientRect().right -
+            visualBounds(summaryInfo, "::before").right),
+      ),
       overflow: review.scrollWidth > review.clientWidth,
       navigatorVisible: navigator.getClientRects().length > 0,
       viewerVisible: viewer.getClientRects().length > 0,
@@ -197,9 +246,12 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
   }, await elementHandles(page.locator("caffold-detail-layout"), [
     ".task-git-button",
     ".task-github-button",
+    ".detail-layout-summary",
+    ".task-detail-info-button",
   ]));
   expect(after.overflow).toBe(false);
   expect(after.viewerVisible).toBe(true);
+  expect(after.viewerEndDelta).toBeLessThan(0.1);
   // An open file takes the width below a wide window: the phone shows it
   // alone and the foldable folds the navigator into its drawer.
   expect(after.navigatorVisible).toBe(testInfo.project.name === "desktop");
@@ -344,14 +396,21 @@ test("keeps one compact file-navigation header on phone", { tag: "@phone" }, asy
   expect(geometry.hitHeight).toBeGreaterThanOrEqual(40);
   expect(geometry.headerHeight).toBeLessThanOrEqual(42);
   expect(Math.abs(geometry.titleCenter - geometry.headerCenter)).toBeLessThanOrEqual(1);
-  // The Detail header's start padding also makes room for Back to tasks.
-  const detailContentStart = await page
-    .locator("caffold-detail-layout .detail-layout-summary")
-    .evaluate((header) =>
-      header.getBoundingClientRect().left +
-      Number.parseFloat(getComputedStyle(header).paddingRight),
-    );
-  expect(geometry.closeVisualLeft).toBeCloseTo(detailContentStart, 0);
+  // The file's Back stands as far from the start as the Detail header's last
+  // button stands from the end, the workspace's edge inset.
+  const headerEnd = await page.evaluate(([summary, info]) => {
+    const header = summary.getBoundingClientRect();
+    const drawnRight =
+      info.getBoundingClientRect().right -
+      Number.parseFloat(getComputedStyle(info, "::before").right);
+    return { left: header.left, inset: header.right - drawnRight };
+  }, [
+    await page.locator("caffold-detail-layout .detail-layout-summary").elementHandle(),
+    await page.locator("caffold-detail-layout .task-detail-info-button").elementHandle(),
+  ]);
+  expect(
+    Math.abs(geometry.closeVisualLeft - headerEnd.left - headerEnd.inset),
+  ).toBeLessThan(0.1);
 
   await captureReviewScreenshot(page, testInfo, "tasks-review-phone-file");
   await backButtons.click();

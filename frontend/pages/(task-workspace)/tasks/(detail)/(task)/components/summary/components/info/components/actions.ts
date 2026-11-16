@@ -1,12 +1,19 @@
-import { html, nothing } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { html, nothing, type PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
-import type { TaskResponseError } from "#app/api.js";
+import type {
+  LanguageServerFailure,
+  LanguageServerStatus,
+  Task,
+  TaskResponseError,
+} from "#app/api.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import type { LanguageServerInstall } from "#app/pages/(task-workspace)/components/language-server-install-dialog.js";
+import { languageServerMemory } from "#app/pages/(task-workspace)/language-servers.js";
 import { scopedStyle } from "#app/scoped-style.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import {
@@ -15,6 +22,10 @@ import {
   taskThreadStatusType,
 } from "#tasks/runtime-state.js";
 import { type ListedTask, taskThreadId } from "#tasks/task-list-model.js";
+import {
+  LanguageServersLifecycle,
+  type LanguageServersSnapshot,
+} from "./actions/language-servers.js";
 
 import secondaryButton from "#app/component-styles/secondary-button.css.js";
 import busySpin from "#app/pages/component-styles/busy-spin.css.js";
@@ -28,6 +39,8 @@ const PIN_ABOUT =
   "Pinned Tasks stay at the top of the Task list and the Task Switcher.";
 const UNPIN_ABOUT =
   "This Task is pinned. Unpinning returns it to the top of its Section.";
+const LANGUAGE_SERVERS_ABOUT =
+  "Language servers answer Go to definition and Find references in this repository's code.";
 const FORK_ABOUT =
   "Create a new Task at the project root with this conversation's history. Files and worktrees are not copied.";
 const ARCHIVE_ABOUT =
@@ -69,15 +82,29 @@ export interface TaskInfoActionIntent {
   type: TaskInfoAction;
 }
 
+// Asks for a Task in which an agent installs language servers on the host:
+// the servers a repository found missing, and the control focus returns to
+// when the dialog closes. The install Task starts in the home folder
+// whichever repository asked.
+export interface LanguageServerInstallIntent {
+  servers: LanguageServerInstall[];
+  opener: HTMLElement | null;
+}
+
 /**
  * What can be done with the Task from its details popover: read what its
- * prompts settled, pin or unpin it, fork it, and archive it, each with why it
- * cannot be done now.
+ * prompts settled, pin or unpin it, turn its repository's language servers on
+ * or off, fork it, and archive it, each with why it cannot be done now.
+ *
+ * The language servers are read once before the popover opens and then
+ * while it is open.
  */
 @customElement("caffold-task-detail-info-actions")
 export class CaffoldTaskDetailInfoActions extends CaffoldElement {
   @property({ attribute: false })
   accessor snapshot: TaskInfoActionsSnapshot | null = null;
+  @state()
+  private accessor languageServers: LanguageServersSnapshot;
 
   static override styles = [
     scopedStyle(busySpin, ".task-detail-action-icon.is-busy"),
@@ -87,20 +114,52 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
 
   private readonly hints = new ActionHints(this);
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly languageServersLifecycle = new LanguageServersLifecycle({
+    onChange: (snapshot) => {
+      this.languageServers = snapshot;
+    },
+  });
+  private popoverOpen = false;
+  private detailsButton: HTMLElement | null = null;
+
+  constructor() {
+    super();
+    this.languageServers = this.languageServersLifecycle.snapshot;
+  }
 
   override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
+    this.syncLanguageServers();
   }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
+    this.setPopoverOpen(false, null);
+  }
+
+  /**
+   * Task Info says when its popover opens and closes, and which button focus
+   * returns to once a dialog an action opens takes the popover's place.
+   */
+  setPopoverOpen(open: boolean, detailsButton: HTMLElement | null) {
+    this.popoverOpen = open;
+    this.detailsButton = detailsButton;
+    this.syncLanguageServers();
   }
 
   actionHintScope(pull: ActionHintPull = {}) {
     return this.hints.scope(pull);
+  }
+
+  // The Task's directory is known once its details are read, which can be
+  // after the popover opened.
+  protected override willUpdate(changed: PropertyValues<this>) {
+    if (changed.has("snapshot")) {
+      this.syncLanguageServers();
+    }
   }
 
   override render() {
@@ -127,6 +186,33 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
         archiveFailure.worktreeId,
     );
     const threadId = taskThreadId(snapshot.task);
+    const languageServers = this.languageServers;
+    const repository = languageServers.repository;
+    const servers = repository?.servers ?? [];
+    const serversOn = repository?.enabled === true;
+    // Statuses and choices follow only the latest answer.
+    const serversKnown = languageServers.fresh;
+    const turning = languageServers.turning;
+    const serversBusy =
+      turning !== null ||
+      (serversKnown &&
+        serversOn &&
+        servers.some((server) => server.state === "starting"));
+    const serversLabel =
+      turning === "off"
+        ? "Turning off language servers..."
+        : serversBusy
+          ? "Starting language servers..."
+          : serversOn
+            ? "Turn off language servers"
+            : "Turn on language servers";
+    const missingServers =
+      serversKnown && serversOn ? notInstalled(servers) : [];
+    const installLabel =
+      missingServers.length === 1
+        ? `Ask an agent to install ${missingServers[0].serverName}`
+        : `Ask an agent to install ${missingServers.length} servers`;
+    const serversError = actionErrorMessage(languageServers.error);
     return html`
       <div
         class="task-detail-task-action
@@ -177,6 +263,71 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
           role="alert"
           ?hidden=${!pinError}
         >${pinError}</p>
+      </div>
+      <div
+        class="task-detail-task-action task-detail-language-servers-action"
+        ?hidden=${servers.length === 0}
+      >
+        <p>${LANGUAGE_SERVERS_ABOUT}</p>
+        ${
+          serversKnown && serversOn
+            ? servers.map((server) => {
+                const status = languageServerStatus(server);
+                const said = languageServerSaid(server);
+                return status
+                  ? html`<p data-language-server=${server.language}>${status}</p>${
+                      said
+                        ? html`<p
+                            class="task-detail-language-server-said"
+                            data-language-server-said=${server.language}
+                          >${said}</p>`
+                        : nothing
+                    }`
+                  : nothing;
+              })
+            : nothing
+        }
+        <div class="task-detail-action-row">
+          ${
+            missingServers.length > 0
+              ? html`<button
+                  ${this.hints.button({
+                    id: `${threadId}:language-server-install`,
+                    label: installLabel,
+                    action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                    badgeAtEnd: true,
+                  })}
+                  type="button"
+                  class="task-secondary-button"
+                  data-task-info-action="install-language-servers"
+                  @click=${this.requestLanguageServerInstall}
+                >${actionContent("Bot", installLabel)}</button>`
+              : nothing
+          }
+          <button
+            ${this.hints.button({
+              id: `${threadId}:language-servers`,
+              label: serversLabel,
+              action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              when: servers.length > 0,
+              badgeAtEnd: true,
+            })}
+            type="button"
+            class="task-secondary-button"
+            data-task-info-action=${
+              serversOn
+                ? "turn-off-language-servers"
+                : "turn-on-language-servers"
+            }
+            ?disabled=${!serversKnown || serversBusy}
+            @click=${this.turnLanguageServers}
+          >${actionContent("CodeXml", serversLabel, serversBusy)}</button>
+        </div>
+        <p
+          class="task-detail-action-error task-detail-language-servers-error"
+          role="alert"
+          ?hidden=${!serversError}
+        >${serversError}</p>
       </div>
       <div class="task-detail-task-action task-detail-fork-action">
         <p>${FORK_ABOUT}</p>
@@ -282,6 +433,55 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
     return this.snapshot?.permissionMode === REVIEWED_PERMISSION_MODE;
   }
 
+  // Open, the section reads its repository and follows it; closed, it reads
+  // it once ahead, so the section is there when the popover opens.
+  private syncLanguageServers() {
+    const path = this.isConnected ? languageServersPath(this.snapshot) : null;
+    if (path === null) {
+      this.languageServersLifecycle.stop();
+    } else if (this.popoverOpen) {
+      this.languageServersLifecycle.show(path);
+    } else {
+      this.languageServersLifecycle.hide();
+      this.languageServersLifecycle.preload(path);
+    }
+  }
+
+  private turnLanguageServers() {
+    void this.languageServersLifecycle.turn(
+      this.languageServers.repository?.enabled !== true,
+    );
+  }
+
+  // Hands every server this repository lacks to one install Task, which
+  // runs on the host.
+  private requestLanguageServerInstall() {
+    const servers = notInstalled(
+      this.languageServers.repository?.servers ?? [],
+    );
+    if (servers.length === 0) {
+      return;
+    }
+    this.dispatchEvent(
+      new CustomEvent<LanguageServerInstallIntent>(
+        "caffold:language-server-install-intent",
+        {
+          bubbles: true,
+          composed: true,
+          detail: {
+            servers: servers.map(({ serverName, failure }) => ({
+              serverName,
+              ...(failure.toolchain ? { toolchain: failure.toolchain } : {}),
+              installCommand: failure.installCommand,
+              checkCommand: failure.checkCommand,
+            })),
+            opener: this.detailsButton,
+          },
+        },
+      ),
+    );
+  }
+
   private requestAction(event: Event) {
     const type = (event.currentTarget as HTMLButtonElement).dataset
       .taskInfoAction as TaskInfoAction;
@@ -312,6 +512,70 @@ function actionErrorMessage(error: Error | null) {
   return error ? `${error.message ?? error}` : "";
 }
 
+// The repository a Task's language servers belong to is asked for by its
+// worktree, or by its directory outside one. A directory outside Caffold's
+// root has none.
+function languageServersPath(snapshot: TaskInfoActionsSnapshot | null) {
+  if (!snapshot?.task || !snapshot.canonicalTaskAvailable) {
+    return null;
+  }
+  const task = snapshot.task as Task;
+  return task.worktree?.rootPath ?? task.cwdPath ?? null;
+}
+
+type NotInstalledServer = LanguageServerStatus & {
+  failure: Extract<LanguageServerFailure, { kind: "notInstalled" }>;
+};
+
+function notInstalled(servers: readonly LanguageServerStatus[]) {
+  return servers.filter(
+    (server): server is NotInstalledServer =>
+      server.state === "failed" && server.failure?.kind === "notInstalled",
+  );
+}
+
+// One language's line under the section while its servers are on, as
+// "Rust: ready · rust-analyzer · 2.8 GB". A failed server's line says which
+// check failed, never what the tool printed.
+function languageServerStatus(server: LanguageServerStatus) {
+  const name = server.languageName;
+  switch (server.state) {
+    case "starting":
+      return server.progress
+        ? `${name}: getting ready · ${server.progress}`
+        : `${name}: getting ready`;
+    case "ready": {
+      const memory = languageServerMemory(server.memoryBytes);
+      return [`${name}: ready`, server.serverName, memory]
+        .filter(Boolean)
+        .join(" · ");
+    }
+    case "sleeping":
+      return `${name}: sleeping`;
+    case "failed": {
+      const failure = server.failure;
+      if (failure?.kind === "notInstalled") {
+        return failure.toolchain
+          ? `${name}: ${server.serverName} is not installed for the ${failure.toolchain} toolchain.`
+          : `${name}: ${server.serverName} is not installed.`;
+      }
+      return failure?.kind === "stopped"
+        ? `${name}: ${server.serverName} stopped.`
+        : `${name}: ${server.serverName} could not start.`;
+    }
+    default:
+      return "";
+  }
+}
+
+// What a server that could not start printed, shown as it is under its
+// line.
+function languageServerSaid({ state, failure }: LanguageServerStatus) {
+  return state === "failed" && failure?.kind === "couldNotStart"
+    ? failure.reason
+    : "";
+}
+
 function forkDisabledReason(snapshot: TaskInfoActionsSnapshot) {
   if (!snapshot.canonicalTaskAvailable) {
     return "Fork is unavailable until Task details load.";
@@ -338,5 +602,6 @@ declare global {
 
   interface HTMLElementEventMap {
     "caffold:task-detail-info-action-intent": CustomEvent<TaskInfoActionIntent>;
+    "caffold:language-server-install-intent": CustomEvent<LanguageServerInstallIntent>;
   }
 }

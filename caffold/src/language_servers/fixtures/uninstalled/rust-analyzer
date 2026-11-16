@@ -1,0 +1,4 @@
+#!/bin/sh
+# A rustup proxy for a toolchain without the rust-analyzer component.
+echo "error: Unknown binary 'rust-analyzer' in official toolchain (fixture)." >&2
+exit 1

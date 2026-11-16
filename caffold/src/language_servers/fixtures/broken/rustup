@@ -1,0 +1,11 @@
+#!/bin/sh
+# rustup for a project whose toolchain has rust-analyzer.
+if [ "$1 $2" = "show active-toolchain" ]; then
+  echo "1.96.0-aarch64-apple-darwin (default)"
+  exit 0
+fi
+if [ "$1" = "which" ]; then
+  echo "/rustup/toolchains/1.96.0-aarch64-apple-darwin/bin/$2"
+  exit 0
+fi
+exit 2

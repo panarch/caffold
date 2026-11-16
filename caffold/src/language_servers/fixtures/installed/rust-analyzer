@@ -1,0 +1,3 @@
+#!/bin/sh
+# A rust-analyzer that is installed: it reports its version.
+echo "rust-analyzer 1.96.0 (fixture)"

@@ -683,14 +683,24 @@ test("creates a task with responsive composer controls and canonical approval st
           style.paddingLeft,
         ].map((value) => Number.parseFloat(value));
       });
-    const [blockPadding, inlinePadding] = (phone
-      ? [0.4375, 0.5]
-      : [0.5, 0.875]
+    const [blockPadding, inlinePadding, edgeInset] = (phone
+      ? [0.4375, 0.5, 0.5]
+      : [0.5, 0.875, 0.75]
     ).map((value) => value * rootFontSize);
     expect(summaryPadding).toHaveLength(4);
     expect(summaryPadding[0]).toBeCloseTo(blockPadding, 2);
-    expect(summaryPadding[1]).toBeCloseTo(inlinePadding, 2);
     expect(summaryPadding[2]).toBeCloseTo(blockPadding, 2);
+    // Task details' drawn square ends at the workspace's edge inset; its
+    // touch target reaches past it.
+    const detailsEnd = await tasksPage
+      .locator(".task-detail-summary .task-detail-info-button")
+      .evaluate((info, summary) => {
+        const button = info.getBoundingClientRect();
+        const drawnRight =
+          button.right - Number.parseFloat(getComputedStyle(info, "::before").right);
+        return summary.getBoundingClientRect().right - drawnRight;
+      }, await tasksPage.locator(".task-detail-summary").elementHandle());
+    expect(detailsEnd).toBeCloseTo(edgeInset, 2);
     if (testInfo.project.name !== "phone") {
       expect(summaryPadding[3]).toBeCloseTo(inlinePadding, 2);
     } else {

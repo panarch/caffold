@@ -1,0 +1,260 @@
+:host {
+  container: settings-language-servers / inline-size;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  font-size: var(--interface-font-size);
+  line-height: var(--interface-line-height);
+}
+
+.settings-content-scroll {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding-block: var(--settings-content-padding-block);
+  padding-inline: var(--settings-content-padding-inline);
+}
+
+.settings-content-section {
+  display: grid;
+  width: min(100%, var(--settings-content-max-width));
+  min-width: 0;
+  margin: 0 auto;
+}
+
+.settings-content-section > header {
+  padding-bottom: var(--interface-space-6);
+  border-bottom: 1px solid var(--border);
+}
+
+p,
+h3,
+ul {
+  margin: 0;
+}
+
+.settings-content-section > header p {
+  color: var(--muted);
+  font-size: var(--settings-page-description-size);
+  line-height: var(--interface-line-height);
+}
+
+.settings-content-section > section {
+  display: grid;
+  justify-items: start;
+  gap: var(--interface-space-4);
+  min-width: 0;
+  margin-top: var(--interface-space-10);
+}
+
+.settings-content-section > section > h3 {
+  font-size: var(--settings-field-label-size);
+  line-height: var(--interface-line-height);
+}
+
+.settings-language-servers-message {
+  padding: var(--interface-space-5) var(--interface-space-6);
+  border-left: 3px solid var(--danger);
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: var(--settings-small-text-size);
+  line-height: var(--interface-line-height);
+  overflow-wrap: anywhere;
+}
+
+.settings-language-servers-none {
+  color: var(--muted);
+  font-size: var(--settings-small-text-size);
+}
+
+/* One row per language or running server, a line between rows. Rows fill the
+   column, so the list stays compact as languages are added. */
+.settings-language-servers-list {
+  justify-self: stretch;
+  min-width: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-language-servers-list > li {
+  display: grid;
+  gap: var(--interface-space-4);
+  min-width: 0;
+  padding-block: var(--interface-space-6);
+  border-top: 1px solid var(--border);
+}
+
+.settings-language-servers-list > li:last-child {
+  border-bottom: 1px solid var(--border);
+}
+
+/* The text takes the row and wraps; a state or branch name too long for the
+   line breaks anywhere rather than clipping or widening the page. The switch and the Turn off button keep their own width at the end of
+   the row, centred beside the text. */
+.settings-language-server-toggle,
+.settings-language-server-running {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--interface-space-8);
+  min-width: 0;
+}
+
+.settings-language-server-toggle {
+  position: relative;
+  cursor: pointer;
+}
+
+.settings-language-server-copy {
+  display: grid;
+  gap: var(--interface-space-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.settings-language-server-copy strong {
+  font-size: var(--settings-field-label-size);
+  font-weight: 600;
+}
+
+.settings-language-server-copy > span {
+  color: var(--muted);
+  font-size: var(--settings-field-description-size);
+}
+
+/* A path stays on one line however long it is: it scrolls inside its box,
+   where it can be selected and copied, instead of wrapping the row. */
+.settings-language-server-path {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: var(--interface-space-2) var(--interface-space-4);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--settings-small-text-size);
+  line-height: var(--interface-line-height);
+}
+
+.settings-language-server-path:focus-visible {
+  border-color: var(--border-strong);
+  outline: none;
+}
+
+.settings-language-servers-button {
+  max-width: 100%;
+  padding-block: var(--interface-space-2);
+  line-height: var(--interface-line-height);
+  text-align: start;
+  white-space: normal;
+}
+
+.settings-language-servers-button {
+  display: inline-flex;
+  min-height: var(--settings-page-action-size);
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--interface-control-padding-inline);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--control-fg);
+  font: inherit;
+  font-size: var(--settings-small-text-size);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.settings-language-servers-button:focus-visible {
+  border-color: var(--border-strong);
+  outline: none;
+  background: var(--control-hover-bg);
+}
+
+@media (hover: hover) {
+  .settings-language-servers-button:hover:not(:disabled) {
+    border-color: var(--border-strong);
+    outline: none;
+    background: var(--control-hover-bg);
+  }
+}
+
+.settings-language-servers-button:disabled {
+  color: var(--disabled-text);
+  cursor: default;
+}
+
+/* The switch Settings → Keyboard draws: the checkbox lies unseen over the
+   track it turns. */
+.settings-language-server-toggle input {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  right: 0;
+  width: 2.5rem;
+  height: 1.5rem;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.settings-language-server-toggle input:disabled {
+  cursor: default;
+}
+
+.settings-language-server-state {
+  position: relative;
+  display: block;
+  width: 2.5rem;
+  height: 1.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-muted);
+}
+
+.settings-language-server-state::after {
+  position: absolute;
+  inset: 0.1875rem auto auto 0.1875rem;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: var(--muted);
+  content: "";
+  transition: transform 120ms ease;
+}
+
+input:checked + .settings-language-server-state {
+  border-color: var(--primary-control-bg);
+  background: var(--primary-control-bg);
+}
+
+input:checked + .settings-language-server-state::after {
+  background: var(--text-inverse);
+  transform: translateX(1rem);
+}
+
+input:focus-visible + .settings-language-server-state {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+input:disabled + .settings-language-server-state {
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-language-server-state::after {
+    transition: none;
+  }
+}
+
+:host([hidden]),
+[hidden] {
+  display: none;
+}

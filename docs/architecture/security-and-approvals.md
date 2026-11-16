@@ -484,6 +484,23 @@ without CORS, so the backend checks the origin itself; the same check keeps
 another site from starting or killing a shell. [Terminals](terminal.md) owns the
 routes and lifetime.
 
+## Language Servers
+
+A language server runs the project's own code: rust-analyzer runs build
+scripts and procedural macros, and typescript-language-server loads the
+project's TypeScript and its plugins. Caffold starts one only for a repository
+the person turned on, in a language they turned on in Settings, so it runs
+under the same trust as an agent running commands in that working tree.
+
+- Caffold runs only a server it finds in the project or on `PATH`; it never
+  downloads one. Asking an agent to install a server starts an ordinary Task
+  in the home folder whose commands go through that Task's usual approvals.
+- Turning a language or a repository on or off, and looking for a
+  repository's failed servers again, require an `Origin` that matches the
+  request's `Host`, since they start or end processes.
+- A definition or reference outside the browsing root comes back with its file
+  name only, never its path.
+
 ## Prompt Attachments
 
 The browser uploads a prompt's files into the Task's effective working

@@ -1,0 +1,211 @@
+/* It stands in the navigator's place, so it has the navigator lists' edge
+   toward the file, which the one-pane width turns into a line below. */
+:host {
+  --review-places-edge-width: 1px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  border-right: var(--review-places-edge-width) solid var(--border);
+  background: var(--surface);
+}
+
+@media (max-width: 560px) {
+  :host {
+    --review-places-edge-width: 0px;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+/* The header is as tall as the navigator's, and grows only when a long name
+   wraps. */
+.review-places-header {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--interface-space-4);
+  min-height: var(--review-header-height, 2.625rem);
+  padding: 0
+    calc(
+      var(--review-action-inline-end, 0.75rem) -
+      var(--interface-compact-hit-outset) -
+      var(--review-places-edge-width)
+    )
+    0 var(--review-navigator-header-padding-inline, 0.75rem);
+  border-bottom: 1px solid var(--border);
+}
+
+/* The close button's drawn square stands where the navigator's own control
+   does: at its action inset, centred in the header's first row however the
+   name wraps. Its hit area reaches past the square. */
+.review-places-close {
+  align-self: start;
+  margin-top: calc(
+    (
+      var(--review-header-height, 2.625rem) -
+      var(--interface-compact-hit-size) +
+      2 *
+      var(--interface-compact-hit-outset)
+    ) /
+    2 -
+    var(--interface-compact-hit-outset)
+  );
+  color: var(--control-fg);
+}
+
+.review-places-close-icon {
+  position: relative;
+  display: block;
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
+}
+
+.review-places-heading {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+  padding-block: var(--interface-space-1);
+}
+
+h2 {
+  margin: 0;
+  font-size: var(--review-pane-title-size, 0.82rem);
+  font-weight: 600;
+  line-height: var(--review-pane-title-line-height, 1.05);
+}
+
+/* A long name wraps and the header grows rather than cutting it. */
+.review-places-meta {
+  color: var(--muted);
+  font-size: var(--review-pane-meta-size, 0.74rem);
+  line-height: var(--review-pane-meta-line-height, 1.1);
+  overflow-wrap: anywhere;
+}
+
+.review-places-scroll {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  container-type: inline-size;
+}
+
+.review-places-status {
+  margin: 0;
+  padding: var(--interface-space-6)
+    var(--review-navigator-header-padding-inline, 0.75rem);
+  color: var(--muted);
+  font-size: var(--interface-meta-font-size);
+  overflow-wrap: anywhere;
+}
+
+.review-places-files,
+.review-places-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-places-files {
+  width: max-content;
+  min-width: 100%;
+  padding-block: var(--interface-space-2);
+}
+
+.review-places-file + .review-places-file {
+  margin-top: var(--interface-space-4);
+}
+
+/* The heading stays across the pane while long lines scroll sideways, and a
+   long folder wraps instead of being cut. */
+.review-places-file-heading {
+  position: sticky;
+  left: 0;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--interface-space-3);
+  width: 100cqi;
+  margin: 0;
+  padding: var(--interface-space-3) var(--review-action-inline-end, 0.75rem)
+    var(--interface-space-2)
+    var(--review-navigator-header-padding-inline, 0.75rem);
+  font-size: var(--file-tree-font-size, 0.8125rem);
+  font-weight: normal;
+  line-height: var(--interface-line-height);
+}
+
+.review-places-file-name {
+  font-weight: 600;
+}
+
+.review-places-folder {
+  color: var(--muted);
+  font-size: var(--interface-meta-font-size);
+  overflow-wrap: anywhere;
+}
+
+/* The count reads as the Task list's Section counts do. */
+.review-places-count {
+  min-width: 2ch;
+  color: var(--muted);
+  font-size: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.review-places-line {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 5ch max-content;
+  align-items: center;
+  gap: var(--interface-space-3);
+  width: 100%;
+  min-height: var(--file-tree-row-height, 1.5rem);
+  padding: var(--file-tree-padding-y, 0.125rem)
+    var(--review-action-inline-end, 0.75rem)
+    var(--file-tree-padding-y, 0.125rem)
+    var(--review-navigator-header-padding-inline, 0.75rem);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--code-font-size);
+  text-align: left;
+  cursor: pointer;
+}
+
+.review-places-line:disabled {
+  cursor: default;
+}
+
+.review-places-line:focus-visible {
+  background: var(--row-hover-bg);
+  outline: none;
+}
+
+@media (hover: hover) {
+  .review-places-line:not(:disabled):hover {
+    background: var(--row-hover-bg);
+  }
+}
+
+.review-places-line[aria-current="true"] {
+  background: var(--selection-bg);
+}
+
+.review-places-line-number {
+  color: var(--muted);
+  text-align: right;
+}
+
+.review-places-text {
+  white-space: pre;
+}
+
+.review-places-line strong {
+  font-weight: 700;
+}

@@ -34,6 +34,7 @@ import "./grok/page.js";
 import "./antigravity/page.js";
 import "./jev/page.js";
 import "./keyboard/page.js";
+import "./language-servers/page.js";
 import "./name-and-icon/page.js";
 import "./notifications/page.js";
 import "./remote-access/page.js";
@@ -53,6 +54,7 @@ const TITLES: Readonly<Record<string, string>> = {
   appearance: "Appearance",
   keyboard: "Keyboard",
   files: "Files",
+  "language-servers": "Language Servers",
   notifications: "Notifications",
   "name-and-icon": "Name & Icon",
   "remote-access": "Remote Access",
@@ -77,6 +79,7 @@ const ACTIVE_PAGES = [
   "remote-access",
   "voice",
   "jev",
+  "language-servers",
 ];
 // The pages that read the browser's own settings again on every route.
 const ROUTED_PAGES = ["appearance", "keyboard", "files"];
@@ -211,6 +214,10 @@ export class CaffoldSettingsWorkspace extends CaffoldElement {
             ${drawn(this.pages.of("files"))}
             ?hidden=${presented !== "files"}
           ></caffold-settings-files-page>
+          <caffold-settings-language-servers-page
+            ${drawn(this.pages.of("language-servers"))}
+            ?hidden=${presented !== "language-servers"}
+          ></caffold-settings-language-servers-page>
           <caffold-settings-notifications-page
             ${drawn(this.pages.of("notifications"))}
             ?hidden=${presented !== "notifications"}

@@ -29,7 +29,8 @@
   align-items: center;
   min-height: var(--task-workspace-header-size);
   border-bottom: 1px solid var(--border);
-  padding: var(--interface-space-5) var(--interface-space-7);
+  /* Note details stands where Task details does. */
+  padding: var(--interface-space-5) var(--task-workspace-edge-padding);
   padding-left: calc(
     var(--interface-space-7) +
     var(--task-header-leading-space, 0rem)
@@ -278,7 +279,7 @@
 
 @media (max-width: 520px) {
   .notes-workspace-detail-header {
-    padding-inline: var(--interface-space-5) var(--interface-space-4);
+    padding-inline: var(--interface-space-5) var(--task-workspace-edge-padding);
   }
 
   .notes-workspace-detail-pane > .notes-workspace-location {

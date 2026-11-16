@@ -182,7 +182,7 @@ h2 {
    tall as the header. */
 caffold-visual-diff {
   --visual-bar-block-size: var(--review-header-height, 2.625rem);
-  --visual-bar-inline-end: var(--review-viewer-action-inline-end, 0.5rem);
+  --visual-bar-inline-end: var(--review-action-inline-end, 0.5rem);
 }
 
 /* Commit and Compare offer Diff and Visual here. Each choice takes the width

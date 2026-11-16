@@ -46,6 +46,8 @@ import "./codex-status/components/runtime-restart-dialog.js";
 import type { CaffoldCodexRuntimeRestartDialog } from "./codex-status/components/runtime-restart-dialog.js";
 import "./codex-status/components/runtime-update-dialog.js";
 import type { CaffoldCodexRuntimeUpdateDialog } from "./codex-status/components/runtime-update-dialog.js";
+import "./components/language-server-install-dialog.js";
+import type { CaffoldLanguageServerInstallDialog } from "./components/language-server-install-dialog.js";
 import "./components/navigation.js";
 import type { CaffoldTaskWorkspaceNavigation } from "./components/navigation.js";
 import "./components/update-task-dialog.js";
@@ -178,6 +180,9 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
   private codexRuntimeAction = "idle";
   private claudeRestartState: { state: string; message: string } | null = null;
   private caffoldUpdate: CaffoldUpdateSnapshot | null = null;
+  // The host's home folder as Caffold serves it, where install Tasks start,
+  // or null when it serves none.
+  private homePath: string | null = null;
   readonly liveUpdates = new WorkspaceLiveUpdates({
     onConnectionReport: (report) => {
       this.dispatchEvent(
@@ -250,6 +255,21 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
           this.taskNavigator.sectionForDirectory(status?.updateTask?.cwd ?? "")
             ?.composerSettings ?? null,
         opener: event.detail?.opener,
+      });
+    });
+    this.addEventListener("caffold:language-server-install-intent", (event) => {
+      event.stopPropagation();
+      const { servers, opener } = event.detail;
+      const path = this.homePath;
+      this.languageServerInstallDialog.open({
+        servers,
+        path,
+        composerSettings:
+          path === null
+            ? null
+            : (this.taskNavigator.sectionForDirectory(path)?.composerSettings ??
+              null),
+        opener,
       });
     });
     this.addEventListener(CODEX_STATUS_REFRESH_REQUEST_EVENT, (event) => {
@@ -481,6 +501,7 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
 
   setServerPaths(server: { root?: string; homePath?: string | null }) {
     this.performUpdate();
+    this.homePath = server.homePath ?? null;
     this.tasksPage.setServerPaths(server);
   }
 
@@ -548,6 +569,7 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
       this.codexRuntimeUpdateDialog.keyboardNavigationContexts(),
       this.codexResetCreditDialog.keyboardNavigationContexts(),
       this.updateTaskDialog.keyboardNavigationContexts(),
+      this.languageServerInstallDialog.keyboardNavigationContexts(),
       this.archivedDeleteDialog.keyboardNavigationContexts(),
       this.taskSwitcherDialog.keyboardNavigationContexts(),
       childContexts,
@@ -879,8 +901,12 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
       ></caffold-codex-reset-credit-dialog>
       <caffold-update-task-dialog
         ${drawn(this.parts.of("update-task-dialog"))}
-        @caffold:task-create-intent=${this.startUpdateTask}
+        @caffold:task-create-intent=${this.startDialogTask}
       ></caffold-update-task-dialog>
+      <caffold-language-server-install-dialog
+        ${drawn(this.parts.of("language-server-install-dialog"))}
+        @caffold:task-create-intent=${this.startDialogTask}
+      ></caffold-language-server-install-dialog>
     `;
   }
 
@@ -1008,9 +1034,9 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
     );
   }
 
-  // The update Task starts the way Start Task does, through the Tasks page,
-  // which opens it once created.
-  private startUpdateTask(event: CustomEvent<TaskStartIntent>) {
+  // The update and language server install Tasks start the way Start Task
+  // does, through the Tasks page, which opens them once created.
+  private startDialogTask(event: CustomEvent<TaskStartIntent>) {
     const intent = event.detail;
     if (intent?.type !== "start") {
       return;
@@ -1390,6 +1416,12 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
 
   private get updateTaskDialog() {
     return this.child<CaffoldUpdateTaskDialog>("update-task-dialog");
+  }
+
+  private get languageServerInstallDialog() {
+    return this.child<CaffoldLanguageServerInstallDialog>(
+      "language-server-install-dialog",
+    );
   }
 }
 

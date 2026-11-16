@@ -968,7 +968,32 @@ test("reloads Task-scoped Compare and releases its refs watch while inactive", {
         overflow: header.scrollWidth > header.clientWidth,
         paddingMatchesTask:
           Math.abs(paddingRight - Number.parseFloat(taskHeaderStyle.paddingRight)) <= 1,
-        symmetricPadding: Math.abs(paddingLeft - paddingRight) <= 1,
+        // Back, or the controls without it, and the last control's drawn
+        // square stand equally far from the header's edges.
+        symmetricEdges: (() => {
+          const drawn = (element) => {
+            const rect = element.getBoundingClientRect();
+            const before = getComputedStyle(element, "::before");
+            const inset =
+              before.content !== "none" && before.position === "absolute"
+                ? Number.parseFloat(before.left)
+                : 0;
+            return { left: rect.left + inset, right: rect.right - inset };
+          };
+          const back = header.querySelector(".task-domain-back");
+          const lead = back.checkVisibility()
+            ? drawn(back).left
+            : window.innerWidth <= 520
+              ? controls.left
+              : title.left;
+          const refresh = header
+            .querySelector("caffold-git-review-controls")
+            .shadowRoot.querySelector(".git-review-refresh");
+          return (
+            Math.abs(lead - bounds.left - (bounds.right - drawn(refresh).right)) <=
+            0.1
+          );
+        })(),
         titleSizeMatchesTask:
           Math.abs(
             Number.parseFloat(domainTitleStyle.fontSize) -
@@ -1000,7 +1025,7 @@ test("reloads Task-scoped Compare and releases its refs watch while inactive", {
   expect(compareHeaderGeometry).toMatchObject({
     overflow: false,
     paddingMatchesTask: true,
-    symmetricPadding: true,
+    symmetricEdges: true,
     titleSizeMatchesTask: true,
     responsiveTitle: true,
     titleBeforeControls: true,

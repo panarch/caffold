@@ -1,5 +1,6 @@
 export const KEYBOARD_NAVIGATION_KEY = Object.freeze({
   ACTION_HINTS: "F",
+  NAME_HINTS: "G",
   SCROLL_SELECT: "S",
   TASK_SWITCHER: "T",
   SHORTCUT_HELP: "?",
@@ -90,6 +91,10 @@ export const KEYBOARD_SHORTCUT_HELP_SECTIONS: readonly ShortcutSection[] =
         shortcut(
           [KEYBOARD_NAVIGATION_KEY.ACTION_HINTS],
           "Show available actions",
+        ),
+        shortcut(
+          [KEYBOARD_NAVIGATION_KEY.NAME_HINTS],
+          "Show the names in code that can go to a definition",
         ),
         shortcut(
           [KEYBOARD_NAVIGATION_KEY.SCROLL_SELECT],

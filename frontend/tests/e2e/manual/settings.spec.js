@@ -3,6 +3,7 @@ import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   installManualDefaults,
   installManualAntigravity,
+  installManualLanguageServers,
   installManualNotifications,
   installManualServerName,
   installManualSettings,
@@ -22,6 +23,19 @@ for (const theme of ["light", "dark"]) {
       await installBrowserDefaults(page);
       await installManualDefaults(page, theme);
       await installManualSettings(page);
+    });
+
+    test("Language Servers turns languages on and lists the running servers", { tag: "@desktop" }, async ({ page }, testInfo) => {
+      await installManualLanguageServers(page);
+      await page.goto("/settings/language-servers");
+
+      const settings = page.locator("caffold-settings-language-servers-page");
+      await expect(settings.getByRole("switch", { name: "TypeScript/JavaScript" })).toBeChecked();
+      await expect(settings.getByRole("switch", { name: "Rust" })).not.toBeChecked();
+      await expect(settings.getByRole("heading", { name: "Running · 412 MB in total" })).toBeVisible();
+      await expect(settings.getByRole("button", { name: "Turn off" })).toBeVisible();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await captureReviewScreenshot(page, testInfo, `settings-language-servers-${theme}`);
     });
 
     test("Codex Settings shows usage and reset credits", { tag: "@desktop" }, async ({ page }, testInfo) => {

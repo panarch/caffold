@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   installManualDefaults,
+  installManualLanguageServers,
   installManualRepository,
   installManualTasks,
   MANUAL_SECTION_ID,
@@ -191,6 +192,36 @@ for (const theme of ["light", "dark"]) {
       await expect(dialog).toContainText("Run the settings test suite");
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await captureReviewScreenshot(page, testInfo, `current-plan-checklist-${theme}`);
+    });
+
+    test("Task details turns language servers on for the Task's repository", { tag: "@desktop" }, async ({ page }, testInfo) => {
+      await installManualLanguageServers(page, { enabled: false });
+      await page.goto(`/tasks/${MANUAL_TASKS.darkTheme.threadId}`);
+
+      await page.getByRole("button", { name: /^Task details/ }).click();
+      const details = page.locator(".task-detail-popover");
+      await expect(details).toContainText(
+        "Language servers answer Go to definition and Find references in this repository's code.",
+      );
+      await expect(details.getByRole("button", { name: "Turn on language servers" })).toBeEnabled();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await captureReviewScreenshot(page, testInfo, `task-details-language-servers-${theme}`);
+    });
+
+    test("Task details offers to install a language server the host lacks", { tag: "@desktop" }, async ({ page }, testInfo) => {
+      await installManualLanguageServers(page, { installed: false });
+      await page.goto(`/tasks/${MANUAL_TASKS.darkTheme.threadId}`);
+
+      await page.getByRole("button", { name: /^Task details/ }).click();
+      const details = page.locator(".task-detail-popover");
+      await expect(details).toContainText(
+        "TypeScript/JavaScript: typescript-language-server is not installed.",
+      );
+      await expect(
+        details.getByRole("button", { name: "Ask an agent to install typescript-language-server" }),
+      ).toBeVisible();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await captureReviewScreenshot(page, testInfo, `task-details-language-servers-not-installed-${theme}`);
     });
 
     test("Task details shows the worktree and holds Pin, Fork, and Archive actions", { tag: "@desktop" }, async ({ page }, testInfo) => {

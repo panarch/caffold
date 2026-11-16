@@ -165,7 +165,7 @@ export class CaffoldTaskDetailInfo extends CaffoldElement {
         id=${this.popoverId}
         class="task-detail-popover"
         popover="auto"
-        @beforetoggle=${returnPopoverFocus}
+        @beforetoggle=${this.handleBeforeToggle}
         @caffold:keyboard-session-dismiss=${this.handleDismiss}
         aria-label="Task details"
       >
@@ -244,6 +244,19 @@ export class CaffoldTaskDetailInfo extends CaffoldElement {
       actionHints: (pull) =>
         mergeActionHintScopes(this.actions.value?.actionHintScope(pull)),
     });
+  }
+
+  // Its actions follow the popover as it shows and hides, not a task later,
+  // so nothing they read runs on once it is closed.
+  private handleBeforeToggle(event: ToggleEvent) {
+    returnPopoverFocus(event);
+    if (event.target !== this.infoPopover.value) {
+      return;
+    }
+    this.actions.value?.setPopoverOpen(
+      event.newState === "open",
+      this.infoButton.value ?? null,
+    );
   }
 
   private handleDismiss(event: Event) {

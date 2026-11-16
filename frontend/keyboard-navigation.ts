@@ -1,7 +1,9 @@
 import type { CaffoldActionHintDialog } from "./action-hints/components/dialog.js";
 import {
+  ACTION_HINT_ACTION,
   type ActionHintBinding,
   ActionHintController,
+  type ActionHintLook,
   type ActionHintSessionExit,
   type ActionHintSessionTarget,
   advanceHintBuffer,
@@ -185,6 +187,9 @@ export class KeyboardNavigationController {
   private compositionActive = false;
   private compositionOwner: EventTarget | null = null;
   private storedNode: KeyboardNavigationNode | null = null;
+  // Which targets the Hint node shows: the actions, or the names in code
+  // that `G` shows on their own.
+  private hintLook: ActionHintLook = "actions";
   private selectionSession: SelectionSession | null = null;
   private activeSession: ActiveSession | null = null;
   private shortcutSession: ShortcutSession | null = null;
@@ -448,6 +453,13 @@ export class KeyboardNavigationController {
       }
       return;
     }
+    if (key === KEYBOARD_NAVIGATION_KEY.NAME_HINTS) {
+      if (this.startHints("names")) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return;
+    }
     if (key === KEYBOARD_NAVIGATION_KEY.SCROLL_SELECT && this.startScroll()) {
       event.preventDefault();
       event.stopPropagation();
@@ -699,8 +711,14 @@ export class KeyboardNavigationController {
   }
 
   private startActionHints() {
+    return this.startHints("actions");
+  }
+
+  private startHints(look: ActionHintLook) {
+    this.hintLook = look;
     const snapshot = this.actionHints.prepareSnapshot();
     if (!snapshot) {
+      this.hintLook = "actions";
       this.applyTransition(KEYBOARD_NAVIGATION_EVENT.ENTRY_REJECTED);
       return false;
     }
@@ -1147,16 +1165,25 @@ export class KeyboardNavigationController {
     const context = this.resolveInteractionContext({ ownedHintDialog });
     const dialog: CaffoldActionHintDialog | null | undefined =
       context?.presentation.actionHintDialog();
-    return context?.actionHints && dialog
-      ? {
-          context,
-          dialog,
-          scope: context.actionHints,
-          reservedCodes: context.sessionBound
-            ? [KEYBOARD_NAVIGATION_KEY.SCROLL_SELECT]
-            : [],
-        }
-      : null;
+    if (!context?.actionHints || !dialog) {
+      return null;
+    }
+    const names = this.hintLook === "names";
+    return {
+      context,
+      dialog,
+      scope: {
+        ...context.actionHints,
+        targets: context.actionHints.targets.filter(
+          ({ actionId }) =>
+            (actionId === ACTION_HINT_ACTION.CODE_NAME) === names,
+        ),
+      },
+      reservedCodes: context.sessionBound
+        ? [KEYBOARD_NAVIGATION_KEY.SCROLL_SELECT]
+        : [],
+      look: this.hintLook,
+    };
   }
 
   private captureScrollSnapshot(

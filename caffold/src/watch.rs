@@ -74,6 +74,8 @@ struct WatchHubInner {
     fs: Arc<RootedFs>,
     shutdown: broadcast::Sender<()>,
     scopes: Mutex<Scopes>,
+    /// The logical paths of the scopes some subscriber holds open.
+    open_scopes: watch::Sender<BTreeSet<String>>,
     #[cfg(test)]
     hold: Mutex<Option<Hold>>,
 }
@@ -131,6 +133,7 @@ impl Drop for WatchSubscription {
         };
         if remove {
             scopes.entries.remove(&self.key);
+            hub.publish_open_scopes(&scopes);
         }
     }
 }
@@ -152,10 +155,24 @@ impl WatchHub {
                 fs,
                 shutdown,
                 scopes: Mutex::default(),
+                open_scopes: watch::Sender::new(BTreeSet::new()),
                 #[cfg(test)]
                 hold: Mutex::default(),
             }),
         }
+    }
+
+    /// The logical paths of the scopes some subscriber holds open, as they
+    /// change: a scope opens with its first subscriber and closes with its
+    /// last.
+    pub(crate) fn open_scopes(&self) -> watch::Receiver<BTreeSet<String>> {
+        self.inner.open_scopes.subscribe()
+    }
+
+    /// The canonical scope `requested_path` belongs to: its Git repository's
+    /// root, or the folder itself outside Git.
+    pub(crate) async fn scope_path_for(&self, requested_path: &str) -> Result<String, WatchError> {
+        Ok(self.scope_config(requested_path).await?.scope_path)
     }
 
     /// Subscribes to the canonical scope of `requested_path` and returns once
@@ -224,6 +241,7 @@ impl WatchHub {
         };
         let subscription = self.subscription(&key, &entry);
         scopes.entries.insert(key.clone(), entry);
+        self.inner.publish_open_scopes(&scopes);
         drop(scopes);
 
         let (events, raw_receiver) = mpsc::unbounded_channel();
@@ -298,7 +316,21 @@ impl WatchHubInner {
                 .is_some_and(|entry| entry.scope == scope)
         {
             scopes.entries.remove(key);
+            self.publish_open_scopes(&scopes);
         }
+    }
+
+    /// Called with the scopes' lock held, so the published set changes in the
+    /// order the scopes do. Sending never waits.
+    fn publish_open_scopes(&self, scopes: &Scopes) {
+        self.open_scopes.send_if_modified(|open| {
+            let current: BTreeSet<String> = scopes.entries.keys().cloned().collect();
+            if *open == current {
+                return false;
+            }
+            *open = current;
+            true
+        });
     }
 }
 
@@ -864,6 +896,47 @@ mod tests {
         assert_eq!(hub.active_scope_count(), 1);
         drop(second);
         assert_eq!(hub.active_scope_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn open_scopes_follow_the_first_and_last_subscriber() {
+        let root = TempDir::new().unwrap();
+        fs::create_dir(root.path().join("a")).unwrap();
+        fs::create_dir(root.path().join("b")).unwrap();
+        let fs = Arc::new(RootedFs::new(root.path()).unwrap());
+        let (shutdown, _) = broadcast::channel(1);
+        let hub = WatchHub::new(fs, shutdown);
+        let mut open = hub.open_scopes();
+
+        let first = hub.subscribe("a").await.unwrap();
+        let second = hub.subscribe("a").await.unwrap();
+        let other = hub.subscribe("b").await.unwrap();
+        assert!(open.has_changed().unwrap());
+        assert_eq!(
+            *open.borrow_and_update(),
+            BTreeSet::from(["a".to_string(), "b".to_string()])
+        );
+
+        drop(first);
+        assert!(!open.has_changed().unwrap());
+        drop(second);
+        assert_eq!(*open.borrow_and_update(), BTreeSet::from(["b".to_string()]));
+        drop(other);
+        assert_eq!(*open.borrow_and_update(), BTreeSet::new());
+    }
+
+    #[tokio::test]
+    async fn a_folder_inside_a_repository_belongs_to_the_repository_scope() {
+        let root = TempDir::new().unwrap();
+        fs::create_dir_all(root.path().join("repo/src")).unwrap();
+        fs::create_dir(root.path().join("plain")).unwrap();
+        git(&root.path().join("repo"), &["init", "-q"]);
+        let fs = Arc::new(RootedFs::new(root.path()).unwrap());
+        let (shutdown, _) = broadcast::channel(1);
+        let hub = WatchHub::new(fs, shutdown);
+
+        assert_eq!(hub.scope_path_for("repo/src").await.unwrap(), "repo");
+        assert_eq!(hub.scope_path_for("plain").await.unwrap(), "plain");
     }
 
     /// A native watcher that never finishes registering delays only its own

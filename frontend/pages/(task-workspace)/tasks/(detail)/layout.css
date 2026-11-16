@@ -56,7 +56,9 @@
   align-items: center;
   gap: var(--detail-layout-summary-gap);
   min-height: var(--task-workspace-header-size, auto);
-  padding: var(--interface-space-4) var(--task-detail-header-padding-inline)
+  /* The last button's drawn square stands as far in from the end as the
+     workspace's corner controls stand from the start. */
+  padding: var(--interface-space-4) var(--task-workspace-edge-padding)
     var(--interface-space-4)
     calc(
       var(--task-detail-header-padding-inline) +
@@ -111,7 +113,7 @@ caffold-segmented-control[data-detail-view-switch] {
    header does. */
 .detail-layout-body > div > caffold-terminal-page {
   --terminal-page-bar-gap: var(--detail-layout-control-gap);
-  --terminal-page-bar-padding-inline: var(--task-detail-header-padding-inline);
+  --terminal-page-bar-padding-inline: var(--task-workspace-edge-padding);
 }
 
 @media (min-width: 521px) {

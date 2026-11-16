@@ -207,3 +207,163 @@ test("merges only visible Review navigator and viewer Scroll leaves", () => {
   panes.viewer.visible = false;
   assert.deepEqual(review.scrollSurfaceScope.call(owner).surfaces, []);
 });
+
+test("shows a find's list in the navigator's place for Action Hints and Scroll", () => {
+  const options = { hints: null, scroll: null };
+  const owner = {
+    active: true,
+    hidden: false,
+    task: { threadId: "thread-a", worktree: { rootPath: "/repo" } },
+    contextKey: "thread-a\0/repo\0/repo",
+    route: {
+      navigator: "changes",
+      scope: "working",
+      viewer: "source",
+      path: "",
+      find: { kind: "references", path: "src/a.rs", line: 3, character: 4 },
+    },
+    performUpdate() {},
+    navigatorPane: { value: { getClientRects: () => [{}] } },
+    viewerPane: { value: { getClientRects: () => [{}] } },
+    axisControl: () => ({ actionHintScope: () => scope("axis") }),
+    places: {
+      actionHintScope: (input) => {
+        options.hints = input;
+        return scope("places");
+      },
+      scrollSurfaceScope: (input) => {
+        options.scroll = input;
+        return { surfaces: [{ id: "places" }] };
+      },
+    },
+    split: {
+      listShown: () => true,
+      detailShown: () => true,
+      actionHintScope: () => null,
+    },
+  };
+
+  assert.deepEqual(
+    review.actionHintScope.call(owner).targets.map(({ id }) => id),
+    ["axis", "places"],
+  );
+  assert.equal(options.hints.scopeId, "review:thread-a:places");
+  assert.deepEqual(options.hints.actions, {
+    place: "navigation.file.open",
+    close: "button.activate",
+  });
+  assert.deepEqual(review.scrollSurfaceScope.call(owner).surfaces, [
+    { id: "places" },
+  ]);
+  assert.equal(options.scroll.label, "References");
+});
+
+test("answers a name: one definition opens, none or one outside the root shows a message, more open the list", async (t) => {
+  const previousFetch = globalThis.fetch;
+  const previousWindow = globalThis.window;
+  globalThis.window = { location: { origin: "http://caffold.test" } };
+  const answers = [];
+  const asked = [];
+  globalThis.fetch = async (input, init) => {
+    asked.push([new URL(input).pathname, JSON.parse(init.body)]);
+    return new Response(JSON.stringify({ places: answers.shift() }), {
+      headers: { "content-type": "application/json" },
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  });
+  const shown = { messages: [], opened: [], finds: [] };
+  const owner = {
+    route: {
+      scope: "working",
+      navigator: "changes",
+      viewer: "diff",
+      path: "src/main.rs",
+      line: null,
+      baseRef: "",
+      find: null,
+    },
+    task: { threadId: "thread-a", worktree: { rootPath: "work/app" } },
+    codeNameAsking: null,
+    placesReading: null,
+    placesRead: null,
+    logicalSelectedPath: () => "work/app/src/main.rs",
+    reviewPlace: review.reviewPlace,
+    selectedFile: {
+      showCodeNameMessage: (position, message) =>
+        shown.messages.push([position.line, position.character, message]),
+    },
+    openFileAt: (path, line) => shown.opened.push([path, line]),
+    openFind: (find) => shown.finds.push(find),
+  };
+  const ask = (action) =>
+    review.answerCodeName.call(owner, {
+      stopPropagation() {},
+      detail: { action, line: 7, character: 12, name: "root" },
+    });
+
+  answers.push([
+    { path: "work/app/src/lib.rs", name: "lib.rs", line: 40, character: 4 },
+  ]);
+  await ask("definition");
+  answers.push([
+    { path: "work/shared/util.rs", name: "util.rs", line: 2, character: 0 },
+  ]);
+  await ask("definition");
+  answers.push([]);
+  await ask("definition");
+  answers.push([{ path: null, name: "time.rs", line: 224, character: 8 }]);
+  await ask("definition");
+  answers.push([]);
+  await ask("references");
+
+  assert.deepEqual(asked[0], [
+    "/api/language-servers/definition",
+    { path: "work/app/src/main.rs", line: 7, character: 12 },
+  ]);
+  assert.deepEqual(shown.opened, [
+    ["src/lib.rs", 40],
+    ["/work/shared/util.rs", 2],
+  ]);
+  assert.deepEqual(shown.messages, [
+    [7, 12, "No definition found."],
+    [
+      7,
+      12,
+      "Defined in time.rs, line 224, outside the folder Caffold serves.",
+    ],
+    [7, 12, "No references found."],
+  ]);
+  assert.deepEqual(shown.finds, []);
+
+  const both = [
+    { path: "work/app/src/main.rs", name: "main.rs", line: 5, character: 8, length: 4, text: "    Ok(root) =>" },
+    { path: "work/app/src/repo.rs", name: "repo.rs", line: 9, character: 4, length: 4, text: "    root: PathBuf," },
+  ];
+  answers.push(both);
+  await ask("definition");
+  assert.deepEqual(shown.finds, [
+    { kind: "definitions", path: "src/main.rs", line: 7, character: 12 },
+  ]);
+  assert.equal(owner.placesRead.status, "ready");
+  assert.equal(owner.placesRead.name, "root");
+  assert.deepEqual(
+    owner.placesRead.places.map(({ path, line }) => [path, line]),
+    [
+      ["src/main.rs", 5],
+      ["src/repo.rs", 9],
+    ],
+  );
+
+  answers.push(both.slice(1));
+  await ask("references");
+  assert.deepEqual(shown.finds.at(-1), {
+    kind: "references",
+    path: "src/main.rs",
+    line: 7,
+    character: 12,
+  });
+});
