@@ -44,6 +44,7 @@
   padding: 0.375rem 0.5rem 0.375rem 0.875rem;
   padding-right: var(--review-pane-action-clearance, 0.5rem);
   border-bottom: 1px solid var(--border);
+  container: file-viewer-header / inline-size;
 }
 
 .viewer-panel > header {
@@ -189,9 +190,8 @@ caffold-visual-diff {
    a choice takes in the Integrated Review viewer axis, so the two read alike. */
 .viewer-change-control {
   --segmented-control-column-size: auto;
-  --segmented-control-choice-min-inline-size: 0;
   --segmented-control-label-padding-inline: var(--interface-space-1);
-  --viewer-change-axis-inline-size: 7.5rem;
+  --viewer-change-axis-inline-size: 9.5rem;
 
   /* It has no hit area around it, so it keeps the button gap without one. */
   margin-inline-end: var(--interface-compact-hit-outset);
@@ -200,6 +200,21 @@ caffold-visual-diff {
     var(--viewer-change-axis-inline-size) /
     2
   );
+}
+
+/* With labels Diff and Visual take 9.5rem. Below this width they show icons
+   alone and leave the file path and its buttons room. They appear with the
+   file they belong to, so opening it does not change their look. */
+@container file-viewer-header (width < 36rem) {
+  .viewer-change-control {
+    width: calc(
+      var(--viewer-change-choice-count, 1) *
+      var(--interface-compact-hit-size) +
+      2px
+    );
+    --segmented-control-label-display: none;
+    --segmented-control-icon-size: var(--interface-icon-size);
+  }
 }
 
 .viewer-info-button::after {

@@ -262,6 +262,89 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
   expect(Math.abs(after.viewerAxisGap - after.headerButtonGap)).toBeLessThanOrEqual(1);
 });
 
+test("labels the navigator's choices by its own width and the file's by Review's, before and after a file opens", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const navigatorAxis = taskReview.locator('caffold-segmented-control[data-review-axis="navigator"]');
+  const viewerAxis = taskReview.locator('caffold-segmented-control[data-review-axis="viewer"]');
+  const labelsShown = (axis) =>
+    axis
+      .locator(".segmented-choice-label")
+      .evaluateAll((labels) => labels.map((label) => getComputedStyle(label).display !== "none"));
+  // What the Lucide stub draws for FileDiff, FolderTree, and CodeXml.
+  await expect(navigatorAxis.locator('button[data-segmented-value="changes"] svg path[d="M9 10h6"]')).toHaveCount(1);
+  await expect(navigatorAxis.locator('button[data-segmented-value="files"] svg path[d^="M20 10a1 1"]')).toHaveCount(1);
+  // The navigator's content keeps clear of its axis in either look.
+  const navigatorLayout = () =>
+    taskReview.evaluate((review) => {
+      const pane = review.shadowRoot.querySelector(".task-review-navigator-pane");
+      const axis = pane.querySelector("caffold-segmented-control");
+      const probe = document.createElement("div");
+      probe.style.cssText =
+        "position: absolute; width: calc(var(--review-pane-action-clearance) - var(--interface-space-5))";
+      pane.querySelector(".task-review-navigator:not([hidden])").append(probe);
+      const clearance = probe.getBoundingClientRect().width;
+      probe.remove();
+      return {
+        axisFromEnd: pane.getBoundingClientRect().right - axis.getBoundingClientRect().left,
+        clearance,
+        overflow: axis.scrollWidth > axis.clientWidth,
+      };
+    });
+  if (testInfo.project.name === "desktop") {
+    // At its 320px default the navigator leaves its title room with icons alone.
+    expect(await labelsShown(navigatorAxis)).toEqual([false, false]);
+    const iconsAlone = await navigatorLayout();
+    expect(iconsAlone.overflow).toBe(false);
+    expect(Math.abs(iconsAlone.clearance - iconsAlone.axisFromEnd)).toBeLessThan(0.1);
+    const separator = taskReview.getByRole("separator", { name: "Resize review navigator" });
+    await separator.focus();
+    await separator.press("Shift+ArrowRight");
+    await expect(separator).toHaveAttribute("aria-valuenow", "392");
+    await expect.poll(() => labelsShown(navigatorAxis)).toEqual([true, true]);
+    const labelled = await navigatorLayout();
+    expect(labelled.overflow).toBe(false);
+    expect(Math.abs(labelled.clearance - labelled.axisFromEnd)).toBeLessThan(0.1);
+  }
+
+  // Only the desktop Review is 56rem wide, room for the labels with the
+  // navigator beside the file. Opening a file folds the foldable's navigator
+  // into a strip and widens the file, and the choices keep their look.
+  const viewerLabels = Array(2).fill(testInfo.project.name === "desktop");
+  if (testInfo.project.name !== "phone") {
+    expect(await labelsShown(viewerAxis)).toEqual(viewerLabels);
+  }
+  await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
+  await expect(viewerAxis.locator('button[data-segmented-value="diff"] svg path[d="M9 10h6"]')).toHaveCount(1);
+  await expect(viewerAxis.locator('button[data-segmented-value="source"] svg path[d="m14.5 4-5 16"]')).toHaveCount(1);
+  expect(await labelsShown(viewerAxis)).toEqual(viewerLabels);
+  expect(await viewerAxis.evaluate((axis) => axis.scrollWidth <= axis.clientWidth)).toBe(true);
+  await expect(viewerAxis.getByRole("button", { name: "Source", exact: true })).toBeVisible();
+});
+
+test("keeps the view switch's look as Working Tree and Branch take the Task list's place", { tag: ["@desktop", "@foldable"] }, async ({
+  page,
+}, testInfo) => {
+  const { tasksPage } = await openCompletedTaskForReview(page);
+  const viewSwitch = tasksPage.locator("caffold-segmented-control[data-detail-view-switch]");
+  const labelsShown = () =>
+    viewSwitch
+      .locator(".segmented-choice-label")
+      .evaluateAll((labels) => labels.map((label) => getComputedStyle(label).display !== "none"));
+  // The desktop workspace is 66.5rem wide, room for the labels beside the
+  // Task list; the foldable's is not, on any view.
+  const look = Array(3).fill(testInfo.project.name === "desktop");
+  await expect(viewSwitch).toBeVisible();
+  expect(await labelsShown()).toEqual(look);
+  for (const name of ["Working Tree", "Branch", "Conversation"]) {
+    await tasksPage.getByRole("button", { name, exact: true }).click();
+    await expect(tasksPage.getByRole("button", { name, exact: true })).toHaveAttribute("aria-pressed", "true");
+    expect(await labelsShown()).toEqual(look);
+  }
+});
+
 test("owns one collapsed Back across Conversation and Review modes", { tag: "@phone" }, async ({
   page,
 }, testInfo) => {

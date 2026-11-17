@@ -322,7 +322,7 @@ type ViewerState =
 // The change representations an owner without its own control offers in the
 // viewer's header, as Commit and Compare do for a file with both.
 export interface FileViewerChangeChoices {
-  choices: Array<{ value: string; label: string }>;
+  choices: Array<{ value: string; label: string; icon: string }>;
   selected: string;
 }
 

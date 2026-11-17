@@ -519,6 +519,8 @@ const APP_SHELL_ASSETS = [
   "/assets/components/xlsx-viewer.js",
   "/assets/components/xlsx-viewer/window.js",
   "/assets/components/xlsx-viewer/workbook.js",
+  "/assets/components/xlsx-viewer/components/sheet-tabs.css.js",
+  "/assets/components/xlsx-viewer/components/sheet-tabs.js",
   "/assets/components/file-viewer-presentation.js",
   "/assets/components/icons.js",
   "/assets/components/drawn-refs.js",

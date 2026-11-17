@@ -168,6 +168,6 @@
   }
 }
 
-.xlsx-viewer-tabs > caffold-segmented-control {
+.xlsx-viewer-tabs > caffold-xlsx-sheet-tabs {
   flex: none;
 }

@@ -82,6 +82,20 @@ caffold-segmented-control[data-detail-view-switch] {
   margin-inline-end: var(--interface-compact-hit-outset);
 }
 
+/* With its labels, the view switch and the buttons beside it take up to 29rem
+   of the header in the widest UI typeface, so the title keeps 12rem from a
+   41rem header. Beside the Task list at its 380px default, the header has that
+   from a 66.5rem workspace. The workspace decides, not the header: Working
+   Tree, Branch, Git, and GitHub put their own file tree in the Task list's
+   place, so the header widens as the switch is pressed, and the switch keeps
+   one look on every view. */
+@container task-workspace (width < 66.5rem) {
+  caffold-segmented-control[data-detail-view-switch] {
+    --segmented-control-label-display: none;
+    --segmented-control-icon-size: var(--interface-icon-size);
+  }
+}
+
 .detail-layout-summary > caffold-task-detail-terminal {
   grid-row: 1;
   grid-column: 3;

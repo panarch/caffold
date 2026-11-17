@@ -1,8 +1,9 @@
-import { html, nothing } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { type ActionHintPull, ActionHints } from "../action-hints.js";
 import { CaffoldElement } from "../caffold-element.js";
+import { inlineIcon, warmIcons } from "./icons.js";
 
 import styles from "./segmented-control.css.js";
 
@@ -13,6 +14,9 @@ export interface SegmentedControlIntentDetail {
 export interface SegmentedChoice {
   value: string;
   label: string;
+  // The Lucide icon drawn before the label, and alone where the placement
+  // hides labels.
+  icon: string;
   title: string;
 }
 
@@ -42,6 +46,17 @@ export class CaffoldSegmentedControl extends CaffoldElement {
 
   private readonly hints = new ActionHints(this);
 
+  override connectedCallback() {
+    super.connectedCallback();
+    window.addEventListener("caffold:icons-ready", this.iconsReady);
+    void warmIcons();
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    window.removeEventListener("caffold:icons-ready", this.iconsReady);
+  }
+
   override render() {
     const { selected, choices, actionVerb } = this.snapshot;
     return repeat(
@@ -56,10 +71,15 @@ export class CaffoldSegmentedControl extends CaffoldElement {
           })}
           type="button"
           data-segmented-value=${choice.value}
+          aria-label=${choice.label}
           aria-pressed=${choice.value === selected ? "true" : "false"}
-          title=${choice.title || nothing}
+          title=${choice.title || choice.label}
           @click=${() => this.choose(choice.value)}
-        ><span>${choice.label}</span></button>`,
+        ><span><span class="segmented-choice-icon" aria-hidden="true">${inlineIcon(
+          choice.icon,
+          "",
+          "segmented-choice-svg",
+        )}</span><span class="segmented-choice-label">${choice.label}</span></span></button>`,
     );
   }
 
@@ -83,10 +103,16 @@ export class CaffoldSegmentedControl extends CaffoldElement {
           .map((choice) => ({
             value: `${choice?.value ?? ""}`,
             label: `${choice?.label ?? ""}`,
+            icon: `${choice?.icon ?? ""}`,
             title: `${choice?.title ?? ""}`,
           }))
           .filter((choice) => {
-            if (!choice.value || !choice.label || seen.has(choice.value)) {
+            if (
+              !choice.value ||
+              !choice.label ||
+              !choice.icon ||
+              seen.has(choice.value)
+            ) {
               return false;
             }
             seen.add(choice.value);
@@ -104,6 +130,8 @@ export class CaffoldSegmentedControl extends CaffoldElement {
   actionHintScope(pull: ActionHintPull = {}) {
     return this.hints.scope(pull);
   }
+
+  private readonly iconsReady = () => this.requestUpdate();
 
   private choose(value: string) {
     this.dispatchEvent(

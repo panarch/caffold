@@ -1231,10 +1231,10 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
   );
   assert.match(
     segmentedControl,
-    /min-width: var\(--segmented-control-choice-min-inline-size, auto\);/,
+    /\nbutton \{[\s\S]*min-width: var\(--interface-compact-hit-size\);/,
   );
-  assert.match(reviewLayout, /--review-navigator-axis-inline-size: 7rem;/);
-  assert.match(reviewLayout, /--review-viewer-axis-inline-size: 7\.5rem;/);
+  assert.match(reviewLayout, /--review-navigator-axis-inline-size: 9\.5rem;/);
+  assert.match(reviewLayout, /--review-viewer-axis-inline-size: 9\.5rem;/);
   assert.match(
     reviewLayout,
     /--review-navigator-control-inline-size: calc\([\s\S]*var\(--review-navigator-axis-inline-size\)\s+\/\s+2/,
@@ -1247,7 +1247,7 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
   // Commit and Compare offer Diff and Visual in the file viewer's header with
   // the width per choice the review viewer axis gives.
   const fileViewer = readFrontend("components/file-viewer.css");
-  assert.match(fileViewer, /--viewer-change-axis-inline-size: 7\.5rem;/);
+  assert.match(fileViewer, /--viewer-change-axis-inline-size: 9\.5rem;/);
   assert.match(
     fileViewer,
     /\.viewer-change-control \{[\s\S]*width: calc\([\s\S]*var\(--viewer-change-axis-inline-size\)\s+\/\s+2/,
@@ -1255,10 +1255,6 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
   assert.match(
     fileViewer,
     /\.viewer-change-control \{[\s\S]*--segmented-control-label-padding-inline: var\(--interface-space-1\);/,
-  );
-  assert.match(
-    reviewLayout,
-    /--segmented-control-choice-min-inline-size: 0;/,
   );
   assert.match(
     reviewLayout,

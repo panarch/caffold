@@ -279,12 +279,15 @@ the person to check the Task list before retrying.
 
 Detail provides Summary actions, the subject-aware view switch, a terminal,
 Integrated Review, Git, and GitHub. A Task adds Conversation; a Section adds
-fixed-context New Task. The header names the subject: a Task by its title, a
-Section by its directory's name, with the full path on hover. Git and GitHub
-belong to a Task or Section in a Git repository; outside one, the header does
-not show them. Switching Task or Section context reloads repository data, while
-safe local state may survive surface switches within one context. If a Section
-loses repository capability, it returns to New Task.
+fixed-context New Task. The view switch shows an icon before each view's name,
+and only the icons in a narrow window, such as a phone, a foldable, or a small
+desktop window; it keeps the same look on every view. The header names the
+subject: a Task by its title, a Section by its directory's name, with the full
+path on hover. Git and GitHub belong to a Task or Section in a Git repository;
+outside one, the header does not show them. Switching Task or Section context
+reloads repository data, while safe local state may survive surface switches
+within one context. If a Section loses repository capability, it returns to
+New Task.
 
 ## Task Detail
 
@@ -501,6 +504,10 @@ Branch review. It combines:
   the scope changed beside their numbers;
 - one selected task-root-relative path.
 
+The navigator and file-view choices show an icon before each name. The
+navigator's show only the icons where the navigator is narrow, and the file
+view's where Review is narrow, whether or not a file is open.
+
 This is also the product path for general file/source inspection through the
 reusable file navigator, source viewer, text viewer, supported image viewer, PDF
 viewer, Word document viewer, PowerPoint viewer, and Excel viewer. In Source
@@ -541,7 +548,8 @@ Review:
 - bounded Log, commit detail, changed files, diff, and source inspection.
 
 Compare and a commit show an image's change as Visual and other changes as
-Diff; an SVG offers both in the file's header.
+Diff; an SVG offers both in the file's header, as icons alone where the header
+is narrow.
 
 Git is non-authoring. Log exposes an explicit Fetch action that updates the
 selected repository's remote-tracking default branch and reports its

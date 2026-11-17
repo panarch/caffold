@@ -870,17 +870,26 @@ export class CaffoldDetailLayout extends CaffoldElement {
       selected: surface === "review" ? reviewChoice : surface,
       choices: repository
         ? [
-            { value: "conversation", label: "Conversation" },
-            { value: "working", label: "Working Tree" },
+            {
+              value: "conversation",
+              label: "Conversation",
+              icon: "MessageSquare",
+            },
+            { value: "working", label: "Working Tree", icon: "FileDiff" },
             {
               value: "branch",
               label: "Branch",
+              icon: "GitCompare",
               title: `Compare with ${this.taskRoute?.baseRef || "the default branch"}`,
             },
           ]
         : [
-            { value: "conversation", label: "Conversation" },
-            { value: "review", label: "Review" },
+            {
+              value: "conversation",
+              label: "Conversation",
+              icon: "MessageSquare",
+            },
+            { value: "review", label: "Review", icon: "FolderSearch" },
           ],
     });
     this.gitMenu.value?.setSnapshot({ available: repository });
@@ -914,15 +923,16 @@ export class CaffoldDetailLayout extends CaffoldElement {
           : surface,
       choices: repository
         ? [
-            { value: "new", label: "New Task" },
-            { value: "working", label: "Working Tree" },
+            { value: "new", label: "New Task", icon: "Plus" },
+            { value: "working", label: "Working Tree", icon: "FileDiff" },
             {
               value: "branch",
               label: "Branch",
+              icon: "GitCompare",
               title: `Compare with ${this.sectionRoute?.baseRef || "the default branch"}`,
             },
           ]
-        : [{ value: "new", label: "New Task" }],
+        : [{ value: "new", label: "New Task", icon: "Plus" }],
     });
     this.gitMenu.value?.setSnapshot({ available: repository });
     this.githubMenu.value?.setSnapshot({ available: repository });

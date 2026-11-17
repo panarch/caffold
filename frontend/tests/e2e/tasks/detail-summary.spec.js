@@ -24,6 +24,13 @@ const PIN_OFF_ICON = 'svg path[d="m2 2 20 20"]';
 const SPLIT_ICON = 'svg path[d="M16 3h5v5"]';
 const ARROW_RIGHT_ICON = 'svg path[d="m12 5 7 7-7 7"]';
 const BUSY_ICON = '.task-detail-action-icon.is-busy svg path[d="M21 12a9 9 0 1 1-6.2-8.6"]';
+// And for the view switch's choices.
+const VIEW_ICONS = {
+  conversation: 'svg path[d^="M22 17a2 2"]',
+  working: 'svg path[d="M9 10h6"]',
+  branch: 'svg circle[cx="18"]',
+  review: 'svg path[d="m21 21-1.9-1.9"]',
+};
 
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
@@ -231,6 +238,60 @@ test("keeps long Task titles clipped in the header and readable in Info", { tag:
     )
     .toBe(true);
   await captureReviewScreenshot(page, testInfo, "tasks-summary-long-title-info");
+});
+
+test("the view switch names each view beside its icon where the header has room and shows the icons alone where it is narrow", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const threadId = "thread_summary_view_switch";
+  const task = summaryTask(threadId, "Add a dark theme to Settings", "repo-view-switch", 100);
+  await installSummaryFixture(page, [task]);
+
+  await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(task));
+  const header = page.locator(".detail-layout-summary");
+  const viewSwitch = header.locator("caffold-segmented-control[data-detail-view-switch]");
+  await expect(viewSwitch).toBeVisible();
+  for (const value of ["conversation", "working", "branch"]) {
+    await expect(
+      viewSwitch.locator(`button[data-segmented-value="${value}"]`).locator(VIEW_ICONS[value]),
+    ).toHaveCount(1);
+  }
+  // Only the desktop header has room for the labels beside the title.
+  const shown = await viewSwitch
+    .locator(".segmented-choice-label")
+    .evaluateAll((labels) => labels.map((label) => getComputedStyle(label).display !== "none"));
+  expect(shown).toEqual(Array(3).fill(testInfo.project.name === "desktop"));
+  await expect(viewSwitch.getByRole("button", { name: "Working Tree", exact: true })).toBeVisible();
+  // Where the switch shares the title's row, the title keeps 12rem.
+  if (testInfo.project.name !== "phone") {
+    const titleRem = await header
+      .locator("caffold-task-detail-summary .task-detail-heading")
+      .evaluate(
+        (heading) =>
+          heading.getBoundingClientRect().width /
+          Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+      );
+    expect(titleRem).toBeGreaterThanOrEqual(12);
+  }
+});
+
+test("the view switch of a Task outside Git offers Review with its icon", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const threadId = "thread_summary_view_switch_outside_git";
+  const task = {
+    ...summaryTask(threadId, "Draft the launch announcement", "launch", 100),
+    worktree: null,
+  };
+  await installSummaryFixture(page, [task]);
+
+  await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(task));
+  const viewSwitch = page.locator(".detail-layout-summary caffold-segmented-control[data-detail-view-switch]");
+  await expect(viewSwitch.locator("button")).toHaveText(["Conversation", "Review"]);
+  await expect(viewSwitch.locator('button[data-segmented-value="conversation"]').locator(VIEW_ICONS.conversation)).toHaveCount(1);
+  await expect(viewSwitch.locator('button[data-segmented-value="review"]').locator(VIEW_ICONS.review)).toHaveCount(1);
 });
 
 test("shows the config directory a Claude Task runs under in Task details", { tag: "@all-viewports" }, async ({

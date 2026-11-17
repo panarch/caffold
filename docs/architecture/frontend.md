@@ -709,7 +709,7 @@ component names these targets itself from the title the renderer gives them:
 `Go to <text> (slide N)` for a link to another slide, `Open <text or address>`
 for a link out of the deck, and `Go to <text>` when the deck gives the link a
 tooltip. The Excel viewer enumerates the anchors of its drawn cells and merges
-its sheet tabs through the segmented control's scope, labelled `Show sheet
+the scope of its sheet tabs, `caffold-xlsx-sheet-tabs`, labelled `Show sheet
 <name>`. The file viewer merges the current document viewer's scope, passing
 Integrated Review's `link.open` and `button.activate` actions.
 
@@ -2453,6 +2453,7 @@ frontend/
     |-- xlsx-viewer.ts
     |-- xlsx-viewer/workbook.ts
     |-- xlsx-viewer/window.ts
+    |-- xlsx-viewer/components/sheet-tabs.ts
     |-- pane-resizer.ts
     |-- segmented-control.ts
     |-- split-view.ts
@@ -2637,8 +2638,25 @@ comes from.
 
 `caffold-segmented-control` is the shared compact single-choice presentation
 owner. It patches value-keyed buttons from a choices snapshot, owns pressed
-semantics and visual separators, and emits value intent. Task Detail and
+semantics and visual separators, and emits value intent. Every choice names a
+Lucide icon, drawn before its label; a button's accessible name is its label,
+and its tooltip is the choice's title or else the label. Task Detail and
 Integrated Review retain route state, choice availability, and host placement.
+The placement also decides when the labels give way: below a container width
+it explains in its stylesheet, it sets `--segmented-control-label-display:
+none` and `--segmented-control-icon-size`, so each choice shows its icon alone
+at least a compact touch target wide. It picks a container whose width pressing
+a choice or opening a file does not change, so a bar keeps one look while it is
+used. Task Detail's view switch follows the Task workspace, because Working
+Tree, Branch, Git, and GitHub put their own file tree in the Task list's place
+and widen the header. Integrated Review's file choices follow the same
+workspace, which Review fills, because opening a file folds a narrow navigator
+into a strip and widens the viewer. The
+navigator's choices follow the navigator pane, and Diff and Visual in Commit
+and Compare follow the file viewer header. Visual's comparison choice keeps its
+labels. The Excel viewer's sheet
+tabs are their own component, `caffold-xlsx-sheet-tabs`, since their buttons
+are the workbook's sheet names.
 
 `caffold-pane-resizer` is the shared split separator and the only owner of the
 start pane width and of the person's choice to collapse the start pane. It

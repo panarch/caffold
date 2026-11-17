@@ -2024,6 +2024,9 @@ test("opens a picture's change as Visual in Commit and Compare, and offers Diff 
   // SVG has both, so it opens the way the picture before it was shown.
   const change = commitViewer.locator(".viewer-change-control");
   await expect(change.getByRole("button")).toHaveText(["Diff", "Visual"]);
+  // What the Lucide stub draws for FileDiff and Images.
+  await expect(change.locator('button[data-segmented-value="diff"] svg path[d="M9 10h6"]')).toHaveCount(1);
+  await expect(change.locator('button[data-segmented-value="visual"] svg rect[x="8"][y="2"]')).toHaveCount(1);
   await expect(change.getByRole("button", { name: "Visual" })).toHaveAttribute("aria-pressed", "true");
   await expectDrawnPicture(commitViewer.locator('caffold-visual-diff figure[data-side="after"] img'));
   await change.getByRole("button", { name: "Diff" }).click();

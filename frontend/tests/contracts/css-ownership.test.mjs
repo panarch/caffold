@@ -37,6 +37,7 @@ const shadowRootStyles = new Map([
   ["components/split-view.css", "caffold-split-view"],
   ["components/terminal-view.css", "caffold-terminal-view"],
   ["components/xlsx-viewer.css", "caffold-xlsx-viewer"],
+  ["components/xlsx-viewer/components/sheet-tabs.css", "caffold-xlsx-sheet-tabs"],
   ["keyboard-navigation/components/hud.css", "caffold-scroll-mode-hud"],
   ["keyboard-navigation/components/presentation.css", "caffold-keyboard-navigation-presentation"],
   ["keyboard-navigation/components/selector.css", "caffold-scroll-surface-selector"],
