@@ -249,6 +249,109 @@ test("keeps the Settings list's scroll and focus when its icons arrive", { tag: 
   await expect(about).toBeFocused();
 });
 
+test("draws Settings sections at the Task list's row height and title weight, and the pane title's text size", { tag: ["@desktop", "@foldable"] }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: activeTaskProjection([
+        { threadId: "thread-row-reference", title: "Row reference", updatedMs: Date.now() },
+      ]),
+    })
+  );
+
+  for (const interfaceScalePercent of [100, 120]) {
+    await page.goto("/");
+    await page.evaluate(async (value) => {
+      const { setAppearanceRangeSetting } = await import("/assets/settings.js");
+      setAppearanceRangeSetting("interfaceScalePercent", value);
+    }, interfaceScalePercent);
+    const taskRow = page.locator("caffold-active-task-row .task-row");
+    await expect(taskRow).toHaveCount(1);
+    const taskRowHeight = await taskRow.evaluate(
+      (row) => row.getBoundingClientRect().height,
+    );
+    const taskTitleWeight = await taskRow
+      .locator(".task-row-title")
+      .evaluate((title) => getComputedStyle(title).fontWeight);
+
+    await page.goto("/settings");
+    const sections = page.locator("caffold-settings-navigator-item button");
+    await expect(sections.first()).toBeVisible();
+    const titleSize = await page
+      .locator("caffold-settings-navigator .workspace-brand-title")
+      .evaluate((title) => getComputedStyle(title).fontSize);
+    const drawn = await sections.evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const label = button.querySelector(".settings-navigator-item-label");
+        return {
+          section: button.dataset.settingsSection,
+          height: button.getBoundingClientRect().height,
+          fontSize: getComputedStyle(label).fontSize,
+          fontWeight: getComputedStyle(label).fontWeight,
+          clipped: label.scrollWidth > label.clientWidth,
+        };
+      })
+    );
+    expect(drawn.length).toBeGreaterThan(0);
+    expect(drawn).toEqual(
+      drawn.map(({ section }) => ({
+        section,
+        height: taskRowHeight,
+        fontSize: titleSize,
+        fontWeight: taskTitleWeight,
+        clipped: false,
+      })),
+    );
+  }
+});
+
+test("draws no Settings page text larger than the page's description", { tag: ["@desktop", "@foldable"] }, async ({
+  page,
+}) => {
+  await page.goto("/settings");
+  const sections = await page
+    .locator("caffold-settings-navigator-item button")
+    .evaluateAll((buttons) => buttons.map((button) => button.dataset.settingsSection));
+  expect(sections.length).toBeGreaterThan(0);
+
+  for (const section of sections) {
+    await page.goto(`/settings/${section}`);
+    const settingsPage = page.locator(`caffold-settings-${section}-page`);
+    const description = settingsPage.locator("header p").first();
+    await expect(description).toBeVisible();
+    const descriptionSize = await description.evaluate(
+      (element) => getComputedStyle(element).fontSize,
+    );
+    const larger = await settingsPage.evaluate((host, limit) => {
+      const found = [];
+      const visit = (root) => {
+        for (const element of root.querySelectorAll("*")) {
+          if (element.shadowRoot) visit(element.shadowRoot);
+          // Appearance previews draw Conversation and Code text at their own sizes.
+          if (element.closest(".settings-conversation-preview, .settings-code-preview")) {
+            continue;
+          }
+          const box = element.getBoundingClientRect();
+          const drawsText =
+            ["INPUT", "SELECT", "TEXTAREA"].includes(element.tagName) ||
+            [...element.childNodes].some(
+              (node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim(),
+            );
+          const size = getComputedStyle(element).fontSize;
+          if (drawsText && box.width > 0 && parseFloat(size) > parseFloat(limit)) {
+            found.push(`${element.localName}.${element.getAttribute("class") ?? ""} ${size}`);
+          }
+        }
+      };
+      visit(host.shadowRoot);
+      return found;
+    }, descriptionSize);
+    expect({ section, larger }).toEqual({ section, larger: [] });
+  }
+});
+
 test("collects MCP status only when About diagnostics are copied", { tag: "@server-steady" }, async ({
   context,
   page,

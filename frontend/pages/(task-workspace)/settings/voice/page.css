@@ -5,7 +5,7 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
-  font-size: var(--interface-font-size);
+  font-size: var(--settings-text-size);
   line-height: var(--interface-line-height);
 }
 
@@ -62,7 +62,7 @@ button {
   background: var(--surface);
   color: var(--control-fg);
   font: inherit;
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
@@ -93,7 +93,7 @@ button:disabled {
   border-left: 3px solid var(--danger);
   background: var(--surface-subtle);
   color: var(--muted);
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
 }
 
 .settings-voice-options {
@@ -190,7 +190,7 @@ button:disabled {
 
 .settings-voice-download-error {
   color: var(--danger);
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   overflow-wrap: anywhere;
 }
 
@@ -208,7 +208,7 @@ button:disabled {
 }
 
 .settings-voice-key label {
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
 }
 
 .settings-voice-key input {
@@ -221,7 +221,7 @@ button:disabled {
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
 }
 
 .settings-voice-key input:focus-visible {

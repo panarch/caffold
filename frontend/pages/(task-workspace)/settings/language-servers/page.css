@@ -5,7 +5,7 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
-  font-size: var(--interface-font-size);
+  font-size: var(--settings-text-size);
   line-height: var(--interface-line-height);
 }
 
@@ -59,14 +59,14 @@ ul {
   border-left: 3px solid var(--danger);
   background: var(--surface-subtle);
   color: var(--muted);
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   line-height: var(--interface-line-height);
   overflow-wrap: anywhere;
 }
 
 .settings-language-servers-none {
   color: var(--muted);
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
 }
 
 /* One row per language or running server, a line between rows. Rows fill the
@@ -136,7 +136,7 @@ ul {
   background: var(--surface-subtle);
   color: var(--muted);
   font: inherit;
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   line-height: var(--interface-line-height);
 }
 
@@ -164,7 +164,7 @@ ul {
   background: var(--surface);
   color: var(--control-fg);
   font: inherit;
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;

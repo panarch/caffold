@@ -618,7 +618,7 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
     "--settings-content-max-width",
     "--settings-content-padding-block",
     "--settings-content-padding-inline",
-    "--settings-small-text-size",
+    "--settings-text-size",
     "--settings-page-title-size",
     "--settings-page-description-size",
     "--settings-field-label-size",
@@ -632,11 +632,11 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
   }
   assert.match(
     settingsLayout,
-    /--settings-small-text-size: max\(14px, 0\.8125rem\)/,
+    /--settings-text-size: max\(14px, 0\.8125rem\)/,
   );
   assert.match(
     settingsLayout,
-    /--settings-detail-value-size: var\(--settings-small-text-size\)/,
+    /--settings-detail-value-size: var\(--settings-text-size\)/,
   );
 
   const pages = [
