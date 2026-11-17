@@ -372,10 +372,10 @@ already carries both, but the shell cache keeps the document a build first
 loaded, so every health answer the app shell reads and every answer of
 Settings → Name & Icon is applied to the head. An answer equal to what the head
 shows changes nothing. A changed one dispatches
-`caffold:server-identity-change` on `window`, which
-`caffold-workspace-brand` and About follow through `ServerIdentityController`,
-reading the head again when they connect. Other windows show a change the next
-time they read health. The server draws each icon file at
+`caffold:server-identity-change` on `window`, which About follows through
+`ServerIdentityController`, reading the head again when it connects. Other
+windows show a change the next time they read health. The server draws each
+icon file at
 `/icons/<icon>/<file>` from the gray meerkat: black stays black, white stays
 white, and a middle gray takes the icon's color, so the meerkat's body is that
 color. The eleven colors share the OKLCH lightness 0.62 at hues 360/11 degrees
@@ -2086,8 +2086,9 @@ document resets only its preview; refreshing the same document preserves its
 reading position.
 
 `notes/components/navigator.ts` defines `caffold-notes-navigator`. It renders
-the brand or selection header and the shared File Tree from workspace
-snapshots. Directory disclosure and tree scroll remain with that instance.
+a header titled Notes, or the selection's title while a Note is being chosen,
+and the shared File Tree from workspace snapshots. Directory disclosure and
+tree scroll remain with that instance.
 It emits open-Note, load-directory, Retry, cancel, and close intents. The
 other pane's committed Note is disabled in a selector. `notes/tree.ts` maps
 independently read folder levels to directories-first File Tree nodes and

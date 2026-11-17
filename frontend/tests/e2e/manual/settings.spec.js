@@ -86,11 +86,8 @@ for (const theme of ["light", "dark"]) {
       await expect(nameAndIcon.getByRole("radio")).toHaveCount(12);
       await expect(nameAndIcon.getByRole("radio", { name: "Default" })).not.toBeChecked();
       await expect(nameAndIcon.getByRole("radio", { name: "Blue" })).toBeChecked();
-      await expect(
-        page.locator("caffold-settings-navigator caffold-workspace-brand .workspace-brand-icon"),
-      ).toHaveAttribute("src", "/icons/blue/favicon-32.png");
       await expect.poll(() =>
-        page.locator("caffold-settings-navigator caffold-workspace-brand img, caffold-settings-name-and-icon-page img")
+        page.locator("caffold-settings-name-and-icon-page img")
           .evaluateAll((images) => images.every((image) => image.complete && image.naturalWidth > 0)),
       ).toBe(true);
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);

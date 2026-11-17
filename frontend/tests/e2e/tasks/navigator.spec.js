@@ -2031,49 +2031,43 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   await emitTaskDetailBootstrap(page, activeDetail);
   const navigator = page.locator("caffold-task-navigator");
   await expect(navigator.locator(".task-list-section")).toHaveCount(2);
+  // The header names the list, and the Archived section names its own.
   await expect(navigator.locator(".task-list-section-header h2")).toHaveText([
+    "Tasks",
     "Archived",
   ]);
-  const workspaceBrand = navigator.locator("caffold-workspace-brand");
-  await expect(workspaceBrand.locator(".workspace-brand-title")).toHaveText(
-    "Caffold",
-  );
-  await expect(workspaceBrand.locator(".workspace-brand-icon")).toHaveAttribute(
-    "src",
-    "/icons/default/favicon-32.png",
-  );
   await expect(
     navigator.locator('.task-list-section[data-task-section="managed"]'),
   ).toHaveAttribute("aria-label", "Caffold Tasks");
-  const headerTypography = await page.locator(
-    "caffold-task-navigator caffold-workspace-brand",
-  ).evaluate((brandHost, detailTitle) => {
-    const rootFontSize = Number.parseFloat(
-      getComputedStyle(document.documentElement).fontSize,
-    );
-    const brand = brandHost.shadowRoot;
-    const navigatorTitle = brand.querySelector(".workspace-brand-title");
-    const brandIcon = brand.querySelector(".workspace-brand-icon");
-    return {
-      rootFontSize,
-      navigatorTitleSize: Number.parseFloat(
-        getComputedStyle(navigatorTitle).fontSize,
-      ),
-      detailTitleSize: Number.parseFloat(getComputedStyle(detailTitle).fontSize),
-      brandIconWidth: Number.parseFloat(getComputedStyle(brandIcon).width),
-    };
-  }, await page.locator(".task-detail-heading > h2").elementHandle());
-  expect(headerTypography.navigatorTitleSize).toBeCloseTo(
+  // The list's title takes the Task title's size in the header icons' color,
+  // a step quieter than the Task title.
+  const headerTypography = await navigator.locator(".task-list-title").evaluate(
+    (listTitle, detailTitle) => {
+      const switcher = listTitle.getRootNode().querySelector(".task-list-switcher");
+      return {
+        rootFontSize: Number.parseFloat(
+          getComputedStyle(document.documentElement).fontSize,
+        ),
+        listTitleSize: Number.parseFloat(getComputedStyle(listTitle).fontSize),
+        listTitleColor: getComputedStyle(listTitle).color,
+        detailTitleSize: Number.parseFloat(getComputedStyle(detailTitle).fontSize),
+        detailTitleColor: getComputedStyle(detailTitle).color,
+        iconColor: getComputedStyle(switcher).color,
+      };
+    },
+    await page.locator(".task-detail-heading > h2").elementHandle(),
+  );
+  expect(headerTypography.listTitleSize).toBeCloseTo(
     headerTypography.rootFontSize * 0.8125,
     2,
   );
   expect(headerTypography.detailTitleSize).toBeCloseTo(
-    headerTypography.navigatorTitleSize,
+    headerTypography.listTitleSize,
     2,
   );
-  expect(headerTypography.brandIconWidth).toBeCloseTo(
-    headerTypography.rootFontSize * 1.25,
-    2,
+  expect(headerTypography.listTitleColor).toBe(headerTypography.iconColor);
+  expect(headerTypography.listTitleColor).not.toBe(
+    headerTypography.detailTitleColor,
   );
   expect(requestedPaths).not.toContain("/api/task-history");
   await expect(
@@ -2594,29 +2588,8 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
   await expect(tasksPage.locator(".task-repository-group")).toHaveCount(2);
   await expect(rows).toHaveCount(4);
   await expect(actionsButton).toBeVisible();
-  await expect(
-    managedHeader.locator(":scope > caffold-workspace-brand"),
-  ).toContainText("Caffold");
-  const brandIconMetrics = await managedHeader
-    .locator(".workspace-brand-icon")
-    .evaluate((icon) => {
-      const rootFontSize = Number.parseFloat(
-        getComputedStyle(document.documentElement).fontSize,
-      );
-      const style = getComputedStyle(icon);
-      return {
-        rootFontSize,
-        width: Number.parseFloat(style.width),
-        offsetY: new DOMMatrixReadOnly(style.transform).m42,
-      };
-    });
-  expect(brandIconMetrics.width).toBeCloseTo(
-    brandIconMetrics.rootFontSize * 1.25,
-    2,
-  );
-  expect(brandIconMetrics.offsetY).toBeCloseTo(
-    brandIconMetrics.rootFontSize * -0.0625,
-    2,
+  await expect(managedHeader.locator(":scope > .task-list-title")).toHaveText(
+    "Tasks",
   );
   const headerActionAlignment = await page.locator(".task-list-actions").evaluate((button) => {
     const header = button.closest(".task-list-section-header");
@@ -3017,7 +2990,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
   }
 });
 
-test("keeps the brand beside the corner toggle and header actions in the narrowest navigation pane", { tag: "@foldable" }, async ({
+test("keeps the list title whole beside the corner toggle and header actions in the narrowest navigation pane", { tag: "@foldable" }, async ({
   page,
 }, testInfo) => {
   await page.addInitScript(() => {
@@ -3041,10 +3014,8 @@ test("keeps the brand beside the corner toggle and header actions in the narrowe
   await expect(header.getByRole("button", { name: "Switch task" }))
     .toBeVisible();
 
-  const layout = await header.evaluate((element) => {
-    const title = element
-      .querySelector("caffold-workspace-brand")
-      .shadowRoot.querySelector(".workspace-brand-title");
+  const measure = () => header.evaluate((element) => {
+    const title = element.querySelector(".task-list-title");
     const actions = [
       ...element.querySelectorAll(".task-list-header-action"),
     ].map((action) => action.getBoundingClientRect());
@@ -3053,34 +3024,39 @@ test("keeps the brand beside the corner toggle and header actions in the narrowe
         .getRootNode()
         .host.closest(".task-workspace-master-pane")
         .getBoundingClientRect().width,
-      actionCount: actions.length,
-      titleClipped: title.scrollWidth > title.clientWidth,
-      brandLeft: element
-        .querySelector("caffold-workspace-brand")
-        .getBoundingClientRect().left,
-      brandRight: element
-        .querySelector("caffold-workspace-brand")
+      paneRight: element
+        .getRootNode()
+        .host.closest(".task-workspace-master-pane")
         .getBoundingClientRect().right,
+      actionCount: actions.length,
+      titleText: title.textContent,
+      titleClipped: title.scrollWidth > title.clientWidth,
+      titleLeft: title.getBoundingClientRect().left,
+      titleRight: title.getBoundingClientRect().right,
       firstActionLeft: actions[0].left,
       lastActionRight: actions.at(-1).right,
       headerRight: element.getBoundingClientRect().right,
     };
   });
-
-  expect(layout.paneWidth).toBeLessThanOrEqual(281);
-  expect(layout.actionCount).toBe(2);
-  expect(layout.titleClipped).toBe(false);
-  expect(layout.brandRight).toBeLessThanOrEqual(layout.firstActionLeft);
-  expect(layout.lastActionRight).toBeLessThanOrEqual(layout.headerRight);
   const toggle = page.locator("caffold-task-workspace .task-workspace-side-pane-toggle");
-  await expect(toggle).toBeVisible();
-  const toggleBox = await toggle.boundingBox();
-  expect(layout.brandLeft).toBeGreaterThanOrEqual(toggleBox.x + toggleBox.width);
+  const expectWholeTitle = async () => {
+    const layout = await measure();
+    expect(layout.paneWidth).toBeLessThanOrEqual(281);
+    expect(layout.actionCount).toBe(2);
+    expect(layout.titleText).toBe("Tasks");
+    expect(layout.titleClipped).toBe(false);
+    expect(layout.titleRight).toBeLessThanOrEqual(layout.firstActionLeft);
+    expect(layout.lastActionRight).toBeLessThanOrEqual(layout.headerRight);
+    expect(layout.headerRight).toBeLessThanOrEqual(layout.paneRight);
+    await expect(toggle).toBeVisible();
+    const toggleBox = await toggle.boundingBox();
+    expect(layout.titleLeft).toBeGreaterThanOrEqual(toggleBox.x + toggleBox.width);
+  };
+  await expectWholeTitle();
   await captureReviewScreenshot(page, testInfo, "task-navigator-narrowest-header");
 
-  // At the largest interface size the name no longer fits beside the toggle and
-  // the actions, so only the mark stays and the name remains for assistive
-  // technology.
+  // The largest interface size still fits the title beside the toggle and the
+  // actions.
   await page.evaluate(() => {
     window.localStorage.setItem(
       "caffold:settings",
@@ -3090,37 +3066,10 @@ test("keeps the brand beside the corner toggle and header actions in the narrowe
   await page.reload();
   await expect(header.getByRole("button", { name: "Switch task" }))
     .toBeVisible();
-  const scaled = await header.evaluate((element) => {
-    const pane = element
-      .getRootNode()
-      .host.closest(".task-workspace-master-pane")
-      .getBoundingClientRect();
-    const brand = element.querySelector("caffold-workspace-brand").shadowRoot;
-    const title = brand.querySelector(".workspace-brand-title");
-    const actions = [
-      ...element.querySelectorAll(".task-list-header-action"),
-    ].map((action) => action.getBoundingClientRect());
-    return {
-      titleText: title.textContent,
-      titleVisibleWidth: title.getBoundingClientRect().width,
-      iconWidth: brand
-        .querySelector(".workspace-brand-icon")
-        .getBoundingClientRect().width,
-      brandRight: element
-        .querySelector("caffold-workspace-brand")
-        .getBoundingClientRect().right,
-      firstActionLeft: actions[0].left,
-      lastActionRight: actions.at(-1).right,
-      headerRight: element.getBoundingClientRect().right,
-      paneRight: pane.right,
-    };
-  });
-  expect(scaled.titleText).toBe("Caffold");
-  expect(scaled.titleVisibleWidth).toBeLessThanOrEqual(1);
-  expect(scaled.iconWidth).toBeGreaterThan(0);
-  expect(scaled.brandRight).toBeLessThanOrEqual(scaled.firstActionLeft);
-  expect(scaled.lastActionRight).toBeLessThanOrEqual(scaled.headerRight);
-  expect(scaled.headerRight).toBeLessThanOrEqual(scaled.paneRight);
+  expect(
+    await page.evaluate(() => getComputedStyle(document.documentElement).fontSize),
+  ).toBe("20.4px");
+  await expectWholeTitle();
   await captureReviewScreenshot(page, testInfo, "task-navigator-narrowest-header-scaled");
 });
 

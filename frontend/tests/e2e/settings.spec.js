@@ -280,7 +280,7 @@ test("draws Settings sections at the Task list's row height and title weight, an
     const sections = page.locator("caffold-settings-navigator-item button");
     await expect(sections.first()).toBeVisible();
     const titleSize = await page
-      .locator("caffold-settings-navigator .workspace-brand-title")
+      .locator("caffold-settings-navigator .settings-navigator-title")
       .evaluate((title) => getComputedStyle(title).fontSize);
     const drawn = await sections.evaluateAll((buttons) =>
       buttons.map((button) => {

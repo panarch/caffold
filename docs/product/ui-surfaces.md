@@ -46,7 +46,9 @@ workspace's top-left corner hides the list so the detail takes the full width,
 and shows it again at the width it had. The list hides only while the detail
 has something open: a Task, New Task, a Note, a Settings page, or a file.
 Otherwise the button stays in its place but is unavailable. Each kind of pane
-remembers whether it was hidden, the same way it remembers its width.
+remembers whether it was hidden, the same way it remembers its width. Beside
+that button, the navigation pane's header names its tab: Tasks, Notes, or
+Settings.
 
 The review file screens, Integrated Review, Git Compare, a Git Log commit, and
 GitHub Pull Request files, place their list by window width. Up to 560 px
@@ -56,9 +58,7 @@ corner button's column, naming the list and how many files it holds. The strip
 or the corner button opens the list over the file as a drawer, between 320 px
 and 70% of the screen at the list's remembered width; choosing a file, the
 darkened file, Escape, or the corner button closes it, and no screen remembers
-it open. Wider, the list sits beside the file as described above. When the
-navigation pane is too narrow for the header's controls and the full Caffold
-name, the header keeps only the Caffold mark.
+it open. Wider, the list sits beside the file as described above.
 
 ## Task Navigator
 
@@ -708,9 +708,9 @@ Settings includes:
 - Name & Icon, which sets the host's name and its icon: the gray meerkat
   (**Default**) or that meerkat in one of eleven colors of the same lightness,
   shown as a grid of twelve. Browser tabs, the name and icon a browser installs
-  Caffold with, notifications, and Caffold's mark in the navigation and About
-  show them. Any browser that reaches the host can change them: an icon is
-  saved when it is picked and a name with **Save**. An app installed earlier
+  Caffold with, notifications, and About show them. Any browser that reaches
+  the host can change them: an icon is saved when it is picked and a name with
+  **Save**. An app installed earlier
   keeps the name and icon it was installed with;
 - Remote Access status and constrained Tailscale Serve controls, with the ready
   private Tailnet URL, copy/open actions, QR handoff, and same-tailnet guidance;

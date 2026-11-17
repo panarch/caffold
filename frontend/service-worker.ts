@@ -203,8 +203,6 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/components/update-task-dialog.js",
   "/assets/pages/(task-workspace)/components/language-server-install-dialog.css.js",
   "/assets/pages/(task-workspace)/components/language-server-install-dialog.js",
-  "/assets/pages/(task-workspace)/components/workspace-brand.css.js",
-  "/assets/pages/(task-workspace)/components/workspace-brand.js",
   "/assets/pages/(task-workspace)/codex-status.js",
   "/assets/pages/(task-workspace)/codex-status/model.js",
   "/assets/pages/(task-workspace)/codex-status/lifecycle.js",

@@ -104,9 +104,6 @@ test("names this host and picks its icon, and this window shows both", { tag: "@
     "href",
     "/icons/blue/apple-touch-icon.png",
   );
-  await expect(
-    page.locator("caffold-settings-navigator caffold-workspace-brand .workspace-brand-icon"),
-  ).toHaveAttribute("src", "/icons/blue/favicon-32.png");
   await expect(page).toHaveTitle("Caffold");
 
   const name = settingsPage.getByLabel("Name", { exact: true });

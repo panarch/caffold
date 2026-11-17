@@ -77,6 +77,18 @@
   color: var(--muted);
 }
 
+.task-list-title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--workspace-pane-title-color);
+  font-size: var(--workspace-header-title-size);
+  font-weight: 700;
+  line-height: var(--interface-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .task-list-primary-actions {
   display: flex;
   flex: 0 0 auto;

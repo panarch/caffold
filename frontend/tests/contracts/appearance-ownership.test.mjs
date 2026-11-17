@@ -482,13 +482,10 @@ test("the loading phrase waits, fades in, and falls back to still text for reduc
   );
 });
 
-test("workspace header identity and titles share semantic ownership", () => {
+test("workspace header titles share semantic ownership", () => {
   const tokens = readFrontend("styles.css");
-  const brand = readFrontend(
-    "pages/(task-workspace)/components/workspace-brand.css",
-  );
-  const brandView = readFrontend(
-    "pages/(task-workspace)/components/workspace-brand.ts",
+  const notesNavigator = readFrontend(
+    "pages/(task-workspace)/notes/components/navigator.css",
   );
   const taskNavigator = readFrontend(
     "pages/(task-workspace)/tasks/components/navigator.css",
@@ -513,30 +510,30 @@ test("workspace header identity and titles share semantic ownership", () => {
   );
 
   assert.match(tokens, /--workspace-header-title-size: 0\.8125rem/);
-  cssBlockMatching(brand, ":host", [
-    /gap: var\(--interface-space-3\)/,
-    /color: var\(--muted\)/,
-  ]);
-  cssBlockMatching(brand, ".workspace-brand-icon", [
-    /width: 1\.25rem/,
-    /height: 1\.25rem/,
-    /transform: translateY\(-0\.0625rem\)/,
-  ]);
-  cssBlockMatching(brand, ".workspace-brand-title", [
-    /font-size: var\(--workspace-header-title-size\)/,
-    /text-overflow: ellipsis/,
-    /white-space: nowrap/,
-  ]);
+  assert.match(tokens, /--workspace-pane-title-color: var\(--control-fg\)/);
+  // Each list names its tab in the header title's size, in the shared color.
+  for (const [css, selector] of [
+    [taskNavigator, ".task-list-title"],
+    [notesNavigator, ".notes-navigator-title"],
+    [settingsNavigator, ".settings-navigator-title"],
+  ]) {
+    cssBlockMatching(css, selector, [
+      /color: var\(--workspace-pane-title-color\)/,
+      /font-size: var\(--workspace-header-title-size\)/,
+      /font-weight: 700/,
+      /text-overflow: ellipsis/,
+      /white-space: nowrap/,
+    ]);
+  }
+  assert.match(taskNavigatorView, /<h2 class="task-list-title">Tasks<\/h2>/);
   assert.match(
-    brandView,
-    /@customElement\("caffold-workspace-brand"\)/,
+    settingsNavigatorView,
+    /<h2 class="settings-navigator-title">Settings<\/h2>/,
   );
-  assert.match(taskNavigatorView, /<caffold-workspace-brand>/);
-  assert.match(settingsNavigatorView, /<caffold-workspace-brand>/);
   assert.doesNotMatch(
     appearanceView,
-    /<caffold-workspace-brand>/,
-    "Appearance content must not repeat the Settings navigator identity",
+    /settings-navigator-title/,
+    "Appearance content must not repeat the Settings navigator's title",
   );
   assert.doesNotMatch(taskNavigator, /task-list-primary-(?:brand|icon)/);
   assert.doesNotMatch(settingsNavigator, /settings-navigator-header (?:img|strong)/);

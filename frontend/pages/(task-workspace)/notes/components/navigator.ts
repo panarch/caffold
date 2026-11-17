@@ -18,7 +18,6 @@ import type {
 } from "#components/file-tree.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
-import "../../components/workspace-brand.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import { scopedStyle } from "#app/scoped-style.js";
 import type { FileTreeLoadChildrenDetail } from "#components/file-tree.js";
@@ -151,9 +150,7 @@ export class CaffoldNotesNavigator extends CaffoldElement {
     const closeIcon = inlineIcon("X", "Close side by side", ICON);
     return html`
       <header class="notes-navigator-header">
-        <caffold-workspace-brand
-          ?hidden=${Boolean(picker)}
-        ></caffold-workspace-brand>
+        <h2 class="notes-navigator-title" ?hidden=${Boolean(picker)}>Notes</h2>
         <button
           ${this.hints.button({
             id: "cancel",

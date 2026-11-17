@@ -368,9 +368,6 @@ test("a page the service worker kept shows the name and icon the server gives no
     "href",
     "/icons/teal/apple-touch-icon.png",
   );
-  await expect(
-    page.locator("caffold-task-navigator caffold-workspace-brand .workspace-brand-icon"),
-  ).toHaveAttribute("src", "/icons/teal/favicon-32.png");
   await page.unrouteAll({ behavior: "wait" });
 });
 
