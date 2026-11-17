@@ -7,12 +7,14 @@ button {
   grid-template-columns: var(--interface-icon-size) minmax(0, 1fr);
   align-items: center;
   gap: var(--interface-space-5);
-  min-height: var(--interface-row-size);
+  min-height: var(--task-list-row-height);
   border: 0;
   background: transparent;
   color: var(--text);
-  padding: var(--interface-space-3) var(--interface-space-7);
+  padding: var(--interface-space-2) var(--interface-space-7);
   font: inherit;
+  font-size: var(--workspace-header-title-size);
+  font-weight: 500;
   text-align: left;
   cursor: pointer;
 }

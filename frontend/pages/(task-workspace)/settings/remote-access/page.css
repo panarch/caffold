@@ -5,7 +5,7 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
-  font-size: var(--interface-font-size);
+  font-size: var(--settings-text-size);
   line-height: var(--interface-line-height);
 }
 
@@ -62,7 +62,7 @@ figcaption,
 .settings-remote-message,
 .settings-remote-copy-message {
   color: var(--muted);
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
 }
 
 button,
@@ -77,7 +77,7 @@ button,
   background: var(--surface);
   color: var(--control-fg);
   font: inherit;
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   line-height: 1;
   text-decoration: none;
   white-space: nowrap;

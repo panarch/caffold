@@ -5,7 +5,7 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
-  font-size: var(--interface-font-size);
+  font-size: var(--settings-text-size);
   line-height: var(--interface-line-height);
 }
 
@@ -92,7 +92,7 @@
 
 .settings-about-updates p {
   color: var(--muted);
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   line-height: var(--interface-line-height);
   white-space: pre-line;
 }
@@ -115,7 +115,7 @@
 
 .settings-about-updates dt,
 .settings-about-updates dd {
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   line-height: var(--interface-line-height);
 }
 
@@ -165,7 +165,7 @@
   background: transparent;
   color: var(--control-fg);
   font: inherit;
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
@@ -219,7 +219,7 @@
 
 [data-about-copy-status] {
   color: var(--muted);
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
 }
 
 .settings-about-actions button {
@@ -232,7 +232,7 @@
   background: transparent;
   color: var(--control-fg);
   font: inherit;
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;

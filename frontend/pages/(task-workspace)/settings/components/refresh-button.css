@@ -17,7 +17,7 @@ button {
   background: transparent;
   color: var(--control-fg);
   cursor: pointer;
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   line-height: 1;
   white-space: nowrap;
 }

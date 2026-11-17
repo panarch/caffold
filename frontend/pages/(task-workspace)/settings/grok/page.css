@@ -5,7 +5,7 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
-  font-size: var(--interface-font-size);
+  font-size: var(--settings-text-size);
   line-height: var(--interface-line-height);
 }
 

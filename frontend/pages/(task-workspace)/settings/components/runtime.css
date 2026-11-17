@@ -30,7 +30,7 @@
 .settings-runtime-control p {
   margin: 0;
   color: var(--muted);
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   line-height: var(--interface-line-height);
 }
 
@@ -44,7 +44,7 @@
   background: transparent;
   color: var(--control-fg);
   font: inherit;
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
@@ -100,7 +100,7 @@
   margin: 0;
   margin-top: var(--interface-space-5);
   color: var(--success);
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
 }
 
 .settings-runtime-message[data-state="failed"] {

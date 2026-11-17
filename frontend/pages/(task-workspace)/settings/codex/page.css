@@ -5,7 +5,7 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
-  font-size: var(--interface-font-size);
+  font-size: var(--settings-text-size);
   line-height: var(--interface-line-height);
 }
 
@@ -89,7 +89,7 @@
   background: transparent;
   color: var(--control-fg);
   font: inherit;
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
@@ -193,14 +193,14 @@
 
 .settings-codex-repair p {
   color: var(--muted);
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   line-height: var(--interface-line-height);
 }
 
 .settings-codex-repair a {
   width: fit-content;
   color: var(--link-fg);
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
 }
 
 .settings-codex-command {
@@ -217,13 +217,13 @@
 
 .settings-codex-command code {
   min-width: 0;
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   overflow-wrap: anywhere;
 }
 
 .settings-codex-command strong {
   grid-column: 1 / -1;
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   line-height: var(--interface-line-height);
 }
 
@@ -235,7 +235,7 @@
   background: var(--surface);
   color: var(--control-fg);
   font: inherit;
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   cursor: pointer;
 }
 
@@ -279,7 +279,7 @@
 .settings-codex-diagnostic dd,
 .settings-codex-updates dt,
 .settings-codex-updates dd {
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   line-height: var(--interface-line-height);
 }
 
@@ -332,7 +332,7 @@
 .settings-runtime-control p,
 .settings-codex-updates p {
   color: var(--muted);
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   line-height: var(--interface-line-height);
   white-space: pre-line;
 }
@@ -340,7 +340,7 @@
 .settings-runtime-message {
   margin-top: var(--interface-space-5);
   color: var(--success);
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
 }
 
 .settings-runtime-message[data-state="failed"] {
@@ -373,13 +373,13 @@
 
 .settings-codex-reset-heading span,
 .settings-codex-reset-credit h5 {
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
 }
 
 .settings-codex-reset-credits > p:not(.settings-runtime-message),
 .settings-codex-reset-credit p {
   color: var(--muted);
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   line-height: var(--interface-line-height);
 }
 
@@ -414,7 +414,7 @@
   background: var(--surface);
   color: var(--control-fg);
   font: inherit;
-  font-size: var(--settings-small-text-size);
+  font-size: var(--settings-text-size);
   cursor: pointer;
 }
 
