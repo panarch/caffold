@@ -74,6 +74,12 @@ The Task navigator provides:
 - exclusive Task and Section reorder modes for the persistent Active order;
 - Task Switcher, New Task, Archive, Restore, and eligible delete actions.
 
+The navigator header holds Switch task and Task list actions. Task list actions
+opens a menu of New Task, Reorder Tasks, and Reorder Sections; while either
+reorder mode is on, the same button finishes it. With no active Task, the
+Active list shows "No active Tasks" and a New Task button in place of its rows,
+above the Archived section.
+
 The Archived section is left out while no Task is archived; an Archived list
 that could not be read keeps the section to show its error.
 

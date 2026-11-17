@@ -1789,7 +1789,8 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@s
 
   await page.getByRole("button", { name: /Task details/ }).click();
   await expect(page.getByRole("button", { name: "Archive task" })).toBeEnabled();
-  await page.getByRole("button", { name: "New Task" }).click();
+  await navigator.getByRole("button", { name: "Task list actions" }).click();
+  await navigator.getByRole("button", { name: "New Task" }).click();
   const newTaskForm = tasksPage.locator(".task-new-form");
   const prompt = newTaskForm.locator('textarea[name="prompt"]');
   await expect(prompt).toBeEnabled();

@@ -9,6 +9,33 @@
   margin: 0 0 0.5rem;
 }
 
+/* The guide stands where the list would be, near the top rather than in the
+   middle, since the Archived list follows it in the same scroll. Its own
+   padding holds it off the header, so no margin escapes the list. A long title
+   wraps inside the pane. */
+.task-list-empty-guide {
+  display: grid;
+  justify-items: center;
+  gap: var(--interface-space-5);
+  padding: 1.75rem 1.25rem 0;
+  text-align: center;
+}
+
+.task-list-empty-guide-title {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--interface-font-size);
+  font-weight: 600;
+  line-height: var(--interface-line-height);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .task-list-empty-guide {
+    padding-top: var(--interface-space-7);
+  }
+}
+
 .task-reorder-error {
   display: flex;
   align-items: center;

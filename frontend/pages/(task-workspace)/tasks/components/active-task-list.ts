@@ -1,6 +1,7 @@
 import { html, nothing, type TemplateResult } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
+  ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
@@ -17,6 +18,7 @@ import {
   reorderTask,
 } from "#app/api.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import { scopedStyle } from "#app/scoped-style.js";
@@ -54,6 +56,7 @@ import {
 import { moveListItemBefore } from "./active-task-list/move-list-item.js";
 
 import secondaryButton from "#app/component-styles/secondary-button.css.js";
+import actionIcon from "#tasks/component-styles/action-icon.css.js";
 import styles from "./active-task-list.css.js";
 
 export interface TaskNavigatorTransportChangeDetail {
@@ -192,15 +195,17 @@ interface SectionDrag {
  *
  * It loads the list, keeps it current from the workspace's Task list stream,
  * and saves the person's reordering. Its template is the frame: the reorder
- * error, the loading, failed, and empty states, and the spoken result of a
- * move. The Sections are kept outside the template and moved with
- * `moveBefore()`, so a Section, its rows, and a gesture in progress survive
- * any reordering.
+ * error, the loading and failed states, the guide to New Task when no Task is
+ * active, and the spoken result of a move. The guide asks the navigator to
+ * open New Task, as the header's menu does. The Sections are kept outside the
+ * template and moved with `moveBefore()`, so a Section, its rows, and a
+ * gesture in progress survive any reordering.
  */
 @customElement("caffold-active-task-list")
 export class CaffoldActiveTaskList extends CaffoldElement {
   static override styles = [
     scopedStyle(secondaryButton, ".task-secondary-button"),
+    scopedStyle(actionIcon, ".task-action-icon"),
     styles,
   ];
 
@@ -224,6 +229,7 @@ export class CaffoldActiveTaskList extends CaffoldElement {
   private selectedSectionId = "";
   private readonly revisionByThread = new Map<string, number>();
   private readonly hints = new ActionHints(this);
+  private readonly iconsReady = () => this.requestUpdate();
   private readonly groups = new DrawnRef<HTMLOListElement>(this);
   private readonly announcement = new DrawnRef<HTMLParagraphElement>(this);
   private active = false;
@@ -254,11 +260,14 @@ export class CaffoldActiveTaskList extends CaffoldElement {
     this.dataset.taskSection = "managed";
     this.setAttribute("role", "region");
     this.setAttribute("aria-label", "Caffold Tasks");
+    window.addEventListener("caffold:icons-ready", this.iconsReady);
+    void warmIcons();
     this.draw();
   }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
+    window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.dispatchListRead(LIST_READ_EVENT.DETACHED);
     this.cancelDrag();
     this.cancelSectionDrag();
@@ -640,9 +649,23 @@ export class CaffoldActiveTaskList extends CaffoldElement {
         >Retry</button>
       </div>`;
     } else if (empty) {
-      content = html`<p class="task-section-message task-section-empty"
-        >No Caffold tasks yet.</p
-      >`;
+      const blocked = this.taskOperations.blocked;
+      content = html`<div class="task-list-empty-guide">
+        <p class="task-list-empty-guide-title">No active Tasks</p>
+        <button
+          ${this.hints.button({
+            id: "task-create:empty",
+            label: "New Task",
+            action: ACTION_HINT_ACTION.TASK_CREATE,
+          })}
+          type="button"
+          class="task-secondary-button"
+          data-task-action="open-new-from-empty-list"
+          title=${blocked ? this.taskOperations.title : nothing}
+          ?disabled=${blocked}
+          @click=${this.requestNewTask}
+        >${inlineIcon("Plus", "", "task-action-icon")}<span>New Task</span></button>
+      </div>`;
     } else {
       content = html`<ol
         ${drawn(this.groups)}
@@ -1671,6 +1694,14 @@ export class CaffoldActiveTaskList extends CaffoldElement {
   private retryLoad(event: Event) {
     event.stopPropagation();
     void this.loadTasks({ force: true });
+  }
+
+  // The navigator opens New Task, finishing a reorder first.
+  private requestNewTask(event: Event) {
+    event.stopPropagation();
+    this.dispatchEvent(
+      new CustomEvent("caffold:active-task-list-new-task", { bubbles: true }),
+    );
   }
 
   private dispatchIntent(detail: ActiveTaskListIntent) {

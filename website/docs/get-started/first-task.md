@@ -11,7 +11,8 @@ Caffold is [installed](install.md) and at least one
 
 1. Open Caffold: on a Mac, choose **Open Caffold** from the menu-bar app; on
    Linux, open the address the install script showed.
-2. Choose **New Task** (+) at the top of the Task list.
+2. Open **Task list actions** (☰) at the top of the Task list and choose
+   **New Task**.
 3. Select the directory above the prompt and choose the repository you want to
    work in from the list, or choose the pencil button and type its path.
 4. Open the model menu and choose a model. The agent that offers it will run

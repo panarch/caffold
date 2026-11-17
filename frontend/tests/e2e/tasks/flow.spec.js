@@ -276,7 +276,7 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
     .toEqual({ cwd: null });
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
   await expect(page.locator("caffold-task-navigator")).toContainText(
-    "No Caffold tasks yet.",
+    "No active Tasks",
   );
 
   await page.goto("/tasks");
@@ -286,7 +286,7 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
     .toEqual({ cwd: null });
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
   await expect(page.locator("caffold-task-navigator")).toContainText(
-    "No Caffold tasks yet.",
+    "No active Tasks",
   );
 
   await page.goto("/tasks?cwd=.");

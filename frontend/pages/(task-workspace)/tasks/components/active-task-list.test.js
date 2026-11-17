@@ -9,6 +9,7 @@ import { LIST_READ_EVENT } from "./active-task-list/list-read.js";
 
 const registry = installCustomElementUnitRegistry();
 await import("./active-task-list.js");
+const { ActionHints } = await import("#app/action-hints.js");
 const List = registry.element("caffold-active-task-list");
 after(() => registry.restore());
 
@@ -383,8 +384,16 @@ test("frames its Sections with the load's state and the outcome of a move", () =
   }));
   assert.match(failed, /<div class="task-section-message task-section-load-error" role="alert"><p>Ledger unavailable.<\/p><button type="button" class="task-secondary-button" data-task-action="retry-task-list"/);
 
-  const empty = html(listHost({ settled: true }));
-  assert.match(empty, />No Caffold tasks yet.<\/p>/);
+  // With no active Task, a guide to New Task stands in for the list, and is
+  // as unavailable as New Task while the Task store is.
+  const empty = html(guideHost({ key: "ready", blocked: false, title: "" }));
+  assert.match(empty, /<div class="task-list-content"><div class="task-list-empty-guide"><p class="task-list-empty-guide-title">No active Tasks<\/p><button type="button" class="task-secondary-button" data-task-action="open-new-from-empty-list" title="" \?disabled="false" @click=""><span class="sr-only"><\/span><span>New Task<\/span><\/button><\/div><\/div>/);
+  const blocked = html(guideHost({
+    key: "blocked",
+    blocked: true,
+    title: "The Task store is unavailable",
+  }));
+  assert.match(blocked, /data-task-action="open-new-from-empty-list" title="The Task store is unavailable" \?disabled="true"/);
 
   const listed = html(listHost({
     settled: true,
@@ -396,6 +405,13 @@ test("frames its Sections with the load's state and the outcome of a move", () =
   assert.match(listed, /<div class="task-reorder-error" role="alert"><span aria-hidden="true">Move wasn't saved. Move it again to retry.<\/span><span class="sr-only">Could not move Alpha. The saved order was restored. Move it again to retry.<\/span><\/div>/);
   assert.match(listed, /<p class="sr-only task-reorder-announcement" aria-live="polite" aria-atomic="true"><\/p>$/);
 });
+
+// A list that has answered with no Task, under the given Task store state.
+function guideHost(taskOperations) {
+  const list = listHost({ settled: true, taskOperations });
+  list.hints = new ActionHints(list);
+  return list;
+}
 
 function listHost(properties) {
   return Object.create(List.prototype, Object.getOwnPropertyDescriptors({

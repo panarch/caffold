@@ -81,8 +81,18 @@ async function threadOrder(page, sectionId = "section-one") {
     .evaluateAll((rows) => rows.map((row) => row.dataset.threadId));
 }
 
+// The outlines Lucide's Menu and ArrowDownUp draw, as the test stand-in has them.
+const MENU_PATHS = ["M4 5h16", "M4 12h16", "M4 19h16"];
+const ARROW_DOWN_UP_PATHS = ["m3 16 4 4 4-4", "M7 20V4", "m21 8-4-4-4 4", "M17 4v16"];
+
+async function iconPaths(button) {
+  return await button
+    .locator(":scope > .task-action-icon > path")
+    .evaluateAll((paths) => paths.map((path) => path.getAttribute("d")));
+}
+
 async function enterReorderMode(page, mode = "Tasks") {
-  await page.locator("caffold-task-navigator .task-list-reorder").click();
+  await page.locator("caffold-task-navigator .task-list-actions").click();
   await page.getByRole("button", { name: `Reorder ${mode}`, exact: true }).click();
 }
 
@@ -197,8 +207,8 @@ test("moves a Task and finishes reorder through Action Hints", { tag: "@all-view
 
   await page.goto("/");
   const navigator = page.locator("caffold-task-navigator");
-  await activateActionHintIntoPopover(page, "Choose what to reorder");
-  await expect(navigator.locator(".task-list-reorder-popover")).toBeVisible();
+  await activateActionHintIntoPopover(page, "Task list actions");
+  await expect(navigator.locator(".task-list-actions-popover")).toBeVisible();
   await activatePopoverActionHint(page, "Reorder Tasks");
   await expect(navigator).toHaveAttribute("data-reorder-mode", "tasks");
 
@@ -267,7 +277,7 @@ test("moves a Section and finishes reorder through Action Hints", { tag: "@all-v
   await page.goto("/");
 
   const navigator = page.locator("caffold-task-navigator");
-  await activateActionHintIntoPopover(page, "Choose what to reorder");
+  await activateActionHintIntoPopover(page, "Task list actions");
   await activatePopoverActionHint(page, "Reorder Sections");
   await expect(navigator).toHaveAttribute("data-reorder-mode", "sections");
 
@@ -320,7 +330,7 @@ test("exits Task reorder with Escape after dismissing Action Hints", { tag: "@se
   await page.goto("/");
 
   const navigator = page.locator("caffold-task-navigator");
-  const toggle = navigator.locator(".task-list-reorder");
+  const toggle = navigator.locator(".task-list-actions");
   await enterReorderMode(page);
   const handleLabel = "Reorder One. Use Up and Down arrow keys to move.";
   const handle = navigator.getByRole("button", {
@@ -377,7 +387,7 @@ test("reorders by keyboard, preserves row geometry, and persists across reloads"
 
   await page.goto("/");
   const navigator = page.locator("caffold-task-navigator");
-  const toggle = navigator.locator(".task-list-reorder");
+  const toggle = navigator.locator(".task-list-actions");
   const firstRow = navigator.locator('.task-row[data-thread-id="thread-a"]');
   await expect(firstRow).toBeVisible();
   await captureReviewScreenshot(page, testInfo, "tasks-reorder-normal");
@@ -387,25 +397,29 @@ test("reorders by keyboard, preserves row geometry, and persists across reloads"
     return { height: bounds.height, titleLeft: title.left, titleWidth: title.width };
   });
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(() => iconPaths(toggle)).toEqual(MENU_PATHS);
+  // Switch task and the menu are the header's only actions, the menu last.
   const headerActionGap = await navigator.evaluate((element) => {
-    const [reorder, create] = element.shadowRoot.querySelectorAll(
+    const actions = element.shadowRoot.querySelectorAll(
       ".task-list-primary-actions > .task-list-header-action",
     );
-    const reorderBounds = reorder.getBoundingClientRect();
-    const createBounds = create.getBoundingClientRect();
-    const reorderStyle = getComputedStyle(reorder, "::before");
-    const createStyle = getComputedStyle(create, "::before");
-    const reorderRightInset = Number.parseFloat(reorderStyle.right) || 0;
-    const createLeftInset = Number.parseFloat(createStyle.left) || 0;
-    return createBounds.left + createLeftInset -
-      (reorderBounds.right - reorderRightInset);
+    const [switcher, menu] = actions;
+    const switcherBounds = switcher.getBoundingClientRect();
+    const menuBounds = menu.getBoundingClientRect();
+    const switcherStyle = getComputedStyle(switcher, "::before");
+    const menuStyle = getComputedStyle(menu, "::before");
+    const switcherRightInset = Number.parseFloat(switcherStyle.right) || 0;
+    const menuLeftInset = Number.parseFloat(menuStyle.left) || 0;
+    return {
+      count: actions.length,
+      menuIsLast: menu.classList.contains("task-list-actions"),
+      gap: menuBounds.left + menuLeftInset -
+        (switcherBounds.right - switcherRightInset),
+    };
   });
-  expect(headerActionGap).toBeGreaterThanOrEqual(8);
-  await expect(toggle.evaluate((button) =>
-    button.compareDocumentPosition(
-      button.parentElement.querySelector(".task-list-new-task"),
-    ) & Node.DOCUMENT_POSITION_FOLLOWING
-  )).resolves.toBeTruthy();
+  expect(headerActionGap.count).toBe(2);
+  expect(headerActionGap.menuIsLast).toBe(true);
+  expect(headerActionGap.gap).toBeGreaterThanOrEqual(8);
 
   const entryMotion = await navigator
     .locator('[data-task-action="select-reorder-mode"][data-reorder-mode="tasks"]')
@@ -433,6 +447,8 @@ test("reorders by keyboard, preserves row geometry, and persists across reloads"
     iconTransitions: ["opacity", "translate"],
   });
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(toggle).toHaveAttribute("aria-label", "Finish reordering Tasks");
+  expect(await iconPaths(toggle)).toEqual(ARROW_DOWN_UP_PATHS);
   await expect.poll(() => navigator
     .locator(".task-repository-select")
     .first()
@@ -738,6 +754,8 @@ test("reorders by keyboard, preserves row geometry, and persists across reloads"
 
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(toggle).toHaveAttribute("aria-label", "Task list actions");
+  expect(await iconPaths(toggle)).toEqual(MENU_PATHS);
   await expect(navigator.locator(".task-reorder-handle")).toHaveCount(0);
   await expect(
     navigator.locator('.task-row[data-thread-id="thread-a"] .task-status-spinner'),
@@ -748,13 +766,6 @@ test("reorders by keyboard, preserves row geometry, and persists across reloads"
     "thread-a",
     "thread-c",
   ]);
-  const reloadedToggle = page.locator(
-    "caffold-task-navigator .task-list-reorder",
-  );
-  await enterReorderMode(page);
-  await page.getByRole("button", { name: "New Task" }).click();
-  await expect(reloadedToggle).toHaveAttribute("aria-pressed", "false");
-  await expect(page).toHaveURL(/\/tasks\/new/);
 });
 
 test("chooses Section mode and presents compact headers", { tag: "@all-viewports" }, async ({
@@ -764,7 +775,7 @@ test("chooses Section mode and presents compact headers", { tag: "@all-viewports
 
   await page.goto("/");
   const navigator = page.locator("caffold-task-navigator");
-  const toggle = navigator.locator(".task-list-reorder");
+  const toggle = navigator.locator(".task-list-actions");
   const groups = navigator.locator(
     "caffold-active-task-list .task-repository-group:not([data-task-recovery])",
   );
@@ -800,7 +811,7 @@ test("chooses Section mode and presents compact headers", { tag: "@all-viewports
   await expect(
     navigator.getByRole("button", { name: "Reorder Sections", exact: true }),
   ).toBeVisible();
-  const popoverBounds = await navigator.locator(".task-list-reorder-popover")
+  const popoverBounds = await navigator.locator(".task-list-actions-popover")
     .evaluate((popover) => {
       const bounds = popover.getBoundingClientRect();
       return {
@@ -1042,7 +1053,7 @@ test("reorders Sections by keyboard and primary pointer with capture", { tag: "@
     "section-one",
   ]);
 
-  await navigator.locator(".task-list-reorder").click();
+  await navigator.locator(".task-list-actions").click();
   await page.reload();
   await expect.poll(() => sectionOrder(page)).toEqual([
     "section-three",
@@ -1055,7 +1066,7 @@ test("reveals Tasks on explicit Section mode exit", { tag: "@all-viewports" }, a
   await installSectionReorderFixture(page);
   await page.goto("/");
   const navigator = page.locator("caffold-task-navigator");
-  const toggle = navigator.locator(".task-list-reorder");
+  const toggle = navigator.locator(".task-list-actions");
   const groups = navigator.locator(
     "caffold-active-task-list .task-repository-group:not([data-task-recovery])",
   );
@@ -1146,7 +1157,7 @@ test("preserves the visible Section scroll anchor across compact mode", { tag: "
 
   await enterReorderMode(page, "Sections");
   await expect.poll(currentAnchor).toBeCloseTo(anchor.offset, 0);
-  await navigator.locator(".task-list-reorder").click();
+  await navigator.locator(".task-list-actions").click();
   await expect.poll(currentAnchor).toBeCloseTo(anchor.offset, 0);
 });
 
@@ -1539,7 +1550,7 @@ test("serializes moves and restores canonical order with a retryable error", { t
   });
 
   await page.goto("/");
-  const toggle = page.locator("caffold-task-navigator .task-list-reorder");
+  const toggle = page.locator("caffold-task-navigator .task-list-actions");
   await enterReorderMode(page);
   const bravo = page.getByRole("button", { name: /Reorder Bravo\./ });
   const charlie = page.locator(
@@ -1609,7 +1620,7 @@ test("keeps local reordering available while Codex is unavailable and exits on n
   );
 
   await page.goto("/");
-  const toggle = page.locator("caffold-task-navigator .task-list-reorder");
+  const toggle = page.locator("caffold-task-navigator .task-list-actions");
   await expect(toggle).toBeEnabled();
   await page
     .locator('[data-task-action="select-reorder-mode"][data-reorder-mode="tasks"]')

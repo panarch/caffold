@@ -672,10 +672,10 @@ test("stands beside Back the way the Task list header spaces its own buttons", {
       const switcher = actions
         .querySelector(":scope > .task-list-switcher")
         .getBoundingClientRect();
-      const reorder = actions
-        .querySelector(":scope > .task-list-reorder")
+      const menu = actions
+        .querySelector(":scope > .task-list-actions")
         .getBoundingClientRect();
-      return reorder.left - switcher.right;
+      return menu.left - switcher.right;
     });
 
   await page.goto("/tasks/switcher_oldest");

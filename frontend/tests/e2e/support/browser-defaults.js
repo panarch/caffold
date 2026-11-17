@@ -569,6 +569,7 @@ export async function installExternalModuleDefaults(page) {
         export const Maximize2 = [["path", { d: "M15 3h6v6" }], ["path", { d: "m21 3-7 7" }], ["path", { d: "m3 21 7-7" }], ["path", { d: "M9 21H3v-6" }]];
         export const Minimize2 = [["path", { d: "m14 10 7-7" }], ["path", { d: "M20 10h-6V4" }], ["path", { d: "m3 21 7-7" }], ["path", { d: "M4 14h6v6" }]];
         export const Mic = [["path", { d: "M12 19v3" }], ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2" }], ["rect", { x: "9", y: "2", width: "6", height: "13", rx: "3" }]];
+        export const Menu = [["path", { d: "M4 5h16" }], ["path", { d: "M4 12h16" }], ["path", { d: "M4 19h16" }]];
         export const MessageCircleQuestion = [["path", { d: "M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719" }], ["path", { d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" }], ["path", { d: "M12 17h.01" }]];
         export const ListTodo = [["path", { d: "M13 5h8" }], ["path", { d: "M13 12h8" }], ["path", { d: "M13 19h8" }], ["path", { d: "m3 17 2 2 4-4" }], ["rect", { x: "3", y: "4", width: "6", height: "6", rx: "1" }]];
         export const NotebookText = [["path", { d: "M2 6h4" }], ["path", { d: "M2 10h4" }], ["path", { d: "M2 14h4" }], ["path", { d: "M2 18h4" }], ["rect", { width: "16", height: "20", x: "4", y: "2", rx: "2" }], ["path", { d: "M9.5 8h5" }], ["path", { d: "M9.5 12H16" }], ["path", { d: "M9.5 16H14" }]];

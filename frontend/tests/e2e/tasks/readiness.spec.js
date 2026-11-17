@@ -104,9 +104,11 @@ test("opening Tasks asks Codex nothing and holds nothing on the home", { tag: "@
 
   await page.goto("/");
 
-  const newTask = page.locator("caffold-task-navigator .task-list-new-task");
+  const newTask = page.locator(
+    'caffold-task-navigator .task-list-actions-popover [data-task-action="open-new"]',
+  );
   await expect(newTask).toBeEnabled();
-  await expect(newTask).toHaveAttribute("title", "New Task");
+  await expect(newTask).not.toHaveAttribute("title");
   const cachedRow = page.locator(
     `caffold-active-task-list .task-row[data-thread-id="${cached.threadId}"]`,
   );
@@ -140,9 +142,11 @@ test("keeps the stable Task shell while the Task list loads", { tag: "@all-viewp
     "caffold-active-task-list .task-section-message",
   );
   await expect(navigatorMessage).toHaveText("Loading...");
-  const newTask = page.locator("caffold-task-navigator .task-list-new-task");
+  const newTask = page.locator(
+    'caffold-task-navigator .task-list-actions-popover [data-task-action="open-new"]',
+  );
   await expect(newTask).toBeEnabled();
-  await expect(newTask).toHaveAttribute("title", "New Task");
+  await expect(newTask).not.toHaveAttribute("title");
   await expect.poll(() => taskRequests).toBe(1);
   await captureReviewScreenshot(page, testInfo, "task-shell-while-list-loads");
   await expect.poll(() => presentedTaskPaneChildren(page)).toEqual([
@@ -150,9 +154,15 @@ test("keeps the stable Task shell while the Task list loads", { tag: "@all-viewp
   ]);
 
   releaseTasks();
-  await expect(navigatorMessage).toHaveText("No Caffold tasks yet.");
+  await expect(
+    page.locator("caffold-active-task-list .task-list-empty-guide-title"),
+  ).toHaveText("No active Tasks");
+  await expect(navigatorMessage).toHaveCount(0);
+  await expect(
+    page.locator('caffold-active-task-list [data-task-action="open-new-from-empty-list"]'),
+  ).toBeEnabled();
   await expect(newTask).toBeEnabled();
-  await expect(newTask).toHaveAttribute("title", "New Task");
+  await expect(newTask).not.toHaveAttribute("title");
 });
 
 test("waits for explicit route activation when readiness settles first", { tag: "@server-changes" }, async ({ page }) => {
@@ -247,6 +257,18 @@ test("a failed Task-store migration has its own explicit retry lifecycle", { tag
     setup.getByRole("heading", { name: "Task data upgrade failed" }),
   ).toBeVisible();
   await expect(setup).toContainText("Staged v5 validation failed.");
+  // New Task in the Task list actions menu waits for the store, and says why.
+  const newTask = page.locator(
+    'caffold-task-navigator .task-list-actions-popover [data-task-action="open-new"]',
+  );
+  await expect(newTask).toBeDisabled();
+  await expect(newTask).toHaveAttribute("title", "Task data upgrade failed");
+  // So does the empty list's guide to it.
+  const guideNewTask = page.locator(
+    'caffold-active-task-list [data-task-action="open-new-from-empty-list"]',
+  );
+  await expect(guideNewTask).toBeDisabled();
+  await expect(guideNewTask).toHaveAttribute("title", "Task data upgrade failed");
   await verifyReadinessScrollIsolation(page, {
     scrollport: "caffold-task-store-recovery:not([hidden]) > .task-store-recovery-surface",
     label: "Task setup",
@@ -260,6 +282,10 @@ test("a failed Task-store migration has its own explicit retry lifecycle", { tag
   await expect.poll(() => retryRequests).toBe(1);
   await expect(page.locator("caffold-task-store-recovery")).toBeHidden();
   await expect(page.locator("caffold-task-new textarea")).toBeEnabled();
+  await expect(newTask).toBeEnabled();
+  await expect(newTask).not.toHaveAttribute("title");
+  await expect(guideNewTask).toBeEnabled();
+  await expect(guideNewTask).not.toHaveAttribute("title");
 });
 
 test("keeps the Task-store takeover on New Task below the compact Back", { tag: "@phone" }, async ({

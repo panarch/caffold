@@ -1622,14 +1622,14 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
         const sectionHeader = navigator
           .querySelector(".task-list-primary-header")
           .getBoundingClientRect();
-        const newTask = navigator
-          .querySelector(".task-list-primary-header .task-list-new-task")
+        const firstAction = navigator
+          .querySelector(".task-list-primary-header .task-list-header-action")
           .getBoundingClientRect();
         const summary = summaryElement.getBoundingClientRect();
         return {
           headerBottomDelta: Math.abs(sectionHeader.bottom - summary.bottom),
           brandLeftInset: brand.left - sectionHeader.left,
-          brandActionGap: newTask.left - brand.right,
+          brandActionGap: firstAction.left - brand.right,
         };
       }, await detailLayout.locator(".task-detail-summary").elementHandle());
     expect(workspaceHeaderMetrics.closeVisible).toBe(false);

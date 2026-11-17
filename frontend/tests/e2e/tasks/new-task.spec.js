@@ -393,7 +393,7 @@ test("creates a task with responsive composer controls and canonical approval st
     "empty",
   );
   await expect(page.locator("caffold-task-navigator")).toContainText(
-    "No Caffold tasks yet.",
+    "No active Tasks",
   );
   const newTaskComposer = page.locator("caffold-tasks-page .task-new-form");
   await expect(newTaskComposer).toBeVisible();
@@ -1016,10 +1016,9 @@ test("does not carry an older-history cursor into a newly created task", { tag: 
     )
     .toBe(true);
 
-  await page
-    .locator("caffold-task-navigator")
-    .getByRole("button", { name: "New Task" })
-    .click();
+  const navigator = page.locator("caffold-task-navigator");
+  await navigator.getByRole("button", { name: "Task list actions" }).click();
+  await navigator.getByRole("button", { name: "New Task" }).click();
   const newTaskForm = tasksPage.locator(".task-new-form");
   const prompt = newTaskForm.locator('textarea[name="prompt"]');
   await expect(prompt).toBeVisible();
