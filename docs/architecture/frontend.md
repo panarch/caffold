@@ -2010,11 +2010,13 @@ surface owns its selection and request lifetime.
 
 A diff, source, a Visual comparison, and a notice that names its file end with
 the files its owner hands over with `setAdjacentFiles`: a Previous and a Next
-card, each naming the file and its folder. Code, diff, and Visual leaves place
-them in their `end` slot, after the last line or under the pictures; a code or
-diff leaf's scroll content is a row that takes the rest of the viewer's height
-and a row for the cards, so the cards end a short file at the viewer's bottom,
-and they keep to the viewer's width while the lines scroll sideways. Choosing
+card, each naming the file and its folder, whose line stays empty for a file at
+the repository root so every card stands the same height. Code, diff, and
+Visual leaves place them in their `end` slot, after the last line or under the
+pictures; a code or diff leaf's scroll content is a row that takes the rest of
+the viewer's height and a row for the cards, so the cards end a short file at
+the viewer's bottom, and they keep to the viewer's width while the lines scroll
+sideways. Choosing
 one sends `caffold:file-viewer-open-adjacent` with its path. Integrated Review
 hands over the changed files around one opened from Changes, in the order the
 list shows them, a file in both Working Tree groups counted where it first

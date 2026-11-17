@@ -632,8 +632,10 @@ dd {
 }
 
 /* Right to left, so the ellipsis takes the folder's start and keeps the
-   folder nearest the file. */
+   folder nearest the file. A file at the repository root has no folder; its
+   line stays, empty, so every card stands the same height. */
 .viewer-adjacent-folder {
+  min-height: 1lh;
   color: var(--muted-subtle);
   font-size: var(--interface-meta-font-size);
   direction: rtl;

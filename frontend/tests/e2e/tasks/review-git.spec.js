@@ -2302,6 +2302,28 @@ test("ends a changed file with the files before and after it in the list's order
   await expect(cards).toHaveCount(0);
 });
 
+test("keeps a card for a file at the repository root as tall as one with a folder", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await taskReview
+    .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="lib.rs"]')
+    .click();
+  const previous = taskReview.locator(".viewer-adjacent-previous");
+  const next = taskReview.locator(".viewer-adjacent-next");
+
+  await expect(previous).toContainText("Previous planner.rs");
+  await expect(previous.locator(".viewer-adjacent-folder")).toHaveText("tests");
+  await expect(next).toContainText("Next planner.rs");
+  await expect(next.locator(".viewer-adjacent-folder")).toHaveText("");
+  const [previousBox, nextBox] = await Promise.all([
+    previous.boundingBox(),
+    next.boundingBox(),
+  ]);
+  expect(nextBox.height).toBe(previousBox.height);
+});
+
 test("ends a notice about a changed file with the files around it", { tag: "@server-steady" }, async ({
   page,
 }) => {
