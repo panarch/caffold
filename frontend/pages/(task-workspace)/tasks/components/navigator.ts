@@ -1,4 +1,4 @@
-import { html } from "lit";
+import { html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -50,6 +50,7 @@ import actionIcon from "#tasks/component-styles/action-icon.css.js";
 import styles from "./navigator.css.js";
 
 const ICON = "task-action-icon";
+const ITEM_ICON = "task-action-icon task-list-actions-item-icon";
 
 let taskNavigatorInstanceId = 0;
 
@@ -67,8 +68,10 @@ export interface TaskNavigatorListState {
 }
 
 /**
- * The Tasks tab's navigation pane: the workspace header with Switch task,
- * Reorder, and New Task, and below it the Active list and the Archived list.
+ * The Tasks tab's navigation pane: the workspace header with Switch task and
+ * the Task list actions menu (New Task, Reorder Tasks, Reorder Sections), and
+ * below it the Active list and the Archived list. While the list reorders, the
+ * menu's button finishes reordering instead.
  *
  * The workspace and the Tasks layout reach both lists through it. It reveals
  * the Archived list once both have first answered, and hands the Archived list
@@ -86,8 +89,8 @@ export class CaffoldTaskNavigator extends CaffoldElement {
   private reorderMode: ReorderMode = "none";
   private taskOperations = taskStoreOperationsPresentation(null);
   private lastPublishedListState = "";
-  private readonly reorderPopoverId =
-    `task-list-reorder-${++taskNavigatorInstanceId}`;
+  private readonly actionsPopoverId =
+    `task-list-actions-${++taskNavigatorInstanceId}`;
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
   private readonly surfaces = new ScrollSurfaces(this);
@@ -95,8 +98,8 @@ export class CaffoldTaskNavigator extends CaffoldElement {
   private readonly listScroll = new DrawnRef<HTMLDivElement>(this);
   private readonly activeList = new DrawnRef<CaffoldActiveTaskList>(this);
   private readonly archivedList = new DrawnRef<CaffoldArchivedTaskList>(this);
-  private readonly reorderToggle = new DrawnRef<HTMLButtonElement>(this);
-  private readonly reorderMenu = new DrawnRef<HTMLDivElement>(this);
+  private readonly actionsToggle = new DrawnRef<HTMLButtonElement>(this);
+  private readonly actionsMenu = new DrawnRef<HTMLDivElement>(this);
 
   constructor() {
     super();
@@ -118,7 +121,7 @@ export class CaffoldTaskNavigator extends CaffoldElement {
   override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
-    this.closeReorderPopover();
+    this.closeActionsPopover();
   }
 
   get streamState(): TaskTransportState {
@@ -276,12 +279,12 @@ export class CaffoldTaskNavigator extends CaffoldElement {
     });
     this.draw();
     if (mode === "none" && restoreFocus && handleHadFocus) {
-      queueMicrotask(() => this.reorderButton?.focus());
+      queueMicrotask(() => this.actionsButton?.focus());
     }
   }
 
   exitReorderMode(options: { restoreFocus?: boolean } = {}) {
-    this.closeReorderPopover();
+    this.closeActionsPopover();
     this.setReorderMode("none", options);
   }
 
@@ -342,10 +345,13 @@ export class CaffoldTaskNavigator extends CaffoldElement {
     const finish = `Finish reordering ${
       this.reorderMode === "sections" ? "Sections" : "Tasks"
     }`;
-    const popoverId = this.reorderPopoverId;
+    const actionsLabel = reordering ? finish : "Task list actions";
+    const popoverId = this.actionsPopoverId;
     const switchIcon = inlineIcon("History", "Switch task", ICON);
-    const reorderIcon = inlineIcon("ArrowDownUp", "Reorder tasks", ICON);
-    const newTaskIcon = inlineIcon("Plus", "New task", ICON);
+    // While reordering, the button shows the arrows its pressed look moves.
+    const actionsIcon = reordering
+      ? inlineIcon("ArrowDownUp", finish, ICON)
+      : inlineIcon("Menu", actionsLabel, ICON);
     return html`
       <header class="task-list-section-header task-list-primary-header">
         <caffold-workspace-brand></caffold-workspace-brand>
@@ -365,41 +371,57 @@ export class CaffoldTaskNavigator extends CaffoldElement {
             @click=${this.openSwitcher}
           >${switchIcon}</button>
           <button
-            ${drawn(this.reorderToggle)}
+            ${drawn(this.actionsToggle)}
             ${this.hints.button({
               id: reordering
                 ? `task-list:reorder:finish:${this.reorderMode}`
-                : "task-list:reorder:open",
-              label: reordering ? finish : "Choose what to reorder",
+                : "task-list:actions:open",
+              label: actionsLabel,
               action: reordering
                 ? ACTION_HINT_ACTION.REORDER_FINISH
-                : ACTION_HINT_ACTION.REORDER_OPEN,
+                : ACTION_HINT_ACTION.TASK_LIST_ACTIONS_OPEN,
             })}
             type="button"
-            class="task-list-header-action task-list-reorder"
-            data-task-action="toggle-reorder"
-            aria-label=${reordering ? finish : "Choose what to reorder"}
+            class="task-list-header-action task-list-actions"
+            data-task-action="toggle-task-list-actions"
+            aria-label=${actionsLabel}
             aria-pressed=${reordering}
-            title=${reordering ? finish : "Reorder"}
+            title=${actionsLabel}
             popovertarget=${popoverId}
-            @click=${this.toggleReorder}
-          >${reorderIcon}</button>
+            @click=${this.toggleActions}
+          >${actionsIcon}</button>
           <div
-            ${drawn(this.reorderMenu)}
+            ${drawn(this.actionsMenu)}
             ${this.keyboard.popover({
-              id: "task-list:reorder",
-              label: "Reorder options",
+              id: "task-list:actions",
+              label: "Task list actions",
               sessionBound: true,
               when: !reordering,
             })}
             id=${popoverId}
-            class="task-list-reorder-popover"
+            class="task-list-actions-popover"
             popover="auto"
             @beforetoggle=${returnPopoverFocus}
             role="group"
-            aria-label="Reorder options"
-            @caffold:keyboard-session-dismiss=${this.closeReorderPopover}
+            aria-label="Task list actions"
+            @caffold:keyboard-session-dismiss=${this.closeActionsPopover}
           >
+            <button
+              ${this.hints.button({
+                id: "new-task",
+                label: "New Task",
+                action: ACTION_HINT_ACTION.TASK_CREATE,
+                badgeAtEnd: true,
+              })}
+              type="button"
+              data-task-action="open-new"
+              title=${blocked ? this.taskOperations.title : nothing}
+              ?disabled=${blocked}
+              popovertarget=${popoverId}
+              popovertargetaction="hide"
+              @click=${this.openNewTask}
+            >${inlineIcon("Plus", "", ITEM_ICON)}<span>New Task</span></button>
+            <hr class="task-list-actions-divider">
             <button
               ${this.hints.button({
                 id: "tasks",
@@ -413,7 +435,9 @@ export class CaffoldTaskNavigator extends CaffoldElement {
               popovertarget=${popoverId}
               popovertargetaction="hide"
               @click=${() => this.setReorderMode("tasks")}
-            >Reorder Tasks</button>
+            >${inlineIcon("ListTodo", "", ITEM_ICON)}<span
+              >Reorder Tasks</span
+            ></button>
             <button
               ${this.hints.button({
                 id: "sections",
@@ -427,26 +451,13 @@ export class CaffoldTaskNavigator extends CaffoldElement {
               popovertarget=${popoverId}
               popovertargetaction="hide"
               @click=${() => this.setReorderMode("sections")}
-            >Reorder Sections</button>
+            >${inlineIcon("Folder", "", ITEM_ICON)}<span
+              >Reorder Sections</span
+            ></button>
             <caffold-keyboard-navigation-presentation
               ${this.keyboard.presentation()}
             ></caffold-keyboard-navigation-presentation>
           </div>
-          <button
-            ${this.hints.button({
-              id: "task-create:global",
-              label: "Create a new task",
-              action: ACTION_HINT_ACTION.TASK_CREATE,
-              when: !reordering,
-            })}
-            type="button"
-            class="task-list-header-action task-list-new-task"
-            data-task-action="open-new"
-            aria-label="New Task"
-            title=${blocked ? this.taskOperations.title : "New Task"}
-            ?disabled=${blocked}
-            @click=${this.openNewTask}
-          >${newTaskIcon}</button>
         </span>
       </header>
       <div
@@ -464,7 +475,8 @@ export class CaffoldTaskNavigator extends CaffoldElement {
           @caffold:active-task-list-initial-settled=${this.listSettled}
           @caffold:active-task-list-archive-sync=${this.syncArchived}
           @caffold:task-navigator-transport-change=${this.transportChanged}
-          @caffold:active-task-list-focus-reorder-toggle=${this.focusReorder}
+          @caffold:active-task-list-focus-reorder-toggle=${this.focusActions}
+          @caffold:active-task-list-new-task=${this.openNewTask}
         ></caffold-active-task-list>
         <caffold-archived-task-list
           ${drawn(this.archivedList)}
@@ -488,8 +500,8 @@ export class CaffoldTaskNavigator extends CaffoldElement {
     this.performUpdate();
   }
 
-  // While reordering, the toggle finishes it instead of opening its choices.
-  private toggleReorder(event: Event) {
+  // While reordering, the button finishes it instead of opening the menu.
+  private toggleActions(event: Event) {
     event.stopPropagation();
     if (this.reorderMode !== "none") {
       event.preventDefault();
@@ -528,8 +540,8 @@ export class CaffoldTaskNavigator extends CaffoldElement {
     this.exitReorderMode();
   }
 
-  private closeReorderPopover() {
-    const popover = this.reorderPopover;
+  private closeActionsPopover() {
+    const popover = this.actionsPopover;
     if (!popover?.matches(":popover-open")) {
       return;
     }
@@ -585,9 +597,9 @@ export class CaffoldTaskNavigator extends CaffoldElement {
     this.archivedTaskList.setTransportState(event.detail.state);
   }
 
-  private focusReorder(event: Event) {
+  private focusActions(event: Event) {
     event.stopPropagation();
-    this.reorderButton.focus();
+    this.actionsButton.focus();
   }
 
   private publishListState() {
@@ -632,12 +644,12 @@ export class CaffoldTaskNavigator extends CaffoldElement {
     return this.listScroll.value as HTMLDivElement;
   }
 
-  private get reorderButton() {
-    return this.reorderToggle.value as HTMLButtonElement;
+  private get actionsButton() {
+    return this.actionsToggle.value as HTMLButtonElement;
   }
 
-  private get reorderPopover() {
-    return this.reorderMenu.value as HTMLDivElement;
+  private get actionsPopover() {
+    return this.actionsMenu.value as HTMLDivElement;
   }
 }
 

@@ -44,9 +44,9 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
   expect(browserErrors).toEqual([]);
 
   const surface = page.locator(".task-workspace-surface");
-  const newTask = page.locator(".task-list-new-task");
-  await expect(newTask).toBeVisible();
-  await newTask.focus();
+  const menu = page.locator(".task-list-actions");
+  await expect(menu).toBeVisible();
+  await menu.focus();
   await page.keyboard.press("f");
 
   const dialog = actionHintDialog(page);
@@ -56,7 +56,7 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
   expect(await dialog.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
   await expect(dialog).toHaveCSS("outline-style", "none");
   // A badge shows focus on its own face, as it shows hover, so no edge cuts it.
-  const badge = dialog.locator('[data-action-hint-code="N"]');
+  const badge = dialog.getByRole("button", { name: / — Task list actions$/ });
   await page.mouse.move(0, 0);
   await badge.evaluate((element) => element.blur());
   const resting = await focusLook(badge);
@@ -85,10 +85,9 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
       .replace(/^[A-Z]+ — Open task(?: recovery)?: /, ""))
   )).toEqual(eligible);
   await expect(dialog.locator('[data-action-hint-code="TA"]')).toBeVisible();
-  await expect(dialog.locator('[data-action-hint-code="N"]')).toHaveAttribute(
-    "aria-label",
-    "N — Create a new task",
-  );
+  // New Task waits inside the Task list actions menu while Tasks are listed.
+  await expect(dialog.locator('[data-action-hint-code="N"]')).toHaveCount(0);
+  await expect(badge).toBeVisible();
   await expect(dialog.getByLabel(/Open section:/i)).toHaveCount(1);
 
   const createPrompt = page.locator(
@@ -104,14 +103,14 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
     await expect(dialog.getByLabel(/Show folders/)).toHaveCount(0);
   }
 
-  const anchored = await dialog.locator('[data-action-hint-code="N"]').evaluate((badge, control) => {
+  const anchored = await badge.evaluate((badge, control) => {
     const controlRect = control.getBoundingClientRect();
     const badgeRect = badge.getBoundingClientRect();
     return {
       left: Math.abs(controlRect.left - badgeRect.left),
       top: Math.abs(controlRect.top - badgeRect.top),
     };
-  }, await page.locator(".task-list-new-task").elementHandle());
+  }, await menu.elementHandle());
   expect(anchored.left).toBeLessThanOrEqual(1);
   expect(anchored.top).toBeLessThanOrEqual(1);
 
@@ -136,12 +135,12 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
   await page.mouse.click(5, 5);
   await expect(dialog).toBeHidden();
   await expect(page).toHaveURL(routeBeforeOverlayCancel);
-  await expect(newTask).toBeFocused();
+  await expect(menu).toBeFocused();
   await page.keyboard.press("f");
   await expect(dialog).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
-  await expect(newTask).toBeFocused();
+  await expect(menu).toBeFocused();
   await expect(surface).toBeVisible();
 });
 
@@ -300,7 +299,7 @@ test("closes Hint when printable input cannot match an action", { tag: "@server-
     return snapshot?.lastTrigger === "bootstrap" ? snapshot.generation : 0;
   })).toBeGreaterThan(0);
 
-  const opener = page.locator(".task-list-new-task");
+  const opener = page.locator(".task-list-actions");
   await opener.focus();
   await page.keyboard.press("f");
   const dialog = actionHintDialog(page);
@@ -507,16 +506,24 @@ test("keeps badge Tab order and native click, Enter, and Space activation", { ta
   await expect(dialog.locator("button:focus")).toHaveCount(1);
   await page.keyboard.press("Escape");
 
+  // New Task sits in the Task list actions menu: its badge opens the menu's
+  // badges, where N opens New Task.
   await enterActionHints(page);
-  const newTaskBadge = dialog.locator('[data-action-hint-code="N"]');
-  await newTaskBadge.focus();
+  const menuBadge = dialog.getByRole("button", { name: / — Task list actions$/ });
+  const popoverHint = popoverActionHintDialog(page);
+  await menuBadge.focus();
+  await page.keyboard.press("Enter");
+  await expect(popoverHint).toBeVisible();
+  await popoverHint.locator('[data-action-hint-code="N"]').focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL("/tasks/new");
 
   await page.goto("/tasks");
   await expect(page.locator("caffold-active-task-row")).toHaveCount(tasks.length);
   await enterActionHints(page);
-  await dialog.locator('[data-action-hint-code="N"]').click();
+  await menuBadge.click();
+  await expect(popoverHint).toBeVisible();
+  await popoverHint.locator('[data-action-hint-code="N"]').click();
   await expect(page).toHaveURL("/tasks/new");
 
   await page.goto("/tasks");
@@ -527,13 +534,37 @@ test("keeps badge Tab order and native click, Enter, and Space activation", { ta
   await expect(page).toHaveURL(`/tasks/${tasks[0].threadId}`);
 });
 
+test("puts N on the empty-list guide's New Task", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await installActionHintFixture(page, []);
+  await page.goto("/tasks");
+  await expect(
+    page.locator('caffold-active-task-list [data-task-action="open-new-from-empty-list"]'),
+  ).toBeVisible();
+
+  const dialog = await enterActionHints(page);
+  await expect(dialog.locator('[data-action-hint-code="N"]')).toHaveAttribute(
+    "aria-label",
+    "N — New Task",
+  );
+  await page.keyboard.press("n");
+  await expect(page).toHaveURL("/tasks/new");
+  await expect(dialog).toBeHidden();
+});
+
 test("keeps keyboard navigation available after opening New Task", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installActionHintFixture(page, actionHintTasks(2));
   await page.goto("/tasks");
 
-  await enterActionHints(page);
+  const dialog = await enterActionHints(page);
+  const menuCode = await dialog
+    .getByRole("button", { name: / — Task list actions$/ })
+    .getAttribute("data-action-hint-code");
+  await page.keyboard.type(menuCode.toLowerCase());
+  await expect(popoverActionHintDialog(page)).toBeVisible();
   await page.keyboard.press("n");
   await expect(page).toHaveURL("/tasks/new");
   await expect(actionHintDialog(page)).toBeHidden();
@@ -978,14 +1009,14 @@ test("selects Reorder through its declared popover and entered-mode contexts", {
   await enterActionHints(page);
   let hint = actionHintDialog(page);
   const reorderOpener = hint.getByRole("button", {
-    name: / — Choose what to reorder$/,
+    name: / — Task list actions$/,
   });
   const openerCode = await reorderOpener.getAttribute("data-action-hint-code");
   expect(openerCode).toBeTruthy();
   await page.keyboard.type(openerCode.toLowerCase());
 
   const navigator = page.locator("caffold-task-navigator");
-  const popover = navigator.locator(".task-list-reorder-popover");
+  const popover = navigator.locator(".task-list-actions-popover");
   await expect(popover).toBeVisible();
   hint = popoverActionHintDialog(page);
   await expect(hint).toBeVisible();
@@ -1246,7 +1277,9 @@ test("keeps unaffected row owners through local actionability, scroll, and topol
   await expect(dialog.locator(
     `[data-action-hint-code="${removedCode}"]`,
   )).toHaveCount(0);
-  await expect(dialog.locator('[data-action-hint-code="N"]')).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: / — Task list actions$/ }),
+  ).toBeVisible();
   await expect(page).toHaveURL(routeBeforeCancel);
   await page.keyboard.press("Escape");
 });
@@ -1550,35 +1583,35 @@ test("reconciles local owners and cancels on interaction, viewport, and route ch
   await expect(page.locator("caffold-active-task-row")).toHaveCount(8);
   const dialog = actionHintDialog(page);
   const workspace = page.locator("caffold-app-shell");
-  const newTask = page.locator(".task-list-new-task");
+  const switcher = page.locator("caffold-task-navigator .task-list-switcher");
+  const switcherBadge = dialog.getByRole("button", { name: / — Switch task$/ });
 
   await enterActionHints(page);
-  const initialNewTaskBadge = dialog.locator('[data-action-hint-code="N"]');
-  await initialNewTaskBadge.evaluate((element) => {
-    window.__actionHintRetainedNewTaskBadge = element;
+  await switcherBadge.evaluate((element) => {
+    window.__actionHintRetainedSwitcherBadge = element;
   });
-  await newTask.evaluate((button) => {
+  await switcher.evaluate((button) => {
     button.style.width = `${button.getBoundingClientRect().width + 20}px`;
   });
   await expect(dialog).toBeVisible();
-  expect(await initialNewTaskBadge.evaluate((element) =>
-    element === window.__actionHintRetainedNewTaskBadge
+  expect(await switcherBadge.evaluate((element) =>
+    element === window.__actionHintRetainedSwitcherBadge
   )).toBe(true);
-  await newTask.evaluate((button) => button.style.removeProperty("width"));
+  await switcher.evaluate((button) => button.style.removeProperty("width"));
   await expect(dialog).toBeVisible();
   await page.keyboard.press("Escape");
 
   await enterActionHints(page);
-  await expect(dialog.locator('[data-action-hint-code="N"]')).toBeVisible();
-  await newTask.evaluate((button) => {
+  await expect(switcherBadge).toBeVisible();
+  await switcher.evaluate((button) => {
     button.disabled = true;
   });
   await expect(dialog).toBeVisible();
-  await expect(dialog.locator('[data-action-hint-code="N"]')).toHaveCount(0);
-  await newTask.evaluate((button) => {
+  await expect(switcherBadge).toHaveCount(0);
+  await switcher.evaluate((button) => {
     button.disabled = false;
   });
-  await expect(dialog.locator('[data-action-hint-code="N"]')).toHaveCount(0);
+  await expect(switcherBadge).toHaveCount(0);
   await page.keyboard.press("Escape");
 
   await enterActionHints(page);
@@ -1667,7 +1700,9 @@ test("keeps badges aligned and legible at appearance and zoom extremes", { tag: 
 }, testInfo) => {
   await installActionHintFixture(page, actionHintTasks(8));
   await page.goto("/tasks");
-  await expect(page.getByRole("button", { name: "New Task" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Task list actions" }),
+  ).toBeVisible();
   await expect(page.locator("caffold-active-task-row")).toHaveCount(8);
   // The expected target map reads the New Task pickers, which settle only once
   // the model list has landed.
@@ -1990,12 +2025,11 @@ async function captureActionHintVisualState(page) {
     const createScroll = taskNew?.shadowRoot.querySelector(".task-new-workspace");
     const inTaskNew = (selector) => (taskNew ? deepAll(taskNew.shadowRoot, selector) : []);
     const fixedTargets = new Map([
-      ["N", target(navigator.shadowRoot.querySelector(".task-list-new-task"), [navigator])],
       ["M", target(inTaskNew(".task-model-button")[0], [taskNew, createScroll])],
       ["P", target(inTaskNew("textarea[name='prompt']")[0], [taskNew, createScroll])],
     ]);
     const automaticTargets = new Map();
-    for (const selector of [".task-list-switcher", ".task-list-reorder"]) {
+    for (const selector of [".task-list-switcher", ".task-list-actions"]) {
       const control = navigator.shadowRoot.querySelector(selector);
       automaticTargets.set(
         control.getAttribute("aria-label"),

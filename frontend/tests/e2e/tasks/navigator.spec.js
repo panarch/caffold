@@ -227,7 +227,9 @@ test("retains an initial Archived result without revealing it before active Task
   const archivedList = navigator.locator("caffold-archived-task-list");
   await expect(navigator.locator(".task-list-section")).toHaveCount(1);
   await expect(navigator.getByText("Loading...", { exact: true })).toHaveCount(1);
-  await expect(navigator.getByRole("button", { name: "New Task" })).toBeVisible();
+  await expect(
+    navigator.getByRole("button", { name: "Task list actions" }),
+  ).toBeVisible();
 
   gates.settleArchived({ tasks: [archivedListTask(archivedTask)], nextCursor: null });
   await expect.poll(() =>
@@ -345,12 +347,160 @@ test("reveals a confirmed empty active state only after both initial requests se
   await expect(navigator.getByText("Archived", { exact: true })).toHaveCount(0);
 
   gates.settleActive({ tasks: [], nextCursor: null });
-  await expect(navigator).toContainText("No Caffold tasks yet.");
+  await expect(navigator).toContainText("No active Tasks");
   await expect(navigator.locator("caffold-archived-task-list")).toBeHidden();
   await expect(
     navigator.locator('.task-list-section[data-task-section="archived"]'),
   ).toHaveCount(0);
   await expect(navigator.getByText("Archived", { exact: true })).toHaveCount(0);
+});
+
+// Answers the Active and Archived lists with the given Tasks.
+async function installTaskLists(page, { active = [], archived = [] }) {
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection(active) }),
+  );
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: { tasks: archived.map(archivedListTask), nextCursor: null },
+    }),
+  );
+}
+
+test("offers New Task and both reorder modes from the Task list actions menu", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await mockAgentModels(page);
+  await installTaskLists(page, {
+    active: [initialNavigatorTask("thread_menu_alpha", "Menu Alpha")],
+  });
+
+  await page.goto("/tasks");
+  const navigator = page.locator("caffold-task-navigator");
+  await expect(navigator.locator(".task-row")).toHaveCount(1);
+  await navigator.getByRole("button", { name: "Task list actions" }).click();
+  const popover = navigator.locator(".task-list-actions-popover");
+  await expect(popover).toBeVisible();
+
+  // New Task, a divider, then the two reorder modes, each drawn the same way:
+  // an icon in one column and its name in the next.
+  const items = await popover.evaluate((element) =>
+    [...element.children]
+      .filter((child) => child.localName === "button" || child.localName === "hr")
+      .map((child) => {
+        if (child.localName === "hr") {
+          return { divider: true };
+        }
+        const icon = child.querySelector("svg").getBoundingClientRect();
+        const label = child.querySelector(":scope > span:not(.sr-only)")
+          .getBoundingClientRect();
+        return {
+          name: child.textContent.trim(),
+          firstPath: child.querySelector("svg > :first-child").getAttribute("d"),
+          iconLeft: Math.round(icon.left),
+          iconWidth: Math.round(icon.width),
+          labelLeft: Math.round(label.left),
+          height: Math.round(child.getBoundingClientRect().height),
+        };
+      })
+  );
+  expect(items.map((item) => item.divider ? "—" : item.name)).toEqual([
+    "New Task",
+    "—",
+    "Reorder Tasks",
+    "Reorder Sections",
+  ]);
+  const buttons = items.filter((item) => !item.divider);
+  expect(buttons.map((item) => item.firstPath)).toEqual([
+    "M12 5v14",
+    "M13 5h8",
+    expect.stringMatching(/^M20 20a2 2 0 0 0 2-2V8/),
+  ]);
+  for (const key of ["iconLeft", "iconWidth", "labelLeft", "height"]) {
+    expect(new Set(buttons.map((item) => item[key])).size, key).toBe(1);
+  }
+
+  await popover.getByRole("button", { name: "New Task" }).click();
+  await expect(page).toHaveURL("/tasks/new");
+  await expect(popover).toBeHidden();
+});
+
+test("guides an empty Active list to New Task above the Archived list", { tag: ["@desktop", "@phone"] }, async ({
+  page,
+}, testInfo) => {
+  await installEventSourceMock(page);
+  await mockAgentModels(page);
+  await installTaskLists(page, {
+    archived: [initialNavigatorTask("thread_guide_archived", "Archived before")],
+  });
+
+  await page.goto("/tasks");
+  const navigator = page.locator("caffold-task-navigator");
+  const guide = navigator.locator(".task-list-empty-guide");
+  await expect(guide).toBeVisible();
+  await expect(guide.locator(".task-list-empty-guide-title")).toHaveText(
+    "No active Tasks",
+  );
+  const archived = navigator.locator("caffold-archived-task-list");
+  await expect(archived).toContainText("Archived before");
+  await captureReviewScreenshot(page, testInfo, "tasks-empty-guide-archived");
+
+  // The guide stands across the list's middle near its top, and the Archived
+  // list follows it.
+  const layout = await guide.evaluate((element) => {
+    const root = element.getRootNode();
+    const list = root.host.getBoundingClientRect();
+    const title = element.querySelector(".task-list-empty-guide-title")
+      .getBoundingClientRect();
+    const button = element.querySelector("button").getBoundingClientRect();
+    const archivedList = root.host.getRootNode()
+      .querySelector("caffold-archived-task-list").getBoundingClientRect();
+    const rootStyle = getComputedStyle(document.documentElement);
+    const rem = Number.parseFloat(rootStyle.fontSize);
+    const center = (box) => box.left + box.width / 2;
+    return {
+      titleCenterDelta: Math.abs(center(title) - center(list)),
+      buttonCenterDelta: Math.abs(center(button) - center(list)),
+      buttonBelowTitle: button.top >= title.bottom,
+      topOffset: title.top - list.top,
+      expectedTopOffset: (window.innerWidth <= 520
+        ? Number.parseFloat(rootStyle.getPropertyValue("--interface-space-7"))
+        : 1.75) * rem,
+      archivedBelow: archivedList.top >= button.bottom,
+    };
+  });
+  expect(layout.titleCenterDelta).toBeLessThanOrEqual(1);
+  expect(layout.buttonCenterDelta).toBeLessThanOrEqual(1);
+  expect(layout.buttonBelowTitle).toBe(true);
+  expect(Math.abs(layout.topOffset - layout.expectedTopOffset)).toBeLessThanOrEqual(1);
+  expect(layout.archivedBelow).toBe(true);
+
+  await guide.getByRole("button", { name: "New Task" }).click();
+  await expect(page).toHaveURL("/tasks/new");
+});
+
+test("finishes reordering before the empty-list guide opens New Task", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await mockAgentModels(page);
+  await installTaskLists(page, {
+    archived: [initialNavigatorTask("thread_guide_reorder", "Archived before")],
+  });
+
+  await page.goto("/tasks");
+  const navigator = page.locator("caffold-task-navigator");
+  const menu = navigator.getByRole("button", { name: "Task list actions" });
+  const guide = navigator.locator(".task-list-empty-guide");
+  await expect(guide).toBeVisible();
+  await menu.click();
+  await navigator.getByRole("button", { name: "Reorder Tasks", exact: true }).click();
+  await expect(navigator).toHaveAttribute("data-reorder-mode", "tasks");
+
+  await guide.getByRole("button", { name: "New Task" }).click();
+  await expect(navigator).toHaveAttribute("data-reorder-mode", "none");
+  await expect(page).toHaveURL("/tasks/new");
 });
 
 test("holds an initial Archived failure until active Tasks settle", { tag: "@server-changes" }, async ({ page }) => {
@@ -2437,13 +2587,13 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
   );
   const rows = tasksPage.locator(".task-row");
   const managedHeader = tasksPage.locator(".task-list-primary-header");
-  const newTaskButton = managedHeader.getByRole("button", {
-    name: "New Task",
+  const actionsButton = managedHeader.getByRole("button", {
+    name: "Task list actions",
   });
 
   await expect(tasksPage.locator(".task-repository-group")).toHaveCount(2);
   await expect(rows).toHaveCount(4);
-  await expect(newTaskButton).toBeVisible();
+  await expect(actionsButton).toBeVisible();
   await expect(
     managedHeader.locator(":scope > caffold-workspace-brand"),
   ).toContainText("Caffold");
@@ -2468,7 +2618,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
     brandIconMetrics.rootFontSize * -0.0625,
     2,
   );
-  const headerActionAlignment = await page.locator(".task-list-new-task").evaluate((button) => {
+  const headerActionAlignment = await page.locator(".task-list-actions").evaluate((button) => {
     const header = button.closest(".task-list-section-header");
     const headerBounds = header.getBoundingClientRect();
     const buttonBounds = button.getBoundingClientRect();
@@ -2839,7 +2989,8 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
     );
     expect(detailHeaderHeight).toBeCloseTo(homeHeaderHeight, 1);
 
-    await newTaskButton.click();
+    await actionsButton.click();
+    await managedHeader.getByRole("button", { name: "New Task" }).click();
     await expect(page).toHaveURL("/tasks/new?cwd=src");
     await expect(listPane).toBeVisible();
     await expect(detailPane.locator(".task-new-form")).toBeVisible();
@@ -2917,7 +3068,7 @@ test("keeps the brand beside the corner toggle and header actions in the narrowe
   });
 
   expect(layout.paneWidth).toBeLessThanOrEqual(281);
-  expect(layout.actionCount).toBe(3);
+  expect(layout.actionCount).toBe(2);
   expect(layout.titleClipped).toBe(false);
   expect(layout.brandRight).toBeLessThanOrEqual(layout.firstActionLeft);
   expect(layout.lastActionRight).toBeLessThanOrEqual(layout.headerRight);
@@ -4022,7 +4173,10 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
   );
   await expect(featureTask.locator(".task-unseen-complete")).toHaveCount(0);
   if (testInfo.project.name !== "phone") {
+    await tasksPage.getByRole("button", { name: "Task list actions" }).click();
     await tasksPage.getByRole("button", { name: "New Task" }).click();
+    // The menu closed under the pointer; the Section headers below it rest.
+    await page.mouse.move(0, 0);
     await expect(page).toHaveURL(
       "/tasks/new?cwd=Workspace%2Frust%2Fgluesql",
     );

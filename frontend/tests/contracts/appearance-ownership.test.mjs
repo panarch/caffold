@@ -1363,7 +1363,7 @@ test("text actions use the shared Interface metadata scale instead of root body 
     ["component-styles/secondary-button.css", ":scope"],
     [
       "pages/(task-workspace)/tasks/components/navigator.css",
-      '.task-list-reorder-popover > button[data-task-action="select-reorder-mode"]',
+      ".task-list-actions-popover > button",
     ],
     [
       "pages/(task-workspace)/tasks/(detail)/components/git-menu.css",

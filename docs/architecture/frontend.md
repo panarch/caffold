@@ -2470,9 +2470,13 @@ describe the current owner and role: Task-only Conversation and Command stay
 below `(task)`; shared review and repository domains are siblings below
 `(detail)`; reusable leaves stay outside `pages`.
 
-Within the Task navigator, `caffold-task-navigator` owns the exclusive Task or
-Section reorder mode selection. `caffold-active-task-list` owns the canonical
-active projection and serialized local reorder mutations. Its private read
+Within the Task navigator, `caffold-task-navigator` owns the header's Task list
+actions menu, which opens New Task or selects the exclusive Task or Section
+reorder mode; while a mode is on, the menu's button finishes it.
+`caffold-active-task-list` owns the canonical active projection and serialized
+local reorder mutations. When no Task is active, it draws a guide to New Task
+in place of its Sections and raises the request to the navigator, which opens
+New Task the way the menu does, finishing a reorder first. Its private read
 graph (`active-task-list/list-read.ts`) is idle, reading, or superseded: a list
 change that arrives while a read is in flight supersedes that read, whose
 answer is dropped for another read

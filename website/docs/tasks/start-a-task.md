@@ -8,7 +8,8 @@ a model, and a first prompt.
 
 ## Start from New Task
 
-1. Choose **New Task** (+) at the top of the Task list.
+1. Open **Task list actions** (☰) at the top of the Task list and choose
+   **New Task**.
 2. Check the directory above the prompt; the Task works there. To change it,
    select the directory and choose a folder from the list, or choose the pencil
    button, type or paste a path, and press Enter.

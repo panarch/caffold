@@ -932,19 +932,31 @@ test("Task and Section reordering keep navigation, ordering, and row presentatio
   const switcherControl = navigator.indexOf(
     'data-task-action="open-task-switcher"',
   );
-  const reorderControl = navigator.indexOf('data-task-action="toggle-reorder"');
+  // The header holds Switch task, then the Task list actions menu, whose
+  // popover offers New Task before the two reorder modes.
+  const actionsControl = navigator.indexOf(
+    'data-task-action="toggle-task-list-actions"',
+  );
   const newControl = navigator.indexOf('data-task-action="open-new"');
+  const reorderTasksControl = navigator.indexOf('data-reorder-mode="tasks"');
+  const reorderSectionsControl = navigator.indexOf(
+    'data-reorder-mode="sections"',
+  );
   assert.ok(
     switcherControl >= 0 &&
-      switcherControl < reorderControl &&
-      reorderControl < newControl,
+      switcherControl < actionsControl &&
+      actionsControl < newControl &&
+      newControl < reorderTasksControl &&
+      reorderTasksControl < reorderSectionsControl,
   );
   assert.match(navigator, /const reordering = this\.reorderMode !== "none"/);
   assert.match(navigator, /aria-pressed=\$\{reordering\}/);
   assert.match(navigator, /popover="auto"/);
-  assert.match(navigator, />Reorder Tasks<\/button>/);
-  assert.match(navigator, />Reorder Sections<\/button>/);
-  assert.match(navigator, /inlineIcon\(\s*"ArrowDownUp"/);
+  assert.match(navigator, />New Task<\/span>/);
+  assert.match(navigator, />Reorder Tasks<\/span/);
+  assert.match(navigator, />Reorder Sections<\/span/);
+  assert.match(navigator, /inlineIcon\("Menu"/);
+  assert.match(navigator, /inlineIcon\("ArrowDownUp"/);
   assert.match(navigator, /activeList\.setReorderMode\(mode, \{/);
   assert.match(tasksPage, /exitReorderMode\(\{ restoreFocus: false \}\)/);
 

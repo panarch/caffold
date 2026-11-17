@@ -173,8 +173,10 @@ test("reveals the Archived list once both lists have first answered", () => {
 
 test("draws the header's actions for the reorder mode and the Task store", () => {
   const idle = html(navigatorHost({}));
-  assert.match(idle, /aria-label="Choose what to reorder" aria-pressed="false" title="Reorder" popovertarget="task-list-reorder-test"/);
-  assert.match(idle, /class="task-list-header-action task-list-new-task" data-task-action="open-new" aria-label="New Task" title="New Task" \?disabled="false"/);
+  assert.match(idle, /class="task-list-header-action task-list-actions" data-task-action="toggle-task-list-actions" aria-label="Task list actions" aria-pressed="false" title="Task list actions" popovertarget="task-list-actions-test"/);
+  // Its menu holds New Task, a divider, and the two reorder modes, each an
+  // icon and its name.
+  assert.match(idle, /<button type="button" data-task-action="open-new" title="" \?disabled="false" popovertarget="task-list-actions-test" popovertargetaction="hide" @click=""><span class="sr-only"><\/span><span>New Task<\/span><\/button><hr class="task-list-actions-divider"><button [^>]*data-reorder-mode="tasks"[^>]*><span class="sr-only"><\/span><span>Reorder Tasks<\/span><\/button><button [^>]*data-reorder-mode="sections"[^>]*><span class="sr-only"><\/span><span>Reorder Sections<\/span><\/button>/);
   assert.match(idle, /<div class="task-list-scroll"><caffold-active-task-list [^>]*><\/caffold-active-task-list><caffold-archived-task-list hidden [^>]*><\/caffold-archived-task-list><\/div>$/);
 
   const reordering = html(navigatorHost({
@@ -187,7 +189,7 @@ test("draws the header's actions for the reorder mode and the Task store", () =>
     },
   }));
   assert.match(reordering, /aria-label="Finish reordering Sections" aria-pressed="true" title="Finish reordering Sections"/);
-  assert.match(reordering, /title="The Task store is unavailable" \?disabled="true"/);
+  assert.match(reordering, /data-task-action="open-new" title="The Task store is unavailable" \?disabled="true"/);
 });
 
 // A navigator whose children and controls are the given stand-ins.
@@ -199,7 +201,7 @@ function navigatorHost(properties) {
       isConnected: true,
       reorderMode: "none",
       taskOperations: ready,
-      reorderPopoverId: "task-list-reorder-test",
+      actionsPopoverId: "task-list-actions-test",
       scrollRoot: {},
       primaryHeader: {},
     }),

@@ -38,9 +38,10 @@ it.
 
 ## Reorder
 
-Choose the reorder button at the top of the Task list, then choose whether to
-move Tasks within their Sections or move whole Sections. Drag the rows into the
-order you want; press <kbd>Esc</kbd> or choose the button again to finish.
+Open **Task list actions** (☰) at the top of the Task list and choose
+**Reorder Tasks** to move Tasks within their Sections or **Reorder Sections**
+to move whole Sections. Drag the rows into the order you want; press
+<kbd>Esc</kbd> or choose the button again to finish.
 Pinned Tasks move among themselves, and Pinned stays at the top. The order is
 kept on the host, so every screen shows the same list.
 

@@ -98,11 +98,6 @@
   color: var(--control-fg);
 }
 
-.task-list-header-action:disabled {
-  opacity: 1;
-  cursor: pointer;
-}
-
 .task-list-header-action::before {
   z-index: -1;
 }
@@ -113,15 +108,15 @@
   stroke-width: 1.9;
 }
 
-.task-list-reorder {
-  anchor-name: --task-list-reorder-trigger;
+.task-list-actions {
+  anchor-name: --task-list-actions-trigger;
 }
 
-.task-list-reorder-popover {
+.task-list-actions-popover {
   position: fixed;
   z-index: 8;
   inset: auto;
-  position-anchor: --task-list-reorder-trigger;
+  position-anchor: --task-list-actions-trigger;
   position-area: block-end center;
   position-try-fallbacks: flip-block;
   width: max-content;
@@ -133,13 +128,19 @@
   box-shadow: 0 12px 30px rgb(var(--shadow-rgb) / 16%);
 }
 
-.task-list-reorder-popover:popover-open {
+.task-list-actions-popover:popover-open {
   display: grid;
   align-content: start;
 }
 
-.task-list-reorder-popover > button[data-task-action="select-reorder-mode"] {
+/* Every item is an icon and its name, so the three read as one list. */
+.task-list-actions-popover > button {
   box-sizing: border-box;
+  display: grid;
+  grid-template-columns: var(--interface-icon-small-size) max-content;
+  align-items: center;
+  justify-content: start;
+  gap: var(--interface-control-gap);
   height: var(--interface-compact-control-size);
   min-height: var(--interface-compact-control-size);
   padding: 0 calc(var(--interface-space-5) + var(--keyboard-choice-slot-size)) 0
@@ -154,40 +155,57 @@
   cursor: pointer;
 }
 
-.task-list-reorder-popover
-  > button[data-task-action="select-reorder-mode"]:focus-visible {
+.task-list-actions-popover > button:focus-visible {
   background: var(--control-hover-bg);
   outline: none;
 }
 
 @media (hover: hover) {
-  .task-list-reorder-popover
-    > button[data-task-action="select-reorder-mode"]:hover {
+  .task-list-actions-popover > button:hover {
     background: var(--control-hover-bg);
     outline: none;
   }
 }
 
-.task-list-reorder:has(~ .task-list-reorder-popover:popover-open)::before {
+/* New Task while the Task store is unavailable; its title says why. */
+.task-list-actions-popover > button:disabled {
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
+}
+
+.task-list-actions-item-icon {
+  width: var(--interface-icon-small-size);
+  height: var(--interface-icon-small-size);
+}
+
+.task-list-actions-divider {
+  height: 1px;
+  margin: 0.375rem;
+  border: 0;
+  background: var(--border-subtle);
+}
+
+.task-list-actions:has(~ .task-list-actions-popover:popover-open)::before {
   border-color: var(--border-strong);
   background: var(--surface-muted);
 }
 
-.task-list-reorder[aria-pressed="true"] {
+.task-list-actions[aria-pressed="true"] {
   color: var(--control-active-text);
 }
 
-.task-list-reorder[aria-pressed="true"]::before {
+.task-list-actions[aria-pressed="true"]::before {
   border-color: var(--control-active-border);
   background: var(--control-active-bg);
 }
 
-.task-list-reorder[aria-pressed="true"] .task-action-icon > :nth-child(-n + 2) {
+.task-list-actions[aria-pressed="true"] .task-action-icon > :nth-child(-n + 2) {
   --task-reorder-arrow-offset: 3px;
   animation: task-reorder-arrow-shift 1.5s ease-in-out infinite;
 }
 
-.task-list-reorder[aria-pressed="true"] .task-action-icon > :nth-child(n + 3) {
+.task-list-actions[aria-pressed="true"] .task-action-icon > :nth-child(n + 3) {
   --task-reorder-arrow-offset: -3px;
   animation: task-reorder-arrow-shift 1.5s ease-in-out infinite;
 }
@@ -205,10 +223,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .task-list-reorder[aria-pressed="true"]
+  .task-list-actions[aria-pressed="true"]
     .task-action-icon
     > :nth-child(-n + 2),
-  .task-list-reorder[aria-pressed="true"]
+  .task-list-actions[aria-pressed="true"]
     .task-action-icon
     > :nth-child(n + 3) {
     animation: none;
