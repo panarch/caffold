@@ -49,7 +49,6 @@ const shadowRootStyles = new Map([
   ["pages/(task-workspace)/components/navigation.css", "caffold-task-workspace-navigation"],
   ["pages/(task-workspace)/components/language-server-install-dialog.css", "caffold-language-server-install-dialog"],
   ["pages/(task-workspace)/components/update-task-dialog.css", "caffold-update-task-dialog"],
-  ["pages/(task-workspace)/components/workspace-brand.css", "caffold-workspace-brand"],
   ["pages/(task-workspace)/layout.css", "caffold-task-workspace"],
   ["pages/(task-workspace)/notes/components/document.css", "caffold-note-document"],
   ["pages/(task-workspace)/notes/components/info.css", "caffold-notes-info"],

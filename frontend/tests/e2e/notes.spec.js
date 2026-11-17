@@ -1151,10 +1151,17 @@ test("side-by-side selection replaces either pane, cancels, and closes to the co
   await page.goto("/notes/storage");
   const primary = documentPane(page, "primary");
   const secondary = documentPane(page, "secondary");
+  const listTitle = notesNavigator(page).locator(".notes-navigator-title");
+  await expect(listTitle).toHaveText("Notes");
   await primary.getByRole("button", { name: "View side by side" }).click();
   await expect(primary).toBeVisible();
   await expect(treeEntry(page, "Storage decision")).toBeDisabled();
   await expect(page).toHaveURL(/\/notes\/storage$/);
+  // Choosing a note puts the selection's title where the list's name was.
+  await expect(listTitle).toBeHidden();
+  await expect(
+    notesNavigator(page).getByRole("heading", { name: "Choose a note to read alongside" }),
+  ).toBeVisible();
   await notesNavigator(page).getByRole("button", { name: "Cancel note selection" }).click();
   await expect(primary.getByRole("button", { name: "View side by side" })).toBeFocused();
   await primary.getByRole("button", { name: "View side by side" }).click();
@@ -1180,7 +1187,7 @@ test("side-by-side selection replaces either pane, cancels, and closes to the co
   await secondary.getByRole("button", { name: "Close side by side" }).click();
   await expect(page).toHaveURL(/\/notes\/storage$/);
   await expect(primary.locator("caffold-markdown-preview h1")).toHaveText("Storage");
-  await expect(notesNavigator(page).locator("caffold-workspace-brand")).toBeVisible();
+  await expect(listTitle).toBeVisible();
 
   await primary.getByRole("button", { name: "View side by side" }).click();
   await treeEntry(page, "Inbox").click();

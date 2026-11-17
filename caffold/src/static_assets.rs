@@ -964,16 +964,6 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/components/language-server-install-dialog.js"
             ))))
         }
-        "pages/(task-workspace)/components/workspace-brand.css.js" => {
-            Some(js(include_str!(concat!(
-                env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/components/workspace-brand.css.js"
-            ))))
-        }
-        "pages/(task-workspace)/components/workspace-brand.js" => Some(js(include_str!(concat!(
-            env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/components/workspace-brand.js"
-        )))),
         "pages/(task-workspace)/codex-status.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/codex-status.js"
@@ -2815,7 +2805,6 @@ mod tests {
             "pages/(task-workspace)/components/language-server-install-dialog.css",
             "pages/(task-workspace)/tasks/(detail)/(task)/components/handoff-dialog.css",
             "pages/(task-workspace)/tasks/(detail)/(review)/components/places.css",
-            "pages/(task-workspace)/components/workspace-brand.css",
             "pages/(task-workspace)/layout.css",
             "pages/(task-workspace)/notes/components/document.css",
             "pages/(task-workspace)/notes/components/info.css",
@@ -3334,18 +3323,6 @@ mod tests {
                 .body
                 .windows(b"caffold-task-workspace-navigation".len())
                 .any(|window| window == b"caffold-task-workspace-navigation")
-        );
-        let workspace_brand = get("pages/(task-workspace)/components/workspace-brand.js")
-            .expect("workspace brand js");
-        assert_eq!(
-            workspace_brand.content_type,
-            "text/javascript; charset=utf-8"
-        );
-        assert!(
-            workspace_brand
-                .body
-                .windows(b"caffold-workspace-brand".len())
-                .any(|window| window == b"caffold-workspace-brand")
         );
 
         let tasks_page = get("pages/(task-workspace)/tasks/layout.js").expect("tasks layout js");

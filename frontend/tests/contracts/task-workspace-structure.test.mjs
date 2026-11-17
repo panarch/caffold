@@ -565,10 +565,7 @@ test("Task Info keeps action presentation in its private leaf", () => {
   assert.doesNotMatch(actions, /forkTask|archiveTask/);
 });
 
-test("workspace brand owns the shared Tasks, Notes, and Settings navigator identity", () => {
-  const brand = readFrontend(
-    "pages/(task-workspace)/components/workspace-brand.ts",
-  );
+test("Tasks, Notes, and Settings navigators each name their tab in the header", () => {
   const taskNavigator = readFrontend(
     "pages/(task-workspace)/tasks/components/navigator.ts",
   );
@@ -585,26 +582,17 @@ test("workspace brand owns the shared Tasks, Notes, and Settings navigator ident
     "pages/(task-workspace)/settings/files/page.ts",
   );
 
-  assert.match(
-    brand,
-    /@customElement\("caffold-workspace-brand"\)/,
-  );
-  assert.match(brand, /class="workspace-brand-icon"/);
-  assert.match(brand, /class="workspace-brand-title">Caffold/);
-  for (const owner of [taskNavigator, notesNavigator, settingsNavigator]) {
-    assert.match(
-      owner,
-      /<caffold-workspace-brand\b[^>]*><\/caffold-workspace-brand>/,
-    );
+  for (const [owner, title] of [
+    [taskNavigator, /<h2 class="task-list-title">Tasks<\/h2>/],
+    [notesNavigator, /<h2 class="notes-navigator-title" \?hidden=\$\{Boolean\(picker\)\}>Notes<\/h2>/],
+    [settingsNavigator, /<h2 class="settings-navigator-title">Settings<\/h2>/],
+  ]) {
+    assert.match(owner, title);
+    assert.doesNotMatch(owner, /caffold-workspace-brand/);
   }
-  assert.doesNotMatch(
-    appearance,
-    /<caffold-workspace-brand\b[^>]*><\/caffold-workspace-brand>/,
-  );
-  assert.doesNotMatch(
-    files,
-    /<caffold-workspace-brand\b[^>]*><\/caffold-workspace-brand>/,
-  );
+  for (const page of [appearance, files]) {
+    assert.doesNotMatch(page, /navigator-title|task-list-title/);
+  }
   assert.doesNotMatch(taskNavigator, /task-list-primary-(?:brand|icon)/);
   assert.doesNotMatch(settingsNavigator, /<strong>Settings<\/strong>/);
 });
@@ -807,7 +795,7 @@ test("Task navigator keeps primary chrome outside its role-specific scrolling li
     navigator,
     /class="task-list-section-header task-list-primary-header"/,
   );
-  assert.match(navigator, /<caffold-workspace-brand\b[^>]*><\/caffold-workspace-brand>/);
+  assert.match(navigator, /<h2 class="task-list-title">Tasks<\/h2>/);
 });
 
 test("active and archived Task lists own distinct state and lifecycle boundaries", () => {

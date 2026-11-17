@@ -15,7 +15,6 @@ import "#app/keyboard-navigation/components/presentation.js";
 import { ScrollSurfaces, scrollBackToTop } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
-import "../../components/workspace-brand.js";
 import type { WorkspaceLiveUpdates } from "../../live-updates.js";
 import {
   type TaskStoreStatusSnapshot,
@@ -354,7 +353,7 @@ export class CaffoldTaskNavigator extends CaffoldElement {
       : inlineIcon("Menu", actionsLabel, ICON);
     return html`
       <header class="task-list-section-header task-list-primary-header">
-        <caffold-workspace-brand></caffold-workspace-brand>
+        <h2 class="task-list-title">Tasks</h2>
         <span class="task-list-primary-actions">
           <button
             ${this.hints.button({

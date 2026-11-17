@@ -10,7 +10,6 @@ import {
   ScrollSurfaces,
   scrollBackToTop,
 } from "#app/scroll-scope.js";
-import "../../components/workspace-brand.js";
 import "./navigator/components/item.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
@@ -79,7 +78,7 @@ export class CaffoldSettingsNavigator extends CaffoldElement {
     });
     return html`
       <header class="settings-navigator-header">
-        <caffold-workspace-brand></caffold-workspace-brand>
+        <h2 class="settings-navigator-title">Settings</h2>
       </header>
       <nav
         ${drawn(this.list)}

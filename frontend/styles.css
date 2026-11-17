@@ -224,6 +224,9 @@
   --interface-meta-font-size: 0.75rem;
   --interface-heading-font-size: 1rem;
   --workspace-header-title-size: 0.8125rem;
+  /* A list's name in its header, after the corner toggle: the header icons'
+     color, a step below the Detail title it stands beside. */
+  --workspace-pane-title-color: var(--control-fg);
   --interface-line-height: 1.45;
   --interface-space-1: 0.125rem;
   --interface-space-2: 0.25rem;

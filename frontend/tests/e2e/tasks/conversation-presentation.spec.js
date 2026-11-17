@@ -1616,8 +1616,8 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       .evaluate((element, summaryElement) => {
         // The header is the navigator's, drawn in its root.
         const navigator = element.shadowRoot.querySelector("caffold-task-navigator").shadowRoot;
-        const brand = navigator
-          .querySelector(".task-list-primary-header caffold-workspace-brand")
+        const listTitle = navigator
+          .querySelector(".task-list-primary-header .task-list-title")
           .getBoundingClientRect();
         const sectionHeader = navigator
           .querySelector(".task-list-primary-header")
@@ -1628,13 +1628,13 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
         const summary = summaryElement.getBoundingClientRect();
         return {
           headerBottomDelta: Math.abs(sectionHeader.bottom - summary.bottom),
-          brandLeftInset: brand.left - sectionHeader.left,
-          brandActionGap: firstAction.left - brand.right,
+          titleLeftInset: listTitle.left - sectionHeader.left,
+          titleActionGap: firstAction.left - listTitle.right,
         };
       }, await detailLayout.locator(".task-detail-summary").elementHandle());
     expect(workspaceHeaderMetrics.closeVisible).toBe(false);
-    expect(navigatorClearance.brandLeftInset).toBeGreaterThanOrEqual(0);
-    expect(navigatorClearance.brandActionGap).toBeGreaterThanOrEqual(0);
+    expect(navigatorClearance.titleLeftInset).toBeGreaterThanOrEqual(0);
+    expect(navigatorClearance.titleActionGap).toBeGreaterThanOrEqual(0);
     expect(
       navigatorClearance.headerBottomDelta,
       JSON.stringify({ navigatorClearance, workspaceHeaderMetrics }),

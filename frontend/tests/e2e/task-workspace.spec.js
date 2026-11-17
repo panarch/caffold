@@ -32,55 +32,48 @@ test("navigates Settings as responsive master-detail pages with browser history"
 
   await expect(listPane).toBeVisible();
   await expect(navigation).toBeVisible();
-  const workspaceBrand = taskWorkspace.locator(
-    "caffold-settings-navigator caffold-workspace-brand",
+  const paneTitle = taskWorkspace.locator(
+    "caffold-settings-navigator .settings-navigator-title",
   );
-  await expect(workspaceBrand.locator(".workspace-brand-title")).toHaveText(
-    "Caffold",
-  );
-  await expect(workspaceBrand.locator(".workspace-brand-icon")).toHaveAttribute(
-    "src",
-    "/icons/default/favicon-32.png",
-  );
+  await expect(paneTitle).toHaveText("Settings");
   await expect(taskWorkspace.getByText("Local to this browser")).toHaveCount(0);
-  // The brand and the Settings header sit in the shadow roots of their owners.
+  // The list's title and the page's sit in the shadow roots of their owners.
+  // They share a size; the list's is in the header icons' color, quieter than
+  // the page's.
   const settingsHeaderTypography = await taskWorkspace.evaluate((element, [
-    brandTitle,
-    brandIcon,
+    listTitle,
     detailTitle,
+    toggle,
   ]) => {
     const rootFontSize = Number.parseFloat(
       getComputedStyle(document.documentElement).fontSize,
     );
     return {
       rootFontSize,
-      brandTitleSize: Number.parseFloat(getComputedStyle(brandTitle).fontSize),
-      brandIconWidth: Number.parseFloat(getComputedStyle(brandIcon).width),
-      brandIconOffsetY: new DOMMatrixReadOnly(
-        getComputedStyle(brandIcon).transform,
-      ).m42,
+      listTitleSize: Number.parseFloat(getComputedStyle(listTitle).fontSize),
+      listTitleColor: getComputedStyle(listTitle).color,
       detailTitleSize: Number.parseFloat(getComputedStyle(detailTitle).fontSize),
+      detailTitleColor: getComputedStyle(detailTitle).color,
+      toggleColor: getComputedStyle(toggle).color,
     };
   }, [
-    await taskWorkspace.locator("caffold-settings-navigator .workspace-brand-title").elementHandle(),
-    await taskWorkspace.locator("caffold-settings-navigator .workspace-brand-icon").elementHandle(),
+    await paneTitle.elementHandle(),
     await taskWorkspace.locator(".settings-workspace-detail-header h1").elementHandle(),
+    await taskWorkspace.locator(".task-workspace-side-pane-toggle").elementHandle(),
   ]);
-  expect(settingsHeaderTypography.brandTitleSize).toBeCloseTo(
+  expect(settingsHeaderTypography.listTitleSize).toBeCloseTo(
     settingsHeaderTypography.rootFontSize * 0.8125,
     2,
   );
   expect(settingsHeaderTypography.detailTitleSize).toBeCloseTo(
-    settingsHeaderTypography.brandTitleSize,
+    settingsHeaderTypography.listTitleSize,
     2,
   );
-  expect(settingsHeaderTypography.brandIconWidth).toBeCloseTo(
-    settingsHeaderTypography.rootFontSize * 1.25,
-    2,
+  expect(settingsHeaderTypography.listTitleColor).toBe(
+    settingsHeaderTypography.toggleColor,
   );
-  expect(settingsHeaderTypography.brandIconOffsetY).toBeCloseTo(
-    settingsHeaderTypography.rootFontSize * -0.0625,
-    2,
+  expect(settingsHeaderTypography.listTitleColor).not.toBe(
+    settingsHeaderTypography.detailTitleColor,
   );
   const rootGeometry = await taskWorkspace.evaluate((element, [
     navigatorHeader,
@@ -592,7 +585,7 @@ test("collapses the navigation pane from the corner toggle only while a Task is 
   const detailPane = taskWorkspace.locator(".task-workspace-detail-pane");
   const separator = taskWorkspace.locator(".task-workspace-master-detail > caffold-pane-resizer");
   const toggle = taskWorkspace.locator(".task-workspace-side-pane-toggle");
-  const brand = taskWorkspace.locator("caffold-task-navigator caffold-workspace-brand");
+  const listTitle = taskWorkspace.locator("caffold-task-navigator .task-list-title");
   const title = page.locator("caffold-task-detail-summary .task-detail-heading h2");
   const left = (locator) =>
     locator.evaluate((element) => Math.round(element.getBoundingClientRect().left));
@@ -623,12 +616,12 @@ test("collapses the navigation pane from the corner toggle only while a Task is 
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(toggle).toHaveAccessibleName("Hide navigation pane");
   const toggleBox = await toggle.boundingBox();
-  const homeBrandLeft = await left(brand);
-  expect(homeBrandLeft).toBeGreaterThanOrEqual(toggleBox.x + toggleBox.width);
-  const listSpacing = await lengths(brand, [
+  const homeListTitleLeft = await left(listTitle);
+  expect(homeListTitleLeft).toBeGreaterThanOrEqual(toggleBox.x + toggleBox.width);
+  const listSpacing = await lengths(listTitle, [
     "--task-workspace-route-control-clearance",
   ]);
-  expect(await gapAfterToggle(brand)).toBeCloseTo(
+  expect(await gapAfterToggle(listTitle)).toBeCloseTo(
     listSpacing["--task-workspace-route-control-clearance"],
     0,
   );
@@ -637,7 +630,7 @@ test("collapses the navigation pane from the corner toggle only while a Task is 
   await expect(title).toHaveText("Workspace state");
   await expect(toggle).toBeEnabled();
   expect(await toggle.boundingBox()).toEqual(toggleBox);
-  expect(await left(brand)).toBe(homeBrandLeft);
+  expect(await left(listTitle)).toBe(homeListTitleLeft);
   const chosenWidth = await separator.getAttribute("aria-valuenow");
 
   await toggle.click();
@@ -681,7 +674,7 @@ test("collapses the navigation pane from the corner toggle only while a Task is 
   await expect(detailPane).toBeVisible();
   await expect(toggle).toBeDisabled();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
-  expect(await left(brand)).toBe(homeBrandLeft);
+  expect(await left(listTitle)).toBe(homeListTitleLeft);
 
   await page.goto(`/tasks/${task.threadId}`);
   await expect(title).toHaveText("Workspace state");
@@ -801,7 +794,7 @@ test("shares the collapsed navigation pane with Notes and Settings while they sh
   const toggleBox = await toggle.boundingBox();
   expect(
     await notesNavigator
-      .locator("caffold-workspace-brand")
+      .locator(".notes-navigator-title")
       .evaluate((element) => element.getBoundingClientRect().left),
   ).toBeGreaterThanOrEqual(toggleBox.x + toggleBox.width);
 
@@ -810,7 +803,7 @@ test("shares the collapsed navigation pane with Notes and Settings while they sh
   await expect(toggle).toBeEnabled();
   expect(
     await settingsNavigator
-      .locator("caffold-workspace-brand")
+      .locator(".settings-navigator-title")
       .evaluate((element) => element.getBoundingClientRect().left),
   ).toBeGreaterThanOrEqual(toggleBox.x + toggleBox.width);
   await toggle.click();
