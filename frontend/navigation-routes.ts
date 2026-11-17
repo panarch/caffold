@@ -17,6 +17,8 @@ export interface ParsedRoute {
   reviewScope?: string;
   reviewNavigator?: string;
   reviewViewer?: string;
+  reviewFind?: string;
+  reviewFindAt?: string;
   path?: string;
   line?: number | null;
   baseRef?: string;
@@ -40,6 +42,8 @@ export type SectionDetailRoute = {
   reviewScope: string;
   reviewNavigator: string;
   reviewViewer: string;
+  reviewFind: string;
+  reviewFindAt: string;
   path: string;
   line: number | null;
   baseRef: string;
@@ -117,6 +121,8 @@ const TASK_REVIEW_QUERY: QueryField[] = [
   { name: "file", key: "path", defaultValue: "" },
   { name: "line", key: "line", type: "positiveLine", defaultValue: null },
   { name: "base", key: "baseRef", defaultValue: "" },
+  { name: "find", key: "reviewFind", defaultValue: "" },
+  { name: "at", key: "reviewFindAt", defaultValue: "" },
 ];
 const FILE_QUERY: QueryField[] = [
   { name: "file", key: "path", defaultValue: "" },
@@ -141,6 +147,8 @@ const SECTION_DETAIL_QUERY: QueryField[] = [
   { name: "file", key: "path", defaultValue: "" },
   { name: "line", key: "line", type: "positiveLine", defaultValue: null },
   { name: "base", key: "baseRef", defaultValue: "" },
+  { name: "find", key: "reviewFind", defaultValue: "" },
+  { name: "at", key: "reviewFindAt", defaultValue: "" },
   { name: "head", key: "headRef", defaultValue: "" },
   { name: "page", key: "page", type: "positiveInteger", defaultValue: 1 },
   { name: "sha", key: "sha", defaultValue: "" },
@@ -216,6 +224,17 @@ const ROUTE_DEFINITIONS = [
     toRoute: () => settingsRoute("files"),
     matchesRoute: (route) =>
       route?.kind === "settings" && route.section === "files",
+    parent: () => settingsRoute(),
+  }),
+  routeDefinition({
+    id: "settings-language-servers",
+    kind: "settings",
+    pattern: "/settings/language-servers",
+    surface: "task-workspace",
+    target: "language-servers",
+    toRoute: () => settingsRoute("language-servers"),
+    matchesRoute: (route) =>
+      route?.kind === "settings" && route.section === "language-servers",
     parent: () => settingsRoute(),
   }),
   routeDefinition({
@@ -395,6 +414,8 @@ const ROUTE_DEFINITIONS = [
             reviewScope: route.reviewScope,
             reviewNavigator: route.reviewNavigator,
             reviewViewer: route.reviewViewer,
+            reviewFind: route.reviewFind,
+            reviewFindAt: route.reviewFindAt,
             baseRef: route.baseRef,
           })
         : tasksRoute(),
@@ -954,6 +975,7 @@ function tasksRoute(options: Partial<ParsedRoute> = {}): ParsedRoute {
             ["diff", "visual", "source", "preview"],
             "diff",
           ),
+          ...reviewFindFields(options),
           path: reviewPath,
           line: reviewPath ? positiveLine(options.line) : null,
           baseRef: `${options.baseRef ?? ""}`,
@@ -1015,6 +1037,9 @@ export function sectionDetailRoute(
       ["diff", "visual", "source", "preview"],
       "diff",
     ),
+    ...(sectionSurface === "review"
+      ? reviewFindFields(options)
+      : { reviewFind: "", reviewFindAt: "" }),
     path,
     line: path ? positiveLine(options.line) : null,
     baseRef: `${options.baseRef ?? ""}`,
@@ -1083,6 +1108,8 @@ function sectionParentRoute(route: ParsedRoute): ParsedRoute | null {
           reviewScope: route.reviewScope,
           reviewNavigator: route.reviewNavigator,
           reviewViewer: route.reviewViewer,
+          reviewFind: route.reviewFind,
+          reviewFindAt: route.reviewFindAt,
           baseRef: route.baseRef,
         })
       : tasksRoute();
@@ -1133,6 +1160,7 @@ function settingsRoute(section = ""): ParsedRoute {
       "appearance",
       "keyboard",
       "files",
+      "language-servers",
       "notifications",
       "name-and-icon",
       "remote-access",
@@ -1232,23 +1260,45 @@ function safeRelativePath(path: unknown) {
   return cleanPath(path);
 }
 
+// A Review file path: relative to the Task's root, or from Caffold's root when
+// it starts with `/`.
 function reviewFilePath(path: unknown) {
+  const text = `${path ?? ""}`.replaceAll("\\", "/");
+  const fromRoot = text.startsWith("/");
   const segments: string[] = [];
-  for (const segment of `${path ?? ""}`.replaceAll("\\", "/").split("/")) {
+  for (const segment of text.split("/")) {
     if (!segment || segment === ".") {
       continue;
     }
     if (segment === "..") {
       if (segments.length && segments.at(-1) !== "..") {
         segments.pop();
-      } else {
+      } else if (!fromRoot) {
         segments.push(segment);
       }
       continue;
     }
     segments.push(segment);
   }
-  return segments.join("/");
+  const joined = segments.join("/");
+  return fromRoot && joined ? `/${joined}` : joined;
+}
+
+// The list of places Review shows for a name in place of its navigator, and
+// where that name is: `<file>:<line>:<column>`.
+function reviewFindFields(options: {
+  reviewFind?: unknown;
+  reviewFindAt?: unknown;
+}) {
+  const reviewFind = enumValue(
+    options.reviewFind,
+    ["", "references", "definitions"],
+    "",
+  );
+  return {
+    reviewFind,
+    reviewFindAt: reviewFind ? `${options.reviewFindAt ?? ""}` : "",
+  };
 }
 
 function enumValue<T extends string>(

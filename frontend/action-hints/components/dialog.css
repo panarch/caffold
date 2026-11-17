@@ -86,3 +86,22 @@
 .action-hint-badge[hidden] {
   display: none;
 }
+
+/* `G` dims the code around the names it marks. Its badges are smaller and
+   let the name's first letters show through. */
+.action-hint-name-shade {
+  position: absolute;
+  background: color-mix(in srgb, var(--surface) 62%, transparent);
+  pointer-events: none;
+}
+
+.action-hint-dialog[data-look="names"] .action-hint-badge {
+  min-width: 0;
+  min-height: 0;
+  padding: 0.0625rem 0.1875rem;
+  border-color: transparent;
+  border-radius: 0.1875rem;
+  background: color-mix(in srgb, var(--primary-control-bg) 70%, transparent);
+  box-shadow: none;
+  font-size: calc(var(--interface-meta-font-size) * 0.84);
+}

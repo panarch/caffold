@@ -33,6 +33,17 @@ choose one. In the chosen area:
 Press <kbd>S</kbd> to choose another area, <kbd>F</kbd> to switch to actions,
 or <kbd>Esc</kbd> to stop scrolling.
 
+## Go to a definition: <kbd>G</kbd>
+
+In a file whose repository has [language servers](review/changes.md#go-to-a-definition)
+on, press <kbd>G</kbd> and codes appear on the names you can look up, with
+the code around them dimmed. Type a name's code to open its menu with **Go to
+definition** chosen, then press <kbd>Enter</kbd>, or <kbd>Tab</kbd> to
+**Find references**.
+
+![Codes on the names in a diff, with the code around them dimmed](assets/screenshots/review-name-hints-light-desktop.png#only-light)
+![Codes on the names in a diff, with the code around them dimmed](assets/screenshots/review-name-hints-dark-desktop.png#only-dark)
+
 ## Switch Tasks: <kbd>T</kbd>
 
 On the Tasks screen, <kbd>T</kbd> opens the Task Switcher with codes already on

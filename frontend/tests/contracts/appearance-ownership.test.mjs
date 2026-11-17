@@ -44,6 +44,7 @@ const codeOwners = new Set([
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css",
   "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.css",
   "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css",
+  "pages/(task-workspace)/tasks/(detail)/(review)/components/places.css",
   "pages/(task-workspace)/settings/appearance/page.css",
   "settings.ts",
   "styles.css",
@@ -431,6 +432,7 @@ test("busy elements turn through one registered spin with reduced-motion fallbac
   }
   // Each component names the target in its own root.
   assert.deepEqual(declarations.sort(), [
+    "components/file-viewer/components/code-name-menu .code-name-menu-spinner",
     "pages/(task-workspace)/settings/components/refresh-button button.is-refreshing > span > .settings-refresh-icon",
     "pages/(task-workspace)/tasks/(detail)/(git)/components/controls .git-review-refresh.is-refreshing > .git-review-refresh-icon",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn .task-active-turn-spinner",
@@ -643,6 +645,10 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
       "settings-appearance",
     ],
     ["pages/(task-workspace)/settings/files/page.css", "settings-files"],
+    [
+      "pages/(task-workspace)/settings/language-servers/page.css",
+      "settings-language-servers",
+    ],
     ["pages/(task-workspace)/settings/codex/page.css", "settings-codex"],
     ["pages/(task-workspace)/settings/about/page.css", "settings-about"],
     ["pages/(task-workspace)/settings/claude/page.css", "settings-claude"],

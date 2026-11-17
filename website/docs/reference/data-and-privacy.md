@@ -11,7 +11,7 @@ and `~/.caffold` on Linux.
 
 | Data | Where it is stored |
 | --- | --- |
-| **Caffold app data** — Tasks, Sections, [Notes](../notes/index.md), Task options, voice input settings and API keys, the Whisper model, Jev's key and rules, and notification subscriptions | Caffold's data folder. |
+| **Caffold app data** — Tasks, Sections, [Notes](../notes/index.md), Task options, voice input settings and API keys, the Whisper model, Jev's key and rules, notification subscriptions, and which languages and repositories have [language servers](../review/changes.md#go-to-a-definition) on | Caffold's data folder. |
 | **Conversation history and agent sign-ins** | Each agent's own local storage on the host. Caffold reads conversation history from the agent and does not save a second copy. |
 | **Project files and [prompt attachments](../tasks/start-a-task.md#attach-files)** | The Task's working directory. Worktrees Caffold prepares are under `worktrees/` in its data folder; attachments are under `.caffold/uploads/` in the Task's working directory. |
 | **Logs and diagnostic reports** — records used to investigate problems with Caffold | On a Mac, logs are in `~/Library/Logs/Caffold`, and reports saved when the server stops responding are in `diagnostics/stalls/` in Caffold's data folder. On Linux, logs are in the systemd journal: `journalctl --user -u caffold`. |

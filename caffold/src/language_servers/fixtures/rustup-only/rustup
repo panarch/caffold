@@ -1,0 +1,12 @@
+#!/bin/sh
+# rustup with no rust-analyzer proxy on the search path, for a project whose
+# toolchain lacks it.
+if [ "$1 $2" = "show active-toolchain" ]; then
+  echo "1.94-aarch64-apple-darwin (overridden by '$PWD/rust-toolchain.toml')"
+  exit 0
+fi
+if [ "$1" = "which" ]; then
+  echo "error: unknown binary '$2' in toolchain '1.94-aarch64-apple-darwin'" >&2
+  exit 1
+fi
+exit 2

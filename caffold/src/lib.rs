@@ -11,6 +11,7 @@ mod agent;
 pub use agent::codex::MINIMUM_SUPPORTED_CODEX_CLI_VERSION;
 mod git;
 mod github;
+mod language_servers;
 mod server_settings;
 mod static_assets;
 mod task_store;

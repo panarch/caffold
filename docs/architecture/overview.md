@@ -27,6 +27,7 @@ flowchart TD
     SpeechApi["OpenAI, Gemini, or Grok speech-to-text API"]
     Tailscale["Tailscale CLI / Serve"]
     Shell["Task or Section shell on a PTY"]
+    LanguageServer["Language server per repository and language"]
 
     PWA -->|"HTTP / SSE"| Backend
     PWA -->|"terminal WebSocket"| Backend
@@ -43,6 +44,7 @@ flowchart TD
     AgRunner -->|"stdio"| AgSession
     Backend --> Git
     Backend -->|"PTY"| Shell
+    Backend -->|"stdio LSP"| LanguageServer
     Backend --> Whisper
     Backend -->|"recording with the saved API key"| SpeechApi
     Backend -->|"fixed status and Serve commands"| Tailscale
@@ -98,7 +100,8 @@ The backend owns:
   derivation;
 - browser Push subscription persistence and delivery;
 - Notes that agents write through Caffold's Notes tools and the browser reads;
-  and
+- the language servers a person turned on: finding, running, putting to sleep,
+  and asking them where names are defined and used; and
 - shared server settings, PWA assets, and capabilities consumed by browser and
   platform clients.
 
@@ -178,6 +181,14 @@ The resulting text is inserted at the saved selection. Caffold never stores
 recordings. [Security and Approvals](security-and-approvals.md#voice-input)
 defines the key storage and request rules.
 
+### Language servers
+
+Review's Source and Diff ask a language server where a name is defined and
+used. The backend finds servers already installed on the host and runs one per
+repository and language the person turned on, as a child process it talks LSP
+with over stdio. [Language Servers](language-servers.md) owns finding, the
+servers' lifetime, and the questions.
+
 ## Application ownership
 
 The backend application is split by state and transport owner:
@@ -224,6 +235,8 @@ caffold/src/app/voice.rs               voice settings, Whisper lifecycle, WAV va
 caffold/src/app/tailscale.rs           status and constrained Serve orchestration
 caffold/src/app/terminal.rs            terminal HTTP/WebSocket routes and the Task close capability
 caffold/src/app/terminal/              terminal registry, shells on PTYs, screen snapshots
+caffold/src/app/language_servers.rs    language server settings, status, and definition/reference routes
+caffold/src/language_servers.rs        language server finding, LSP connections, and lifetimes
 caffold/src/watch.rs                   reference-counted native filesystem watches
 caffold/src/task_store.rs              Caffold-owned durable Task, Notes, and recovery data
 runners/caffold/                         transport-only process supervisor for separate Claude/Antigravity instances
@@ -252,6 +265,8 @@ writers for provider state.
 | Tailscale connection, Serve mapping, and Tailnet address | Tailscale CLI and Serve configuration |
 | Voice provider selection, saved API keys, and the Whisper model | Files under the Caffold data directory |
 | Which Tasks and Sections have a terminal, and each terminal's screen | Backend memory, until the backend exits |
+| Languages and repositories with language servers turned on | Files under the Caffold data directory |
+| Each running language server's state, progress, and process | Backend memory, until the backend exits |
 | A terminal's shell and whatever it runs | The shell process on its PTY |
 | Browser presentation, selection, and local Push identity | Browser/PWA |
 
@@ -285,6 +300,11 @@ they do not redefine agent status.
 Terminals have no runner. Each shell is a child of the backend on its own PTY,
 read by a backend thread, and ends with the backend. A browser disconnecting
 leaves the shell running; [Terminals](terminal.md) owns their lifetime.
+
+Language servers have no runner either. Each is a child of the backend, sleeps
+two hours after the last screen showing its repository closes, and ends with
+the backend; [Language Servers](language-servers.md#lifetime) owns their
+lifetime.
 
 The backend also keeps one monitor thread outside its request threads, so it
 still runs when every request thread is held up. When the request threads have

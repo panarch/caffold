@@ -7,6 +7,13 @@ import {
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
 import {
+  checkLanguageServerRepository,
+  findLanguageServerPlaces,
+  getLanguageServerRepository,
+  type LanguageServerPlace,
+  type LanguageServerRepository,
+} from "#app/api.js";
+import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
@@ -21,6 +28,14 @@ import { cleanLogicalPath } from "#tasks/task-format.js";
 import { taskThreadId } from "#tasks/task-list-model.js";
 import "./components/branch-changes.js";
 import type { CaffoldReviewBranchChanges } from "./components/branch-changes.js";
+import "./components/places.js";
+import {
+  type CaffoldReviewPlaces,
+  type ReviewPlace,
+  type ReviewPlaceOpenDetail,
+  type ReviewPlacesSnapshot,
+  reviewFindTitle,
+} from "./components/places.js";
 import "./components/selected-file.js";
 import type {
   ReviewChanges,
@@ -36,6 +51,7 @@ import type {
 } from "#components/file-navigator.js";
 import type {
   AdjacentFile,
+  CodeNameIntentDetail,
   FileViewerOpenAdjacentDetail,
 } from "#components/file-viewer.js";
 import type { OpenCompareDiffDetail } from "#components/git-compare-tree.js";
@@ -47,18 +63,25 @@ import type { ReviewRepresentationIntentDetail } from "./components/selected-fil
 import type { OpenGitDiffDetail } from "./components/working-tree-changes/components/changes-tree.js";
 import type { CaffoldReviewWorkingTreeChanges } from "./components/working-tree-changes.js";
 import {
+  codeNamesFor,
+  languageServersGettingReady,
+} from "./layout/code-names.js";
+import {
   joinLogicalPath,
   type ReviewTask,
   relativeTaskPath,
+  reviewPathFor,
   taskRootPath,
   taskWorktreeRootPath,
 } from "./layout/paths.js";
 import {
   normalizeForTask,
   normalizeReviewRoute,
+  type ReviewFind,
   type ReviewRoute,
   type ReviewRouteInput,
   reviewContextKey,
+  reviewFindAt,
   reviewRouteKey,
   routeForSelectedFile,
   taskRouteForReview,
@@ -97,7 +120,19 @@ interface SyncOptions {
   scopeChanged?: boolean;
   revealFileSelection?: boolean;
   reactivated?: boolean;
+  findClosed?: boolean;
 }
+
+// The places read for the find the route names, under the find's key.
+type PlacesRead = { key: string; name: string } & (
+  | { status: "loading" }
+  | { status: "ready"; places: ReviewPlace[] }
+  | { status: "failed"; message: string }
+);
+
+// How often Review reads its repository's language servers again while one
+// gets ready.
+const LANGUAGE_SERVERS_READ_AGAIN_MS = 1000;
 
 @customElement("caffold-task-review")
 export class CaffoldTaskReview extends CaffoldElement {
@@ -105,6 +140,8 @@ export class CaffoldTaskReview extends CaffoldElement {
   private accessor route: ReviewRoute = normalizeReviewRoute();
   @state()
   private accessor errorMessage = "";
+  @state()
+  private accessor placesRead: PlacesRead | null = null;
 
   static override styles = styles;
 
@@ -120,6 +157,16 @@ export class CaffoldTaskReview extends CaffoldElement {
     { top: number; left: number }
   >();
   private liveUpdates: unknown = null;
+  // The repository language servers of the Task's root, as last read; null
+  // until a read answers, and when it fails.
+  private languageServers: LanguageServerRepository | null = null;
+  private languageServersPath = "";
+  private languageServersKnown = false;
+  private languageServersRead = 0;
+  private languageServersReading: AbortController | null = null;
+  private languageServersTimer: ReturnType<typeof setTimeout> | null = null;
+  private placesReading: AbortController | null = null;
+  private codeNameAsking: AbortController | null = null;
   private readonly navigatorPane = new DrawnRef<HTMLElement>(this);
   private readonly viewerPane = new DrawnRef<HTMLElement>(this);
   private readonly navigatorAxis = new DrawnRef<CaffoldSegmentedControl>(this);
@@ -131,10 +178,18 @@ export class CaffoldTaskReview extends CaffoldElement {
   private readonly filesList = new DrawnRef<CaffoldFileNavigator>(this);
   private readonly splitView = new DrawnRef<CaffoldSplitView>(this);
   private readonly fileViewer = new DrawnRef<CaffoldReviewSelectedFile>(this);
+  private readonly placesList = new DrawnRef<CaffoldReviewPlaces>(this);
+  private readonly languageServersChanged = () => {
+    void this.readLanguageServers();
+  };
 
   override connectedCallback() {
     super.connectedCallback();
     this.active = true;
+    window.addEventListener(
+      "caffold:language-servers-changed",
+      this.languageServersChanged,
+    );
     this.markChangesOutdated();
     this.syncReview({ reactivated: true });
     this.performUpdate();
@@ -143,13 +198,23 @@ export class CaffoldTaskReview extends CaffoldElement {
   override disconnectedCallback() {
     super.disconnectedCallback();
     this.active = false;
+    window.removeEventListener(
+      "caffold:language-servers-changed",
+      this.languageServersChanged,
+    );
+    this.stopLanguageServers();
+    this.codeNameAsking?.abort();
+    this.codeNameAsking = null;
+    this.placesReading?.abort();
+    this.placesReading = null;
     this.unsubscribeWatch();
     this.fileNavigator.setWatchActive(false);
   }
 
   override render() {
     const route = this.route;
-    const changesShown = route.navigator === "changes";
+    const findShown = Boolean(route.find);
+    const changesShown = !findShown && route.navigator === "changes";
     return html`
       <section class="task-review-workspace" aria-label="Task review">
         <div class="task-review-notices">
@@ -175,7 +240,10 @@ export class CaffoldTaskReview extends CaffoldElement {
             class="task-review-navigator-pane"
             aria-label="Review navigator"
           >
-            <div class="task-review-pane-axis task-review-navigator-axis">
+            <div
+              class="task-review-pane-axis task-review-navigator-axis"
+              ?hidden=${findShown}
+            >
               <caffold-segmented-control
                 ${drawn(this.navigatorAxis)}
                 data-review-axis="navigator"
@@ -209,7 +277,7 @@ export class CaffoldTaskReview extends CaffoldElement {
             <div
               class="task-review-navigator"
               data-review-navigator="files"
-              ?hidden=${route.navigator !== "files"}
+              ?hidden=${findShown || route.navigator !== "files"}
             >
               <caffold-file-navigator
                 ${drawn(this.filesList)}
@@ -217,6 +285,14 @@ export class CaffoldTaskReview extends CaffoldElement {
                 @caffold:file-navigator-refresh-selected=${this.refreshFile}
               ></caffold-file-navigator>
             </div>
+            <caffold-review-places
+              ${drawn(this.placesList)}
+              class="task-review-navigator"
+              ?hidden=${!findShown}
+              .snapshot=${this.placesSnapshot()}
+              @caffold:review-place-open=${this.openPlace}
+              @caffold:review-places-close=${this.closePlaces}
+            ></caffold-review-places>
           </aside>
           <section
             ${drawn(this.viewerPane)}
@@ -240,6 +316,7 @@ export class CaffoldTaskReview extends CaffoldElement {
               @caffold:review-representation-intent=${this.chooseRepresentation}
               @caffold:close-file-viewer=${this.closeFile}
               @caffold:file-viewer-open-adjacent=${this.openChange}
+              @caffold:code-name-intent=${this.answerCodeName}
             ></caffold-review-selected-file>
           </section>
         </caffold-split-view>
@@ -329,13 +406,15 @@ export class CaffoldTaskReview extends CaffoldElement {
     const viewerClipRoots = [this, viewerPane].filter(
       (root): root is Element => root !== null,
     );
-    const navigatorAxis = navigatorActive
-      ? this.axisControl("navigator").actionHintScope({
-          scopeId: `${scopeId}:navigator-axis`,
-          actionId: ACTION_HINT_ACTION.REVIEW_AXIS,
-          clipRoots: navigatorClipRoots,
-        })
-      : null;
+    const find = this.route.find;
+    const navigatorAxis =
+      navigatorActive && !find
+        ? this.axisControl("navigator").actionHintScope({
+            scopeId: `${scopeId}:navigator-axis`,
+            actionId: ACTION_HINT_ACTION.REVIEW_AXIS,
+            clipRoots: navigatorClipRoots,
+          })
+        : null;
     const viewerAxis = viewerActive
       ? this.axisControl("viewer").actionHintScope({
           scopeId: `${scopeId}:viewer-axis`,
@@ -345,35 +424,44 @@ export class CaffoldTaskReview extends CaffoldElement {
       : null;
     const navigatorScope = !navigatorActive
       ? null
-      : this.route.navigator === "files"
-        ? this.fileNavigator.actionHintScope({
-            scopeId: `${scopeId}:files`,
+      : find
+        ? this.places.actionHintScope({
+            scopeId: `${scopeId}:places`,
             actions: {
-              file: ACTION_HINT_ACTION.FILE_OPEN,
-              disclosure: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
-              refresh: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              place: ACTION_HINT_ACTION.FILE_OPEN,
+              close: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
             },
             clipRoots: navigatorClipRoots,
           })
-        : this.route.scope === "branch"
-          ? this.branchChanges.actionHintScope({
-              scopeId: `${scopeId}:branch`,
+        : this.route.navigator === "files"
+          ? this.fileNavigator.actionHintScope({
+              scopeId: `${scopeId}:files`,
               actions: {
                 file: ACTION_HINT_ACTION.FILE_OPEN,
                 disclosure: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
-                select: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
+                refresh: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
               },
               clipRoots: navigatorClipRoots,
             })
-          : this.workingTreeChanges.actionHintScope({
-              scopeId: `${scopeId}:working`,
-              actions: {
-                file: ACTION_HINT_ACTION.FILE_OPEN,
-                disclosure: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
-                branch: ACTION_HINT_ACTION.REVIEW_AXIS,
-              },
-              clipRoots: navigatorClipRoots,
-            });
+          : this.route.scope === "branch"
+            ? this.branchChanges.actionHintScope({
+                scopeId: `${scopeId}:branch`,
+                actions: {
+                  file: ACTION_HINT_ACTION.FILE_OPEN,
+                  disclosure: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+                  select: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
+                },
+                clipRoots: navigatorClipRoots,
+              })
+            : this.workingTreeChanges.actionHintScope({
+                scopeId: `${scopeId}:working`,
+                actions: {
+                  file: ACTION_HINT_ACTION.FILE_OPEN,
+                  disclosure: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+                  branch: ACTION_HINT_ACTION.REVIEW_AXIS,
+                },
+                clipRoots: navigatorClipRoots,
+              });
     const viewerScope =
       viewerActive && this.route.path
         ? this.selectedFile.actionHintScope({
@@ -417,27 +505,34 @@ export class CaffoldTaskReview extends CaffoldElement {
     const viewerClipRoots = [this, viewerPane].filter(
       (root): root is Element => root !== null,
     );
+    const find = this.route.find;
     const navigatorScope = !(
       this.split.listShown() && hasScrollLayoutBox(navigatorPane)
     )
       ? null
-      : this.route.navigator === "files"
-        ? this.fileNavigator.scrollSurfaceScope({
-            scopeId: `${scopeId}:files`,
-            label: "Files",
+      : find
+        ? this.places.scrollSurfaceScope({
+            scopeId: `${scopeId}:places`,
+            label: reviewFindTitle(find.kind),
             clipRoots: navigatorClipRoots,
           })
-        : this.route.scope === "branch"
-          ? this.branchChanges.scrollSurfaceScope({
-              scopeId: `${scopeId}:branch`,
-              label: "Branch changes",
+        : this.route.navigator === "files"
+          ? this.fileNavigator.scrollSurfaceScope({
+              scopeId: `${scopeId}:files`,
+              label: "Files",
               clipRoots: navigatorClipRoots,
             })
-          : this.workingTreeChanges.scrollSurfaceScope({
-              scopeId: `${scopeId}:working`,
-              label: "Working tree changes",
-              clipRoots: navigatorClipRoots,
-            });
+          : this.route.scope === "branch"
+            ? this.branchChanges.scrollSurfaceScope({
+                scopeId: `${scopeId}:branch`,
+                label: "Branch changes",
+                clipRoots: navigatorClipRoots,
+              })
+            : this.workingTreeChanges.scrollSurfaceScope({
+                scopeId: `${scopeId}:working`,
+                label: "Working tree changes",
+                clipRoots: navigatorClipRoots,
+              });
     const viewerScope =
       this.split.detailShown() &&
       hasScrollLayoutBox(viewerPane) &&
@@ -490,6 +585,11 @@ export class CaffoldTaskReview extends CaffoldElement {
     const routeChanged = Boolean(
       this.previousRouteKey && this.previousRouteKey !== nextRouteKey,
     );
+    // Opening or closing a find leaves the file as it is.
+    const viewChanged =
+      routeChanged &&
+      reviewRouteKey({ ...previousRoute, find: null }) !==
+        reviewRouteKey({ ...nextRoute, find: null });
     const scopeChanged =
       routeChanged && previousRoute.scope !== nextRoute.scope;
     const revealFileSelection = Boolean(
@@ -522,9 +622,10 @@ export class CaffoldTaskReview extends CaffoldElement {
     this.syncChildContexts();
     this.syncReview({
       contextChanged,
-      routeChanged,
+      routeChanged: viewChanged,
       scopeChanged,
       revealFileSelection,
+      findClosed: Boolean(previousRoute.find && !nextRoute.find),
     });
     if (addressDiffers) {
       this.requestRoute(nextRoute);
@@ -634,6 +735,9 @@ export class CaffoldTaskReview extends CaffoldElement {
   }
 
   private resetContext() {
+    this.placesReading?.abort();
+    this.placesReading = null;
+    this.placesRead = null;
     this.unsubscribeWatch();
     this.pendingWatchViewerRefresh = false;
     this.previousRouteKey = "";
@@ -703,9 +807,18 @@ export class CaffoldTaskReview extends CaffoldElement {
       options.contextChanged || options.routeChanged || options.reactivated,
     );
     this.selectedFile.show(this.currentView(), { force: reload });
-    if (reload) {
+    if (reload || options.findClosed) {
       this.restoreNavigatorScroll();
     }
+    if (
+      options.contextChanged ||
+      options.reactivated ||
+      taskRootPath(this.task) !== this.languageServersPath
+    ) {
+      void this.readLanguageServers({ lookAgain: true });
+    }
+    this.syncCodeNames();
+    this.syncPlaces();
   }
 
   private ensureFileNavigator({
@@ -934,6 +1047,17 @@ export class CaffoldTaskReview extends CaffoldElement {
 
   // The strip of the folded drawer names the list it holds.
   private patchListName() {
+    const find = this.route.find;
+    if (find) {
+      const read = this.placesRead;
+      this.split.setListName(
+        reviewFindTitle(find.kind),
+        read?.key === findKey(find) && read.status === "ready"
+          ? read.places.length
+          : null,
+      );
+      return;
+    }
     if (this.route.navigator === "files") {
       this.split.setListName("Files");
       return;
@@ -1069,6 +1193,269 @@ export class CaffoldTaskReview extends CaffoldElement {
     this.watchPath = "";
   }
 
+  // Reads whether the Task root's repository has language servers on, and
+  // reads again while one gets ready. As Review shows the repository, the
+  // read first has the server look again for a failed server, which the
+  // person may have installed meanwhile. A failed read leaves the names
+  // plain; Task details is where the servers' state shows.
+  private async readLanguageServers({ lookAgain = false } = {}) {
+    if (!this.active || !this.task) {
+      return;
+    }
+    const path = taskRootPath(this.task);
+    this.stopLanguageServers();
+    const read = this.languageServersRead;
+    const reading = new AbortController();
+    this.languageServersReading = reading;
+    if (path !== this.languageServersPath) {
+      this.languageServersPath = path;
+      this.languageServers = null;
+      this.languageServersKnown = false;
+      this.syncCodeNames();
+    }
+    let repository: LanguageServerRepository | null = null;
+    try {
+      repository = await (lookAgain
+        ? checkLanguageServerRepository
+        : getLanguageServerRepository)(path, reading.signal);
+    } catch {
+      repository = null;
+    }
+    if (read !== this.languageServersRead) {
+      return;
+    }
+    this.languageServersReading = null;
+    this.languageServers = repository;
+    this.languageServersKnown = true;
+    this.syncCodeNames();
+    this.syncPlaces();
+    if (languageServersGettingReady(repository)) {
+      this.languageServersTimer = setTimeout(() => {
+        void this.readLanguageServers();
+      }, LANGUAGE_SERVERS_READ_AGAIN_MS);
+    }
+  }
+
+  private stopLanguageServers() {
+    this.languageServersRead += 1;
+    this.languageServersReading?.abort();
+    this.languageServersReading = null;
+    if (this.languageServersTimer !== null) {
+      clearTimeout(this.languageServersTimer);
+      this.languageServersTimer = null;
+    }
+  }
+
+  private syncCodeNames() {
+    this.selectedFile.setCodeNames(
+      codeNamesFor(this.languageServers, this.logicalSelectedPath()),
+    );
+  }
+
+  private placesSnapshot(): ReviewPlacesSnapshot | null {
+    const find = this.route.find;
+    if (!find) {
+      return null;
+    }
+    const read =
+      this.placesRead?.key === findKey(find) ? this.placesRead : null;
+    const shown = {
+      kind: find.kind,
+      name: read?.name ?? "",
+      selected: this.route.path
+        ? { path: this.route.path, line: this.route.line }
+        : null,
+    };
+    if (read?.status === "ready") {
+      return { ...shown, status: "ready", places: read.places };
+    }
+    if (read?.status === "failed") {
+      return { ...shown, status: "failed", message: read.message };
+    }
+    return { ...shown, status: "loading" };
+  }
+
+  // Reads the places the route's find names once its server can answer:
+  // after the repository's servers are read and none of them is still
+  // getting ready for the find's file.
+  private syncPlaces() {
+    const find = this.route.find;
+    const key = find ? findKey(find) : "";
+    const read = this.placesRead;
+    if (
+      read?.key === key &&
+      (read.status !== "loading" || this.placesReading)
+    ) {
+      return;
+    }
+    this.placesReading?.abort();
+    this.placesReading = null;
+    if (!find) {
+      this.placesRead = null;
+      return;
+    }
+    const name = read?.key === key ? read.name : "";
+    const path = joinLogicalPath(taskRootPath(this.task), find.path);
+    if (
+      !this.languageServersKnown ||
+      codeNamesFor(this.languageServers, path)?.status === "starting"
+    ) {
+      this.placesRead = { key, name, status: "loading" };
+      return;
+    }
+    void this.readPlaces(find, key, name, path);
+  }
+
+  private async readPlaces(
+    find: ReviewFind,
+    key: string,
+    name: string,
+    path: string,
+  ) {
+    const reading = new AbortController();
+    this.placesReading = reading;
+    this.placesRead = { key, name, status: "loading" };
+    let next: PlacesRead;
+    try {
+      const { places } = await findLanguageServerPlaces(
+        find.kind === "references" ? "references" : "definition",
+        { path, line: find.line, character: find.character },
+        reading.signal,
+      );
+      const shown = places.map((place) => this.reviewPlace(place));
+      next = {
+        key,
+        name: name || placeName(shown),
+        status: "ready",
+        places: shown,
+      };
+    } catch (error) {
+      next = { key, name, status: "failed", message: errorMessage(error) };
+    }
+    if (this.placesReading !== reading) {
+      return;
+    }
+    this.placesReading = null;
+    this.placesRead = next;
+    this.patchListName();
+  }
+
+  // Answers a press on a name in the viewer. One definition opens; none, a
+  // failure, or one outside Caffold's root shows a message at the name; more
+  // places open the list.
+  private async answerCodeName(event: CustomEvent<CodeNameIntentDetail>) {
+    event.stopPropagation();
+    const { action, line, character, name } = event.detail;
+    const route = this.route;
+    const path = this.logicalSelectedPath();
+    if (!route.path || !path) {
+      return;
+    }
+    this.codeNameAsking?.abort();
+    const asking = new AbortController();
+    this.codeNameAsking = asking;
+    const position = { line, character };
+    let places: ReviewPlace[];
+    try {
+      const answer = await findLanguageServerPlaces(
+        action,
+        { path, line, character },
+        asking.signal,
+      );
+      places = answer.places.map((place) => this.reviewPlace(place));
+    } catch (error) {
+      if (this.codeNameAsking === asking) {
+        this.codeNameAsking = null;
+        this.selectedFile.showCodeNameMessage(position, errorMessage(error));
+      }
+      return;
+    }
+    if (
+      this.codeNameAsking !== asking ||
+      reviewRouteKey(route) !== reviewRouteKey(this.route)
+    ) {
+      return;
+    }
+    this.codeNameAsking = null;
+    const [first] = places;
+    if (!first) {
+      this.selectedFile.showCodeNameMessage(
+        position,
+        action === "definition"
+          ? "No definition found."
+          : "No references found.",
+      );
+      return;
+    }
+    if (action === "definition" && places.length === 1) {
+      if (first.path) {
+        this.openFileAt(first.path, first.line);
+      } else {
+        this.selectedFile.showCodeNameMessage(
+          position,
+          `Defined in ${first.fileName}, line ${first.line}, outside the folder Caffold serves.`,
+        );
+      }
+      return;
+    }
+    const find: ReviewFind = {
+      kind: action === "definition" ? "definitions" : "references",
+      path: route.path,
+      line,
+      character,
+    };
+    this.placesReading?.abort();
+    this.placesReading = null;
+    this.placesRead = { key: findKey(find), name, status: "ready", places };
+    this.openFind(find);
+  }
+
+  // Shows the find's list in place of the navigator: on a phone in place of
+  // the file, elsewhere beside it or in the drawer over it.
+  private openFind(find: ReviewFind) {
+    this.captureLocalState();
+    const onePane = this.split.showsOnePane();
+    this.requestRoute({
+      ...this.route,
+      find,
+      ...(onePane ? { path: "", line: null } : {}),
+    });
+    if (!onePane) {
+      this.split.sidePane().setCollapsed(false);
+    }
+  }
+
+  private openPlace(event: CustomEvent<ReviewPlaceOpenDetail>) {
+    event.stopPropagation();
+    this.split.closeDrawer();
+    this.openFileAt(event.detail.path, event.detail.line);
+  }
+
+  private closePlaces(event: Event) {
+    event.stopPropagation();
+    this.requestRoute({ ...this.route, find: null });
+  }
+
+  // Opens a place in Source, as the conversation's file links do.
+  private openFileAt(path: string, line: number) {
+    this.captureLocalState();
+    this.requestRoute({ ...this.route, viewer: "source", path, line });
+  }
+
+  private reviewPlace(place: LanguageServerPlace): ReviewPlace {
+    return {
+      path:
+        place.path === null
+          ? null
+          : reviewPathFor(place.path, taskRootPath(this.task)),
+      fileName: place.name,
+      line: place.line,
+      character: place.character,
+      length: place.length ?? null,
+      text: place.text ?? null,
+    };
+  }
+
   private logicalSelectedPath() {
     return this.route.path
       ? joinLogicalPath(taskRootPath(this.task), this.route.path)
@@ -1107,6 +1494,11 @@ export class CaffoldTaskReview extends CaffoldElement {
     return this.fileViewer.value as CaffoldReviewSelectedFile;
   }
 
+  private get places() {
+    this.performUpdate();
+    return this.placesList.value as CaffoldReviewPlaces;
+  }
+
   private get split() {
     this.performUpdate();
     return this.splitView.value as CaffoldSplitView;
@@ -1117,6 +1509,24 @@ export class CaffoldTaskReview extends CaffoldElement {
     return (axis === "navigator" ? this.navigatorAxis : this.viewerAxis)
       .value as CaffoldSegmentedControl;
   }
+}
+
+function findKey(find: ReviewFind) {
+  return `${find.kind}:${reviewFindAt(find)}`;
+}
+
+// The name the places are of: what the first place that marks it shows.
+function placeName(places: readonly ReviewPlace[]) {
+  for (const { text, character, length } of places) {
+    if (text !== null && length) {
+      return text.slice(character, character + length);
+    }
+  }
+  return "";
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : `${error}`;
 }
 
 declare global {

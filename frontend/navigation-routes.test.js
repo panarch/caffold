@@ -34,6 +34,7 @@ test("parses and serializes Task-scoped routes canonically", () => {
     ["/settings/appearance", { kind: "settings", section: "appearance" }, "/settings/appearance"],
     ["/settings/keyboard", { kind: "settings", section: "keyboard" }, "/settings/keyboard"],
     ["/settings/files", { kind: "settings", section: "files" }, "/settings/files"],
+    ["/settings/language-servers", { kind: "settings", section: "language-servers" }, "/settings/language-servers"],
     ["/settings/notifications", { kind: "settings", section: "notifications" }, "/settings/notifications"],
     ["/settings/codex", { kind: "settings", section: "codex" }, "/settings/codex"],
     ["/settings/about", { kind: "settings", section: "about" }, "/settings/about"],
@@ -51,6 +52,8 @@ test("parses and serializes Task-scoped routes canonically", () => {
         reviewScope: "working",
         reviewNavigator: "changes",
         reviewViewer: "diff",
+        reviewFind: "",
+        reviewFindAt: "",
         path: "",
         line: null,
         baseRef: "",
@@ -75,6 +78,8 @@ test("parses and serializes Task-scoped routes canonically", () => {
         reviewScope: "branch",
         reviewNavigator: "files",
         reviewViewer: "source",
+        reviewFind: "",
+        reviewFindAt: "",
         path: "src/lib.rs",
         line: 17,
         baseRef: "main",
@@ -99,6 +104,8 @@ test("parses and serializes Task-scoped routes canonically", () => {
         reviewScope: "working",
         reviewNavigator: "changes",
         reviewViewer: "diff",
+        reviewFind: "",
+        reviewFindAt: "",
         path: "src/lib.rs",
         line: null,
         baseRef: "",
@@ -123,6 +130,8 @@ test("parses and serializes Task-scoped routes canonically", () => {
         reviewScope: "working",
         reviewNavigator: "changes",
         reviewViewer: "diff",
+        reviewFind: "",
+        reviewFindAt: "",
         path: "src/lib.rs",
         line: null,
         baseRef: "",
@@ -160,6 +169,8 @@ test("parses and serializes Task-scoped routes canonically", () => {
         reviewScope: "branch",
         reviewNavigator: "files",
         reviewViewer: "source",
+        reviewFind: "",
+        reviewFindAt: "",
         path: "../shared/lib.rs",
         line: 17,
         baseRef: "origin/main",
@@ -230,6 +241,44 @@ test("preserves Markdown Preview as reloadable Integrated Review state", () => {
   }
 });
 
+test("keeps a Review find and its name's place only while it names a list", () => {
+  const route = parseRoute(
+    "/tasks/thread/review?nav=files&view=source&file=src%2Fmain.rs&line=12&find=references&at=src%2Flib.rs%3A3%3A8",
+  );
+  assert.equal(route.reviewFind, "references");
+  assert.equal(route.reviewFindAt, "src/lib.rs:3:8");
+  assert.equal(
+    routeUrl(route),
+    "/tasks/thread/review?nav=files&view=source&file=src%2Fmain.rs&line=12&find=references&at=src%2Flib.rs%3A3%3A8",
+  );
+  assert.equal(
+    routeUrl(parentRoute(route)),
+    "/tasks/thread/review?nav=files&view=source&find=references&at=src%2Flib.rs%3A3%3A8",
+  );
+  const section = parseRoute(
+    "/?section=repo-1&surface=review&find=definitions&at=a.rs%3A1%3A1",
+  );
+  assert.equal(section.reviewFind, "definitions");
+  assert.equal(section.reviewFindAt, "a.rs:1:1");
+
+  const unknown = parseRoute("/tasks/thread/review?find=callers&at=a.rs%3A1%3A1");
+  assert.equal(unknown.reviewFind, "");
+  assert.equal(unknown.reviewFindAt, "");
+  assert.equal(routeUrl(unknown), "/tasks/thread/review");
+});
+
+test("keeps a Review file named from Caffold's root apart from the Task's files", () => {
+  const route = parseRoute(
+    "/tasks/thread/review?view=source&file=%2Fhome%2Fme%2F..%2F..%2Flib%2Fcore.rs&line=4",
+  );
+  assert.equal(route.path, "/lib/core.rs");
+  assert.equal(
+    routeUrl(route),
+    "/tasks/thread/review?view=source&file=%2Flib%2Fcore.rs&line=4",
+  );
+  assert.equal(parseRoute("/tasks/thread/review?file=..%2Flib.rs").path, "../lib.rs");
+});
+
 test("preserves Visual as reloadable Integrated Review state", () => {
   const urls = [
     "/tasks/thread/review?view=visual&file=assets%2Flogo.png",
@@ -252,6 +301,7 @@ test("derives deterministic Task child parents", () => {
     ["/settings/appearance", "/settings"],
     ["/settings/keyboard", "/settings"],
     ["/settings/files", "/settings"],
+    ["/settings/language-servers", "/settings"],
     ["/settings/notifications", "/settings"],
     ["/", null],
     ["/?section=repo-1", "/"],

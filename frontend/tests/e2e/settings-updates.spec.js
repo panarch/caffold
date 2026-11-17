@@ -230,6 +230,7 @@ test("About offers its update action and the Settings list names the entry with 
     ["appearance", "Open Appearance settings"],
     ["keyboard", "Open Keyboard settings"],
     ["files", "Open Files settings"],
+    ["language-servers", "Open Language Servers settings"],
     ["notifications", "Open Notifications settings"],
     ["name-and-icon", "Open Name & Icon settings"],
     ["remote-access", "Open Remote Access settings"],

@@ -26,7 +26,7 @@ canonical query route; Task URLs use path routes:
 ```text
 /
 /?section=<managed-section-id>
-/?section=<managed-section-id>&surface=review&scope=...&nav=...&view=...&file=...&base=...
+/?section=<managed-section-id>&surface=review&scope=...&nav=...&view=...&file=...&base=...&find=...&at=...
 /?section=<managed-section-id>&surface=git&tool=compare&base=...&head=...&file=...
 /?section=<managed-section-id>&surface=git&tool=log&page=...&sha=...&file=...
 /?section=<managed-section-id>&surface=github&tool=issues&page=...&number=...
@@ -35,7 +35,7 @@ canonical query route; Task URLs use path routes:
 /tasks/new?cwd=...
 /tasks/:threadId
 /tasks/:threadId/terminal
-/tasks/:threadId/review?scope=...&nav=...&view=...&file=...&base=...
+/tasks/:threadId/review?scope=...&nav=...&view=...&file=...&base=...&find=...&at=...
 /tasks/:threadId/git/compare?base=...&head=...&file=...
 /tasks/:threadId/git/log?page=...&sha=...&file=...
 /tasks/:threadId/github/issues?page=...
@@ -49,6 +49,7 @@ canonical query route; Task URLs use path routes:
 /settings/appearance
 /settings/keyboard
 /settings/files
+/settings/language-servers
 /settings/notifications
 /settings/remote-access
 /settings/voice
@@ -160,10 +161,16 @@ Integrated Review carries independent semantic axes:
 - `scope=working|branch`
 - `nav=changes|files`
 - `view=diff|source`
-- `file=<task-root-relative-path>`
+- `file=<task-root-relative-path>`, or a path from Caffold's root when it
+  starts with `/`, as a definition outside the Task root opens
 - `base=<branch-base-ref>`
+- `find=references|definitions` with `at=<file>:<line>:<column>`: the places
+  a [language server](language-servers.md) gave for the name at `at`, listed
+  in the navigator's place; `at` names its file as `file` does and a one-based
+  column
 
-Defaults (`working`, `changes`, `diff`, no file, no base) are omitted. Invalid
+Defaults (`working`, `changes`, `diff`, no file, no base, no find) are
+omitted, and `at` is kept only with `find`. Invalid
 enums and root-escaping paths normalize to safe defaults. A Branch response
 may replace an absent or invalid base with the normalized current base, but
 asynchronous data does not decide the selected scope, navigator, viewer, or

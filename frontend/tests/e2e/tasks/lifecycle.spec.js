@@ -954,6 +954,10 @@ test("fresh origin reachability recovers a foreground offline pause without an o
     detailReads += 1;
     return route.fulfill({ json: detail() });
   });
+  await page.route(
+    (url) => url.pathname === "/api/language-servers/repository",
+    (route) => route.fulfill({ json: { path: "src", enabled: false, servers: [] } }),
+  );
 
   await page.goto(`/tasks/${threadId}`);
   const appShell = page.locator("caffold-app-shell");
@@ -969,6 +973,16 @@ test("fresh origin reachability recovers a foreground offline pause without an o
     )
     .toEqual(["task-detail", "task-list", "watch"]);
 
+  // Task details reads its repository's language servers ahead of opening.
+  // Any answer that arrives while offline shows the origin is reachable, so
+  // the page goes offline only once that read is answered.
+  await expect
+    .poll(() =>
+      tasksPage
+        .locator("caffold-task-detail-info-actions")
+        .evaluate((actions) => actions.languageServersLifecycle.snapshot.fresh),
+    )
+    .toBe(true);
   const reads = () => ({
     detail: detailReads,
     list: listReads,

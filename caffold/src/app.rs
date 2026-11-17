@@ -12,6 +12,7 @@ mod content_disposition;
 mod error;
 mod etag;
 mod jev;
+mod language_servers;
 mod live_updates;
 mod notes;
 mod shell;
@@ -25,8 +26,8 @@ mod voice;
 mod workspace;
 
 use crate::{
-    agent::http_mcp::McpSessionSigner, fs::RootedFs, server_settings::ServerSettingsStore,
-    watch::WatchHub,
+    agent::http_mcp::McpSessionSigner, fs::RootedFs, language_servers::LanguageServers,
+    server_settings::ServerSettingsStore, watch::WatchHub,
 };
 
 #[derive(Debug, Clone)]
@@ -67,6 +68,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let shell_router = shell::router(fs.clone(), server_settings, initial_path.clone(), home_path);
     let workspace_router = workspace::router(fs.clone());
     let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
+    let language_servers = LanguageServers::open(&data_dir, fs.clone(), watch_hub.clone());
     let voice_router = voice::router(&data_dir);
     let (jev_router, permission_reviewer) = jev::open(&data_dir);
     let listener = TcpListener::bind((config.host, config.port)).await?;
@@ -119,6 +121,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         updates.router(),
         codex_mcp.router(),
         grok_mcp.router().merge(antigravity_mcp.router()),
+        language_servers::router(language_servers.clone()),
     ));
     let stall_monitor =
         stall::StallMonitor::start(requests_in_flight, data_dir.join("diagnostics/stalls"));
@@ -155,6 +158,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     };
     tasks.shutdown().await;
     terminals.shutdown().await;
+    language_servers.shutdown().await;
     stall_monitor.stop();
     result?;
 
@@ -172,6 +176,11 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     );
     let workspace_router = workspace::router(fs.clone());
     let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
+    let language_servers = LanguageServers::open(
+        &fs.root().join(".caffold-test"),
+        fs.clone(),
+        watch_hub.clone(),
+    );
     let voice_router = voice::router(&fs.root().join(".caffold-test"));
     let (jev_router, permission_reviewer) = jev::open(&fs.root().join(".caffold-test"));
     let tailscale_router = tailscale::router(5_178);
@@ -216,6 +225,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         update_router,
         codex_mcp.router(),
         grok_mcp.router().merge(antigravity_mcp.router()),
+        language_servers::router(language_servers),
     ))
 }
 
@@ -230,6 +240,7 @@ fn router_with_states(
     update_router: Router,
     codex_mcp_router: Router,
     grok_mcp_router: Router,
+    language_servers_router: Router,
 ) -> Router {
     shell_router
         .merge(workspace_router)
@@ -240,6 +251,7 @@ fn router_with_states(
         .merge(update_router)
         .merge(codex_mcp_router)
         .merge(grok_mcp_router)
+        .merge(language_servers_router)
 }
 
 /// The address agents on this machine reach the Caffold server at.
@@ -284,8 +296,10 @@ async fn shutdown_signal(shutdown: broadcast::Sender<()>) {
 mod tests {
     use super::*;
 
-    #[test]
-    fn application_router_merges_the_owned_state_routers() {
+    // Language servers start their supervisor task with the router, so it is
+    // built inside a runtime.
+    #[tokio::test]
+    async fn application_router_merges_the_owned_state_routers() {
         let root = tempfile::tempdir().unwrap();
         let _router =
             router(RootedFs::new(root.path()).unwrap()).expect("owned state routers merge");

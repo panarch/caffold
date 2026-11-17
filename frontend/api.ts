@@ -866,6 +866,87 @@ export async function readFile(
   return requestJson<FileContent>("/api/file", { path, base }, { signal });
 }
 
+// Settings → Language Servers: every language, whether it is turned on, and
+// the server found for it from the home folder.
+export async function getLanguageServers(signal?: AbortSignal) {
+  return requestJson<{ languages: LanguageServerSetting[] }>(
+    "/api/language-servers",
+    {},
+    { signal },
+  );
+}
+
+// Turns on exactly these languages.
+export async function updateLanguageServerLanguages(
+  languages: LanguageServerLanguage[],
+) {
+  return requestJson<{ languages: LanguageServerSetting[] }>(
+    "/api/language-servers/settings",
+    {},
+    { method: "PATCH", body: { languages } },
+  );
+}
+
+// Every server of every repository that is turned on, with memory.
+export async function getRunningLanguageServers(signal?: AbortSignal) {
+  return requestJson<LanguageServersRunning>(
+    "/api/language-servers/running",
+    {},
+    { signal },
+  );
+}
+
+// The switch and servers of the repository holding `path`.
+export async function getLanguageServerRepository(
+  path: string,
+  signal?: AbortSignal,
+) {
+  return requestJson<LanguageServerRepository>(
+    "/api/language-servers/repository",
+    { path },
+    { signal },
+  );
+}
+
+// The repository holding `path` once its failed servers were looked for
+// again and each one found started, as a screen showing it asks; the person
+// may have installed one meanwhile.
+export async function checkLanguageServerRepository(
+  path: string,
+  signal?: AbortSignal,
+) {
+  return requestJson<LanguageServerRepository>(
+    "/api/language-servers/repository/check",
+    {},
+    { method: "POST", body: { path }, signal },
+  );
+}
+
+export async function updateLanguageServerRepository(
+  path: string,
+  enabled: boolean,
+) {
+  return requestJson<LanguageServerRepository>(
+    "/api/language-servers/repository",
+    {},
+    { method: "PUT", body: { path, enabled } },
+  );
+}
+
+// Where the name at `line` (one-based) and `character` (UTF-16) of the file
+// at logical `path` is defined, or used.
+export async function findLanguageServerPlaces(
+  kind: "definition" | "references",
+  position: LanguageServerPosition,
+  signal?: AbortSignal,
+) {
+  return requestJson<{ places: LanguageServerPlace[] }>(
+    `/api/language-servers/${kind}`,
+    {},
+    { method: "POST", body: position, signal },
+  );
+}
+
 export async function getNotes(directoryId: string, signal?: AbortSignal) {
   return requestJson<NotesLevel>(
     "/api/notes",
@@ -1432,6 +1513,80 @@ export interface GitFetchResult {
   reference: string;
   ahead: number;
   behind: number;
+}
+
+export type LanguageServerLanguage = "rust" | "typescript";
+
+export interface LanguageServerSetting {
+  id: LanguageServerLanguage;
+  name: string;
+  enabled: boolean;
+  serverName: string;
+}
+
+export type LanguageServerState =
+  | "off"
+  | "starting"
+  | "ready"
+  | "sleeping"
+  | "failed";
+
+export interface LanguageServerStatus {
+  repositoryPath: string;
+  repositoryBranch?: string;
+  language: LanguageServerLanguage;
+  languageName: string;
+  // The extensions of the files the server reads.
+  extensions: string[];
+  serverName: string;
+  state: LanguageServerState;
+  progress?: string;
+  failure?: LanguageServerFailure;
+  memoryBytes?: number;
+}
+
+// Why a server does not answer, by which check failed. A server that is not
+// installed says what installing it takes: for Rust, into the rustup
+// toolchain the repository uses. One that could not start says what it
+// printed; one that stopped has nothing kept to say.
+export type LanguageServerFailure =
+  | {
+      kind: "notInstalled";
+      toolchain?: string;
+      installCommand: string;
+      checkCommand: string;
+    }
+  | { kind: "couldNotStart"; reason: string }
+  | { kind: "stopped" };
+
+export interface LanguageServerRepository {
+  path: string;
+  enabled: boolean;
+  servers: LanguageServerStatus[];
+}
+
+export interface LanguageServersRunning {
+  servers: LanguageServerStatus[];
+  totalMemoryBytes: number;
+}
+
+export interface LanguageServerPosition {
+  path: string;
+  line: number;
+  character: number;
+}
+
+// A place a language server answered with. `path` is null outside Caffold's
+// root, where only `name` tells the file.
+export interface LanguageServerPlace {
+  path: string | null;
+  name: string;
+  line: number;
+  character: number;
+  // The name's length in UTF-16 units, when it ends on its line.
+  length?: number;
+  // The line's text, inside Caffold's root.
+  text?: string;
 }
 
 export interface FileContent {

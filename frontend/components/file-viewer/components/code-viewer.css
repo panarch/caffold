@@ -170,3 +170,29 @@ slot[name="end"] {
     --code-line-number-padding: 0.5rem;
   }
 }
+
+.code-name {
+  cursor: pointer;
+}
+
+/* A name underlines under the pointer, and while its menu is open. */
+.code-name.is-open {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+@media (hover: hover) {
+  .code-name:hover {
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+  }
+}
+
+caffold-code-name-menu {
+  position: fixed;
+  inset: auto;
+  margin: var(--interface-space-2) 0;
+  position-anchor: --code-name;
+  position-area: block-end span-inline-end;
+  position-try-fallbacks: flip-block, flip-inline;
+}

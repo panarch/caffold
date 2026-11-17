@@ -2374,7 +2374,7 @@ test("reloads a Task-scoped GitHub route from canonical Task context", { tag: "@
   await expect(domainHeader.locator(".task-domain-subtitle")).toHaveText(
     "gluesql/gluesql · 53 PRs",
   );
-  const domainHeaderGeometry = await domainHeader.evaluate((header, [taskHeader, taskTitle]) => {
+  const domainHeaderGeometry = await domainHeader.evaluate((header, [taskHeader, taskTitle, taskInfo]) => {
     const headerStyle = getComputedStyle(header);
     const taskHeaderStyle = getComputedStyle(taskHeader);
     const domainTitleStyle = getComputedStyle(
@@ -2389,11 +2389,18 @@ test("reloads a Task-scoped GitHub route from canonical Task context", { tag: "@
           Number.parseFloat(headerStyle.paddingRight) -
             Number.parseFloat(taskHeaderStyle.paddingRight),
         ) <= 1,
-      symmetricPadding:
-        Math.abs(
-          Number.parseFloat(headerStyle.paddingLeft) -
-            Number.parseFloat(headerStyle.paddingRight),
-        ) <= 1,
+      edgeMatchesTask: (() => {
+        const back = header.querySelector(".task-domain-back");
+        const lead = back.checkVisibility()
+          ? back.getBoundingClientRect().left +
+            Number.parseFloat(getComputedStyle(back, "::before").left)
+          : header.querySelector(".task-domain-title").getBoundingClientRect().left;
+        const info = taskInfo.getBoundingClientRect();
+        const taskEnd =
+          taskHeader.getBoundingClientRect().right -
+          (info.right - Number.parseFloat(getComputedStyle(taskInfo, "::before").right));
+        return Math.abs(lead - header.getBoundingClientRect().left - taskEnd) <= 0.1;
+      })(),
       titleSizeMatchesTask:
         Math.abs(
           Number.parseFloat(domainTitleStyle.fontSize) -
@@ -2403,6 +2410,7 @@ test("reloads a Task-scoped GitHub route from canonical Task context", { tag: "@
   }, await elementHandles(page.locator("caffold-detail-layout"), [
     ".detail-layout-summary",
     ".task-detail-heading > h2",
+    ".task-detail-info-button",
   ]));
   expect(domainHeaderGeometry.height).toBeCloseTo(
     domainHeaderGeometry.minimumHeight,
@@ -2410,7 +2418,7 @@ test("reloads a Task-scoped GitHub route from canonical Task context", { tag: "@
   );
   expect(domainHeaderGeometry).toMatchObject({
     paddingMatchesTask: true,
-    symmetricPadding: true,
+    edgeMatchesTask: true,
     titleSizeMatchesTask: true,
   });
   await expect(pullsPage.locator(".github-pulls-panel > header")).toHaveCount(0);

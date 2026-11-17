@@ -277,6 +277,7 @@ test("registered dialog contexts stay owned and compose through public providers
   assert.match(workspace, /this\.codexRuntimeRestartDialog\.keyboardNavigationContexts/);
   assert.match(workspace, /this\.settingsWorkspace\.keyboardNavigationContexts/);
   assert.match(workspace, /this\.archivedDeleteDialog\.keyboardNavigationContexts/);
+  assert.match(workspace, /this\.languageServerInstallDialog\.keyboardNavigationContexts/);
   assert.match(workspace, /this\.taskSwitcherDialog\.keyboardNavigationContexts/);
   assert.match(tasks, /this\.imagePreviewDialog\.value\?\.keyboardNavigationContexts/);
   assert.match(taskNew, /this\.create\.value\?\.keyboardNavigationContexts/);
@@ -296,6 +297,7 @@ test("registered product dialogs retain one context-local keyboard presentation"
     "pages/components/update-dialog.ts",
     "pages/components/update-result-dialog.ts",
     "pages/(task-workspace)/components/update-task-dialog.ts",
+    "pages/(task-workspace)/components/language-server-install-dialog.ts",
     "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.ts",
     "pages/(task-workspace)/codex-status/components/runtime-update-dialog.ts",
     "pages/(task-workspace)/codex-status/components/reset-credit-dialog.ts",
@@ -329,6 +331,7 @@ test("product dialog CSS does not style nested keyboard presentation dialogs", (
     "pages/components/update-dialog.css",
     "pages/components/update-result-dialog.css",
     "pages/(task-workspace)/components/update-task-dialog.css",
+    "pages/(task-workspace)/components/language-server-install-dialog.css",
     "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
     "pages/(task-workspace)/tasks/components/task-switcher-dialog.css",
     "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.css",

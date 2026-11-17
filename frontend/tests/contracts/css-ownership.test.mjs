@@ -19,6 +19,7 @@ const shadowRootStyles = new Map([
   ["components/file-navigator/components/list.css", "caffold-file-list"],
   ["components/file-tree.css", "caffold-file-tree"],
   ["components/file-viewer.css", "caffold-review-file-viewer"],
+  ["components/file-viewer/components/code-name-menu.css", "caffold-code-name-menu"],
   ["components/file-viewer/components/code-viewer.css", "caffold-code-viewer"],
   ["components/file-viewer/components/diff-viewer.css", "caffold-diff-viewer"],
   ["components/file-viewer/components/visual-diff.css", "caffold-visual-diff"],
@@ -45,6 +46,7 @@ const shadowRootStyles = new Map([
   ["pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css", "caffold-codex-runtime-restart-dialog"],
   ["pages/(task-workspace)/codex-status/components/runtime-update-dialog.css", "caffold-codex-runtime-update-dialog"],
   ["pages/(task-workspace)/components/navigation.css", "caffold-task-workspace-navigation"],
+  ["pages/(task-workspace)/components/language-server-install-dialog.css", "caffold-language-server-install-dialog"],
   ["pages/(task-workspace)/components/update-task-dialog.css", "caffold-update-task-dialog"],
   ["pages/(task-workspace)/components/workspace-brand.css", "caffold-workspace-brand"],
   ["pages/(task-workspace)/layout.css", "caffold-task-workspace"],
@@ -70,6 +72,7 @@ const shadowRootStyles = new Map([
   ["pages/(task-workspace)/settings/antigravity/page.css", "caffold-settings-antigravity-page"],
   ["pages/(task-workspace)/settings/jev/page.css", "caffold-settings-jev-page"],
   ["pages/(task-workspace)/settings/keyboard/page.css", "caffold-settings-keyboard-page"],
+  ["pages/(task-workspace)/settings/language-servers/page.css", "caffold-settings-language-servers-page"],
   ["pages/(task-workspace)/settings/layout.css", "caffold-settings-workspace"],
   ["pages/(task-workspace)/settings/name-and-icon/page.css", "caffold-settings-name-and-icon-page"],
   ["pages/(task-workspace)/settings/notifications/page.css", "caffold-settings-notifications-page"],
@@ -96,6 +99,7 @@ const shadowRootStyles = new Map([
   ["pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css", "caffold-github-pull-task-source"],
   ["pages/(task-workspace)/tasks/(detail)/(github)/layout.css", "caffold-task-github-layout"],
   ["pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.css", "caffold-review-branch-changes"],
+  ["pages/(task-workspace)/tasks/(detail)/(review)/components/places.css", "caffold-review-places"],
   ["pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.css", "caffold-review-selected-file"],
   ["pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.css", "caffold-review-working-tree-changes"],
   ["pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.css", "caffold-git-diff-changes-tree"],
@@ -171,6 +175,8 @@ const shadowRootStyles = new Map([
 ]);
 // Child hosts another owner draws that an owner places in its shadow root.
 const placedChildren = new Map([
+  ["caffold-code-viewer", ["caffold-code-name-menu"]],
+  ["caffold-diff-viewer", ["caffold-code-name-menu"]],
   ["caffold-notes-workspace", ["caffold-notes-navigator"]],
 ]);
 test("resolves flat and nested selectors to the same ownership surface", () => {
@@ -341,6 +347,7 @@ test("Settings detail pages do not reserve space for the master-pane workspace n
   const paths = [
     "pages/(task-workspace)/settings/appearance/page.css",
     "pages/(task-workspace)/settings/files/page.css",
+    "pages/(task-workspace)/settings/language-servers/page.css",
     "pages/(task-workspace)/settings/notifications/page.css",
     "pages/(task-workspace)/settings/name-and-icon/page.css",
     "pages/(task-workspace)/settings/remote-access/page.css",

@@ -19,6 +19,33 @@
   line-height: var(--interface-line-height);
 }
 
+/* A server's progress or what it said can name a long path, which breaks
+   anywhere rather than widening the popover. */
+.task-detail-language-servers-action > p {
+  overflow-wrap: anywhere;
+}
+
+/* What a server that did not start said sits under its line, set back. */
+.task-detail-language-servers-action > .task-detail-language-server-said {
+  padding-left: var(--interface-space-6);
+  color: var(--muted-subtle);
+}
+
+/* Buttons side by side, each as wide as its label; the next one moves to a
+   new line when the popover is too narrow, far enough down that the touch
+   areas do not overlap. */
+.task-detail-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-self: stretch;
+  gap: max(
+      var(--interface-space-3),
+      calc(2 * var(--interface-compact-hit-outset))
+    )
+    var(--interface-space-3);
+  min-width: 0;
+}
+
 .task-detail-task-action .task-secondary-button {
   position: relative;
   /* As close as the Note and File details actions hold their icons, nearer

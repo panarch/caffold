@@ -1,16 +1,18 @@
 :host {
   --review-header-padding-block: var(--interface-space-4);
   --review-navigator-header-padding-inline: var(--interface-space-6);
-  --review-navigator-action-inline-end: var(--interface-space-6);
+  /* Each pane's last control stands from the pane's end as the Detail
+     header's last button stands from the screen's, the workspace's edge
+     inset. */
+  --review-action-inline-end: var(
+    --task-workspace-edge-inset,
+    var(--interface-space-6)
+  );
   --review-navigator-axis-inline-size: 7rem;
   --review-navigator-control-inline-size: calc(
     var(--review-navigator-choice-count, 1) *
     var(--review-navigator-axis-inline-size) /
     2
-  );
-  --review-viewer-action-inline-end: calc(
-    var(--interface-space-7) +
-    var(--interface-compact-hit-outset)
   );
   --review-viewer-axis-inline-size: 7.5rem;
   --review-viewer-control-inline-size: calc(
@@ -83,6 +85,7 @@
 caffold-file-navigator,
 caffold-review-working-tree-changes,
 caffold-review-branch-changes,
+caffold-review-places,
 caffold-review-selected-file {
   min-width: 0;
   min-height: 0;
@@ -97,7 +100,7 @@ caffold-review-selected-file {
 
 .task-review-navigator-pane {
   --review-pane-action-clearance: calc(
-    var(--review-navigator-action-inline-end) +
+    var(--review-action-inline-end) +
     var(--review-navigator-control-inline-size) +
     var(--interface-space-5)
   );
@@ -107,7 +110,7 @@ caffold-review-selected-file {
    header's buttons stand from each other. */
 .task-review-viewer-pane {
   --review-pane-action-clearance: calc(
-    var(--review-viewer-action-inline-end) +
+    var(--review-action-inline-end) +
     var(--review-viewer-control-inline-size) +
     max(
       0rem,
@@ -132,12 +135,12 @@ caffold-review-selected-file {
   padding-block: var(--review-header-padding-block);
 }
 
-.task-review-navigator-axis {
-  right: var(--review-navigator-action-inline-end);
+.task-review-pane-axis {
+  right: var(--review-action-inline-end);
 }
 
-.task-review-viewer-axis {
-  right: var(--review-viewer-action-inline-end);
+.task-review-pane-axis[hidden] {
+  display: none;
 }
 
 .task-review-pane-axis > caffold-segmented-control {
@@ -186,14 +189,5 @@ caffold-review-selected-file {
 @media (pointer: coarse), (max-width: 520px) {
   :host {
     --review-header-padding-block: 0px;
-  }
-}
-
-@media (max-width: 520px) {
-  :host {
-    --review-viewer-action-inline-end: calc(
-      var(--interface-space-4) +
-      var(--interface-compact-hit-outset)
-    );
   }
 }

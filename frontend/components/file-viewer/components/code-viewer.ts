@@ -1,5 +1,6 @@
 import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property } from "lit/decorators.js";
+import type { ActionHintPull } from "#app/action-hints.js";
 import type { LineChanges, SyntaxSpan } from "#app/api.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
@@ -9,6 +10,11 @@ import {
   readPageAnchor,
   scrollToPageAnchor,
 } from "../../page-anchor.js";
+import {
+  type CodeNamePosition,
+  CodeNames,
+  type CodeNamesState,
+} from "../code-names.js";
 import { syntaxLine } from "../syntax-spans.js";
 
 import styles from "./code-viewer.css.js";
@@ -51,9 +57,17 @@ export class CaffoldCodeViewer extends CaffoldElement {
   // Long lines wrap at the viewer's width instead of scrolling sideways.
   @property({ type: Boolean, reflect: true })
   accessor wrap = false;
+  // Whether names can be pressed to find their definition and references.
+  @property({ attribute: false })
+  accessor names: CodeNamesState | null = null;
 
   static override styles = styles;
 
+  private readonly codeNames = new CodeNames(
+    this,
+    (row) => normalizeLine((row as HTMLElement).dataset.lineNumber),
+    () => this.scrollport.value,
+  );
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly table = new DrawnRef<HTMLDivElement>(this);
@@ -80,6 +94,7 @@ export class CaffoldCodeViewer extends CaffoldElement {
     const spans = this.file.syntaxSpans;
     const lines = this.file.content.split(/\r?\n/);
     const marks = lineMarks(this.file.lineChanges, lines.length);
+    const names = Boolean(this.names);
     return html`
       <section class="code-viewer">
         <div
@@ -100,6 +115,8 @@ export class CaffoldCodeViewer extends CaffoldElement {
             ${drawn(this.table)}
             class="code-table"
             style="--code-content-width: ${codeColumns(lines)}ch;"
+            @pointerdown=${this.codeNames.pressStart}
+            @click=${this.codeNames.press}
           >
             ${lines.map(
               (line, index) => html`
@@ -113,7 +130,7 @@ export class CaffoldCodeViewer extends CaffoldElement {
                   <code class="line-code">${
                     line.length === 0
                       ? "\u00a0"
-                      : syntaxLine(line, spans?.[index])
+                      : syntaxLine(line, spans?.[index], { names })
                   }</code>
                 </div>
               `,
@@ -121,8 +138,18 @@ export class CaffoldCodeViewer extends CaffoldElement {
           </div>
           <slot name="end"></slot>
         </div>
+        ${names ? this.codeNames.menuTemplate() : nothing}
       </section>
     `;
+  }
+
+  override willUpdate(changed: PropertyValues) {
+    if (changed.has("names")) {
+      this.codeNames.state = this.names;
+      if (!this.names) {
+        this.codeNames.hide();
+      }
+    }
   }
 
   // The lines stay in place from one file to the next, so a file that keeps
@@ -138,6 +165,21 @@ export class CaffoldCodeViewer extends CaffoldElement {
 
   getScrollState() {
     return this.captureScroll();
+  }
+
+  // Shows `message` at the name at `position`, when the definition the
+  // owner was asked for leads nowhere.
+  showNameMessage(position: CodeNamePosition, message: string) {
+    return this.codeNames.showMessage(position, message);
+  }
+
+  keyboardNavigationContexts(pull: { scopeId?: string } = {}) {
+    return this.codeNames.keyboardNavigationContexts(pull);
+  }
+
+  // The names in view, for `G`.
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.codeNames.actionHintScope(pull);
   }
 
   readingPosition() {

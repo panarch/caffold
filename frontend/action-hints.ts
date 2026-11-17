@@ -103,11 +103,16 @@ export {
   withActionHintOcclusionRoots,
 };
 
+// How a session's badges look: at controls, or over code whose names they
+// mark, which dims around the names.
+export type ActionHintLook = "actions" | "names";
+
 // The dialog a context draws its Action Hint badges in.
 export interface ActionHintPresentation extends HTMLElement {
   open(
     targets: readonly ActionHintSessionTarget[],
     viewportRect: Rect | null,
+    look?: ActionHintLook,
   ): void;
   close(): void;
   allowsNativeActivation(event: KeyboardEvent): boolean;
@@ -146,6 +151,7 @@ export interface ActionHintBinding {
   dialog: ActionHintPresentation;
   scope: ActionHintScope;
   reservedCodes?: string[];
+  look?: ActionHintLook;
 }
 
 interface ActionHintSnapshot {
@@ -382,7 +388,7 @@ export class ActionHintController {
     this.session = session;
     try {
       this.attachDialogSignals(session);
-      dialog.open(session.targets, session.viewport.rect);
+      dialog.open(session.targets, session.viewport.rect, binding.look);
       this.attachSessionSignals(session);
       if (!this.revalidateSnapshot(session, { refreshPresentation: true })) {
         this.cancel("snapshot-invalidated");

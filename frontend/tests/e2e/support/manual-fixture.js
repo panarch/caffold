@@ -535,6 +535,99 @@ export async function installManualRepository(page) {
 }
 
 // The Notes a person keeps across Tasks, with one Note open.
+// The dark theme Task's repository with its TypeScript language server, on
+// and ready, off, or on but not installed on the host, and the places the
+// server gives for `useThemePreference`.
+export async function installManualLanguageServers(
+  page,
+  { enabled = true, installed = true } = {},
+) {
+  const root = MANUAL_TASKS.darkTheme.worktree.rootPath;
+  const ready = enabled && installed;
+  const server = {
+    repositoryPath: root,
+    repositoryBranch: MANUAL_TASKS.darkTheme.worktree.branch,
+    language: "typescript",
+    languageName: "TypeScript/JavaScript",
+    extensions: ["ts", "mts", "cts", "tsx", "js", "mjs", "cjs", "jsx"],
+    serverName: "typescript-language-server",
+    state: ready ? "ready" : enabled ? "failed" : "off",
+    ...(ready ? { memoryBytes: 412 * 1024 ** 2 } : {}),
+    ...(enabled && !installed
+      ? {
+          failure: {
+            kind: "notInstalled",
+            installCommand: "npm install --global typescript-language-server typescript",
+            checkCommand: "typescript-language-server --version",
+          },
+        }
+      : {}),
+  };
+  const place = (file, line, character, text) => ({
+    path: `${root}/${file}`,
+    name: file.split("/").at(-1),
+    line,
+    character,
+    length: "useThemePreference".length,
+    text,
+  });
+  const definition = place(
+    "src/styles/theme.ts",
+    12,
+    16,
+    "export function useThemePreference(): [Theme, (theme: Theme) => void] {",
+  );
+  const references = [
+    definition,
+    place("src/settings/SettingsPage.tsx", 4, 9, 'import { useThemePreference } from "../styles/theme";'),
+    place("src/settings/SettingsPage.tsx", 7, 28, "  const [theme, setTheme] = useThemePreference();"),
+    place("src/settings/AppearancePreview.tsx", 9, 18, "  const [theme] = useThemePreference();"),
+  ];
+  await page.route(
+    (url) => url.pathname === "/api/language-servers",
+    (route) =>
+      route.fulfill({
+        json: {
+          languages: [
+            { id: "rust", name: "Rust", enabled: false, serverName: "rust-analyzer" },
+            {
+              id: "typescript",
+              name: "TypeScript/JavaScript",
+              enabled: true,
+              serverName: server.serverName,
+            },
+          ],
+        },
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === "/api/language-servers/running",
+    (route) =>
+      route.fulfill({
+        json: enabled
+          ? { servers: [server], totalMemoryBytes: server.memoryBytes ?? 0 }
+          : { servers: [], totalMemoryBytes: 0 },
+      }),
+  );
+  // The manual's Working Tree names its files from Caffold's root, so the
+  // repository answers as that root and holds them, also when a screen asks
+  // to look again.
+  await page.route(
+    (url) =>
+      url.pathname === "/api/language-servers/repository" ||
+      url.pathname === "/api/language-servers/repository/check",
+    (route) => route.fulfill({ json: { path: "", enabled, servers: [server] } }),
+  );
+  await page.route(
+    (url) => url.pathname === "/api/language-servers/definition",
+    (route) => route.fulfill({ json: { places: [definition] } }),
+  );
+  await page.route(
+    (url) => url.pathname === "/api/language-servers/references",
+    (route) => route.fulfill({ json: { places: references } }),
+  );
+}
+
 export async function installManualNotes(page) {
   await page.route(/\/api\/notes(?:\?|$)/, (route) => {
     const directoryId = new URL(route.request().url()).searchParams.get("directoryId");

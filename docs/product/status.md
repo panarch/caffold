@@ -47,8 +47,8 @@ boundaries.
 - agent-owned model and permission semantics rather than Caffold-defined
   provider profiles;
 - keyboard navigation outside editing fields — action codes, scroll-area
-  selection, the Task Switcher, and shortcut help — which each browser can turn
-  off;
+  selection, codes on names in code, the Task Switcher, and shortcut help —
+  which each browser can turn off;
 - one shell terminal per Task and per Section in the Detail body, kept running
   by the backend so a browser can leave it and return to the same shell and
   screen from any device, with `⌘J` or `` Ctrl+` `` to enter and leave it and,
@@ -62,6 +62,9 @@ boundaries.
   Task Switcher;
 - shared integrated Working Tree/Branch, file/source, Git Compare/Log, and
   GitHub review surfaces for repository-backed Tasks and Sections;
+- Go to definition and Find references in Review's Source and Diff for Rust and
+  TypeScript/JavaScript, through language servers already installed on the
+  host and turned on per language and per repository;
 - explicit Task creation from GitHub Issue and Pull Request detail;
 - same-Task preparation of a Caffold-managed worktree through
   `isolate_current_task` for every supported agent;
