@@ -2482,6 +2482,14 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/components/xlsx-viewer/workbook.js"
         )))),
+        "components/xlsx-viewer/components/sheet-tabs.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/xlsx-viewer/components/sheet-tabs.css.js"
+        )))),
+        "components/xlsx-viewer/components/sheet-tabs.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/xlsx-viewer/components/sheet-tabs.js"
+        )))),
         "components/file-viewer-presentation.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/components/file-viewer-presentation.js"
@@ -2793,6 +2801,7 @@ mod tests {
             "components/split-view.css",
             "components/terminal-view.css",
             "components/xlsx-viewer.css",
+            "components/xlsx-viewer/components/sheet-tabs.css",
             "keyboard-navigation/components/hud.css",
             "keyboard-navigation/components/presentation.css",
             "keyboard-navigation/components/selector.css",
@@ -3607,6 +3616,10 @@ mod tests {
             (
                 "components/file-viewer/components/visual-diff.js",
                 b"caffold-visual-diff".as_slice(),
+            ),
+            (
+                "components/xlsx-viewer/components/sheet-tabs.js",
+                b"caffold-xlsx-sheet-tabs".as_slice(),
             ),
             (
                 "components/loading-text.js",

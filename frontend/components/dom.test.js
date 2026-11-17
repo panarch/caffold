@@ -30,8 +30,8 @@ test("a file's change opens the way the last one showed when it can", () => {
 test("a viewer offers the choice only for a file that has both", () => {
   assert.deepEqual(changeRepresentationChoices("logo.svg", "visual"), {
     choices: [
-      { value: "diff", label: "Diff" },
-      { value: "visual", label: "Visual" },
+      { value: "diff", label: "Diff", icon: "FileDiff" },
+      { value: "visual", label: "Visual", icon: "Images" },
     ],
     selected: "visual",
   });

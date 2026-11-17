@@ -473,11 +473,14 @@ test("renders a route-owned Markdown Preview without changing file selection", {
     const control = root.host;
     const selected = root.querySelector('button[aria-pressed="true"]')
       ?.dataset.segmentedValue ?? "";
+    // The icons Integrated Review names for these choices.
+    const icons = { diff: "FileDiff", source: "CodeXml", preview: "Eye" };
     const snapshot = {
       label: control.getAttribute("aria-label"),
       choices: [...root.querySelectorAll("button")].map((choice) => ({
         value: choice.dataset.segmentedValue,
         label: choice.textContent.trim(),
+        icon: icons[choice.dataset.segmentedValue],
         title: choice.title,
       })),
     };
@@ -596,6 +599,7 @@ test("renders a route-owned Markdown Preview without changing file selection", {
         getComputedStyle(document.documentElement).fontSize,
       ),
       axisWidth: axis.getBoundingClientRect().width,
+      reviewWidth: review.getBoundingClientRect().width,
       reviewOverflow: review.scrollWidth > review.clientWidth,
       previewOverflow: previewScroll.scrollWidth > previewScroll.clientWidth,
       clippedLabels: labels
@@ -610,7 +614,18 @@ test("renders a route-owned Markdown Preview without changing file selection", {
   }, await markdownPreview.elementHandle());
   expect(layout.reviewOverflow).toBe(false);
   expect(layout.previewOverflow).toBe(false);
-  expect(layout.axisWidth).toBeCloseTo(layout.rootFontSize * 11.25, 0);
+  // Three choices take 4.75rem each with labels, and a compact touch target
+  // each inside the axis's border where Review is narrower than 56rem.
+  const compactTarget = Math.max(
+    layout.rootFontSize * 1.875,
+    testInfo.project.name === "desktop" ? 0 : 40,
+  );
+  expect(layout.axisWidth).toBeCloseTo(
+    layout.reviewWidth < layout.rootFontSize * 56
+      ? 3 * compactTarget + 2
+      : layout.rootFontSize * 14.25,
+    0,
+  );
   expect(layout.clippedLabels).toEqual([]);
   expect(layout.visibleLabels).toEqual(["Diff", "Source", "Preview"]);
   await stabilizeDynamicText(page);
@@ -1921,8 +1936,8 @@ test("offers Wrap for source and a diff beside the choice of representation, and
 
     first.setChangeChoices({
       choices: [
-        { value: "diff", label: "Diff" },
-        { value: "visual", label: "Visual" },
+        { value: "diff", label: "Diff", icon: "FileDiff" },
+        { value: "visual", label: "Visual", icon: "Images" },
       ],
       selected: "diff",
     });
@@ -1997,15 +2012,15 @@ test("spaces the file header's choice and buttons as the Detail header spaces it
 }) => {
   await page.goto("/settings/files");
 
-  const gaps = await page.evaluate(async () => {
+  const looks = await page.evaluate(async () => {
     await import("/assets/components/file-viewer.js");
     const viewer = document.createElement("caffold-review-file-viewer");
     viewer.style.cssText = "display: block; width: 360px; height: 200px;";
     document.body.append(viewer);
     viewer.setChangeChoices({
       choices: [
-        { value: "diff", label: "Diff" },
-        { value: "visual", label: "Visual" },
+        { value: "diff", label: "Diff", icon: "FileDiff" },
+        { value: "visual", label: "Visual", icon: "Images" },
       ],
       selected: "diff",
     });
@@ -2015,7 +2030,6 @@ test("spaces the file header's choice and buttons as the Detail header spaces it
         metadata: [{ field: "size", label: "Size", value: "1 KB" }],
       },
     });
-    await new Promise(requestAnimationFrame);
     const root = viewer.shadowRoot;
     // Where a control's drawn surface starts and ends, inside its hit area.
     const surface = (element, pseudo) => {
@@ -2023,9 +2037,22 @@ test("spaces the file header's choice and buttons as the Detail header spaces it
       const inset = pseudo ? Number.parseFloat(getComputedStyle(element, pseudo).left) : 0;
       return { left: rect.left + inset, right: rect.right - inset };
     };
-    const change = surface(root.querySelector(".viewer-change-control"));
-    const wrap = surface(root.querySelector(".viewer-wrap-button"), "::before");
-    const info = surface(root.querySelector(".viewer-info-button"), "::after");
+    const look = async (width) => {
+      viewer.style.width = width;
+      await new Promise(requestAnimationFrame);
+      const control = root.querySelector(".viewer-change-control");
+      const change = surface(control);
+      const wrap = surface(root.querySelector(".viewer-wrap-button"), "::before");
+      const info = surface(root.querySelector(".viewer-info-button"), "::after");
+      return {
+        labels: [...control.shadowRoot.querySelectorAll(".segmented-choice-label")].map(
+          (label) => getComputedStyle(label).display !== "none",
+        ),
+        fits: control.scrollWidth <= control.clientWidth,
+        changeToWrap: wrap.left - change.right,
+        wrapToInfo: info.left - wrap.right,
+      };
+    };
     // The Detail header's gap between two buttons' surfaces.
     const probe = document.createElement("div");
     probe.style.width = `calc(
@@ -2035,10 +2062,16 @@ test("spaces the file header's choice and buttons as the Detail header spaces it
     document.body.append(probe);
     const header = probe.getBoundingClientRect().width;
     probe.remove();
-    return { changeToWrap: wrap.left - change.right, wrapToInfo: info.left - wrap.right, header };
+    // Diff and Visual show icons alone in a narrow header and labels in a wide one.
+    return { header, narrow: await look("360px"), wide: await look("720px") };
   });
 
-  expect(gaps.header).toBeGreaterThan(0);
-  expect(Math.abs(gaps.changeToWrap - gaps.header)).toBeLessThanOrEqual(1);
-  expect(Math.abs(gaps.wrapToInfo - gaps.header)).toBeLessThanOrEqual(1);
+  expect(looks.header).toBeGreaterThan(0);
+  expect(looks.narrow.labels).toEqual([false, false]);
+  expect(looks.wide.labels).toEqual([true, true]);
+  for (const { fits, changeToWrap, wrapToInfo } of [looks.narrow, looks.wide]) {
+    expect(fits).toBe(true);
+    expect(Math.abs(changeToWrap - looks.header)).toBeLessThanOrEqual(1);
+    expect(Math.abs(wrapToInfo - looks.header)).toBeLessThanOrEqual(1);
+  }
 });

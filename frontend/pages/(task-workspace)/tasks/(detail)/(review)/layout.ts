@@ -961,8 +961,10 @@ export class CaffoldTaskReview extends CaffoldElement {
   private patchControls() {
     const gitAvailable = Boolean(this.task?.worktree);
     const navigatorChoices = [
-      ...(gitAvailable ? [{ value: "changes", label: "Changes" }] : []),
-      { value: "files", label: "Files" },
+      ...(gitAvailable
+        ? [{ value: "changes", label: "Changes", icon: "FileDiff" }]
+        : []),
+      { value: "files", label: "Files", icon: "FolderTree" },
     ];
     this.dataset.reviewNavigatorChoiceCount = `${navigatorChoices.length}`;
     this.axisControl("navigator").setSnapshot({
@@ -980,13 +982,17 @@ export class CaffoldTaskReview extends CaffoldElement {
           viewer === this.route.viewer;
     const viewerChoices = [
       ...(gitAvailable && offered("diff")
-        ? [{ value: "diff", label: "Diff" }]
+        ? [{ value: "diff", label: "Diff", icon: "FileDiff" }]
         : []),
       ...(gitAvailable && offered("visual")
-        ? [{ value: "visual", label: "Visual" }]
+        ? [{ value: "visual", label: "Visual", icon: "Images" }]
         : []),
-      ...(offered("source") ? [{ value: "source", label: "Source" }] : []),
-      ...(offered("preview") ? [{ value: "preview", label: "Preview" }] : []),
+      ...(offered("source")
+        ? [{ value: "source", label: "Source", icon: "CodeXml" }]
+        : []),
+      ...(offered("preview")
+        ? [{ value: "preview", label: "Preview", icon: "Eye" }]
+        : []),
     ];
     this.dataset.reviewViewerChoiceCount = `${viewerChoices.length}`;
     this.axisControl("viewer").setSnapshot({

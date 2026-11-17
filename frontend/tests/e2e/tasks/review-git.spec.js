@@ -1585,7 +1585,7 @@ test("keeps compact review controls and available panes inside the workspace", {
   ).toHaveCount(3);
   await expect(taskReview.locator(".task-review-toolbar")).toHaveCount(0);
 
-  const layout = await taskReview.evaluate((element, [detailSwitch, tasksPage]) => {
+  const layout = await taskReview.evaluate((element, [detailSwitch, tasksPage, appSurface]) => {
     const workspace = element.shadowRoot.querySelector(".task-review-workspace");
     const pageRect = tasksPage.getBoundingClientRect();
     const workspaceRect = workspace.getBoundingClientRect();
@@ -1602,6 +1602,7 @@ test("keeps compact review controls and available panes inside the workspace", {
       horizontalOverflow: workspace.scrollWidth > workspace.clientWidth,
       navigatorWidth: navigator.getBoundingClientRect().width,
       viewerWidth: viewer.getBoundingClientRect().width,
+      reviewWidth: element.getBoundingClientRect().width,
       rootFontSize,
       detailSwitch: {
         width: detailSwitchRect.width,
@@ -1610,6 +1611,8 @@ test("keeps compact review controls and available panes inside the workspace", {
           Number.parseFloat(detailSwitchStyle.borderLeftWidth) +
           Number.parseFloat(detailSwitchStyle.borderRightWidth),
         gridAutoColumns: detailSwitchStyle.gridAutoColumns,
+        // The Task workspace, which the view switch's look follows.
+        appWidth: appSurface.getBoundingClientRect().width,
         insidePage:
           detailSwitchRect.left >= pageRect.left - 1 &&
           detailSwitchRect.right <= pageRect.right + 1,
@@ -1623,6 +1626,8 @@ test("keeps compact review controls and available panes inside the workspace", {
           textRange.selectNodeContents(label);
           return {
             buttonWidth: button.getBoundingClientRect().width,
+            labelShown:
+              getComputedStyle(button.querySelector(".segmented-choice-label")).display !== "none",
             paddingInline:
               Number.parseFloat(labelStyle.paddingLeft) +
               Number.parseFloat(labelStyle.paddingRight),
@@ -1682,6 +1687,7 @@ test("keeps compact review controls and available panes inside the workspace", {
   }, [
     await page.locator("caffold-segmented-control[data-detail-view-switch]").elementHandle(),
     await page.locator("caffold-tasks-page").elementHandle(),
+    await page.locator(".task-workspace-surface").elementHandle(),
   ]);
 
   expect(layout.leftGap).toBeLessThanOrEqual(1);
@@ -1698,10 +1704,20 @@ test("keeps compact review controls and available panes inside the workspace", {
   expect(layout.detailSwitch.insidePage).toBe(true);
   const expectedLabelPaddingInline =
     layout.rootFontSize * (testInfo.project.name === "phone" ? 0.75 : 1);
+  // A choice is at least a compact touch target wide: 1.875rem, or the 40px
+  // floor on a touch screen.
+  const compactTarget = Math.max(
+    layout.rootFontSize * 1.875,
+    testInfo.project.name === "desktop" ? 0 : 40,
+  );
   for (const segment of layout.detailSwitch.segments) {
+    // The labels stand beside the title where the workspace is at least 66.5rem.
+    expect(segment.labelShown).toBe(
+      layout.detailSwitch.appWidth >= layout.rootFontSize * 66.5,
+    );
     expect(segment.paddingInline).toBeCloseTo(expectedLabelPaddingInline, 1);
     expect(segment.buttonWidth).toBeCloseTo(
-      segment.textWidth + segment.paddingInline,
+      Math.max(compactTarget, segment.textWidth + segment.paddingInline),
       0,
     );
   }
@@ -1723,13 +1739,20 @@ test("keeps compact review controls and available panes inside the workspace", {
       1,
     );
   }
+  // A pane axis is 9.5rem with labels, and two touch targets inside its
+  // border below the width where it shows icons alone: the navigator's own,
+  // and Review's for the viewer.
+  const axisWidth = (width, iconsBelowRem) =>
+    width < layout.rootFontSize * iconsBelowRem
+      ? 2 * compactTarget + 2
+      : layout.rootFontSize * 9.5;
   expect(layout.axisControlWidths["Review navigator"]).toBeCloseTo(
-    layout.rootFontSize * 7,
+    axisWidth(layout.navigatorWidth, 24),
     0,
   );
   if (testInfo.project.name !== "phone") {
     expect(layout.axisControlWidths["Review viewer"]).toBeCloseTo(
-      layout.rootFontSize * 7.5,
+      axisWidth(layout.reviewWidth, 56),
       0,
     );
   }

@@ -119,8 +119,8 @@ export function changeRepresentationChoices(
     choices:
       diff && visual
         ? [
-            { value: "diff", label: "Diff" },
-            { value: "visual", label: "Visual" },
+            { value: "diff", label: "Diff", icon: "FileDiff" },
+            { value: "visual", label: "Visual", icon: "Images" },
           ]
         : [],
     selected,

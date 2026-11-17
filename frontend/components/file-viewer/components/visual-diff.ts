@@ -87,8 +87,8 @@ const SIDES: ReadonlyArray<readonly [SideKey, string]> = [
 ];
 
 const MODES = [
-  { value: "side", label: "Side by side" },
-  { value: "difference", label: "Difference" },
+  { value: "side", label: "Side by side", icon: "Columns2" },
+  { value: "difference", label: "Difference", icon: "Blend" },
 ];
 
 // The pictures on each side of a change: side by side, or the pixels that

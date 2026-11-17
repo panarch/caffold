@@ -482,7 +482,36 @@ export async function installExternalModuleDefaults(page) {
           ["path", { d: "m14 12.5 2 2.5-2 2.5" }],
         ];
         export const FileCog = File;
-        export const FileDiff = FileCode;
+        export const FileDiff = [
+          ["path", { d: "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" }],
+          ["path", { d: "M9 10h6" }],
+          ["path", { d: "M12 13V7" }],
+          ["path", { d: "M9 17h6" }],
+        ];
+        export const MessageSquare = [
+          ["path", { d: "M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" }],
+        ];
+        export const FolderSearch = [
+          ["path", { d: "M10.7 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v4.1" }],
+          ["path", { d: "m21 21-1.9-1.9" }],
+          ["circle", { cx: "17", cy: "17", r: "3" }],
+        ];
+        export const FolderTree = [
+          ["path", { d: "M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z" }],
+          ["path", { d: "M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z" }],
+          ["path", { d: "M3 5a2 2 0 0 0 2 2h3" }],
+          ["path", { d: "M3 3v13a2 2 0 0 0 2 2h3" }],
+        ];
+        export const Images = [
+          ["path", { d: "m22 11-1.296-1.296a2.4 2.4 0 0 0-3.408 0L11 16" }],
+          ["path", { d: "M4 8a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2" }],
+          ["circle", { cx: "13", cy: "7", r: "1", fill: "currentColor" }],
+          ["rect", { x: "8", y: "2", width: "14", height: "14", rx: "2" }],
+        ];
+        export const Blend = [
+          ["circle", { cx: "9", cy: "9", r: "7" }],
+          ["circle", { cx: "15", cy: "15", r: "7" }],
+        ];
         export const FileImage = File;
         export const FileJson = FileCode;
         export const FileQuestion = File;

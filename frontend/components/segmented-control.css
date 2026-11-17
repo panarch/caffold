@@ -17,12 +17,14 @@
   display: none;
 }
 
+/* A choice stays as wide as a touch target when its placement shows the icon
+   alone. */
 button {
   position: relative;
   display: grid;
   box-sizing: border-box;
   height: var(--interface-compact-hit-size);
-  min-width: var(--segmented-control-choice-min-inline-size, auto);
+  min-width: var(--interface-compact-hit-size);
   min-height: var(--interface-compact-hit-size);
   margin-block: calc(0rem - var(--interface-compact-hit-outset));
   padding: 0;
@@ -38,15 +40,37 @@ button {
 
 button > span {
   display: grid;
+  grid-auto-flow: column;
   box-sizing: border-box;
   width: 100%;
-  min-width: var(--segmented-control-choice-min-inline-size, auto);
   height: calc(var(--interface-compact-visual-size) - 2px);
   padding: 0
     var(--segmented-control-label-padding-inline, var(--interface-space-4));
-  place-items: center;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3125rem;
   border-radius: 3px;
   white-space: nowrap;
+}
+
+/* The placement sets both properties: labels give way to icons alone where it
+   is narrow, and an icon alone takes the size of the icon buttons beside it. */
+.segmented-choice-icon {
+  display: grid;
+  width: var(--segmented-control-icon-size, var(--interface-icon-small-size));
+  height: var(--segmented-control-icon-size, var(--interface-icon-small-size));
+  place-items: center;
+}
+
+.segmented-choice-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  stroke-width: 2;
+}
+
+.segmented-choice-label {
+  display: var(--segmented-control-label-display, inline);
 }
 
 button[aria-pressed="true"] > span {

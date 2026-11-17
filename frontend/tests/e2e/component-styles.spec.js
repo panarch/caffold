@@ -320,8 +320,8 @@ test("segmented control offers the choices other than the current one as Action 
     const control = document.createElement("caffold-segmented-control");
     document.body.append(control);
     const choices = [
-      { value: "changes", label: "Changes" },
-      { value: "file path", label: "Files" },
+      { value: "changes", label: "Changes", icon: "FileDiff" },
+      { value: "file path", label: "Files", icon: "FolderTree" },
     ];
     const targets = async () => {
       await new Promise(requestAnimationFrame);
@@ -353,7 +353,10 @@ test("segmented control shows keyboard focus on a choice the way it shows hover"
     control.setSnapshot({
       label: "Review navigator",
       selected: "changes",
-      choices: [{ value: "changes", label: "Changes" }, { value: "files", label: "Files" }],
+      choices: [
+        { value: "changes", label: "Changes", icon: "FileDiff" },
+        { value: "files", label: "Files", icon: "FolderTree" },
+      ],
     });
     await control.updateComplete;
   });
@@ -387,7 +390,10 @@ test("segmented control keeps no hover look after a tap", { tag: "@foldable" }, 
     control.setSnapshot({
       label: "Review navigator",
       selected: "changes",
-      choices: [{ value: "changes", label: "Changes" }, { value: "files", label: "Files" }],
+      choices: [
+        { value: "changes", label: "Changes", icon: "FileDiff" },
+        { value: "files", label: "Files", icon: "FolderTree" },
+      ],
     });
     await control.updateComplete;
   });
@@ -412,7 +418,10 @@ test("segmented control keeps its button rule inside its shadow root and the doc
     control.setSnapshot({
       label: "Review navigator",
       selected: "changes",
-      choices: [{ value: "changes", label: "Changes" }, { value: "files", label: "Files" }],
+      choices: [
+        { value: "changes", label: "Changes", icon: "FileDiff" },
+        { value: "files", label: "Files", icon: "FolderTree" },
+      ],
     });
     await control.updateComplete;
     const inside = control.shadowRoot.querySelector("button");
@@ -436,6 +445,89 @@ test("segmented control keeps its button rule inside its shadow root and the doc
     inside: ["grid", "pointer"],
     insideOpacity: "1",
   });
+});
+
+test("segmented control draws each choice's icon before its label, and the icon alone where its placement hides labels", { tag: "@server-steady" }, async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("caffold-task-workspace")).toBeVisible();
+  await page.evaluate(() => customElements.whenDefined("caffold-segmented-control"));
+  await page.evaluate(async () => {
+    const control = document.createElement("caffold-segmented-control");
+    control.style.cssText = "position: fixed; top: 8rem; left: 2rem; z-index: 10;";
+    document.body.append(control);
+    control.setSnapshot({
+      label: "Task view",
+      selected: "conversation",
+      choices: [
+        { value: "conversation", label: "Conversation", icon: "MessageSquare" },
+        { value: "working", label: "Working Tree", icon: "FileDiff" },
+        { value: "branch", label: "Branch", icon: "GitCompare", title: "Compare with main" },
+        { value: "unnamed", label: "No icon" },
+      ],
+    });
+    await control.updateComplete;
+  });
+  const control = page.locator("body > caffold-segmented-control");
+  // A choice without an icon is not drawn.
+  await expect(control.getByRole("button")).toHaveCount(3);
+  await expect(control.getByRole("button", { name: "Conversation" }).locator('svg path[d^="M22 17a2 2"]')).toHaveCount(1);
+  await expect(control.getByRole("button", { name: "Working Tree" }).locator('svg path[d="M9 10h6"]')).toHaveCount(1);
+  await expect(control.getByRole("button", { name: "Branch" }).locator('svg circle[cx="18"]')).toHaveCount(1);
+  const sizes = await page.evaluate(() => {
+    const probe = document.createElement("div");
+    document.body.append(probe);
+    const width = (value) => {
+      probe.style.width = value;
+      return probe.getBoundingClientRect().width;
+    };
+    const result = {
+      small: width("var(--interface-icon-small-size)"),
+      regular: width("var(--interface-icon-size)"),
+      target: width("var(--interface-compact-hit-size)"),
+    };
+    probe.remove();
+    return result;
+  });
+  const choices = () =>
+    control.evaluate((host) =>
+      [...host.shadowRoot.querySelectorAll("button")].map((button) => {
+        const icon = button.querySelector(".segmented-choice-icon").getBoundingClientRect();
+        const label = button.querySelector(".segmented-choice-label");
+        const text = label.getBoundingClientRect();
+        const shown = getComputedStyle(label).display !== "none";
+        return {
+          name: button.getAttribute("aria-label"),
+          title: button.title,
+          width: button.getBoundingClientRect().width,
+          icon: icon.width,
+          shown,
+          iconBeforeLabel: !shown || icon.right <= text.left,
+          centered: !shown || Math.abs(icon.top + icon.height / 2 - (text.top + text.height / 2)) <= 1,
+        };
+      }),
+    );
+  const labelled = await choices();
+  expect(labelled.map(({ name, title }) => [name, title])).toEqual([
+    ["Conversation", "Conversation"],
+    ["Working Tree", "Working Tree"],
+    ["Branch", "Compare with main"],
+  ]);
+  for (const choice of labelled) {
+    expect(choice).toMatchObject({ icon: sizes.small, shown: true, iconBeforeLabel: true, centered: true });
+  }
+
+  await control.evaluate((host) => {
+    host.style.setProperty("--segmented-control-label-display", "none");
+    host.style.setProperty("--segmented-control-icon-size", "var(--interface-icon-size)");
+  });
+  const iconsAlone = await choices();
+  for (const choice of iconsAlone) {
+    expect(choice).toMatchObject({ icon: sizes.regular, shown: false });
+    expect(choice.width).toBe(iconsAlone[0].width);
+    expect(choice.width).toBeGreaterThanOrEqual(sizes.target);
+  }
+  // The label still names each choice.
+  await expect(control.getByRole("button", { name: "Working Tree", exact: true })).toBeVisible();
 });
 
 test("the Settings refresh button turns its icon inside its shadow root and nothing outside it", { tag: "@server-steady" }, async ({ page }) => {

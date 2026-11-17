@@ -28,6 +28,17 @@ test("compares an image's change side by side and paints what changed in Differe
   // in a row as tall as the header, with buttons as tall as the axis's.
   const modes = visual.locator("caffold-segmented-control");
   await expect(modes).toBeVisible();
+  // What the Lucide stub draws for Images, Eye, Columns2, and Blend; the way to
+  // compare keeps its labels on every screen.
+  await expect(axis.locator('button[data-segmented-value="visual"] svg rect[x="8"][y="2"]')).toHaveCount(1);
+  await expect(axis.locator('button[data-segmented-value="preview"] svg circle[r="3"]')).toHaveCount(1);
+  await expect(modes.locator('button[data-segmented-value="side"] svg path[d="M12 3v18"]')).toHaveCount(1);
+  await expect(modes.locator('button[data-segmented-value="difference"] svg circle[cx="15"]')).toHaveCount(1);
+  expect(
+    await modes
+      .locator(".segmented-choice-label")
+      .evaluateAll((labels) => labels.map((label) => getComputedStyle(label).display !== "none")),
+  ).toEqual([true, true]);
   const [axisBox, modesBox] = [await axis.boundingBox(), await modes.boundingBox()];
   expect(Math.abs(axisBox.x + axisBox.width - (modesBox.x + modesBox.width))).toBeLessThan(1);
   const header = taskReview.locator("caffold-review-file-viewer .viewer-panel > header");

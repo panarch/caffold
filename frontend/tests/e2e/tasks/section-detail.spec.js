@@ -932,6 +932,16 @@ test("keeps a repository Section draft while switching shared surfaces", { tag: 
     "Working Tree",
     "Branch",
   ]);
+  // What the Lucide stub draws for Plus, FileDiff, and GitCompare.
+  for (const [value, icon] of [
+    ["new", 'svg path[d="M12 5v14"]'],
+    ["working", 'svg path[d="M9 10h6"]'],
+    ["branch", 'svg circle[cx="18"]'],
+  ]) {
+    await expect(
+      switcher.locator(`button[data-segmented-value="${value}"]`).locator(icon),
+    ).toHaveCount(1);
+  }
   await expect(detail.locator("caffold-task-detail-git")).toBeVisible();
   await expect(detail.locator("caffold-task-detail-github")).toBeVisible();
   if (await page.evaluate(() => window.innerWidth > 520)) {

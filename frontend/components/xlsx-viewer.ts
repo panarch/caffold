@@ -13,13 +13,13 @@ import {
 import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.js";
 import type { DocumentPreviewFile } from "./dom.js";
 import "./loading-text.js";
-import "./segmented-control.js";
 import { CaffoldElement } from "../caffold-element.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
+import "./xlsx-viewer/components/sheet-tabs.js";
 import type {
-  CaffoldSegmentedControl,
-  SegmentedControlIntentDetail,
-} from "./segmented-control.js";
+  CaffoldXlsxSheetTabs,
+  XlsxSheetTabsIntentDetail,
+} from "./xlsx-viewer/components/sheet-tabs.js";
 import {
   containsRange,
   coverMerges,
@@ -98,7 +98,7 @@ class CaffoldXlsxViewer extends CaffoldElement {
   private readonly sheetport = new DrawnRef<HTMLDivElement>(this);
   private readonly space = new DrawnRef<HTMLDivElement>(this);
   private readonly tabStrip = new DrawnRef<HTMLDivElement>(this);
-  private readonly sheetTabs = new DrawnRef<CaffoldSegmentedControl>(this);
+  private readonly sheetTabs = new DrawnRef<CaffoldXlsxSheetTabs>(this);
 
   override connectedCallback() {
     super.connectedCallback();
@@ -149,17 +149,12 @@ class CaffoldXlsxViewer extends CaffoldElement {
                 })}
                 class="xlsx-viewer-tabs"
                 ?hidden=${!tabbed}
-                @caffold:segmented-control-intent=${(
-                  event: CustomEvent<SegmentedControlIntentDetail>,
-                ) => {
-                  // The tabs choose this viewer's sheet; no review surface
-                  // above owns them.
-                  event.stopPropagation();
-                  this.showSheet(this.generation, Number(event.detail?.value));
-                }}
-              ><caffold-segmented-control
+              ><caffold-xlsx-sheet-tabs
                 ${drawn(this.sheetTabs)}
-              ></caffold-segmented-control></div>
+                @caffold:xlsx-sheet-tabs-intent=${(
+                  event: CustomEvent<XlsxSheetTabsIntentDetail>,
+                ) => this.showSheet(this.generation, event.detail.index)}
+              ></caffold-xlsx-sheet-tabs></div>
             </div>
           `
         : message
@@ -315,13 +310,8 @@ class CaffoldXlsxViewer extends CaffoldElement {
     }
     this.selectedSheetName = sheet.name;
     this.sheetTabs.value?.setSnapshot({
-      label: "Sheets",
-      actionVerb: "Show sheet",
-      selected: `${index}`,
-      choices: (this.visibleSheets ?? []).map((candidate) => ({
-        value: `${candidate.index}`,
-        label: candidate.name,
-      })),
+      selected: index,
+      sheets: this.visibleSheets ?? [],
     });
     this.sheet = this.workbook.sheet(index);
     this.layoutSheet(this.sheet);

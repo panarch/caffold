@@ -8,13 +8,8 @@
     --task-workspace-edge-inset,
     var(--interface-space-6)
   );
-  --review-navigator-axis-inline-size: 7rem;
-  --review-navigator-control-inline-size: calc(
-    var(--review-navigator-choice-count, 1) *
-    var(--review-navigator-axis-inline-size) /
-    2
-  );
-  --review-viewer-axis-inline-size: 7.5rem;
+  --review-navigator-axis-inline-size: 9.5rem;
+  --review-viewer-axis-inline-size: 9.5rem;
   --review-viewer-control-inline-size: calc(
     var(--review-viewer-choice-count, 1) *
     var(--review-viewer-axis-inline-size) /
@@ -99,6 +94,17 @@ caffold-review-selected-file {
 }
 
 .task-review-navigator-pane {
+  container: review-navigator / inline-size;
+}
+
+/* The navigator pane's children size its axis and keep clear of it, so the
+   pane's own width can choose the axis width below. */
+.task-review-navigator-pane > * {
+  --review-navigator-control-inline-size: calc(
+    var(--review-navigator-choice-count, 1) *
+    var(--review-navigator-axis-inline-size) /
+    2
+  );
   --review-pane-action-clearance: calc(
     var(--review-action-inline-end) +
     var(--review-navigator-control-inline-size) +
@@ -145,7 +151,6 @@ caffold-review-selected-file {
 
 .task-review-pane-axis > caffold-segmented-control {
   --segmented-control-column-size: auto;
-  --segmented-control-choice-min-inline-size: 0;
   --segmented-control-label-padding-inline: var(--interface-space-1);
 }
 
@@ -155,6 +160,45 @@ caffold-review-selected-file {
 
 .task-review-viewer-axis > caffold-segmented-control {
   width: var(--review-viewer-control-inline-size);
+}
+
+/* With labels the navigator's axis takes 9.5rem. Below this width that would
+   leave its scope title, branch, and counts less than 12rem, so its choices
+   show icons alone, each a touch target wide inside the axis's border. */
+@container review-navigator (width < 24rem) {
+  .task-review-navigator-pane > * {
+    --review-navigator-control-inline-size: calc(
+      var(--review-navigator-choice-count, 1) *
+      var(--interface-compact-hit-size) +
+      2px
+    );
+  }
+
+  .task-review-navigator-axis > caffold-segmented-control {
+    --segmented-control-label-display: none;
+    --segmented-control-icon-size: var(--interface-icon-size);
+  }
+}
+
+/* With labels each viewer choice takes 4.75rem, and two of them leave the file
+   path and its buttons room in a 36rem viewer. Beside the navigator at its
+   320px default, the viewer has that from a 56rem Review. Review fills the
+   Task workspace, whose width decides, not the viewer's: opening a file folds
+   the navigator into a strip below 1,061px and widens the viewer, and the
+   choices keep one look. */
+@container task-workspace (width < 56rem) {
+  .task-review-viewer-pane {
+    --review-viewer-control-inline-size: calc(
+      var(--review-viewer-choice-count, 1) *
+      var(--interface-compact-hit-size) +
+      2px
+    );
+  }
+
+  .task-review-viewer-axis > caffold-segmented-control {
+    --segmented-control-label-display: none;
+    --segmented-control-icon-size: var(--interface-icon-size);
+  }
 }
 
 .task-review-viewer-empty-header {
