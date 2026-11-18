@@ -2642,6 +2642,13 @@ takes its face from `--font-ui` and its size from the Conversation range; a
 File Tree row takes its face from `--font-code` and its size from the Interface
 axis.
 
+`frontend/index.html` fixes the page scale with `maximum-scale=1` and
+`user-scalable=no` in its viewport, so a phone or tablet neither pinch-zooms the
+page nor zooms into a focused field; sizes change only through the Interface,
+Conversation, and Code settings. `touch-action: manipulation` on `html` turns
+off double-tap zoom. Desktop browsers do not apply viewport limits and keep
+their own page zoom.
+
 Interface faces are bundled as one variable file each and declare a weight
 range, which is what lets interface weights between Regular and Bold render as
 themselves; code faces are bundled as static Regular and Bold.

@@ -438,6 +438,22 @@ test("keeps exceptional build mismatch outside application layout", { tag: "@all
   expect(layout.zIndex).toBeGreaterThan(20);
 });
 
+test("keeps a phone's page at its own scale when it is pinched", { tag: "@phone" }, async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForAppShellBootstrap(page);
+  const viewport = page.viewportSize();
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Input.synthesizePinchGesture", {
+    x: viewport.width / 2,
+    y: viewport.height / 2,
+    scaleFactor: 2,
+    gestureSourceType: "touch",
+  });
+  expect(await page.evaluate(() => window.visualViewport.scale)).toBe(1);
+});
+
 async function waitForAppShellBootstrap(page) {
   await expect.poll(() => page.locator("caffold-app-shell").evaluate(
     (shell) => shell.foregroundRecoverySnapshot,

@@ -149,7 +149,7 @@ test("keyboard hint badges share the code typeface wherever they appear", () => 
   }
 });
 
-test("mobile interaction policies preserve pinch zoom and own viewer text sizing narrowly", () => {
+test("mobile interaction policies fix the page scale and own viewer text sizing narrowly", () => {
   const root = readFrontend("styles.css");
   const index = readFrontend("index.html");
   const codeViewer = readFrontend("components/file-viewer/components/code-viewer.css");
@@ -159,10 +159,10 @@ test("mobile interaction policies preserve pinch zoom and own viewer text sizing
   );
 
   assert.match(cssBlock(root, "html {"), /touch-action: manipulation/);
-  assert.doesNotMatch(
+  assert.match(
     index,
-    /(?:user-scalable|maximum-scale|minimum-scale)/,
-    "The viewport must retain user-controlled pinch zoom",
+    /<meta\s+name="viewport"\s+content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/,
+    "The viewport fixes the page scale, so touch devices do not zoom the page",
   );
   for (const [path, source, selector] of [
     ["components/file-viewer/components/code-viewer.css", codeViewer, ".code-lines {"],
