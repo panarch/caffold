@@ -850,15 +850,16 @@ test("returns Source to the line it was reading after another surface", { tag: "
   try {
     const { tasksPage, shown: source } = await openGuide(page, folder, "source");
     const lines = source.locator(".code-lines");
+    // The line at the top, or none while the viewer is still drawing its rows.
     const firstLine = () => lines.evaluate((element) => {
       const top = element.getBoundingClientRect().top;
       return [...element.querySelectorAll(".code-row")]
-        .find((row) => row.getBoundingClientRect().bottom > top).dataset.lineNumber;
+        .find((row) => row.getBoundingClientRect().bottom > top)?.dataset.lineNumber ?? null;
     });
     await lines.evaluate((element) => {
       element.scrollTop = element.scrollHeight / 2;
     });
-    await expect.poll(firstLine).not.toBe("1");
+    await expect.poll(async () => Number(await firstLine())).toBeGreaterThan(1);
     const line = await firstLine();
     const top = await lines.evaluate((element) => element.scrollTop);
 
@@ -892,10 +893,11 @@ test("keeps the line Source reads at the top as it wraps, the width changes, and
     const { tasksPage, taskReview, shown: source } = await openGuide(page, folder, "source");
     const viewer = taskReview.locator("caffold-review-file-viewer");
     const lines = source.locator(".code-lines");
+    // The line at the top, or none while the viewer is still drawing its rows.
     const firstLine = () => lines.evaluate((element) => {
       const top = element.getBoundingClientRect().top;
       return [...element.querySelectorAll(".code-row")]
-        .find((row) => row.getBoundingClientRect().bottom > top).dataset.lineNumber;
+        .find((row) => row.getBoundingClientRect().bottom > top)?.dataset.lineNumber ?? null;
     });
     const overflows = () => lines.evaluate((element) => element.scrollWidth > element.clientWidth);
     // The top edge halfway down line 150, so no rounding of the scroll can
