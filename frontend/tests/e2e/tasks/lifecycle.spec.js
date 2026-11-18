@@ -1961,15 +1961,20 @@ test("backs off instead of waiting or pausing offline when a return's Task-store
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await expect.poll(() => heldStoreReads.length).toBe(1);
-  holdStoreReads = false;
 
   // Running out of time is no proof that the network is gone, so the return
-  // backs off and checks again rather than pausing offline.
+  // backs off and checks again rather than pausing offline. The checks stay
+  // unanswered until the notice is seen: answered at once, the second one
+  // could end the notice before the test looks.
   await advanceClockUntil(
     page,
     async () => (await notice.getAttribute("data-recovery-state")) === "reconnecting",
     { budgetMs: 30_500, stepMs: 250 },
   );
+  holdStoreReads = false;
+  for (const read of heldStoreReads.slice(1)) {
+    await read.fulfill({ json: mockTaskStoreStatus() });
+  }
   await advanceClockUntil(page, () => foregroundRecoverySettled(page), {
     budgetMs: 2_000,
     stepMs: 250,
