@@ -376,8 +376,16 @@
   }
 
   .task-composer.task-follow-up-form {
-    padding-inline: 0.75rem;
-    padding-bottom: max(0.625rem, env(safe-area-inset-bottom));
+    padding-inline: 0;
+    padding-bottom: 0;
+  }
+
+  /* A floating panel's corners would meet a phone screen's rounded corners,
+     so the follow-up panel becomes a bar along the bottom edge. */
+  .task-follow-up-form .task-composer-panel {
+    padding: 0 0.75rem max(0.625rem, env(safe-area-inset-bottom));
+    border-width: 1px 0 0;
+    border-radius: 0;
   }
 }
 

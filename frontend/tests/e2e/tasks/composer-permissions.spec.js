@@ -1653,7 +1653,7 @@ test("Enter submission releases editing ownership while the request is pending",
   await expect(prompt).not.toBeFocused();
 });
 
-test("keeps an idle follow-up composer compact within the portrait content gutter", { tag: "@all-viewports" }, async ({
+test("keeps an idle follow-up composer compact, as a bar along a portrait phone's bottom edge", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await installTaskApiFixture(page);
@@ -1704,9 +1704,11 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
       const workspace = shell.shadowRoot.querySelector("caffold-task-workspace");
       const rootStyle = getComputedStyle(document.documentElement);
       const formStyle = getComputedStyle(element);
+      const panelStyle = getComputedStyle(panel);
       const conversationStyle = getComputedStyle(conversation);
       const sendStyle = getComputedStyle(sendButton, "::before");
       const panelRect = panel.getBoundingClientRect();
+      const textareaRect = textarea.getBoundingClientRect();
       const modelButtonRect = modelButton.getBoundingClientRect();
       const permissionButtonRect = permissionButton.getBoundingClientRect();
       const shellRect = shell.getBoundingClientRect();
@@ -1714,10 +1716,25 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
       return {
         borderTopWidth: formStyle.borderTopWidth,
         panelHeight: panelRect.height,
+        panelPaddingBottom: Number.parseFloat(panelStyle.paddingBottom),
         panelLeft: panelRect.left,
         panelRight: panelRect.right,
         panelBottom: panelRect.bottom,
-        textareaHeight: textarea.getBoundingClientRect().height,
+        panelBorders: [
+          panelStyle.borderTopWidth,
+          panelStyle.borderRightWidth,
+          panelStyle.borderBottomWidth,
+          panelStyle.borderLeftWidth,
+        ],
+        panelRadii: [
+          panelStyle.borderTopLeftRadius,
+          panelStyle.borderTopRightRadius,
+          panelStyle.borderBottomRightRadius,
+          panelStyle.borderBottomLeftRadius,
+        ],
+        textareaLeft: textareaRect.left,
+        textareaRight: textareaRect.right,
+        textareaHeight: textareaRect.height,
         modelLabel: modelButton.innerText.replace(/\s+/g, " ").trim(),
         modelNameClipped: modelName.scrollWidth > modelName.clientWidth + 1,
         chipGap: permissionButtonRect.left - modelButtonRect.right,
@@ -1731,7 +1748,6 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
           : "shield",
         viewportWidth: window.innerWidth,
         rootFontSize: Number.parseFloat(rootStyle.fontSize),
-        formPaddingLeft: Number.parseFloat(formStyle.paddingLeft),
         conversationPaddingLeft: Number.parseFloat(
           conversationStyle.paddingLeft,
         ),
@@ -1752,7 +1768,8 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
       buildAlertHidden: true,
     }),
   );
-  expect(idle.panelHeight).toBeLessThanOrEqual(96);
+  // A phone's bar holds the bottom space below its controls.
+  expect(idle.panelHeight - idle.panelPaddingBottom).toBeLessThanOrEqual(96);
   expect(idle.modelLabel).toBe("Test · medium");
   expect(idle.modelNameClipped).toBe(false);
   expect(idle.chipGap).toBeGreaterThanOrEqual(0);
@@ -1768,16 +1785,23 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
     expect(idle.permissionShows).toBe("Auto review");
   }
   if (testInfo.project.name === "phone") {
-    expect(idle.formPaddingLeft / idle.rootFontSize).toBeCloseTo(0.75, 2);
     expect(idle.conversationPaddingLeft / idle.rootFontSize).toBeCloseTo(
       0.75,
       2,
     );
-    expect(idle.panelLeft).toBeCloseTo(idle.formPaddingLeft, 1);
-    expect(idle.viewportWidth - idle.panelRight).toBeCloseTo(
-      idle.formPaddingLeft,
+    expect(idle.panelLeft).toBe(0);
+    expect(idle.panelRight).toBe(idle.viewportWidth);
+    expect(idle.panelBottom).toBeCloseTo(idle.workspaceBottom, 1);
+    expect(idle.panelBorders).toEqual(["1px", "0px", "0px", "0px"]);
+    expect(idle.panelRadii).toEqual(["0px", "0px", "0px", "0px"]);
+    expect(idle.textareaLeft).toBeCloseTo(idle.conversationPaddingLeft, 1);
+    expect(idle.viewportWidth - idle.textareaRight).toBeCloseTo(
+      idle.conversationPaddingLeft,
       1,
     );
+  } else {
+    expect(idle.panelBorders).toEqual(["1px", "1px", "1px", "1px"]);
+    expect(idle.panelRadii).toEqual(["14px", "14px", "14px", "14px"]);
   }
   await captureReviewScreenshot(
     page,
