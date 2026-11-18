@@ -768,8 +768,8 @@ test("creates a task with responsive composer controls and canonical approval st
     ).toEqual(
       expect.objectContaining({
         backgroundColor: "rgb(255, 255, 255)",
-        borderRadius: "14px",
-        borderWidth: "1px",
+        borderRadius: phone ? "0px" : "14px",
+        borderWidth: phone ? "1px 0px 0px" : "1px",
         display: "grid",
         overflow: "visible",
       }),

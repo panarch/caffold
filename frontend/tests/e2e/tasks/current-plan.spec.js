@@ -200,9 +200,15 @@ test("floats ignored current documents above the stable composer and updates the
     layoutWithoutPlan.composerBottom,
     1,
   );
-  expect(compactLayout.stripBorderRadius).toBe(
-    compactLayout.composerBorderRadius,
-  );
+  if (testInfo.project.name === "phone") {
+    // A phone's Composer is a bar along the bottom edge; the strip stays a card.
+    expect(compactLayout.composerBorderRadius).toBe("0px");
+    expect(compactLayout.stripBorderRadius).toBe("14px");
+  } else {
+    expect(compactLayout.stripBorderRadius).toBe(
+      compactLayout.composerBorderRadius,
+    );
+  }
   expect(compactLayout.stripBoxShadow).not.toBe("none");
   if (testInfo.project.name === "desktop") {
     expect(compactLayout.stripWidth).toBeLessThan(compactLayout.composerWidth);

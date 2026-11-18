@@ -467,6 +467,10 @@ keeps its place whatever the model label says and hides while voice input runs;
 in phone portrait **Attach files** and the approval-mode control hide with it.
 New Task has no pie.
 
+In phone portrait a Task's follow-up Composer is a full-width bar along the
+bottom edge of the screen with a line across its top, and its prompt and
+controls keep the conversation's side margin.
+
 In phone portrait every Composer's approval-mode control shows only a shield,
 in a circle the microphone's size, so the model label keeps its room. The shield
 is the same for every mode and turns red for a mode that gives up a protection;
