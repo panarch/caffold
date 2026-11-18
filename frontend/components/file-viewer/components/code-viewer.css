@@ -141,6 +141,79 @@ slot[name="end"] {
   white-space: pre-wrap;
 }
 
+/* In a narrow viewer the numbers scroll away with the code. A changed line
+   keeps its mark at the left edge as a strip that waits under its number,
+   which covers it until both have scrolled past the edge. */
+@container (width <= 520px) {
+  .code-gutter-backdrop,
+  .line-number {
+    position: relative;
+  }
+
+  .line-number {
+    grid-area: 1 / 1;
+  }
+
+  .line-code {
+    grid-area: 1 / 2;
+  }
+
+  .code-row[data-line-change="added"] {
+    --line-mark-added: linear-gradient(
+      var(--diff-added-text),
+      var(--diff-added-text)
+    );
+  }
+
+  .code-row[data-line-removed~="above"] {
+    --line-mark-above: linear-gradient(
+      var(--diff-removed-rule),
+      var(--diff-removed-rule)
+    );
+  }
+
+  .code-row[data-line-removed~="below"] {
+    --line-mark-below: linear-gradient(
+      var(--diff-removed-rule),
+      var(--diff-removed-rule)
+    );
+  }
+
+  /* The strip reaches 1px into the rows beside it, so a removed-lines rule
+     lies across the boundary as the number's does. */
+  .code-row[data-line-change="added"]::after,
+  .code-row[data-line-removed]::after {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    grid-area: 1 / 1;
+    justify-self: end;
+    width: 0.5rem;
+    margin-block: -1px;
+    background-image:
+      var(--line-mark-added, none), var(--line-mark-above, none),
+      var(--line-mark-below, none);
+    background-position:
+      left center,
+      top,
+      bottom;
+    background-repeat: no-repeat;
+    background-size:
+      3px calc(100% - 2px),
+      100% 2px,
+      100% 2px;
+    content: "";
+    pointer-events: none;
+  }
+
+  .code-row:first-child::after {
+    background-position:
+      left center,
+      0 1px,
+      bottom;
+  }
+}
+
 .syntax-comment {
   color: var(--syntax-comment);
 }

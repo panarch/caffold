@@ -2038,6 +2038,18 @@ it connects; the one whose Wrap is pressed stores the new choice and sends
 `caffold:file-viewer-wrap-change` on `window`, and every connected file viewer
 follows it, those Git and GitHub keep hidden included.
 
+A code or diff leaf whose scroll area is 520px wide or less, by a container
+query on that area, lets its line numbers and the column drawn behind them
+scroll with the code: they are `position: relative` there instead of sticky.
+The diff leaf then draws one number column, as wide as the wider of its old and
+new number columns, and hides, by row kind, the new number of a removed row and
+the old number of every other row. The code leaf's numbers carry its change
+marks, so each marked row there also draws an `::after` strip in the number
+column, sticky at the left edge and stacked under the number, which covers it
+until both have scrolled past the edge: a 3px bar for an added line, and a 2px
+rule across a boundary where lines were removed. Relative positioning keeps the
+number the anchor of the removal rule it draws itself.
+
 Source and diff text arrive colored. `/api/file` and the Git diff routes color
 it on the server with syntect and bat's syntax set (two-face), choosing a
 syntax by file name and then by first line, and send `syntaxSpans`: for each
@@ -2705,7 +2717,7 @@ two boundaries, `SPLIT_VIEW_SINGLE_MAX_WIDTH_PX` (560) and
   inert, above a dimmed layer that closes it when pressed; the strip fades as
   the drawer leaves it and returns as the drawer settles back. The file pane
   and the drawer's list keep their own stacking layers inside them, so the
-  file's sticky line numbers and header controls stay under the strip's
+  file's line numbers and header controls stay under the strip's
   shadow, the dim, and the drawer, and the list's header stays under the
   strip. The
   resizer limits the drawer to 320 px and 70% of the view without changing the

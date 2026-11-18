@@ -2007,6 +2007,107 @@ test("offers Wrap for source and a diff beside the choice of representation, and
   }
 });
 
+test("scrolls a narrow viewer's line numbers away with the code and gives a narrow diff one number for each line", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/files");
+
+  const result = await page.evaluate(async () => {
+    await import("/assets/components/file-viewer.js");
+    const drawn = () => new Promise(requestAnimationFrame);
+    const viewer = document.createElement("caffold-review-file-viewer");
+    document.body.append(viewer);
+    const long = `const line = "${"wide ".repeat(60)}";`;
+    const root = () =>
+      viewer.shadowRoot.querySelector("caffold-code-viewer, caffold-diff-viewer").shadowRoot;
+    // With the lines 200px sideways, how far a row's numbers and the column
+    // behind them sit from the viewer's left edge.
+    const read = async (width, numbers, backdrop) => {
+      viewer.style.cssText = `display: block; width: ${width}px; height: 300px;`;
+      await drawn();
+      const scroller = root().querySelector(".code-lines, .diff-lines");
+      scroller.scrollLeft = 200;
+      const left = scroller.getBoundingClientRect().left;
+      const offset = (selector) =>
+        Math.round(root().querySelector(selector).getBoundingClientRect().left - left);
+      const place = {
+        width: scroller.clientWidth,
+        numbers: offset(numbers),
+        backdrop: offset(backdrop),
+      };
+      scroller.scrollLeft = 0;
+      return place;
+    };
+    // The numbers each kind of diff row shows, and how wide a row's numbers
+    // and sign are together.
+    const diffNumbers = () => {
+      const shown = (type) =>
+        [...root().querySelectorAll(`.diff-row-${type} :is(.diff-old-line, .diff-new-line)`)]
+          .filter((number) => getComputedStyle(number).display !== "none")
+          .map((number) => number.textContent);
+      return {
+        removed: shown("removed"),
+        added: shown("added"),
+        context: shown("context"),
+        width: root().querySelector(".diff-row-context .diff-gutter").getBoundingClientRect().width,
+      };
+    };
+
+    viewer.setFile({ path: "src/a.js", content: `short\n${long}` });
+    const source = {
+      narrow: await read(520, ".line-number", ".code-gutter-backdrop"),
+      wide: await read(521, ".line-number", ".code-gutter-backdrop"),
+    };
+
+    viewer.setDiff({
+      path: "src/a.js",
+      diff: `@@ -10,2 +20,2 @@\n-removed\n+${long}\n context`,
+    });
+    const narrow = await read(520, ".diff-row-context .diff-gutter", ".diff-gutter-backdrop");
+    const narrowNumbers = diffNumbers();
+    const wide = await read(521, ".diff-row-context .diff-gutter", ".diff-gutter-backdrop");
+    const wideNumbers = diffNumbers();
+    viewer.style.width = "520px";
+    viewer.shadowRoot.querySelector(".viewer-wrap-button").click();
+    await drawn();
+    const wrapped = diffNumbers();
+    return {
+      source,
+      diff: { narrow, narrowNumbers, wide, wideNumbers, wrapped },
+    };
+  });
+
+  expect(result).toEqual({
+    source: {
+      narrow: { width: 520, numbers: -200, backdrop: -200 },
+      wide: { width: 521, numbers: 0, backdrop: 0 },
+    },
+    diff: {
+      narrow: { width: 520, numbers: -200, backdrop: -200 },
+      narrowNumbers: {
+        removed: ["10"],
+        added: ["20"],
+        context: ["21"],
+        width: expect.any(Number),
+      },
+      wide: { width: 521, numbers: 0, backdrop: 0 },
+      wideNumbers: {
+        removed: ["10", ""],
+        added: ["", "20"],
+        context: ["11", "21"],
+        width: expect.any(Number),
+      },
+      wrapped: {
+        removed: ["10"],
+        added: ["20"],
+        context: ["21"],
+        width: result.diff.narrowNumbers.width,
+      },
+    },
+  });
+  expect(result.diff.narrowNumbers.width).toBeLessThan(result.diff.wideNumbers.width);
+});
+
 test("spaces the file header's choice and buttons as the Detail header spaces its own", { tag: ["@desktop", "@phone"] }, async ({
   page,
 }) => {

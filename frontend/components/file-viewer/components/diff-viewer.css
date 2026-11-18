@@ -138,6 +138,38 @@ slot[name="end"] {
   white-space: pre-wrap;
 }
 
+/* In a narrow viewer the numbers scroll away with the code, and each line
+   shows one number: the old file's on a removed line, the new file's on the
+   others. */
+@container (width <= 520px) {
+  .diff-gutter-backdrop,
+  .diff-table {
+    --diff-number-width: calc(
+      max(var(--diff-old-number-columns), var(--diff-new-number-columns)) +
+      var(--diff-line-number-padding) +
+      var(--diff-line-number-padding)
+    );
+    --diff-gutter-width: calc(
+      var(--diff-number-width) +
+      var(--diff-prefix-width)
+    );
+  }
+
+  .diff-gutter-backdrop,
+  .diff-gutter {
+    position: relative;
+  }
+
+  .diff-gutter {
+    grid-template-columns: var(--diff-number-width) var(--diff-prefix-width);
+  }
+
+  .diff-row:not(.diff-row-removed) .diff-old-line,
+  .diff-row-removed .diff-new-line {
+    display: none;
+  }
+}
+
 .diff-row-metadata {
   background: var(--diff-meta-bg);
   color: var(--diff-meta-text);

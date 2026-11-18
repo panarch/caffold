@@ -995,6 +995,37 @@ test("shades the whole file beside the folded strip and dims all of it under the
   expect(darkening(dimmed, closed)).toBeGreaterThan(20);
 });
 
+test("gives a phone's diff one number for each line that scrolls with the code, and keeps both in place on a wider screen", { tag: ["@foldable", "@phone"] }, async ({
+  page,
+}, testInfo) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await taskReview
+    .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="planner.rs"]')
+    .click();
+  const diff = taskReview.locator("caffold-diff-viewer");
+  await expect(diff.locator(".diff-row-added").first()).toBeVisible();
+
+  const numbers = await diff.evaluate((viewer) => {
+    const root = viewer.shadowRoot;
+    const gutter = root.querySelector(".diff-row-added .diff-gutter");
+    return {
+      viewerWidth: root.querySelector(".diff-lines").clientWidth,
+      position: getComputedStyle(gutter).position,
+      shown: [...gutter.querySelectorAll(".diff-old-line, .diff-new-line")].filter(
+        (number) => getComputedStyle(number).display !== "none",
+      ).length,
+    };
+  });
+  if (testInfo.project.name === "phone") {
+    expect(numbers.viewerWidth).toBeLessThanOrEqual(520);
+    expect(numbers).toMatchObject({ position: "relative", shown: 1 });
+  } else {
+    expect(numbers.viewerWidth).toBeGreaterThan(520);
+    expect(numbers).toMatchObject({ position: "sticky", shown: 2 });
+  }
+});
+
 test("draws the shared separator as the pane line with a centered handle and a 3px highlight", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
