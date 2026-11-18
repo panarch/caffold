@@ -1350,7 +1350,10 @@ test("reflows Review at a desktop 200 percent effective viewport", { tag: "@desk
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await page.setViewportSize({ width: 640, height: 400 });
 
-  const layout = await taskReview.evaluate((review, modeSwitch) => ({
+  const modeSwitch = await page
+    .locator("caffold-segmented-control[data-detail-view-switch]")
+    .elementHandle();
+  const measure = () => taskReview.evaluate((review, modeSwitch) => ({
     overflow: review.scrollWidth > review.clientWidth,
     modeSwitchOverflow: modeSwitch.scrollWidth > modeSwitch.clientWidth,
     navigatorWidth: review
@@ -1359,7 +1362,11 @@ test("reflows Review at a desktop 200 percent effective viewport", { tag: "@desk
     viewerWidth: review
       .shadowRoot.querySelector(".task-review-viewer-pane")
       .getBoundingClientRect().width,
-  }), await page.locator("caffold-segmented-control[data-detail-view-switch]").elementHandle());
+  }), modeSwitch);
+  // The pane resizer fits the navigator to the new width when its observer
+  // sees the resize, a frame after it.
+  await expect.poll(async () => (await measure()).viewerWidth).toBeGreaterThanOrEqual(360);
+  const layout = await measure();
   expect(layout.overflow).toBe(false);
   expect(layout.modeSwitchOverflow).toBe(false);
   expect(layout.navigatorWidth).toBeGreaterThanOrEqual(220);

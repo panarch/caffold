@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { installAgentCatalog } from "./support/agent-catalog-fixture.js";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
 
 test(
@@ -14,6 +15,11 @@ test(
       [secondPage, 0],
     ]);
     for (const candidate of [page, secondPage]) {
+      // A tab asks for each agent's models and permission modes, which the
+      // server answers by asking the agents installed on the host, and two
+      // tabs' requests can hold every browser connection to it for as long as
+      // those agents take. The catalog answers them in the browser instead.
+      await installAgentCatalog(candidate);
       candidate.on("request", (request) => {
         if (new URL(request.url()).pathname === "/api/live") {
           liveRequests.set(candidate, liveRequests.get(candidate) + 1);
