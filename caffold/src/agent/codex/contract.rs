@@ -35,7 +35,8 @@ use super::protocol::{
 };
 use super::{CodexThreadClient, CodexThreadError, CodexTurnOptions, NORMAL_SERVICE_TIER_ID};
 use crate::agent::driver::{
-    ModelOption, PermissionModeOption, REVIEWED_PERMISSION_MODE, TurnOptions, TurnRejected, bounded,
+    ModelOption, NORMAL_SPEED, PermissionModeOption, REVIEWED_PERMISSION_MODE, SpeedOption,
+    TurnOptions, TurnRejected, bounded,
 };
 use crate::agent::mcp_content::tool_result_part;
 use crate::agent::{
@@ -1118,7 +1119,15 @@ pub(crate) async fn codex_models(
                 .filter_map(codex_reasoning_effort)
                 .map(str::to_string)
                 .collect(),
-            supports_fast_mode: model.fast_service_tier_id().is_some(),
+            speeds: model
+                .service_tiers
+                .iter()
+                .map(|tier| SpeedOption {
+                    id: tier.id.clone(),
+                    name: tier.name.clone(),
+                    description: (!tier.description.is_empty()).then(|| tier.description.clone()),
+                })
+                .collect(),
             // Codex resolves permissions from profiles and a reviewer setting,
             // which no model takes part in.
             supports_auto_mode: false,
@@ -1130,7 +1139,7 @@ pub(crate) async fn codex_models(
 ///
 /// Caffold names a model, a depth, and a speed; what each of those means to
 /// Codex is worked out here — which model answers to that name, whether it
-/// works at that depth, whether it has a faster tier — so that choosing an
+/// works at that depth, which service tier that speed is — so that choosing an
 /// agent stays a question of which agent rather than of what its settings mean.
 pub(crate) async fn codex_turn_options(
     client: &CodexThreadClient,
@@ -1139,7 +1148,7 @@ pub(crate) async fn codex_turn_options(
     let model = bounded(options.model.as_deref(), 128).ok_or(TurnRejected::Model)?;
     let effort = bounded(options.effort.as_deref(), 32).ok_or(TurnRejected::Effort)?;
     let permission_mode = codex_permission_mode(options.permission_mode.as_deref());
-    if model.is_none() && effort.is_none() && !options.fast_mode {
+    if model.is_none() && effort.is_none() && options.speed == NORMAL_SPEED {
         return Ok(CodexTurnOptions {
             model,
             effort,
@@ -1175,21 +1184,19 @@ pub(crate) async fn codex_turn_options(
         return Err(TurnRejected::Effort);
     }
 
-    let normal = selected
-        .default_service_tier
-        .clone()
+    // A speed the model does not offer is answered with its ordinary tier
+    // rather than refused, and the caller is told which it got.
+    let service_tier = selected
+        .service_tiers
+        .iter()
+        .find(|tier| options.speed != NORMAL_SPEED && tier.id == options.speed)
+        .map(|tier| tier.id.clone())
+        .or_else(|| selected.default_service_tier.clone())
         .unwrap_or_else(|| NORMAL_SERVICE_TIER_ID.to_string());
-    let service_tier = Some(
-        options
-            .fast_mode
-            .then(|| selected.fast_service_tier_id().map(str::to_string))
-            .flatten()
-            .unwrap_or(normal),
-    );
     Ok(CodexTurnOptions {
         model,
         effort,
-        service_tier,
+        service_tier: Some(service_tier),
         permission_mode,
     })
 }
@@ -1401,7 +1408,10 @@ mod tests {
                         { "reasoningEffort": "xhigh", "description": "Deep" }
                     ],
                     "defaultReasoningEffort": "low",
-                    "serviceTiers": [{ "id": "priority", "name": "Fast", "description": "Faster" }],
+                    "serviceTiers": [
+                        { "id": "priority", "name": "Fast", "description": "Faster" },
+                        { "id": "ultrafast", "name": "Ultrafast", "description": "Fastest" }
+                    ],
                     "defaultServiceTier": null,
                     "inputModalities": ["text"],
                     "supportsPersonality": false,
@@ -1445,7 +1455,7 @@ mod tests {
             TurnOptions {
                 model: Some("gpt-5.6-sol".to_string()),
                 effort: Some("xhigh".to_string()),
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: Some("askForApproval".to_string()),
             },
         )
@@ -1469,7 +1479,7 @@ mod tests {
             TurnOptions {
                 model: Some("gpt-5.6-luna".to_string()),
                 effort: Some("xhigh".to_string()),
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
             },
         )
@@ -1486,7 +1496,7 @@ mod tests {
             TurnOptions {
                 model: Some("gpt-imaginary".to_string()),
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
             },
         )
@@ -1497,35 +1507,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn working_faster_falls_back_to_the_normal_tier_when_a_model_has_none() {
-        // Asking for speed from a model with no faster tier is answered with
-        // its ordinary one rather than refused, and the caller is told which it
+    async fn a_speed_runs_at_the_tier_of_that_name_or_the_normal_one_when_the_model_has_none() {
+        // Asking for a speed a model does not offer is answered with its
+        // ordinary tier rather than refused, and the caller is told which it
         // got so the interface can stop offering what did not happen.
-        let fast = read_options(
-            1,
-            TurnOptions {
-                model: Some("gpt-5.6-sol".to_string()),
-                effort: None,
-                fast_mode: true,
-                permission_mode: None,
-            },
-        )
-        .await
-        .expect("the model has a faster tier");
-        assert_eq!(fast.service_tier.as_deref(), Some("priority"));
-
-        let normal = read_options(
-            1,
-            TurnOptions {
-                model: Some("gpt-5.6-luna".to_string()),
-                effort: None,
-                fast_mode: true,
-                permission_mode: None,
-            },
-        )
-        .await
-        .expect("a model without one still runs");
-        assert_eq!(normal.service_tier.as_deref(), Some("default"));
+        for (model, speed, tier) in [
+            ("gpt-5.6-sol", "priority", "priority"),
+            ("gpt-5.6-sol", "ultrafast", "ultrafast"),
+            ("gpt-5.6-sol", NORMAL_SPEED, "default"),
+            ("gpt-5.6-luna", "priority", "default"),
+            ("gpt-5.6-sol", "flex", "default"),
+        ] {
+            let read = read_options(
+                1,
+                TurnOptions {
+                    model: Some(model.to_string()),
+                    effort: None,
+                    speed: speed.to_string(),
+                    permission_mode: None,
+                },
+            )
+            .await
+            .expect("a speed never stops a turn");
+            assert_eq!(
+                read.service_tier.as_deref(),
+                Some(tier),
+                "{model} at {speed}"
+            );
+        }
     }
 
     #[tokio::test]
@@ -1551,7 +1560,7 @@ mod tests {
             TurnOptions {
                 model: Some("m".repeat(129)),
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
             },
         )
@@ -1564,7 +1573,7 @@ mod tests {
             TurnOptions {
                 model: None,
                 effort: Some("hi\u{7}gh".to_string()),
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
             },
         )
@@ -1582,7 +1591,7 @@ mod tests {
             TurnOptions {
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: Some("acceptEdits".to_string()),
             },
         )

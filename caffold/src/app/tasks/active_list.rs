@@ -16,8 +16,8 @@ use crate::{
     app::tasks::sessions::{SessionLifecycle, TaskSessions},
     fs::RootedFs,
     task_store::{
-        ComposerSettings, ManagedSection, ManagedThread, ManagedWorktree, ManagedWorktreeState,
-        RunBy, TaskStore,
+        ManagedSection, ManagedThread, ManagedWorktree, ManagedWorktreeState, RunBy,
+        SectionComposerSettings, TaskProvider, TaskStore,
     },
 };
 
@@ -70,20 +70,23 @@ pub(in crate::app) struct ActiveTask {
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub(in crate::app::tasks) struct ActiveTaskComposerSettings {
+    /// The agent the model and speed belong to.
+    pub(in crate::app::tasks) provider: TaskProvider,
     pub(in crate::app::tasks) model: Option<String>,
     pub(in crate::app::tasks) effort: Option<String>,
-    pub(in crate::app::tasks) fast_mode: bool,
+    pub(in crate::app::tasks) speed: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(in crate::app::tasks) permission_mode: Option<String>,
 }
 
-impl From<&ComposerSettings> for ActiveTaskComposerSettings {
-    fn from(settings: &ComposerSettings) -> Self {
+impl From<&SectionComposerSettings> for ActiveTaskComposerSettings {
+    fn from(last: &SectionComposerSettings) -> Self {
         Self {
-            model: settings.model.clone(),
-            effort: settings.reasoning_effort.clone(),
-            fast_mode: settings.fast_mode,
-            permission_mode: settings.permission_mode.clone(),
+            provider: last.provider,
+            model: last.settings.model.clone(),
+            effort: last.settings.reasoning_effort.clone(),
+            speed: last.settings.speed.clone(),
+            permission_mode: last.settings.permission_mode.clone(),
         }
     }
 }
@@ -474,7 +477,7 @@ mod tests {
         recovery, sessions,
         test_support::{record_managed_worktree, task_thread_list},
     };
-    use crate::task_store::RunBy;
+    use crate::task_store::{ComposerSettings, RunBy};
 
     fn fixture() -> (tempfile::TempDir, Arc<RootedFs>, TaskStore) {
         let root = tempfile::tempdir().unwrap();
@@ -952,10 +955,11 @@ mod tests {
             .transaction(|tables| {
                 tables.update_managed_section_composer_settings(
                     "section-b",
+                    TaskProvider::Codex,
                     &ComposerSettings {
                         model: Some("gpt-section".to_string()),
                         reasoning_effort: Some("xhigh".to_string()),
-                        fast_mode: true,
+                        speed: "ultrafast".to_string(),
                         permission_mode: None,
                     },
                 )?;
@@ -987,9 +991,10 @@ mod tests {
         assert_eq!(
             projection.sections[0].composer_settings,
             Some(ActiveTaskComposerSettings {
+                provider: TaskProvider::Codex,
                 model: Some("gpt-section".to_string()),
                 effort: Some("xhigh".to_string()),
-                fast_mode: true,
+                speed: "ultrafast".to_string(),
                 permission_mode: None,
             })
         );

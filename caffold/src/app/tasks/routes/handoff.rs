@@ -19,8 +19,8 @@ pub(super) struct HandoffRequest {
     provider: String,
     model: Option<String>,
     effort: Option<String>,
-    #[serde(default)]
-    fast_mode: bool,
+    #[serde(default = "super::normal_speed")]
+    speed: String,
     permission_mode: Option<String>,
 }
 
@@ -66,7 +66,7 @@ async fn create_owned(
                 turn_options: TurnOptions {
                     model: request.model,
                     effort: request.effort,
-                    fast_mode: request.fast_mode,
+                    speed: request.speed,
                     permission_mode: request.permission_mode,
                 },
             },
@@ -111,6 +111,7 @@ fn handoff_prompt(source: &str, cwd: &str, tool: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::NORMAL_SPEED;
 
     #[test]
     fn the_first_prompt_reads_history_and_stops_after_a_summary() {
@@ -490,7 +491,7 @@ mod tests {
                 provider: "codex".into(),
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
             },
         )

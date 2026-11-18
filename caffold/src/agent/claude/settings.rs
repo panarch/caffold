@@ -14,8 +14,8 @@ use tokio::sync::oneshot;
 use super::protocol::{BASE_ARGUMENTS, StreamFrame};
 use super::{
     ANSWER_TIMEOUT, ClaudeClient, ClaudeError, ClaudeTurnOptions, Introduction, ModelOption,
-    PermissionModeOption, PermissionModes, Session, SessionEventKind, SessionState, config_dir,
-    protocol,
+    PermissionModeOption, PermissionModes, Session, SessionEventKind, SessionState, claude_speeds,
+    config_dir, protocol,
 };
 
 /// The mode that stops for every call the agent is not sure about.
@@ -462,10 +462,12 @@ fn model_options(answer: &Value) -> Vec<ModelOption> {
                 description: description.map(str::to_string),
                 is_default,
                 default_effort: None,
-                supports_fast_mode: model
-                    .get("supportsFastMode")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false),
+                speeds: claude_speeds(
+                    model
+                        .get("supportsFastMode")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                ),
                 supports_auto_mode: model
                     .get("supportsAutoMode")
                     .and_then(Value::as_bool)
@@ -492,7 +494,7 @@ fn generation(description: Option<&str>) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::claude_turn_options;
+    use super::super::{CLAUDE_FAST_SPEED, claude_turn_options};
     use crate::agent::TurnStatus;
     use crate::agent::driver::{TurnOptions, TurnRejected};
     use std::time::Duration;
@@ -729,7 +731,7 @@ mod tests {
                 is_default: true,
                 default_effort: None,
                 efforts: vec!["low".to_string(), "high".to_string()],
-                supports_fast_mode: true,
+                speeds: claude_speeds(true),
                 supports_auto_mode: true,
             }])
             .await;
@@ -767,7 +769,7 @@ mod tests {
                 is_default: false,
                 default_effort: None,
                 efforts: Vec::new(),
-                supports_fast_mode: false,
+                speeds: Vec::new(),
                 supports_auto_mode: false,
             }])
             .await;
@@ -776,7 +778,7 @@ mod tests {
             &client,
             &TurnOptions {
                 model: Some("haiku".to_string()),
-                fast_mode: true,
+                speed: CLAUDE_FAST_SPEED.to_string(),
                 ..TurnOptions::default()
             },
         )
@@ -802,7 +804,7 @@ mod tests {
                     is_default: true,
                     default_effort: None,
                     efforts: vec!["high".to_string()],
-                    supports_fast_mode: false,
+                    speeds: Vec::new(),
                     supports_auto_mode: true,
                 },
                 ModelOption {
@@ -812,7 +814,7 @@ mod tests {
                     is_default: false,
                     default_effort: None,
                     efforts: Vec::new(),
-                    supports_fast_mode: false,
+                    speeds: Vec::new(),
                     supports_auto_mode: false,
                 },
             ])
@@ -924,12 +926,12 @@ mod tests {
         assert_eq!(models.len(), 2);
         assert_eq!(models[0].model, "default");
         assert!(models[0].is_default);
-        assert!(models[0].supports_fast_mode);
+        assert_eq!(models[0].speeds, claude_speeds(true));
         assert_eq!(models[0].efforts, ["low", "medium", "high", "xhigh", "max"]);
         assert_eq!(models[1].model, "haiku");
         assert!(!models[1].is_default);
         assert!(models[1].efforts.is_empty());
-        assert!(!models[1].supports_fast_mode);
+        assert!(models[1].speeds.is_empty());
     }
 
     #[test]

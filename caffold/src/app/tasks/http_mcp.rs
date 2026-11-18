@@ -577,13 +577,13 @@ mod tests {
                 HttpMcpHost::grok("http://127.0.0.1:5177", McpSessionSigner::memory()),
                 RunBy::Grok { cwd: cwd.clone() },
                 ("grok-4.6", "xhigh", "autoMode"),
-                r#"{"agent":"grok","model":"grok-4.6","reasoningEffort":"xhigh","fastMode":false,"permissionMode":"autoMode"}"#,
+                r#"{"agent":"grok","model":"grok-4.6","reasoningEffort":"xhigh","speed":"default","permissionMode":"autoMode"}"#,
             ),
             (
                 HttpMcpHost::antigravity("http://127.0.0.1:5177", McpSessionSigner::memory()),
                 RunBy::Antigravity { cwd },
                 ("gemini-3.8-flash", "high", "default"),
-                r#"{"agent":"antigravity","model":"gemini-3.8-flash","reasoningEffort":"high","fastMode":false,"permissionMode":"default"}"#,
+                r#"{"agent":"antigravity","model":"gemini-3.8-flash","reasoningEffort":"high","speed":"default","permissionMode":"default"}"#,
             ),
         ];
         for (host, run_by, (model, effort, mode), expected) in cases {

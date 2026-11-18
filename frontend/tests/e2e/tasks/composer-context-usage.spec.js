@@ -163,7 +163,7 @@ test("takes a new count while its numbers are open", { tag: "@server-changes" },
     permissionMode: detail.permissionMode ?? null,
     model: detail.model ?? null,
     reasoningEffort: detail.reasoningEffort ?? null,
-    fastMode: Boolean(detail.fastMode),
+    speed: detail.speed,
     context: { usedTokens: 50_000, windowTokens: 200_000 },
   });
 

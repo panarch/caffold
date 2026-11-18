@@ -190,7 +190,7 @@ const MANUAL_AGENT_CATALOG = {
       isDefault: true,
       defaultEffort: "low",
       efforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
-      supportsFastMode: true,
+      speeds: [{ id: "priority", name: "Fast", description: null }],
       supportsAutoMode: false,
     },
     {
@@ -201,7 +201,7 @@ const MANUAL_AGENT_CATALOG = {
       isDefault: false,
       defaultEffort: "medium",
       efforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
-      supportsFastMode: true,
+      speeds: [{ id: "priority", name: "Fast", description: null }],
       supportsAutoMode: false,
     },
     {
@@ -212,7 +212,7 @@ const MANUAL_AGENT_CATALOG = {
       isDefault: true,
       defaultEffort: null,
       efforts: ["low", "medium", "high", "xhigh", "max"],
-      supportsFastMode: true,
+      speeds: [{ id: "fast", name: "Fast", description: null }],
       supportsAutoMode: true,
     },
     {
@@ -223,7 +223,7 @@ const MANUAL_AGENT_CATALOG = {
       isDefault: false,
       defaultEffort: null,
       efforts: ["low", "medium", "high", "xhigh", "max"],
-      supportsFastMode: false,
+      speeds: [],
       supportsAutoMode: true,
     },
     {
@@ -234,7 +234,7 @@ const MANUAL_AGENT_CATALOG = {
       isDefault: true,
       defaultEffort: "xhigh",
       efforts: ["xhigh", "high", "medium", "low"],
-      supportsFastMode: false,
+      speeds: [],
       supportsAutoMode: true,
     },
     {
@@ -245,7 +245,7 @@ const MANUAL_AGENT_CATALOG = {
       isDefault: true,
       defaultEffort: "high",
       efforts: ["low", "medium", "high"],
-      supportsFastMode: false,
+      speeds: [],
       supportsAutoMode: false,
     },
   ],
@@ -910,7 +910,7 @@ function detailFor(task, overrides = {}) {
     permissionMode: "approveForMe",
     model: "gpt-6-astra",
     reasoningEffort: "high",
-    fastMode: false,
+    speed: "default",
     context: { usedTokens: 84_120, windowTokens: 258_400 },
     ...overrides,
   };

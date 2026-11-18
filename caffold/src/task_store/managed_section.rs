@@ -13,7 +13,7 @@ use gluesql::{
 #[cfg(test)]
 use gluesql::core::data::Schema;
 
-use super::{ComposerSettings, Result, TaskStoreError};
+use super::{ComposerSettings, Result, TaskProvider, TaskStoreError};
 
 pub(super) const TABLE_NAME: &str = "managed_sections";
 const POSITION_STEP: i64 = 1024;
@@ -24,8 +24,9 @@ const COLUMN_DEFINITIONS: &[&str] = &[
     "position INTEGER",
     "last_model TEXT NULL",
     "last_reasoning_effort TEXT NULL",
-    "last_fast_mode BOOLEAN NULL",
     "last_permission_mode TEXT NULL",
+    "last_speed TEXT NULL",
+    "last_provider TEXT NULL",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,7 +34,18 @@ pub(crate) struct ManagedSection {
     pub section_id: String,
     pub logical_path: String,
     pub position: i64,
-    pub last_composer_settings: Option<ComposerSettings>,
+    pub last_composer_settings: Option<SectionComposerSettings>,
+}
+
+/// What the last turn started in a Section ran under, and which agent ran it.
+///
+/// The agent is kept beside the settings because the model and the speed are
+/// that agent's own names: without it a later Task could only guess whose they
+/// are.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SectionComposerSettings {
+    pub provider: TaskProvider,
+    pub settings: ComposerSettings,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, FromGlueRow, ToGlueRow)]
@@ -43,21 +55,24 @@ struct ManagedSectionRow {
     position: i64,
     last_model: Option<String>,
     last_reasoning_effort: Option<String>,
-    last_fast_mode: Option<bool>,
     last_permission_mode: Option<String>,
+    last_speed: Option<String>,
+    last_provider: Option<String>,
 }
 
 impl From<&ManagedSection> for ManagedSectionRow {
     fn from(section: &ManagedSection) -> Self {
-        let settings = section.last_composer_settings.as_ref();
+        let last = section.last_composer_settings.as_ref();
+        let settings = last.map(|last| &last.settings);
         Self {
             section_id: section.section_id.clone(),
             logical_path: section.logical_path.clone(),
             position: section.position,
             last_model: settings.and_then(|settings| settings.model.clone()),
             last_reasoning_effort: settings.and_then(|settings| settings.reasoning_effort.clone()),
-            last_fast_mode: settings.map(|settings| settings.fast_mode),
             last_permission_mode: settings.and_then(|settings| settings.permission_mode.clone()),
+            last_speed: settings.map(|settings| settings.speed.clone()),
+            last_provider: last.map(|last| last.provider.as_str().to_string()),
         }
     }
 }
@@ -66,15 +81,19 @@ impl TryFrom<ManagedSectionRow> for ManagedSection {
     type Error = TaskStoreError;
 
     fn try_from(row: ManagedSectionRow) -> Result<Self> {
-        let last_composer_settings = match row.last_fast_mode {
-            Some(fast_mode) => Some(ComposerSettings {
-                model: row.last_model,
-                reasoning_effort: row.last_reasoning_effort,
-                fast_mode,
-                permission_mode: row.last_permission_mode,
+        let last_composer_settings = match (row.last_provider, row.last_speed) {
+            (Some(provider), Some(speed)) => Some(SectionComposerSettings {
+                provider: TaskProvider::from_name(&provider)
+                    .ok_or(TaskStoreError::InvalidRow("last_provider"))?,
+                settings: ComposerSettings {
+                    model: row.last_model,
+                    reasoning_effort: row.last_reasoning_effort,
+                    speed,
+                    permission_mode: row.last_permission_mode,
+                },
             }),
-            None if row.last_model.is_none() && row.last_reasoning_effort.is_none() => None,
-            None => return Err(TaskStoreError::InvalidRow("last_composer_settings")),
+            (None, None) if row.last_model.is_none() && row.last_reasoning_effort.is_none() => None,
+            _ => return Err(TaskStoreError::InvalidRow("last_composer_settings")),
         };
         Ok(Self {
             section_id: row.section_id,
@@ -282,6 +301,7 @@ where
 pub(super) fn update_composer_settings<S>(
     glue: &mut Glue<S>,
     section_id: &str,
+    provider: TaskProvider,
     settings: &ComposerSettings,
 ) -> Result<Option<ManagedSection>>
 where
@@ -298,10 +318,8 @@ where
             "last_reasoning_effort",
             optional_text(settings.reasoning_effort.as_deref()),
         )
-        .set(
-            "last_fast_mode",
-            glue_value(Value::Bool(settings.fast_mode)),
-        );
+        .set("last_speed", text(settings.speed.clone()))
+        .set("last_provider", text(provider.as_str().to_string()));
     let payload = if let Some(permission_mode) = settings.permission_mode.as_deref() {
         query
             .set("last_permission_mode", optional_text(Some(permission_mode)))
@@ -460,19 +478,28 @@ mod tests {
         let settings = ComposerSettings {
             model: Some("gpt-selected".to_string()),
             reasoning_effort: Some("xhigh".to_string()),
-            fast_mode: true,
+            speed: "ultrafast".to_string(),
             permission_mode: None,
+        };
+        let recorded = SectionComposerSettings {
+            provider: TaskProvider::Codex,
+            settings: settings.clone(),
         };
 
         assert_eq!(
-            update_composer_settings(&mut glue, &section.section_id, &settings)
-                .unwrap()
-                .unwrap()
-                .last_composer_settings,
-            Some(settings.clone())
+            update_composer_settings(
+                &mut glue,
+                &section.section_id,
+                TaskProvider::Codex,
+                &settings
+            )
+            .unwrap()
+            .unwrap()
+            .last_composer_settings,
+            Some(recorded.clone())
         );
         assert!(
-            update_composer_settings(&mut glue, "missing", &settings)
+            update_composer_settings(&mut glue, "missing", TaskProvider::Codex, &settings)
                 .unwrap()
                 .is_none()
         );
@@ -481,7 +508,7 @@ mod tests {
         upsert(&mut glue, &section).unwrap();
         let stored = get(&mut glue, &section.section_id).unwrap().unwrap();
         assert_eq!(stored.logical_path, "Workspace/renamed");
-        assert_eq!(stored.last_composer_settings, Some(settings));
+        assert_eq!(stored.last_composer_settings, Some(recorded));
     }
 
     #[test]
@@ -495,40 +522,66 @@ mod tests {
         };
         upsert(&mut glue, &section).unwrap();
 
-        update_composer_settings(&mut glue, &section.section_id, &ComposerSettings::default())
-            .unwrap();
+        update_composer_settings(
+            &mut glue,
+            &section.section_id,
+            TaskProvider::Claude,
+            &ComposerSettings::default(),
+        )
+        .unwrap();
 
         assert_eq!(
             get(&mut glue, &section.section_id)
                 .unwrap()
                 .unwrap()
                 .last_composer_settings,
-            Some(ComposerSettings::default())
+            Some(SectionComposerSettings {
+                provider: TaskProvider::Claude,
+                settings: ComposerSettings::default(),
+            })
         );
     }
 
     #[test]
     fn rejects_partially_persisted_composer_settings() {
-        let mut glue = memory();
-        table(TABLE_NAME)
-            .insert()
-            .values_from(&[ManagedSectionRow {
-                section_id: "partial-settings".to_string(),
-                logical_path: "Workspace/partial".to_string(),
-                position: 0,
-                last_model: Some("gpt-selected".to_string()),
-                last_reasoning_effort: None,
-                last_fast_mode: None,
-                last_permission_mode: None,
-            }])
-            .unwrap()
-            .execute(&mut glue)
-            .unwrap();
+        let partial = |id: &str, speed: Option<&str>, provider: Option<&str>| ManagedSectionRow {
+            section_id: id.to_string(),
+            logical_path: format!("Workspace/{id}"),
+            position: 0,
+            last_model: Some("gpt-selected".to_string()),
+            last_reasoning_effort: None,
+            last_permission_mode: None,
+            last_speed: speed.map(str::to_string),
+            last_provider: provider.map(str::to_string),
+        };
+        for (row, column) in [
+            (partial("no-settings", None, None), "last_composer_settings"),
+            (
+                partial("no-agent", Some("default"), None),
+                "last_composer_settings",
+            ),
+            (
+                partial("no-speed", None, Some("codex")),
+                "last_composer_settings",
+            ),
+            (
+                partial("unknown-agent", Some("default"), Some("other")),
+                "last_provider",
+            ),
+        ] {
+            let mut glue = memory();
+            table(TABLE_NAME)
+                .insert()
+                .values_from(&[row])
+                .unwrap()
+                .execute(&mut glue)
+                .unwrap();
 
-        assert!(matches!(
-            list(&mut glue),
-            Err(TaskStoreError::InvalidRow("last_composer_settings"))
-        ));
+            assert!(matches!(
+                list(&mut glue),
+                Err(TaskStoreError::InvalidRow(invalid)) if invalid == column
+            ));
+        }
     }
 
     #[test]

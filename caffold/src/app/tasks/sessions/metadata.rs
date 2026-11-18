@@ -57,13 +57,13 @@ impl TaskSessions {
     pub(in crate::app::tasks) async fn restore_managed_composer_settings(
         &self,
         thread_id: &str,
-        fast_mode: bool,
+        speed: &str,
         permission_mode: Option<&str>,
     ) {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
         if state.lifecycle != SessionLifecycle::Subscribed {
-            state.fast_mode = fast_mode;
+            state.speed = speed.to_string();
             if permission_mode == Some(REVIEWED_PERMISSION_MODE) {
                 state.permission_mode = Some(REVIEWED_PERMISSION_MODE.to_string());
             }
@@ -142,6 +142,7 @@ impl TaskSessions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::NORMAL_SPEED;
     use crate::app::tasks::sessions::test_support::*;
 
     /// A resume whose reviewer setting names one of Codex's own modes, so the
@@ -164,7 +165,7 @@ mod tests {
             CodexThreadClient::mock(vec![MockCodexResponse::ok("thread/resume", response)]);
         let sessions = TaskSessions::default();
         sessions
-            .restore_managed_composer_settings("thread-1", true, None)
+            .restore_managed_composer_settings("thread-1", "priority", None)
             .await;
 
         let snapshot = sessions
@@ -174,7 +175,7 @@ mod tests {
         let requests = client.mock_requests().await;
 
         assert_eq!(requests[0].1["serviceTier"], "priority");
-        assert!(snapshot.fast_mode);
+        assert_eq!(snapshot.speed, "priority");
     }
 
     #[tokio::test]
@@ -185,7 +186,11 @@ mod tests {
         )]);
         let sessions = TaskSessions::default();
         sessions
-            .restore_managed_composer_settings("thread-1", false, Some(REVIEWED_PERMISSION_MODE))
+            .restore_managed_composer_settings(
+                "thread-1",
+                NORMAL_SPEED,
+                Some(REVIEWED_PERMISSION_MODE),
+            )
             .await;
 
         let snapshot = sessions
@@ -207,7 +212,7 @@ mod tests {
         )]);
         let sessions = TaskSessions::default();
         sessions
-            .restore_managed_composer_settings("thread-1", false, Some("askForApproval"))
+            .restore_managed_composer_settings("thread-1", NORMAL_SPEED, Some("askForApproval"))
             .await;
 
         let snapshot = sessions
@@ -231,12 +236,16 @@ mod tests {
             .expect("subscribe");
 
         sessions
-            .restore_managed_composer_settings("thread-1", true, Some(REVIEWED_PERMISSION_MODE))
+            .restore_managed_composer_settings(
+                "thread-1",
+                "priority",
+                Some(REVIEWED_PERMISSION_MODE),
+            )
             .await;
 
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
         assert_eq!(snapshot.permission_mode.as_deref(), Some("approveForMe"));
-        assert!(!snapshot.fast_mode);
+        assert_eq!(snapshot.speed, NORMAL_SPEED);
     }
 
     #[tokio::test]

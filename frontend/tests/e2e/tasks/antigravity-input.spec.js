@@ -36,7 +36,7 @@ async function setup(page) {
             isDefault: true,
             defaultEffort: "low",
             efforts: ["low", "high"],
-            supportsFastMode: false,
+            speeds: [],
           },
         ],
         unavailable: [],

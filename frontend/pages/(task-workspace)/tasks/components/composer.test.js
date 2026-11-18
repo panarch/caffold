@@ -76,7 +76,7 @@ test("draws Send again once the turn options take the new context", () => {
     cwd: ".",
     provider: "",
     allowHandoff: false,
-    initialSelection: { model: "", effort: "", fastMode: false, permissionMode: "" },
+    initialSelection: { modelProvider: "", model: "", effort: "", speed: "default", permissionMode: "" },
     locked: false,
     placement: "above",
     voiceInput: false,
@@ -372,7 +372,7 @@ function composerHost(properties = {}) {
         uploading: false,
         interrupting: false,
         interruptError: "",
-        fastMode: false,
+        speed: "default",
       },
       voice: {
         phase: "checking",

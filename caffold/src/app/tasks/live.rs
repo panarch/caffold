@@ -384,6 +384,8 @@ mod tests {
     use std::{collections::BTreeSet, time::Duration};
 
     use super::*;
+    use crate::agent::NORMAL_SPEED;
+    use crate::task_store::{SectionComposerSettings, TaskProvider};
     use crate::{
         agent::{Conversation, codex::CodexThreadClient},
         app::tasks::{
@@ -763,11 +765,14 @@ mod tests {
             section_id: "section-placed".to_string(),
             logical_path: "Workspace/placed".to_string(),
             position: 0,
-            last_composer_settings: Some(ComposerSettings {
-                model: Some("gpt-section".to_string()),
-                reasoning_effort: None,
-                fast_mode: false,
-                permission_mode: None,
+            last_composer_settings: Some(SectionComposerSettings {
+                provider: TaskProvider::Codex,
+                settings: ComposerSettings {
+                    model: Some("gpt-section".to_string()),
+                    reasoning_effort: None,
+                    speed: NORMAL_SPEED.to_string(),
+                    permission_mode: None,
+                },
             }),
         });
         events.refresh();
@@ -823,11 +828,14 @@ mod tests {
                 section_id: "section-settings".to_string(),
                 logical_path: "Workspace/settings".to_string(),
                 position: 0,
-                last_composer_settings: Some(ComposerSettings {
-                    model: Some("gpt-section".to_string()),
-                    reasoning_effort: Some("xhigh".to_string()),
-                    fast_mode: true,
-                    permission_mode: None,
+                last_composer_settings: Some(SectionComposerSettings {
+                    provider: TaskProvider::Claude,
+                    settings: ComposerSettings {
+                        model: Some("opus".to_string()),
+                        reasoning_effort: Some("xhigh".to_string()),
+                        speed: "fast".to_string(),
+                        permission_mode: None,
+                    },
                 }),
             });
 
@@ -843,9 +851,10 @@ mod tests {
                 "payload": {
                     "sectionId": "section-settings",
                     "composerSettings": {
-                        "model": "gpt-section",
+                        "provider": "claude",
+                        "model": "opus",
                         "effort": "xhigh",
-                        "fastMode": true,
+                        "speed": "fast",
                     },
                 },
             })

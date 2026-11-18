@@ -98,8 +98,8 @@ use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 use transport::ProxyStream;
 pub(crate) use update::{CodexUpdateOutcome, CodexUpdateReport};
 
-use super::Conversation;
 use super::http_mcp::CAFFOLD_MCP_SERVER_NAME;
+use super::{Conversation, NORMAL_SPEED};
 
 const INTERACTIVE_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const HISTORY_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
@@ -264,7 +264,7 @@ pub(crate) struct CodexThreadStart {
     pub permission_mode: Option<CodexPermissionMode>,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
-    pub fast_mode: bool,
+    pub speed: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -276,7 +276,7 @@ pub(crate) struct CodexThreadFork {
     pub permission_mode: Option<CodexPermissionMode>,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
-    pub fast_mode: bool,
+    pub speed: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -288,13 +288,25 @@ pub(crate) struct CodexTurnOptions {
 }
 
 pub(crate) const NORMAL_SERVICE_TIER_ID: &str = "default";
-pub(crate) const FAST_SERVICE_TIER_ID: &str = "priority";
 
-pub(crate) fn service_tier_for_fast_mode(fast_mode: bool) -> &'static str {
-    if fast_mode {
-        FAST_SERVICE_TIER_ID
-    } else {
+/// The service tier to ask for at a speed, where no model list is at hand.
+///
+/// A faster speed is already Codex's own tier name. With a model list, the
+/// ordinary speed is that model's own default tier instead; see
+/// [`codex_turn_options`].
+pub(crate) fn service_tier_for_speed(speed: &str) -> &str {
+    if speed == NORMAL_SPEED {
         NORMAL_SERVICE_TIER_ID
+    } else {
+        speed
+    }
+}
+
+/// The speed a thread runs at, from the service tier Codex reported for it.
+pub(crate) fn speed_from_service_tier(service_tier: Option<&str>) -> String {
+    match service_tier.map(str::trim) {
+        None | Some("" | NORMAL_SERVICE_TIER_ID) => NORMAL_SPEED.to_string(),
+        Some(tier) => tier.to_string(),
     }
 }
 
@@ -308,10 +320,6 @@ pub(crate) fn codex_permission_mode_name(
     serde_json::to_value(CodexPermissionMode::from_settings(settings))
         .ok()
         .and_then(|value| value.as_str().map(str::to_string))
-}
-
-pub(crate) fn is_fast_service_tier(service_tier: Option<&str>) -> bool {
-    service_tier.is_some_and(|tier| tier.trim().eq_ignore_ascii_case(FAST_SERVICE_TIER_ID))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -977,15 +985,14 @@ impl CodexThreadClient {
             .get("reasoningEffort")
             .and_then(Value::as_str)
             .map(str::to_string);
-        let fast_mode =
-            is_fast_service_tier(typed.extra.get("serviceTier").and_then(Value::as_str));
+        let speed = speed_from_service_tier(typed.extra.get("serviceTier").and_then(Value::as_str));
         Ok(CodexThreadStart {
             thread_id,
             thread: typed.thread,
             permission_mode,
             model,
             reasoning_effort,
-            fast_mode,
+            speed,
         })
     }
 
@@ -1000,7 +1007,7 @@ impl CodexThreadClient {
         &self,
         thread_id: &str,
         name: &str,
-        fast_mode: bool,
+        speed: &str,
     ) -> Result<ThreadResumeResponse, CodexThreadError> {
         let result = async {
             self.set_thread_name(thread_id, name).await?;
@@ -1009,7 +1016,7 @@ impl CodexThreadClient {
                 thread_naming_instructions_params(thread_id),
             )
             .await?;
-            self.initialize_thread_history(thread_id, service_tier_for_fast_mode(fast_mode))
+            self.initialize_thread_history(thread_id, service_tier_for_speed(speed))
                 .await
         }
         .await;
@@ -1160,8 +1167,7 @@ impl CodexThreadClient {
             .get("reasoningEffort")
             .and_then(Value::as_str)
             .map(str::to_string);
-        let fast_mode =
-            is_fast_service_tier(typed.extra.get("serviceTier").and_then(Value::as_str));
+        let speed = speed_from_service_tier(typed.extra.get("serviceTier").and_then(Value::as_str));
         Ok(CodexThreadFork {
             source_thread_id: source_thread_id.to_string(),
             thread_id,
@@ -1169,7 +1175,7 @@ impl CodexThreadClient {
             permission_mode,
             model,
             reasoning_effort,
-            fast_mode,
+            speed,
         })
     }
 
@@ -2016,15 +2022,20 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_current_service_tiers_to_normal_or_fast() {
-        assert!(!is_fast_service_tier(None));
-        assert!(!is_fast_service_tier(Some("")));
-        assert!(!is_fast_service_tier(Some("default")));
-        assert!(!is_fast_service_tier(Some("DEFAULT")));
-        assert!(!is_fast_service_tier(Some("flex")));
-        assert!(!is_fast_service_tier(Some("unknown")));
-        assert!(is_fast_service_tier(Some("priority")));
-        assert!(is_fast_service_tier(Some(" PRIORITY ")));
+    fn reads_a_service_tier_as_the_speed_codex_named() {
+        assert_eq!(speed_from_service_tier(None), NORMAL_SPEED);
+        assert_eq!(speed_from_service_tier(Some("")), NORMAL_SPEED);
+        assert_eq!(speed_from_service_tier(Some("default")), NORMAL_SPEED);
+        assert_eq!(speed_from_service_tier(Some("priority")), "priority");
+        assert_eq!(speed_from_service_tier(Some(" ultrafast ")), "ultrafast");
+        assert_eq!(speed_from_service_tier(Some("flex")), "flex");
+    }
+
+    #[test]
+    fn asks_for_a_speed_under_codexs_name_for_it() {
+        assert_eq!(service_tier_for_speed(NORMAL_SPEED), "default");
+        assert_eq!(service_tier_for_speed("priority"), "priority");
+        assert_eq!(service_tier_for_speed("ultrafast"), "ultrafast");
     }
 
     #[cfg(unix)]
@@ -2600,7 +2611,7 @@ mod tests {
             let id = started.thread_id;
             created = Some(id.clone());
             let initialized = client
-                .initialize_created_thread(&id, "Empty restart test", false)
+                .initialize_created_thread(&id, "Empty restart test", NORMAL_SPEED)
                 .await?;
             assert!(initialized.initial_turns_page.unwrap().data.is_empty());
             client.unsubscribe_thread(&id).await?;
@@ -2714,7 +2725,7 @@ mod tests {
             .await
             .expect("start a Caffold MCP-backed thread");
         client
-            .initialize_created_thread("thread_mcp", "MCP task", false)
+            .initialize_created_thread("thread_mcp", "MCP task", NORMAL_SPEED)
             .await
             .unwrap();
 
@@ -2797,7 +2808,7 @@ mod tests {
             forked.permission_mode,
             Some(CodexPermissionMode::ApproveForMe)
         );
-        assert!(forked.fast_mode);
+        assert_eq!(forked.speed, "priority");
 
         let requests = client.mock_requests().await;
         assert_eq!(requests.len(), 2);

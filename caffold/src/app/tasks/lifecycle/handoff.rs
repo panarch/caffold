@@ -55,7 +55,7 @@ impl TaskLifecycle {
                 }
                 if conversation.cwd != request.cwd {
                     source_driver
-                        .move_working_directory(&source.thread_id, &request.cwd, source.fast_mode)
+                        .move_working_directory(&source.thread_id, &request.cwd, &source.speed)
                         .await?;
                 }
             }

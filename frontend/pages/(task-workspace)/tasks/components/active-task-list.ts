@@ -78,11 +78,13 @@ export const ACTIVE_TASK_LIST_ARCHIVE_SYNC_EVENT =
   "caffold:active-task-list-archive-sync";
 export const ACTIVE_TASK_LIST_STATE_EVENT = "caffold:active-task-list-state";
 
-// What New Task in a Section starts from: what its Tasks last ran under.
+// What New Task in a Section starts from: what its Tasks last ran under, and
+// the agent that ran them.
 export interface SectionComposerSettings {
+  provider: string;
   model: string;
   effort: string;
-  fastMode: boolean;
+  speed: string;
   permissionMode: string;
 }
 
@@ -1962,9 +1964,10 @@ function composerSettings(
 ): SectionComposerSettings | null {
   return settings
     ? {
+        provider: settings.provider,
         model: settings.model ?? "",
         effort: settings.effort ?? "",
-        fastMode: settings.fastMode,
+        speed: settings.speed,
         permissionMode: settings.permissionMode ?? "",
       }
     : null;

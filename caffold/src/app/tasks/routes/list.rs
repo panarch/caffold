@@ -137,6 +137,7 @@ mod tests {
 
     use super::super::test_support::*;
     use super::*;
+    use crate::agent::NORMAL_SPEED;
     use crate::{
         agent,
         app::tasks::{projection::*, test_support::*},
@@ -543,7 +544,7 @@ mod tests {
         let task = task_record_from_conversation(&conversation, &[], resolved.as_ref());
         task_store_claim(
             &state,
-            managed_thread_from_task_record(&task, None, None, false),
+            managed_thread_from_task_record(&task, None, None, NORMAL_SPEED),
         )
         .await
         .unwrap();

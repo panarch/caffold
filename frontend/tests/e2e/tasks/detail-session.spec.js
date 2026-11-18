@@ -100,7 +100,7 @@ test("takes a Task state change without rebuilding the conversation", { tag: "@s
     permissionMode: null,
     model: null,
     reasoningEffort: null,
-    fastMode: false,
+    speed: "default",
     context: { usedTokens: 50_000, windowTokens: 200_000 },
   });
 

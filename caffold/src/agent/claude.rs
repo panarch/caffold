@@ -68,8 +68,8 @@ use self::settings::ASK_EACH_TIME_MODE;
 use self::transcript::BackgroundTaskDelivery;
 use self::translate::ToolCalls;
 use crate::agent::driver::{
-    CancelledPrompt, ClaudeConversation, Driver, ModelOption, PermissionModeOption,
-    PermissionModes, REVIEWED_PERMISSION_MODE, TurnOptions, TurnRejected, bounded,
+    CancelledPrompt, ClaudeConversation, Driver, ModelOption, NORMAL_SPEED, PermissionModeOption,
+    PermissionModes, REVIEWED_PERMISSION_MODE, SpeedOption, TurnOptions, TurnRejected, bounded,
 };
 use crate::agent::{
     ActivityStatus, AgentError, ApprovalDecision, ApprovalDetail, ApprovalRequest, Conversation,
@@ -1526,6 +1526,37 @@ fn claude_permission_mode(mode: Option<&str>) -> Option<&str> {
     }
 }
 
+/// The name Caffold carries Claude's fast mode under.
+///
+/// Claude Code turns fast mode on and off and gives the faster speed no name of
+/// its own, so this one is Caffold's. Only this driver reads it.
+pub(crate) const CLAUDE_FAST_SPEED: &str = "fast";
+
+pub(crate) fn claude_runs_fast(speed: &str) -> bool {
+    speed == CLAUDE_FAST_SPEED
+}
+
+pub(crate) fn claude_speed(fast_mode: bool) -> String {
+    if fast_mode {
+        CLAUDE_FAST_SPEED
+    } else {
+        NORMAL_SPEED
+    }
+    .to_string()
+}
+
+/// The speeds a model offers, from whether it has fast mode.
+fn claude_speeds(supports_fast_mode: bool) -> Vec<SpeedOption> {
+    if !supports_fast_mode {
+        return Vec::new();
+    }
+    vec![SpeedOption {
+        id: CLAUDE_FAST_SPEED.to_string(),
+        name: "Fast".to_string(),
+        description: None,
+    }]
+}
+
 pub(crate) async fn claude_turn_options(
     client: &ClaudeClient,
     options: &TurnOptions,
@@ -1542,7 +1573,8 @@ pub(crate) async fn claude_turn_options(
         // than a depth the model lacks.
         TurnRejected::Model,
     )?;
-    if model.is_none() && effort.is_none() && !options.fast_mode {
+    let fast_mode = claude_runs_fast(&options.speed);
+    if model.is_none() && effort.is_none() && !fast_mode {
         return Ok(ClaudeTurnOptions {
             model,
             effort,
@@ -1577,7 +1609,11 @@ pub(crate) async fn claude_turn_options(
         effort,
         // A model without a faster tier answers a request for speed with its
         // ordinary one, and the person is told what they got.
-        fast_mode: options.fast_mode && selected.supports_fast_mode,
+        fast_mode: fast_mode
+            && selected
+                .speeds
+                .iter()
+                .any(|speed| claude_runs_fast(&speed.id)),
         permission_mode,
     })
 }
@@ -2313,7 +2349,7 @@ mod tests {
                 is_default: true,
                 default_effort: None,
                 efforts: Vec::new(),
-                supports_fast_mode: false,
+                speeds: Vec::new(),
                 supports_auto_mode: true,
             }])
             .await;

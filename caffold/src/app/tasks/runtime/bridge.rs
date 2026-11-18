@@ -152,7 +152,7 @@ impl TaskRuntime {
                         .sessions
                         .restore_managed_composer_settings(
                             &thread_id,
-                            managed.fast_mode,
+                            &managed.speed,
                             managed.permission_mode.as_deref(),
                         )
                         .await;
@@ -349,6 +349,7 @@ mod tests {
     use serde_json::{Value as JsonValue, json};
 
     use super::*;
+    use crate::agent::NORMAL_SPEED;
     use crate::{
         agent::codex::{self, CodexNotification, CodexThreadClient, MockCodexResponse},
         app::tasks::push::PushService,
@@ -967,7 +968,7 @@ mod tests {
                 &ComposerSettings {
                     model: None,
                     reasoning_effort: None,
-                    fast_mode: false,
+                    speed: NORMAL_SPEED.to_string(),
                     permission_mode: Some(REVIEWED_PERMISSION_MODE.to_string()),
                 },
             )

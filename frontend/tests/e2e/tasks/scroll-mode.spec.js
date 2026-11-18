@@ -729,7 +729,7 @@ test("scrolls a mouse-open retained Model popover and closes it with Escape", { 
           isDefault: index === 0,
           defaultEffort: "medium",
           efforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
-          supportsFastMode: true,
+          speeds: [{ id: "priority", name: "Fast", description: null }],
         })),
         unavailable: [],
       },

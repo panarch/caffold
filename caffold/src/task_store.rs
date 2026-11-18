@@ -9,6 +9,8 @@ use gluesql::{
 };
 use thiserror::Error;
 
+use crate::agent::NORMAL_SPEED;
+
 mod managed_section;
 mod managed_thread;
 mod managed_worktree;
@@ -19,7 +21,7 @@ mod push_installation;
 mod push_vapid_key;
 mod schema_migration;
 
-pub(crate) use managed_section::ManagedSection;
+pub(crate) use managed_section::{ManagedSection, SectionComposerSettings};
 pub(crate) use managed_thread::{ManagedThread, RunBy, TaskProvider};
 pub(crate) use managed_worktree::{CheckoutAnchor, ManagedWorktree, ManagedWorktreeState};
 pub(crate) use migration::migrate_to_latest as migrate_task_store;
@@ -29,12 +31,24 @@ pub(crate) use push_installation::{
     PushInstallation, PushInstallationSummary, PushSubscriptionInput,
 };
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ComposerSettings {
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
-    pub fast_mode: bool,
+    /// [`NORMAL_SPEED`], or a faster speed under the agent's own name for it.
+    pub speed: String,
     pub permission_mode: Option<String>,
+}
+
+impl Default for ComposerSettings {
+    fn default() -> Self {
+        Self {
+            model: None,
+            reasoning_effort: None,
+            speed: NORMAL_SPEED.to_string(),
+            permission_mode: None,
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -185,14 +199,15 @@ impl TaskStoreTables<'_> {
     pub(crate) fn update_managed_section_composer_settings(
         &mut self,
         section_id: &str,
+        provider: TaskProvider,
         settings: &ComposerSettings,
     ) -> Result<Option<ManagedSection>> {
         match self {
             Self::Memory(glue) => {
-                managed_section::update_composer_settings(glue, section_id, settings)
+                managed_section::update_composer_settings(glue, section_id, provider, settings)
             }
             Self::Redb(glue) => {
-                managed_section::update_composer_settings(glue, section_id, settings)
+                managed_section::update_composer_settings(glue, section_id, provider, settings)
             }
         }
     }
@@ -1275,14 +1290,14 @@ mod tests {
                     &ComposerSettings {
                         model: Some("gpt-test".to_string()),
                         reasoning_effort: Some("xhigh".to_string()),
-                        fast_mode: true,
+                        speed: "ultrafast".to_string(),
                         permission_mode: None,
                     },
                 )
                 .unwrap()
                 .unwrap();
             assert_eq!(configured.model.as_deref(), Some("gpt-test"));
-            assert!(configured.fast_mode);
+            assert_eq!(configured.speed, "ultrafast");
 
             let section_id = format!("section-{index}");
             let peer_section_id = format!("section-peer-{index}");

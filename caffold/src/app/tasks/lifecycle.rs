@@ -175,7 +175,7 @@ impl TaskLifecycle {
             title_source,
             turn_options,
         } = request;
-        let requested_fast_mode = turn_options.fast_mode;
+        let requested_speed = turn_options.speed.clone();
         let driver = agent.driver();
         // The agent agrees to the options first: a model it never had would
         // otherwise leave a conversation behind before anyone found out.
@@ -202,7 +202,7 @@ impl TaskLifecycle {
         let turns_page = if let Some(connection) = agent.codex() {
             let initialized = connection
                 .client
-                .initialize_created_thread(&conversation_id, &initial_name, requested_fast_mode)
+                .initialize_created_thread(&conversation_id, &initial_name, &requested_speed)
                 .await?;
             started.conversation = Conversation::from(&initialized.thread);
             initialized.initial_turns_page.as_ref().map(TurnPage::from)
@@ -231,7 +231,7 @@ impl TaskLifecycle {
         let settled = TurnOptions {
             model: turn_options.model.clone().or(started.settings.model),
             effort: turn_options.effort.clone().or(started.settings.effort),
-            fast_mode: requested_fast_mode,
+            speed: requested_speed,
             permission_mode: turn_options
                 .permission_mode
                 .clone()
@@ -252,7 +252,7 @@ impl TaskLifecycle {
             agent.run_by(&cwd),
             effective_model.clone(),
             effective_reasoning_effort.clone(),
-            requested_fast_mode,
+            settled.speed.clone(),
             settled.permission_mode.clone(),
         );
         if let Some(source) = &handoff
@@ -288,7 +288,7 @@ impl TaskLifecycle {
                     permission_mode: settled.permission_mode.clone(),
                     model: settled.model.clone(),
                     reasoning_effort: settled.effort.clone(),
-                    fast_mode: settled.fast_mode,
+                    speed: settled.speed.clone(),
                 },
             )
             .await;
@@ -688,7 +688,7 @@ fn managed_thread_from_task_record(
     run_by: RunBy,
     model: Option<String>,
     reasoning_effort: Option<String>,
-    fast_mode: bool,
+    speed: String,
     permission_mode: Option<String>,
 ) -> ManagedThread {
     let mut managed = ManagedThread::new(
@@ -698,7 +698,7 @@ fn managed_thread_from_task_record(
         model,
         reasoning_effort,
     );
-    managed.fast_mode = fast_mode;
+    managed.speed = speed;
     managed.permission_mode = permission_mode;
     managed.last_completed_at_ms = task.last_completed_ms;
     managed
@@ -742,6 +742,7 @@ fn task_store_worker_error(error: tokio::task::JoinError) -> ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::NORMAL_SPEED;
     use crate::agent::codex::CodexThread;
     use crate::task_store;
     use crate::{
@@ -802,7 +803,14 @@ mod tests {
 
         let first_placement = lifecycle
             .claim_at_top(
-                managed_thread_from_task_record(&first, RunBy::Codex, None, None, false, None),
+                managed_thread_from_task_record(
+                    &first,
+                    RunBy::Codex,
+                    None,
+                    None,
+                    NORMAL_SPEED.to_string(),
+                    None,
+                ),
                 &first.title,
                 &first,
             )
@@ -810,7 +818,14 @@ mod tests {
             .unwrap();
         let second_placement = lifecycle
             .claim_at_top(
-                managed_thread_from_task_record(&second, RunBy::Codex, None, None, false, None),
+                managed_thread_from_task_record(
+                    &second,
+                    RunBy::Codex,
+                    None,
+                    None,
+                    NORMAL_SPEED.to_string(),
+                    None,
+                ),
                 &second.title,
                 &second,
             )
@@ -850,7 +865,14 @@ mod tests {
         let second = task(&lifecycle, "thread-second", &second_directory);
         let first_placement = lifecycle
             .claim_at_top(
-                managed_thread_from_task_record(&first, RunBy::Codex, None, None, false, None),
+                managed_thread_from_task_record(
+                    &first,
+                    RunBy::Codex,
+                    None,
+                    None,
+                    NORMAL_SPEED.to_string(),
+                    None,
+                ),
                 &first.title,
                 &first,
             )
@@ -858,7 +880,14 @@ mod tests {
             .unwrap();
         let second_placement = lifecycle
             .claim_at_top(
-                managed_thread_from_task_record(&second, RunBy::Codex, None, None, false, None),
+                managed_thread_from_task_record(
+                    &second,
+                    RunBy::Codex,
+                    None,
+                    None,
+                    NORMAL_SPEED.to_string(),
+                    None,
+                ),
                 &second.title,
                 &second,
             )
@@ -892,7 +921,7 @@ mod tests {
                     RunBy::Codex,
                     None,
                     None,
-                    false,
+                    NORMAL_SPEED.to_string(),
                     None,
                 ),
                 &first_replacement.title,

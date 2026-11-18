@@ -182,7 +182,7 @@ async fn reconnect_active_task(
         if let Some(destination) = plan.destination_for(&conversation.cwd) {
             let destination = rooted_destination(state, destination).await?;
             let conversation = driver
-                .move_working_directory(thread, &destination, managed.fast_mode)
+                .move_working_directory(thread, &destination, &managed.speed)
                 .await?;
             verify_move(thread, &destination, &conversation)?;
             save_directory(state, managed, &destination).await?;
@@ -323,7 +323,7 @@ async fn reconnect_archived_task(
     };
     let destination = rooted_destination(state, destination).await?;
     let conversation = driver
-        .reconnect_archived_directory(&managed.thread_id, &destination, managed.fast_mode)
+        .reconnect_archived_directory(&managed.thread_id, &destination, &managed.speed)
         .await?;
     verify_move(&managed.thread_id, &destination, &conversation)?;
     save_directory(state, managed, &destination).await?;

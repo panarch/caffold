@@ -67,11 +67,11 @@
    one depth shows no depth, and a column held open for it would read as
    padding nobody asked for. */
 .task-model-button.has-effort,
-.task-model-button.is-fast {
+.task-model-button.has-speed {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.task-model-button.has-effort.is-fast {
+.task-model-button.has-effort.has-speed {
   grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
@@ -99,13 +99,13 @@
   white-space: nowrap;
 }
 
-.task-model-fast {
+.task-model-speed {
   display: grid;
   place-items: center;
   color: var(--control-selected-fg);
 }
 
-.task-model-fast-icon {
+.task-model-speed-icon {
   display: block;
   width: 0.75rem;
   height: 0.75rem;

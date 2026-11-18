@@ -23,6 +23,16 @@ after(() => {
 // The lists below keep the shape the agents answer with: Codex offers modes
 // that do not depend on the model, only some Claude models may decide for
 // themselves, and Grok fixes its mode when the conversation starts.
+// Codex names its faster tiers, and only some models have the fastest one;
+// Claude's fast mode carries Caffold's name for it.
+const CODEX_FAST = { id: "priority", name: "Fast", description: "2x speed" };
+const CODEX_ULTRAFAST = {
+  id: "ultrafast",
+  name: "Ultrafast",
+  description: "The fastest available responses",
+};
+const CLAUDE_FAST = { id: "fast", name: "Fast", description: null };
+
 const CATALOG = {
   models: [
     {
@@ -32,7 +42,7 @@ const CATALOG = {
       isDefault: true,
       defaultEffort: "medium",
       efforts: ["low", "medium", "high", "xhigh", "max"],
-      supportsFastMode: true,
+      speeds: [CODEX_FAST],
     },
     {
       provider: "codex",
@@ -41,7 +51,7 @@ const CATALOG = {
       isDefault: false,
       defaultEffort: "low",
       efforts: ["low", "medium", "high", "xhigh"],
-      supportsFastMode: true,
+      speeds: [CODEX_FAST, CODEX_ULTRAFAST],
     },
     {
       provider: "claude",
@@ -50,7 +60,7 @@ const CATALOG = {
       isDefault: false,
       defaultEffort: null,
       efforts: ["low", "medium", "high", "xhigh", "max"],
-      supportsFastMode: true,
+      speeds: [CLAUDE_FAST],
     },
     {
       provider: "claude",
@@ -59,7 +69,7 @@ const CATALOG = {
       isDefault: false,
       defaultEffort: null,
       efforts: [],
-      supportsFastMode: false,
+      speeds: [],
     },
     {
       provider: "grok",
@@ -68,7 +78,7 @@ const CATALOG = {
       isDefault: true,
       defaultEffort: "xhigh",
       efforts: ["low", "medium", "high", "xhigh"],
-      supportsFastMode: false,
+      speeds: [],
     },
   ],
   unavailable: [],
@@ -190,7 +200,7 @@ const NEW_CODEX_MODEL = {
   isDefault: false,
   defaultEffort: "medium",
   efforts: ["low", "medium", "high"],
-  supportsFastMode: false,
+  speeds: [],
 };
 
 const CODEX_SIGN_IN_REQUIRED =
@@ -205,7 +215,7 @@ const SHARED_NAME_CATALOG = {
       isDefault: true,
       defaultEffort: "low",
       efforts: ["low", "high"],
-      supportsFastMode: true,
+      speeds: [CODEX_FAST],
     },
     {
       provider: "claude",
@@ -213,7 +223,7 @@ const SHARED_NAME_CATALOG = {
       displayName: "Claude Shared",
       defaultEffort: "low",
       efforts: ["low", "high"],
-      supportsFastMode: true,
+      speeds: [CLAUDE_FAST],
     },
   ],
   unavailable: [],
@@ -438,20 +448,20 @@ test("a new model uses its own default even when effort names and speed overlap"
   await answerModels(server, SHARED_NAME_CATALOG);
 
   element.selectEffort("high");
-  element.selectFastMode(true);
+  element.selectSpeed("priority");
   element.selectModel("shared", "claude");
   assert.deepEqual(
-    [element.selectedModel().provider, element.selectedEffort(), element.selectedFastMode()],
-    ["claude", "low", false],
+    [element.selectedModel().provider, element.selectedEffort(), element.selectedSpeed()],
+    ["claude", "low", "default"],
   );
   assert.equal(element.browsedProvider, "claude");
 
   element.selectEffort("high");
-  element.selectFastMode(true);
+  element.selectSpeed("fast");
   element.selectModel("shared", "claude");
   assert.deepEqual(
-    [element.selectedEffort(), element.selectedFastMode()],
-    ["high", true],
+    [element.selectedEffort(), element.selectedSpeed()],
+    ["high", "fast"],
     "picking the same model again keeps what was set on it",
   );
 });
@@ -559,8 +569,9 @@ test("an effort must be offered even when an unavailable default is supplied", a
         isDefault: true,
         defaultEffort: "missing",
         efforts: ["low", "high"],
+        speeds: [],
       },
-      { provider: "codex", model: "plain", displayName: "Plain", efforts: [] },
+      { provider: "codex", model: "plain", displayName: "Plain", efforts: [], speeds: [] },
     ],
     unavailable: [],
   });
@@ -719,10 +730,10 @@ test("announces a permission list as it goes out and holds a submission until it
   assert.deepEqual(events.at(-1), {
     model: "gpt-5.6-sol",
     effort: "low",
-    fastMode: false,
+    speed: "default",
     permissionMode: "",
     modelExplicit: true,
-    fastModeExplicit: false,
+    speedExplicit: false,
     permissionExplicit: false,
     ready: false,
   });
@@ -740,7 +751,7 @@ test("a Section's later settings move the picker to the model that agent offers 
     model: "gpt-6-astra",
     provider: "codex",
     effort: "medium",
-    fastMode: false,
+    speed: "default",
     permissionMode: "approveForMe",
   });
 
@@ -748,7 +759,7 @@ test("a Section's later settings move the picker to the model that agent offers 
     initialSelection: {
       model: "opus[1m]",
       effort: "max",
-      fastMode: false,
+      speed: "default",
       permissionMode: "auto",
     },
   });
@@ -758,7 +769,7 @@ test("a Section's later settings move the picker to the model that agent offers 
     model: "opus[1m]",
     provider: "claude",
     effort: "max",
-    fastMode: false,
+    speed: "default",
   });
 
   await answerModes(server);
@@ -767,7 +778,7 @@ test("a Section's later settings move the picker to the model that agent offers 
     model: "opus[1m]",
     provider: "claude",
     effort: "max",
-    fastMode: false,
+    speed: "default",
     permissionMode: "auto",
   });
 });
@@ -815,7 +826,7 @@ test("a person's picks outlast later settings while the settings they left alone
     model: "gpt-6-astra",
     provider: "codex",
     effort: "high",
-    fastMode: false,
+    speed: "default",
     permissionMode: "askForApproval",
   });
   assert.deepEqual(server.asked(), ["codex/gpt-6-astra"]);
@@ -827,54 +838,137 @@ test("a person's picks outlast later settings while the settings they left alone
     model: "gpt-5.6-sol",
     provider: "codex",
     effort: "low",
-    fastMode: false,
+    speed: "default",
     permissionMode: "fullAccess",
   });
 });
 
 test("reasoning and speed follow only the model they were set on", async (t) => {
   const { element, server } = mount({
-    initialSelection: { model: "gpt-5.6-sol", effort: "xhigh", fastMode: true },
+    initialSelection: { model: "gpt-5.6-sol", effort: "xhigh", speed: "ultrafast" },
   });
   t.after(() => server.restore());
   await answerModels(server);
   assert.deepEqual(
-    [element.selectedEffort(), element.selectedFastMode()],
-    ["xhigh", true],
+    [element.selectedEffort(), element.selectedSpeed()],
+    ["xhigh", "ultrafast"],
   );
 
   element.selectModel("gpt-6-astra", "codex");
   assert.deepEqual(
-    [element.selectedEffort(), element.selectedFastMode()],
-    ["medium", false],
+    [element.selectedEffort(), element.selectedSpeed()],
+    ["medium", "default"],
   );
 
   element.selectModel("gpt-5.6-sol", "codex");
   assert.deepEqual(
-    [element.selectedEffort(), element.selectedFastMode()],
-    ["xhigh", true],
+    [element.selectedEffort(), element.selectedSpeed()],
+    ["xhigh", "ultrafast"],
     "the remembered model brings back what was remembered with it",
+  );
+});
+
+test("a model's speeds follow Normal under the agent's names, and the chosen one marks the closed control", async (t) => {
+  const { element, server } = mount({ initialSelection: { model: "gpt-5.6-sol" } });
+  t.after(() => server.restore());
+  await answerModels(server);
+
+  const speeds = (markup) =>
+    [...markup.matchAll(/data-speed="([^"]*)"[^>]*>\s*<span><strong>([^<]*)</g)].map(
+      ([, id, name]) => `${id}:${name}`,
+    );
+  assert.deepEqual(speeds(menuMarkup(element, "model")), [
+    "default:Normal",
+    "priority:Fast",
+    "ultrafast:Ultrafast",
+  ]);
+  assert.equal(drawing(element).model.classes.includes("has-speed"), false);
+
+  element.selectSpeed("ultrafast");
+  const { model } = drawing(element);
+  assert.equal(model.classes.includes("has-speed"), true);
+  assert.equal(model.title, "GPT-5.6-Sol · low · Ultrafast");
+  assert.match(model.content, /<span class="task-model-speed" title="Ultrafast">/);
+  assert.deepEqual(element.submissionOptions().speed, "ultrafast");
+});
+
+test("a speed the model does not offer is shown and sent as Normal", async (t) => {
+  const { element, server } = mount({
+    initialSelection: { model: "gpt-6-astra", speed: "ultrafast" },
+  });
+  t.after(() => server.restore());
+  await answerModels(server);
+  assert.equal(element.selectedSpeed(), "default");
+
+  element.selectSpeed("ultrafast");
+  assert.equal(element.snapshot().speed, "default");
+  element.selectSpeed("priority");
+  assert.equal(element.snapshot().speed, "priority");
+});
+
+test("a Section's remembered agent says whose model a shared name is", async (t) => {
+  const { element, server } = mount({
+    initialSelection: {
+      modelProvider: "claude",
+      model: "shared",
+      effort: "high",
+      speed: "fast",
+    },
+  });
+  t.after(() => server.restore());
+  await answerModels(server, {
+    models: [CATALOG.models[0], ...SHARED_NAME_CATALOG.models.map((model) => ({
+      ...model,
+      isDefault: false,
+    }))],
+    unavailable: [],
+  });
+
+  assert.deepEqual(
+    [
+      element.selectedModel().provider,
+      element.selectedModel().model,
+      element.selectedEffort(),
+      element.selectedSpeed(),
+    ],
+    ["claude", "shared", "high", "fast"],
+  );
+});
+
+test("a remembered agent that offers nothing now leaves the default model in place", async (t) => {
+  const { element, server } = mount({
+    initialSelection: { modelProvider: "grok", model: "grok-4.6", speed: "fast" },
+  });
+  t.after(() => server.restore());
+  await answerModels(server, {
+    models: CATALOG.models.filter((model) => model.provider !== "grok"),
+    unavailable: [{ provider: "grok", message: "Grok is not installed." }],
+  });
+
+  assert.deepEqual(
+    [element.selectedModel().provider, element.selectedModel().model, element.selectedSpeed()],
+    ["codex", "gpt-6-astra", "default"],
   );
 });
 
 test("picking one setting of the model on show keeps the others shown with it", async (t) => {
   const { element, server } = mount({
-    initialSelection: { model: "gpt-5.6-sol", effort: "xhigh", fastMode: false },
+    initialSelection: { model: "gpt-5.6-sol", effort: "xhigh", speed: "default" },
   });
   t.after(() => server.restore());
   await answerModels(server);
 
-  element.selectFastMode(true);
+  element.selectSpeed("ultrafast");
   element.setContext({
-    initialSelection: { model: "gpt-6-astra", effort: "max", fastMode: false },
+    initialSelection: { model: "gpt-6-astra", effort: "max", speed: "default" },
   });
   assert.deepEqual(
     [
       element.selectedModel().model,
       element.selectedEffort(),
-      element.selectedFastMode(),
+      element.selectedSpeed(),
     ],
-    ["gpt-5.6-sol", "xhigh", true],
+    ["gpt-5.6-sol", "xhigh", "ultrafast"],
   );
 });
 
@@ -1150,7 +1244,7 @@ test("a list still on its way when the control is detached is asked for again wh
     model: "grok-4.6",
     provider: "grok",
     effort: "xhigh",
-    fastMode: false,
+    speed: "default",
     permissionMode: "ask",
   });
 });
@@ -1185,17 +1279,17 @@ test("a submission handed over stays as the person's picks until its overrides a
   element.holdSubmissionOptions({
     model: "haiku",
     provider: "claude",
-    fastMode: false,
+    speed: "default",
     permissionMode: "plan",
   });
   await answerModes(server);
   assert.deepEqual(element.snapshot(), {
     model: "haiku",
     effort: "",
-    fastMode: false,
+    speed: "default",
     permissionMode: "plan",
     modelExplicit: true,
-    fastModeExplicit: true,
+    speedExplicit: true,
     permissionExplicit: true,
   });
 
@@ -1205,7 +1299,7 @@ test("a submission handed over stays as the person's picks until its overrides a
     model: "opus[1m]",
     provider: "claude",
     effort: "max",
-    fastMode: false,
+    speed: "default",
     permissionMode: "auto",
   });
 });
@@ -1392,7 +1486,7 @@ function optionControl({
   provider,
   model,
   effort,
-  fastMode,
+  speed,
   permissionMode,
   label,
   disabled = false,
@@ -1403,7 +1497,7 @@ function optionControl({
       ...(provider === undefined ? {} : { provider }),
       ...(model === undefined ? {} : { model }),
       ...(effort === undefined ? {} : { effort }),
-      ...(fastMode === undefined ? {} : { fastMode }),
+      ...(speed === undefined ? {} : { speed }),
       ...(permissionMode === undefined ? {} : { permissionMode }),
     },
     disabled,

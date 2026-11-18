@@ -232,7 +232,10 @@ export const AGENT_MODELS_FIXTURE = {
       isDefault: true,
       defaultEffort: "low",
       efforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
-      supportsFastMode: true,
+      speeds: [
+        { id: "priority", name: "Fast", description: null },
+        { id: "ultrafast", name: "Ultrafast", description: null },
+      ],
     },
   ],
   unavailable: [],

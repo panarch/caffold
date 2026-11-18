@@ -12,7 +12,7 @@ use std::{
 };
 use uuid::Uuid;
 
-use super::{ClaudeClient, ClaudeTurnOptions, session::SessionStart, transcript};
+use super::{ClaudeClient, ClaudeTurnOptions, claude_runs_fast, session::SessionStart, transcript};
 use crate::agent::{
     AgentError, Conversation, ItemKind, ThreadStatus, TurnOptions,
     fork::{ForkRevision, ForkSource, ForkedConversation},
@@ -67,7 +67,7 @@ impl ClaudeClient {
         let options = ClaudeTurnOptions {
             model: options.model.clone(),
             effort: options.effort.clone(),
-            fast_mode: options.fast_mode,
+            fast_mode: claude_runs_fast(&options.speed),
             permission_mode: super::claude_permission_mode(options.permission_mode.as_deref())
                 .map(str::to_string),
         };

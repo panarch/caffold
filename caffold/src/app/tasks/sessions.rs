@@ -52,7 +52,9 @@ use tokio::{sync::Mutex as AsyncMutex, time::Instant};
 use control::SubscriptionTransition;
 
 use super::events::TaskEvents;
-use crate::agent::{ContextUsage, Conversation, Driver, ThreadStatus, TurnPage, TurnState};
+use crate::agent::{
+    ContextUsage, Conversation, Driver, NORMAL_SPEED, ThreadStatus, TurnPage, TurnState,
+};
 
 pub(super) const INITIAL_TURNS_PAGE_SIZE: usize = 8;
 
@@ -91,7 +93,7 @@ pub(in crate::app::tasks) struct SessionSnapshot {
     pub(in crate::app::tasks) permission_mode: Option<String>,
     pub(in crate::app::tasks) model: Option<String>,
     pub(in crate::app::tasks) reasoning_effort: Option<String>,
-    pub(in crate::app::tasks) fast_mode: bool,
+    pub(in crate::app::tasks) speed: String,
     pub(in crate::app::tasks) context: Option<ContextUsage>,
 }
 
@@ -130,12 +132,23 @@ pub(in crate::app::tasks) struct TerminalTurnApplyOutcome {
     pub(in crate::app::tasks) first_current_transition: bool,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::app::tasks) struct ConversationSettings {
     pub(in crate::app::tasks) permission_mode: Option<String>,
     pub(in crate::app::tasks) model: Option<String>,
     pub(in crate::app::tasks) reasoning_effort: Option<String>,
-    pub(in crate::app::tasks) fast_mode: bool,
+    pub(in crate::app::tasks) speed: String,
+}
+
+impl Default for ConversationSettings {
+    fn default() -> Self {
+        Self {
+            permission_mode: None,
+            model: None,
+            reasoning_effort: None,
+            speed: NORMAL_SPEED.to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -293,7 +306,7 @@ struct SessionState {
     permission_mode: Option<String>,
     model: Option<String>,
     reasoning_effort: Option<String>,
-    fast_mode: bool,
+    speed: String,
     /// What the agent last said its context holds, until it says again.
     context: Option<ContextUsage>,
 }
@@ -328,7 +341,7 @@ impl Default for SessionState {
             permission_mode: None,
             model: None,
             reasoning_effort: None,
-            fast_mode: false,
+            speed: NORMAL_SPEED.to_string(),
             context: None,
         }
     }
@@ -505,7 +518,7 @@ fn snapshot(state: &SessionState) -> SessionSnapshot {
         permission_mode: state.permission_mode.clone(),
         model: state.model.clone(),
         reasoning_effort: state.reasoning_effort.clone(),
-        fast_mode: state.fast_mode,
+        speed: state.speed.clone(),
         context: state.context,
     }
 }

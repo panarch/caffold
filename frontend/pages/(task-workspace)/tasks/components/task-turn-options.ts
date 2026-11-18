@@ -32,11 +32,18 @@ import styles from "./task-turn-options.css.js";
 // its conversation; an existing Task or Section supplies its last settings.
 export interface TurnOptionsSelection {
   provider?: string;
+  // The agent `model` belongs to, which a Section remembers with it. Only that
+  // agent's list is searched for the model; it binds nothing.
+  modelProvider?: string;
   model?: string;
   effort?: string;
-  fastMode?: boolean;
+  speed?: string;
   permissionMode?: string;
 }
+
+// The speed a turn runs at when nothing faster was chosen. Every other speed
+// is the agent's own name, offered by the model it belongs to.
+export const NORMAL_SPEED = "default";
 
 // What an owner hands the turn options. `provider` names the agent a Task
 // already belongs to; empty means a Task that does not exist yet, where every
@@ -58,7 +65,7 @@ export interface TurnSubmissionOptions {
   model?: string;
   provider?: string;
   effort?: string;
-  fastMode: boolean;
+  speed: string;
   permissionMode?: string;
 }
 
@@ -67,10 +74,10 @@ export interface TurnSubmissionOptions {
 export interface TurnOptionsSnapshot {
   model: string;
   effort: string;
-  fastMode: boolean;
+  speed: string;
   permissionMode: string;
   modelExplicit: boolean;
-  fastModeExplicit: boolean;
+  speedExplicit: boolean;
   permissionExplicit: boolean;
 }
 
@@ -110,8 +117,13 @@ interface ModelIdentity {
 interface Choice {
   model: ModelIdentity | null;
   effort: string | null;
-  fastMode: boolean | null;
+  speed: string | null;
   permissionMode: string | null;
+}
+
+interface SpeedOption {
+  id: string;
+  name: string;
 }
 
 interface ModelOption extends ModelIdentity {
@@ -119,7 +131,8 @@ interface ModelOption extends ModelIdentity {
   isDefault: boolean;
   defaultReasoningEffort: string;
   supportedReasoningEfforts: string[];
-  supportsFast: boolean;
+  // Beyond NORMAL_SPEED, in the order the agent gave them.
+  speeds: SpeedOption[];
 }
 
 interface UnavailableAgent {
@@ -323,7 +336,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
       // from the name.
       ...(model ? { model: model.model, provider: model.provider } : {}),
       ...(effort ? { effort } : {}),
-      fastMode: this.selectedFastMode(),
+      speed: this.selectedSpeed(),
       ...(permission ? { permissionMode: permission.mode } : {}),
     };
   }
@@ -360,9 +373,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
         model: options.model,
       };
       this.choice.effort = options.effort || null;
-      this.choice.fastMode = Object.hasOwn(options, "fastMode")
-        ? Boolean(options.fastMode)
-        : null;
+      this.choice.speed = options.speed ?? null;
     }
     if (options.permissionMode) {
       this.choice.permissionMode = options.permissionMode;
@@ -370,9 +381,9 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     this.reconcile();
   }
 
-  resetFastMode() {
+  resetSpeed() {
     this.choiceVersion += 1;
-    this.choice.fastMode = null;
+    this.choice.speed = null;
     this.reconcile();
   }
 
@@ -380,10 +391,10 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     return {
       model: this.selectedModel()?.model ?? "",
       effort: this.selectedEffort(),
-      fastMode: this.selectedFastMode(),
+      speed: this.selectedSpeed(),
       permissionMode: this.selectedPermission()?.mode ?? "",
       modelExplicit: this.choice.model !== null,
-      fastModeExplicit: this.choice.fastMode !== null,
+      speedExplicit: this.choice.speed !== null,
       permissionExplicit: this.choice.permissionMode !== null,
     };
   }
@@ -457,7 +468,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
             })}
             type="button"
             class=${buttonClasses("task-model-button", {
-              "is-fast": model.fast,
+              "has-speed": Boolean(model.speed),
               "has-effort": Boolean(model.effort),
               "is-unavailable": model.unavailable,
               "is-deferred": model.deferred,
@@ -622,14 +633,14 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     this.reconcile();
   }
 
-  selectFastMode(fastMode: boolean) {
+  selectSpeed(speed: string) {
     const model = this.selectedModel();
     if (!model) {
       return;
     }
     this.chooseModel(model);
     this.choiceVersion += 1;
-    this.choice.fastMode = fastMode && model.supportsFast;
+    this.choice.speed = offeredSpeed(model, speed);
     hidePopover(this.modelPopover.value);
     this.reconcile();
   }
@@ -698,7 +709,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     const locked = this.context.locked;
     const model = this.selectedModel();
     const effort = this.selectedEffort();
-    const fastMode = this.selectedFastMode();
+    const speed = this.selectedSpeedOption();
     const modelPending = !model && !this.modelLoaded;
     const modelUnavailable = !model && this.modelLoaded;
     const modelName = model?.displayName ?? "Model";
@@ -711,10 +722,10 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
       [
         "model",
         efforts.length ? "reasoning" : "",
-        model?.supportsFast ? "speed" : "",
+        model?.speeds.length ? "speed" : "",
       ].filter(Boolean),
     );
-    const summary = [modelName, effortValue, fastMode ? "Fast" : ""]
+    const summary = [modelName, effortValue, speed?.name ?? ""]
       .filter(Boolean)
       .join(" · ");
 
@@ -740,7 +751,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
         unavailable: modelUnavailable,
         name: compactModelLabel(modelName),
         effort: effortValue,
-        fast: fastMode,
+        speed,
       },
       permission: {
         // Until the model is known its width is not, and a control sitting to
@@ -827,7 +838,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
               ? modelSettings(
                   model,
                   this.selectedEffort(),
-                  this.selectedFastMode(),
+                  this.selectedSpeed(),
                   this.hints,
                 )
               : nothing
@@ -860,8 +871,8 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
       this.selectModel(dataset.model ?? "", dataset.provider);
     } else if (type === "select-effort") {
       this.selectEffort(dataset.effort ?? "");
-    } else if (type === "select-fast-mode") {
-      this.selectFastMode(dataset.fastMode === "true");
+    } else if (type === "select-speed") {
+      this.selectSpeed(dataset.speed ?? NORMAL_SPEED);
     } else if (type === "select-permission") {
       this.selectPermission(dataset.permissionMode ?? "", action);
     }
@@ -909,11 +920,11 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     }
     const shown = this.selectedModel() === model;
     const effort = shown ? this.selectedEffort() : "";
-    const fastMode = shown ? this.selectedFastMode() : null;
+    const speed = shown ? this.selectedSpeed() : null;
     this.choiceVersion += 1;
     this.choice.model = { provider: model.provider, model: model.model };
     this.choice.effort = effort || null;
-    this.choice.fastMode = fastMode;
+    this.choice.speed = speed;
   }
 
   private restorePermissionOptionFocus(
@@ -1097,7 +1108,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     const initial = this.initialModels();
     return (
       offered.find((option) => sameModel(option, this.choice.model)) ??
-      rememberedModel(initial, this.context.initialSelection.model) ??
+      rememberedModel(initial, this.context.initialSelection) ??
       initial.find((option) => option.isDefault) ??
       initial[0] ??
       null
@@ -1121,27 +1132,31 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     );
   }
 
-  private selectedFastMode() {
+  private selectedSpeed() {
     const model = this.selectedModel();
-    if (!model?.supportsFast) {
-      return false;
+    if (!model) {
+      return NORMAL_SPEED;
     }
-    if (sameModel(model, this.choice.model) && this.choice.fastMode !== null) {
-      return this.choice.fastMode;
+    if (sameModel(model, this.choice.model) && this.choice.speed !== null) {
+      return offeredSpeed(model, this.choice.speed);
     }
+    return this.isRememberedModel(model)
+      ? offeredSpeed(model, this.context.initialSelection.speed)
+      : NORMAL_SPEED;
+  }
+
+  private selectedSpeedOption() {
+    const speed = this.selectedSpeed();
     return (
-      this.isRememberedModel(model) &&
-      Boolean(this.context.initialSelection.fastMode)
+      this.selectedModel()?.speeds.find((option) => option.id === speed) ?? null
     );
   }
 
   private isRememberedModel(model: ModelOption | null) {
     return Boolean(
       model &&
-        rememberedModel(
-          this.initialModels(),
-          this.context.initialSelection.model,
-        ) === model,
+        rememberedModel(this.initialModels(), this.context.initialSelection) ===
+          model,
     );
   }
 
@@ -1248,7 +1263,7 @@ function createChoice(): Choice {
   return {
     model: null,
     effort: null,
-    fastMode: null,
+    speed: null,
     permissionMode: null,
   };
 }
@@ -1275,12 +1290,29 @@ function sameModel(
   );
 }
 
-// What a Task or Section remembers names a model but not the agent offering
-// it, so the name counts only when exactly one agent offers a model by it.
-function rememberedModel(offered: ModelOption[], model = "") {
+// What a Task or Section remembers names a model, and a Section also names the
+// agent offering it. Without the agent, the name counts only when exactly one
+// agent offers a model by it.
+function rememberedModel(
+  offered: ModelOption[],
+  { model = "", modelProvider = "" }: TurnOptionsSelection,
+) {
   const name = model.trim();
-  const matches = name ? offered.filter((option) => option.model === name) : [];
+  const agent = modelProvider.trim();
+  const matches = name
+    ? offered.filter(
+        (option) =>
+          option.model === name && (!agent || option.provider === agent),
+      )
+    : [];
   return matches.length === 1 ? matches[0] : null;
+}
+
+// A speed the model offers, or NORMAL_SPEED in its place.
+function offeredSpeed(model: ModelOption, speed = "") {
+  return model.speeds.some((option) => option.id === speed)
+    ? speed
+    : NORMAL_SPEED;
 }
 
 function sameSelection(
@@ -1288,10 +1320,15 @@ function sameSelection(
   right: TurnOptionsSelection,
 ) {
   return (
-    (["provider", "model", "effort", "permissionMode"] as const).every(
-      (key) => (left[key] ?? "") === (right[key] ?? ""),
-    ) && Boolean(left.fastMode) === Boolean(right.fastMode)
-  );
+    [
+      "provider",
+      "modelProvider",
+      "model",
+      "effort",
+      "speed",
+      "permissionMode",
+    ] as const
+  ).every((key) => (left[key] ?? "") === (right[key] ?? ""));
 }
 
 function errorMessage(error: unknown) {
@@ -1316,7 +1353,11 @@ function modelOptions(response: AgentModels): ModelOption[] {
             supportedReasoningEfforts: model.efforts
               .map((effort) => effort.trim())
               .filter(Boolean),
-            supportsFast: model.supportsFastMode,
+            speeds: model.speeds.flatMap((speed) => {
+              const id = speed.id.trim();
+              const name = speed.name.trim();
+              return id && name ? [{ id, name }] : [];
+            }),
           },
         ]
       : [];
@@ -1385,7 +1426,7 @@ function modelSummary(model: {
   unavailable: boolean;
   name: string;
   effort: string;
-  fast: boolean;
+  speed: SpeedOption | null;
 }) {
   if (model.unavailable) {
     return html`<span class="task-model-name">Unavailable</span>`;
@@ -1395,14 +1436,20 @@ function modelSummary(model: {
       ? html`<span class="task-model-effort"> · ${model.effort}</span>`
       : nothing
   }${
-    model.fast
-      ? html`<span class="task-model-fast" title="Fast mode">${inlineIcon(
-          "Zap",
-          "Fast mode",
-          "task-model-fast-icon",
+    model.speed
+      ? html`<span class="task-model-speed" title=${model.speed.name}>${inlineIcon(
+          speedIcon(model.speed.id),
+          model.speed.name,
+          "task-model-speed-icon",
         )}</span>`
       : nothing
   }`;
+}
+
+// Codex names its fastest tier `ultrafast`; every other faster speed is drawn
+// as fast.
+function speedIcon(speed: string) {
+  return speed === "ultrafast" ? "Rocket" : "Zap";
 }
 
 function providerOption(
@@ -1460,11 +1507,11 @@ function modelOption(
 function modelSettings(
   model: ModelOption,
   effort: string,
-  fastMode: boolean,
+  speed: string,
   hints: ActionHints,
 ) {
   const efforts = model.supportedReasoningEfforts;
-  if (!efforts.length && !model.supportsFast) {
+  if (!efforts.length && !model.speeds.length) {
     return nothing;
   }
   return html`<hr>
@@ -1481,12 +1528,16 @@ function modelSettings(
         : nothing
     }
     ${
-      model.supportsFast
+      model.speeds.length
         ? html`<section aria-label="Speed">
             <p>Speed</p>
             <div class="task-model-setting-options">
-              ${fastModeOption(false, fastMode, hints)}
-              ${fastModeOption(true, fastMode, hints)}
+              ${speedOption(NORMAL_SPEED, "Normal", speed, hints)}
+              ${repeat(
+                model.speeds,
+                (option) => option.id,
+                (option) => speedOption(option.id, option.name, speed, hints),
+              )}
             </div>
           </section>`
         : nothing
@@ -1517,26 +1568,27 @@ function reasoningOption(
   </button>`;
 }
 
-function fastModeOption(
-  fastMode: boolean,
-  selectedFastMode: boolean,
+function speedOption(
+  speed: string,
+  name: string,
+  selectedSpeed: string,
   hints: ActionHints,
 ) {
-  const selected = fastMode === selectedFastMode;
+  const selected = speed === selectedSpeed;
   return html`<button
     ${hints.button({
-      id: `speed:${fastMode}`,
-      label: optionLabel(fastMode ? "Fast" : "Normal", selected),
+      id: `speed:${encodeURIComponent(speed)}`,
+      label: optionLabel(name, selected),
       action: ACTION_HINT_ACTION.SPEED_SELECT,
       badgeAtEnd: true,
     })}
     type="button"
     class="task-model-option"
-    data-turn-options-action="select-fast-mode"
-    data-fast-mode=${fastMode ? "true" : "false"}
+    data-turn-options-action="select-speed"
+    data-speed=${speed}
     aria-pressed=${selected ? "true" : "false"}
   >
-    <span><strong>${fastMode ? "Fast" : "Normal"}</strong></span>
+    <span><strong>${name}</strong></span>
     ${selected ? selectedCheck() : nothing}
   </button>`;
 }

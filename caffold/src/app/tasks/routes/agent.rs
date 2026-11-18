@@ -361,9 +361,15 @@ mod tests {
         assert!(codex[0].model.is_default);
         assert!(codex[0].model.efforts.contains(&"xhigh".to_string()));
         assert_eq!(codex[0].model.default_effort.as_deref(), Some("low"));
-        assert!(
-            codex[0].model.supports_fast_mode,
-            "a model with a fast tier says so once, in Caffold's words"
+        assert_eq!(
+            codex[0]
+                .model
+                .speeds
+                .iter()
+                .map(|speed| speed.id.as_str())
+                .collect::<Vec<_>>(),
+            ["priority", "ultrafast"],
+            "a model's faster tiers arrive under Codex's own names, in its order"
         );
     }
 

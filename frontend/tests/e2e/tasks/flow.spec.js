@@ -607,7 +607,7 @@ test("keeps the empty Task and restores its composer when the initial prompt is 
   const scenario = await installTaskLoopFixture(page, { deferInitialPrompt: true });
   const tasksPage = page.locator("caffold-tasks-page");
   await startTaskFromNewSurface(page, scenario, {
-    fastMode: true,
+    speed: "priority",
     permissionMode: "askForApproval",
   });
   await expect(page).toHaveURL(`/tasks/${scenario.threadId}`);
@@ -615,7 +615,7 @@ test("keeps the empty Task and restores its composer when the initial prompt is 
   expect(scenario.initialPromptBody).toMatchObject({
     model: "gpt-5.6-sol",
     effort: "xhigh",
-    fastMode: true,
+    speed: "priority",
     permissionMode: "askForApproval",
   });
 
@@ -636,7 +636,7 @@ test("keeps the empty Task and restores its composer when the initial prompt is 
     "gpt-5.6-sol",
   );
   await expect(composer.locator('input[name="effort"]')).toHaveValue("xhigh");
-  await expect(composer.locator('input[name="fastMode"]')).toHaveValue("true");
+  await expect(composer.locator('input[name="speed"]')).toHaveValue("priority");
   await expect(composer.locator('input[name="permissionMode"]')).toHaveValue(
     "askForApproval",
   );
@@ -651,16 +651,16 @@ test("keeps the empty Task and restores its composer when the initial prompt is 
 async function startTaskFromNewSurface(
   page,
   scenario,
-  { fastMode = false, permissionMode = "" } = {},
+  { speed = "default", permissionMode = "" } = {},
 ) {
   await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
   const composer = page.locator("caffold-tasks-page .task-new-form");
   await expect(composer).toBeVisible();
   await composer.locator(".task-model-button").click();
   await composer.locator('.task-model-popover [data-effort="xhigh"]').click();
-  if (fastMode) {
+  if (speed !== "default") {
     await composer.locator(".task-model-button").click();
-    await composer.locator('[data-fast-mode="true"]').click();
+    await composer.locator(`[data-speed="${speed}"]`).click();
   }
   if (permissionMode) {
     await composer.getByRole("button", { name: "Choose approval mode" }).click();

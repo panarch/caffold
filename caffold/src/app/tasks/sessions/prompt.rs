@@ -173,7 +173,7 @@ impl TaskSessions {
         if options.effort.is_some() {
             state.reasoning_effort = options.effort;
         }
-        state.fast_mode = options.fast_mode;
+        state.speed = options.speed.clone();
         if !already_ended {
             upsert_turn(&mut state.turns_page, turn.clone());
         }

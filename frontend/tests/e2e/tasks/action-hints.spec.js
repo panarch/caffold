@@ -880,7 +880,7 @@ test("keeps same-named models distinct by provider through native selection", { 
             isDefault: true,
             defaultEffort: "medium",
             efforts: ["medium"],
-            supportsFastMode: false,
+            speeds: [],
           },
           {
             provider: "claude",
@@ -889,7 +889,7 @@ test("keeps same-named models distinct by provider through native selection", { 
             isDefault: false,
             defaultEffort: "high",
             efforts: ["high"],
-            supportsFastMode: false,
+            speeds: [],
           },
         ],
         unavailable: [],
@@ -1808,7 +1808,7 @@ function manyAgentModels(count) {
       isDefault: index === 0,
       defaultEffort: "low",
       efforts: ["low"],
-      supportsFastMode: false,
+      speeds: [],
     })),
     unavailable: [],
   };

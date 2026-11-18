@@ -269,7 +269,7 @@ test("keeps the Section composer settings that changed during a read", async () 
     const settings = (model) => ({
       model,
       effort: "high",
-      fastMode: false,
+      speed: "default",
       permissionMode: null,
     });
     const withSettings = (model) => ({

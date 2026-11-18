@@ -96,7 +96,7 @@ pub(super) fn apply_thread_settings(
     if read.effort.is_some() {
         state.reasoning_effort = read.effort;
     }
-    state.fast_mode = read.fast_mode;
+    state.speed = read.speed;
 }
 
 fn merge_external_resume_response(
@@ -427,6 +427,7 @@ fn newer_thread_name(state: &SessionState, base_revision: u64) -> Option<Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::NORMAL_SPEED;
     use crate::agent::antigravity::AntigravityClient;
     use crate::app::tasks::sessions::test_support::*;
 
@@ -674,7 +675,7 @@ mod tests {
         assert_eq!(snapshot.permission_mode, Some("approveForMe".to_string()));
         assert_eq!(snapshot.model.as_deref(), Some("gpt-test"));
         assert_eq!(snapshot.reasoning_effort.as_deref(), Some("xhigh"));
-        assert!(snapshot.fast_mode);
+        assert_eq!(snapshot.speed, "priority");
     }
 
     #[tokio::test]
@@ -692,7 +693,7 @@ mod tests {
             .await
             .expect("subscribe");
 
-        assert!(!snapshot.fast_mode);
+        assert_eq!(snapshot.speed, NORMAL_SPEED);
     }
 
     #[tokio::test]

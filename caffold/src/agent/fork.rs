@@ -100,7 +100,7 @@ impl Driver {
                     settings: TurnOptions {
                         model: child.model,
                         effort: child.reasoning_effort,
-                        fast_mode: child.fast_mode,
+                        speed: child.speed,
                         permission_mode: child.permission_mode.map(codex_mode_id),
                     },
                 })

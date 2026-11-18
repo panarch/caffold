@@ -625,14 +625,15 @@ Section each belongs to, and each Task's list row without an agent RPC or
 persistent write. A pinned Task has no place in its Section's rows but keeps
 its membership, so a Section is listed while it holds any active Task. A
 Section with a recorded composer selection also includes
-that model, reasoning effort, Fast-mode value, and permission mode. Section
+the agent that ran it and that model, reasoning effort, speed, and permission
+mode. Section
 Task Create and Section-owned GitHub Task Start apply that selection, including
 one recorded while they are open, to the model until a person picks the model
 or one of its settings, and to the permission mode until a person picks a mode;
-Global New and Task-owned actions keep their existing defaults. The selection
-does not name the agent, so its model applies only when exactly one offered
-model has that name, and its reasoning effort and Fast-mode value apply only
-with that model; otherwise the model picker applies its normal defaults. Its
+Global New and Task-owned actions keep their existing defaults. Its model
+applies only when its agent offers a model by that name, and its reasoning
+effort and speed apply only with that model; otherwise, including when that
+agent offers no models, the model picker applies its normal defaults. Its
 permission mode follows
 [The Mode a Turn Runs Under](security-and-approvals.md#the-mode-a-turn-runs-under).
 A Section's repository capability is a Git check of its logical path and is
@@ -690,7 +691,8 @@ unpin returns it to the top of its Section. These commands mutate only local
 order, commit the transaction, and then request a fresh Task-list projection;
 they do not call app-server or infer another placement from Codex state.
 
-Upgrading an older Task store at startup does not call app-server either. The
+Upgrading an older Task store at startup does not call app-server or any other
+agent either. The
 startup coordinator applies the local migrations to a staged copy and replaces
 the source only with a fully validated staging database; a store older than the
 [supported start version](../review/backend.md#storage-migration-review) is
@@ -700,7 +702,12 @@ deterministically places Sections without active Tasks afterward. The v7-to-v8
 migration adds nullable Section composer fields without backfilling historical selections; Sections
 begin recording them only after a later turn starts successfully. The v8-to-v9
 migration marks every existing Task as Codex and adds the nullable cwd field
-required by Claude Tasks, without copying Codex-owned cwd state. While the
+required by Claude Tasks, without copying Codex-owned cwd state. The v14-to-v15
+migration keeps a fast Task's speed under its agent's name, `priority` for Codex
+and `fast` for Claude, and every other Task at `default`. It gives a Section's
+recorded selection the agent of the Tasks that use its model; a Section whose
+model no single agent's Tasks use forgets its selection until its next turn
+records one. While the
 store is being prepared, the HTTP server answers `GET /api/task-store/status`
 and the migration retry, and refuses every other request the Tasks app serves,
 agent status included, with 503 `task_store_migration_pending`, or

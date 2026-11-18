@@ -68,7 +68,7 @@ function taskDetail(taskRecord) {
     permissionMode: "approveForMe",
     model: "gpt-test",
     reasoningEffort: "medium",
-    fastMode: false,
+    speed: "default",
   };
 }
 
