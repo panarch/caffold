@@ -635,7 +635,9 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
 
     // The files before and after this one end a diff, a file, a Visual
     // comparison, or a notice about a file. A leaf viewer shows the cards
-    // after its content; a notice shows them under itself.
+    // after its content; a notice shows them under itself. Source and Diff
+    // keep the cards out of their scroll area, so they also take a hidden
+    // copy that holds the cards' room at its end.
     const { previous, next } = this.adjacentFiles;
     const adjacentFiles =
       previous || next
@@ -643,58 +645,15 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
             class="viewer-adjacent-files"
             slot="end"
             aria-label="Changed files"
-          >
-            ${
-              previous
-                ? html`<button
-                    ${this.hints.button({
-                      id: "adjacent:previous",
-                      label: `Previous file ${previous.name}`,
-                      action: ACTION_HINT_ACTION.FILE_OPEN,
-                    })}
-                    type="button"
-                    class="viewer-adjacent-file viewer-adjacent-previous"
-                    data-adjacent-path=${previous.path}
-                    @click=${this.openAdjacent}
-                  >
-                    <span class="viewer-adjacent-caption">${inlineIcon(
-                      "ArrowLeft",
-                      "",
-                      "viewer-adjacent-icon",
-                    )}Previous</span>
-                    <span class="viewer-adjacent-name">${previous.name}</span>
-                    <span class="viewer-adjacent-folder"
-                      ><span dir="ltr">${previous.folder}</span></span
-                    >
-                  </button>`
-                : nothing
-            }
-            ${
-              next
-                ? html`<button
-                    ${this.hints.button({
-                      id: "adjacent:next",
-                      label: `Next file ${next.name}`,
-                      action: ACTION_HINT_ACTION.FILE_OPEN,
-                    })}
-                    type="button"
-                    class="viewer-adjacent-file viewer-adjacent-next"
-                    data-adjacent-path=${next.path}
-                    @click=${this.openAdjacent}
-                  >
-                    <span class="viewer-adjacent-caption">Next${inlineIcon(
-                      "ArrowRight",
-                      "",
-                      "viewer-adjacent-icon",
-                    )}</span>
-                    <span class="viewer-adjacent-name">${next.name}</span>
-                    <span class="viewer-adjacent-folder"
-                      ><span dir="ltr">${next.folder}</span></span
-                    >
-                  </button>`
-                : nothing
-            }
-          </nav>`
+          >${this.adjacentCards(true)}</nav>`
+        : nothing;
+    const adjacentRoom =
+      previous || next
+        ? html`<div
+            class="viewer-adjacent-files"
+            slot="end-room"
+            inert
+          >${this.adjacentCards(false)}</div>`
         : nothing;
     switch (state.status) {
       case "loading":
@@ -763,7 +722,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
               .position=${state.position}
               .wrap=${this.wrap}
               .names=${this.codeNames}
-            >${adjacentFiles}</caffold-diff-viewer>
+            >${adjacentFiles}${adjacentRoom}</caffold-diff-viewer>
           </section>
         `;
       case "visual":
@@ -836,7 +795,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
               .position=${state.position}
               .wrap=${this.wrap}
               .names=${this.codeNames}
-            >${adjacentFiles}</caffold-code-viewer>
+            >${adjacentFiles}${adjacentRoom}</caffold-code-viewer>
           </section>
         `;
     }
@@ -1312,6 +1271,72 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
         { detail: { action: this.state.action } },
       ),
     );
+  }
+
+  // The Previous and Next cards. The copy that holds their room draws the
+  // same cards without their actions.
+  private adjacentCards(actionable: boolean) {
+    const { previous, next } = this.adjacentFiles;
+    return html`
+      ${
+        previous
+          ? html`<button
+              ${
+                actionable
+                  ? this.hints.button({
+                      id: "adjacent:previous",
+                      label: `Previous file ${previous.name}`,
+                      action: ACTION_HINT_ACTION.FILE_OPEN,
+                    })
+                  : nothing
+              }
+              type="button"
+              class="viewer-adjacent-file viewer-adjacent-previous"
+              data-adjacent-path=${previous.path}
+              @click=${actionable ? this.openAdjacent : nothing}
+            >
+              <span class="viewer-adjacent-caption">${inlineIcon(
+                "ArrowLeft",
+                "",
+                "viewer-adjacent-icon",
+              )}Previous</span>
+              <span class="viewer-adjacent-name">${previous.name}</span>
+              <span class="viewer-adjacent-folder"
+                ><span dir="ltr">${previous.folder}</span></span
+              >
+            </button>`
+          : nothing
+      }
+      ${
+        next
+          ? html`<button
+              ${
+                actionable
+                  ? this.hints.button({
+                      id: "adjacent:next",
+                      label: `Next file ${next.name}`,
+                      action: ACTION_HINT_ACTION.FILE_OPEN,
+                    })
+                  : nothing
+              }
+              type="button"
+              class="viewer-adjacent-file viewer-adjacent-next"
+              data-adjacent-path=${next.path}
+              @click=${actionable ? this.openAdjacent : nothing}
+            >
+              <span class="viewer-adjacent-caption">Next${inlineIcon(
+                "ArrowRight",
+                "",
+                "viewer-adjacent-icon",
+              )}</span>
+              <span class="viewer-adjacent-name">${next.name}</span>
+              <span class="viewer-adjacent-folder"
+                ><span dir="ltr">${next.folder}</span></span
+              >
+            </button>`
+          : nothing
+      }
+    `;
   }
 
   private openAdjacent(event: Event) {

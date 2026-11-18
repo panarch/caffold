@@ -83,6 +83,11 @@ for (const theme of ["light", "dark"]) {
       await expect(viewer).toBeVisible();
       await expect(viewer).toContainText("useThemePreference");
       await page.evaluate(() => document.fonts.ready);
+      // A capture finishes CSS animations, and the file cards rise with a
+      // diff's end, so the scene shows the diff at its end.
+      await review.locator("caffold-diff-viewer .diff-lines").evaluate((lines) => {
+        lines.scrollTop = lines.scrollHeight;
+      });
       await captureReviewScreenshot(page, testInfo, `landing-changes-${theme}`);
     });
 

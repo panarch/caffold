@@ -2012,12 +2012,17 @@ A diff, source, a Visual comparison, and a notice that names its file end with
 the files its owner hands over with `setAdjacentFiles`: a Previous and a Next
 card, each naming the file and its folder, whose line stays empty for a file at
 the repository root so every card stands the same height. Code, diff, and
-Visual leaves place them in their `end` slot, after the last line or under the
-pictures; a code or diff leaf's scroll content is a row that takes the rest of
-the viewer's height and a row for the cards, so the cards end a short file at
-the viewer's bottom, and they keep to the viewer's width while the lines scroll
-sideways. The cards keep 0.75rem of space below them, or 1.25rem on a phone
-held upright, which clears the screen's rounded corners. Choosing
+Visual leaves place them in their `end` slot, outside the scroll area, so lines
+scrolling sideways and a touch screen's bounce leave them still. Visual puts
+them under the pictures. A code or diff leaf lays them over its bottom and takes
+a hidden, inert copy of them in its `end-room` slot, the last row of its scroll
+content, which holds their room after the last line and drives a view timeline;
+the cards rise with that room into view through a scroll-driven animation, so
+they end a short file at the viewer's bottom and a long one right after its last
+line, and a card in keyboard focus shows them wherever the code is. Without
+scroll-driven animations the leaf drops the copy and puts the cards in a row
+under the code. The cards keep 0.75rem of space below them, or 1.25rem on a
+phone held upright, which clears the screen's rounded corners. Choosing
 one sends `caffold:file-viewer-open-adjacent` with its path. Integrated Review
 hands over the changed files around one opened from Changes, in the order the
 list shows them, a file in both Working Tree groups counted where it first

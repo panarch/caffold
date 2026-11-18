@@ -2456,7 +2456,7 @@ test("folds the PR file tree into the drawer strip while a diff is open", { tag:
     (buttons) => buttons.map((button) => button.dataset.fileTreePath),
   );
   const other = order.find((path) => !path.endsWith("src/review.rs"));
-  await expect(files.locator(".viewer-adjacent-files")).toContainText(
+  await expect(files.getByRole("navigation", { name: "Changed files" })).toContainText(
     other.split("/").at(-1),
   );
 
