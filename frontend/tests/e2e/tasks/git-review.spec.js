@@ -1206,8 +1206,9 @@ test("ends a compared file and a commit's file with the files around them", { ta
   await expect(compare.locator("caffold-diff-viewer")).toContainText("new compare");
   const compared = await order(compare);
   const at = compared.indexOf("example.rs");
-  const previous = compare.locator(".viewer-adjacent-previous");
-  const next = compare.locator(".viewer-adjacent-next");
+  const cards = compare.getByRole("navigation", { name: "Changed files" });
+  const previous = cards.locator(".viewer-adjacent-previous");
+  const next = cards.locator(".viewer-adjacent-next");
   if (at > 0) {
     await expect(previous).toContainText(name(compared[at - 1]));
   } else {
@@ -1232,7 +1233,7 @@ test("ends a compared file and a commit's file with the files around them", { ta
   await page.goto(`/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}&file=example.rs`);
   await expect(commit.locator("caffold-diff-viewer")).toContainText("new commit");
   const committed = await order(commit);
-  await expect(commit.locator(".viewer-adjacent-files")).toContainText(
+  await expect(commit.getByRole("navigation", { name: "Changed files" })).toContainText(
     name(committed[committed.indexOf("example.rs") > 0 ? committed.indexOf("example.rs") - 1 : 1]),
   );
 });

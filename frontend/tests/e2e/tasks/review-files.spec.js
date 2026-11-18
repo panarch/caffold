@@ -2110,6 +2110,71 @@ test("scrolls a narrow viewer's line numbers away with the code and gives a narr
   expect(result.diff.narrowNumbers.width).toBeLessThan(result.diff.wideNumbers.width);
 });
 
+test("raises a long Source file's adjacent files with its end and keeps them still sideways", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/files");
+
+  const result = await page.evaluate(async () => {
+    await import("/assets/components/file-viewer.js");
+    const drawn = () => new Promise(requestAnimationFrame);
+    const viewer = document.createElement("caffold-review-file-viewer");
+    viewer.style.cssText = "display: block; width: 600px; height: 400px;";
+    document.body.append(viewer);
+    viewer.setAdjacentFiles({
+      previous: { path: "src/a.rs", name: "a.rs", folder: "src" },
+      next: { path: "src/c.rs", name: "c.rs", folder: "src" },
+    });
+    const lines = Array.from({ length: 120 }, (_, index) => `line ${index + 1}`);
+    lines[0] = `const line = "${"wide ".repeat(60)}";`;
+    viewer.setFile({ path: "src/b.rs", content: lines.join("\n") });
+    await drawn();
+    const code = viewer.shadowRoot.querySelector("caffold-code-viewer");
+    const root = code.shadowRoot;
+    const scroller = root.querySelector(".code-lines");
+    // How far the cards sit from the room their hidden copy holds after the
+    // last line, from the last line, and from the viewer's edges.
+    const place = async () => {
+      await drawn();
+      await drawn();
+      const box = (element) => element.getBoundingClientRect();
+      const band = box(root.querySelector("slot[name=end]"));
+      const room = box(root.querySelector("slot[name=end-room]"));
+      const table = box(root.querySelector(".code-table"));
+      const view = box(code);
+      return {
+        belowViewer: band.top >= view.bottom - 1,
+        withRoom: Math.round(band.top - room.top),
+        roomAfterLastLine: Math.round(room.top - table.bottom),
+        atViewerBottom: Math.round(band.bottom - view.bottom),
+        atViewerLeft: Math.round(band.left - view.left),
+        viewerWide: Math.round(band.width - view.width),
+      };
+    };
+
+    const top = await place();
+    const end = scroller.scrollHeight - scroller.clientHeight;
+    scroller.scrollTop = end - Math.round(root.querySelector("slot[name=end-room]").offsetHeight / 2);
+    const halfway = await place();
+    scroller.scrollTop = end;
+    scroller.scrollLeft = scroller.scrollWidth;
+    const sideways = await place();
+    return { top: top.belowViewer, halfway: halfway.withRoom, sideways, scrollLeft: scroller.scrollLeft };
+  });
+
+  expect(result.top).toBe(true);
+  expect(Math.abs(result.halfway)).toBeLessThanOrEqual(1);
+  expect(result.scrollLeft).toBeGreaterThan(0);
+  expect(result.sideways).toEqual({
+    belowViewer: false,
+    withRoom: 0,
+    roomAfterLastLine: 0,
+    atViewerBottom: 0,
+    atViewerLeft: 0,
+    viewerWide: 0,
+  });
+});
+
 test("spaces the file header's choice and buttons as the Detail header spaces its own", { tag: ["@desktop", "@phone"] }, async ({
   page,
 }) => {

@@ -158,8 +158,9 @@ export class CaffoldDiffViewer extends CaffoldElement {
           >
             ${drawnRows}
           </div>
-          <slot name="end"></slot>
+          <slot name="end-room"></slot>
         </div>
+        <slot name="end"></slot>
         ${names ? this.codeNames.menuTemplate() : nothing}
       </section>
     `;

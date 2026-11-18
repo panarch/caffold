@@ -2242,9 +2242,9 @@ test("ends a changed file with the files before and after it in the list's order
   const order = await listed();
   expect(order.length).toBeGreaterThanOrEqual(3);
   const name = (path) => path.split("/").at(-1);
-  const cards = taskReview.locator(".viewer-adjacent-files");
-  const previous = taskReview.locator(".viewer-adjacent-previous");
-  const next = taskReview.locator(".viewer-adjacent-next");
+  const cards = taskReview.getByRole("navigation", { name: "Changed files" });
+  const previous = cards.locator(".viewer-adjacent-previous");
+  const next = cards.locator(".viewer-adjacent-next");
 
   await files.nth(1).click();
   await expect(previous).toContainText(`Previous ${name(order[0])}`);
@@ -2310,8 +2310,9 @@ test("keeps a card for a file at the repository root as tall as one with a folde
   await taskReview
     .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="lib.rs"]')
     .click();
-  const previous = taskReview.locator(".viewer-adjacent-previous");
-  const next = taskReview.locator(".viewer-adjacent-next");
+  const cards = taskReview.getByRole("navigation", { name: "Changed files" });
+  const previous = cards.locator(".viewer-adjacent-previous");
+  const next = cards.locator(".viewer-adjacent-next");
 
   await expect(previous).toContainText("Previous planner.rs");
   await expect(previous.locator(".viewer-adjacent-folder")).toHaveText("tests");
@@ -2332,7 +2333,9 @@ test("stops the adjacent files higher above a phone's bottom edge", { tag: ["@de
   await taskReview
     .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="lib.rs"]')
     .click();
-  const previous = taskReview.locator(".viewer-adjacent-previous");
+  const previous = taskReview
+    .getByRole("navigation", { name: "Changed files" })
+    .locator(".viewer-adjacent-previous");
   await expect(previous).toContainText("Previous planner.rs");
 
   // The short diff ends at the viewer's bottom with the cards.
@@ -2360,12 +2363,61 @@ test("ends a notice about a changed file with the files around it", { tag: "@ser
   await taskReview.getByRole("button", { name: "Source", exact: true }).click();
   await expect(taskReview.locator("caffold-review-file-viewer"))
     .toContainText("This file was deleted in the selected scope.");
-  await expect(taskReview.locator(".viewer-adjacent-files")).toBeVisible();
+  await expect(taskReview.getByRole("navigation", { name: "Changed files" })).toBeVisible();
 });
 
-test("keeps the adjacent files after a long diff's last line and in view sideways", { tag: "@server-steady" }, async ({
+test("raises the adjacent files with a long diff's end and keeps them still sideways", { tag: "@server-steady" }, async ({
   page,
 }) => {
+  const { cards, diffViewer, scrollTo } = await openLongDiff(page);
+  const placement = () => cardsPlacement(diffViewer);
+
+  // At the top the cards wait below the viewer.
+  await expect.poll(async () => {
+    const { band, viewer } = await placement();
+    return band.top >= viewer.bottom - 1;
+  }).toBe(true);
+
+  // Halfway into the room after the last line, they come up with it.
+  const { room } = await placement();
+  await scrollTo({ fromEnd: room.height / 2 });
+  await expect.poll(async () => {
+    const { band, room } = await placement();
+    return Math.abs(band.top - room.top) <= 1;
+  }).toBe(true);
+
+  // At the end they sit right after the last line, at the viewer's bottom,
+  // and a sideways scroll leaves them as wide as the viewer.
+  await scrollTo({ fromEnd: 0, sideways: true });
+  await expect.poll(async () => {
+    const { band, room, table, viewer } = await placement();
+    return [
+      Math.abs(band.top - room.top) <= 1,
+      Math.abs(room.top - table.bottom) <= 1,
+      Math.abs(band.bottom - viewer.bottom) <= 1,
+      Math.abs(band.left - viewer.left) <= 1,
+      Math.abs(band.width - viewer.width) <= 1,
+    ];
+  }).toEqual([true, true, true, true, true]);
+});
+
+test("shows the adjacent files at the viewer's bottom while one has keyboard focus", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const { cards, diffViewer } = await openLongDiff(page);
+  await expect.poll(async () => {
+    const { band, viewer } = await cardsPlacement(diffViewer);
+    return band.top >= viewer.bottom - 1;
+  }).toBe(true);
+
+  await cards.locator(".viewer-adjacent-previous").focus();
+  await expect.poll(async () => {
+    const { band, viewer, scrollTop } = await cardsPlacement(diffViewer);
+    return [Math.abs(band.bottom - viewer.bottom) <= 1, scrollTop];
+  }).toEqual([true, 0]);
+});
+
+async function openLongDiff(page) {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page, {
     configureReview(review) {
       review.workingDiffText = `${"wide ".repeat(60)}\n+${longDiffText("working line")}`;
@@ -2375,33 +2427,44 @@ test("keeps the adjacent files after a long diff's last line and in view sideway
   await taskReview
     .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="planner.rs"]')
     .click();
-  const viewer = taskReview.locator("caffold-review-file-viewer");
-  await expect(viewer).toContainText("working line 200");
-  const cards = taskReview.locator(".viewer-adjacent-files");
-  const lines = taskReview.locator("caffold-diff-viewer .diff-lines");
+  await expect(taskReview.locator("caffold-review-file-viewer")).toContainText("working line 200");
+  const diffViewer = taskReview.locator("caffold-diff-viewer");
+  const lines = diffViewer.locator(".diff-lines");
+  return {
+    cards: taskReview.getByRole("navigation", { name: "Changed files" }),
+    diffViewer,
+    async scrollTo({ fromEnd, sideways = false }) {
+      await lines.evaluate((element, { fromEnd, sideways }) => {
+        element.scrollTop = element.scrollHeight - element.clientHeight - fromEnd;
+        if (sideways) {
+          element.scrollLeft = element.scrollWidth;
+        }
+      }, { fromEnd, sideways });
+    },
+  };
+}
 
-  await lines.evaluate((element) => {
-    element.scrollTop = element.scrollHeight;
-    element.scrollLeft = element.scrollWidth;
-  });
-  await expect.poll(() => lines.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
-  const placement = await lines.evaluate((element) => {
-    const scroller = element.getBoundingClientRect();
-    const table = element.querySelector(".diff-table").getBoundingClientRect();
-    const end = element.querySelector("slot[name=end]").getBoundingClientRect();
+// Where the cards, the room their hidden copy holds after the last line,
+// and the viewer are.
+function cardsPlacement(diffViewer) {
+  return diffViewer.evaluate((element) => {
+    const root = element.shadowRoot;
+    const box = (selector) => {
+      const { top, bottom, left, width, height } = root
+        .querySelector(selector)
+        .getBoundingClientRect();
+      return { top, bottom, left, width, height };
+    };
+    const { top, bottom, left, width } = element.getBoundingClientRect();
     return {
-      afterLastLine: Math.abs(end.top - table.bottom),
-      atScrollerBottom: Math.abs(end.bottom - scroller.bottom),
-      left: Math.abs(end.left - scroller.left),
-      width: Math.abs(end.width - element.clientWidth),
+      band: box("slot[name=end]"),
+      room: box("slot[name=end-room]"),
+      table: box(".diff-table"),
+      viewer: { top, bottom, left, width },
+      scrollTop: root.querySelector(".diff-lines").scrollTop,
     };
   });
-  expect(placement.afterLastLine).toBeLessThanOrEqual(1);
-  expect(placement.atScrollerBottom).toBeLessThanOrEqual(1);
-  expect(placement.left).toBeLessThanOrEqual(1);
-  expect(placement.width).toBeLessThanOrEqual(1);
-  await expect(cards).toBeVisible();
-});
+}
 
 function longDiffText(label) {
   return Array.from({ length: 200 }, (_, index) => `${label} ${index + 1}`).join("\n+");
