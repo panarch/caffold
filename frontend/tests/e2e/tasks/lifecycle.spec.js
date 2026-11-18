@@ -1113,6 +1113,24 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
       ? route.abort("internetdisconnected")
       : route.fulfill({ json: detail() });
   });
+  // Offline, nothing the page asks of the server answers: one answer would
+  // tell the page the server is reachable and end its pause. So while
+  // disconnected every request fails, the three above counting their own, and
+  // the cut waits until no request sent before it is still on its way.
+  const counted = ["/api/task-store/status", "/api/tasks", `/api/tasks/${threadId}`];
+  await page.route(/\/api\//, (route) =>
+    disconnected && !counted.includes(new URL(route.request().url()).pathname)
+      ? route.abort("internetdisconnected")
+      : route.fallback(),
+  );
+  const pending = new Set();
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/")) {
+      pending.add(request);
+    }
+  });
+  page.on("requestfinished", (request) => pending.delete(request));
+  page.on("requestfailed", (request) => pending.delete(request));
 
   await page.goto(`/tasks/${threadId}`);
   const appShell = page.locator("caffold-app-shell");
@@ -1124,6 +1142,7 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
     "Conversation remains useful before connection loss.",
   );
   await composer.fill("Keep the connection-change draft");
+  await expect.poll(() => pending.size).toBe(0);
   const reads = () => ({
     detail: detailReads,
     list: listReads,
