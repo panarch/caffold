@@ -2324,6 +2324,27 @@ test("keeps a card for a file at the repository root as tall as one with a folde
   expect(nextBox.height).toBe(previousBox.height);
 });
 
+test("stops the adjacent files higher above a phone's bottom edge", { tag: ["@desktop", "@phone"] }, async ({
+  page,
+}, testInfo) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await taskReview
+    .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="lib.rs"]')
+    .click();
+  const previous = taskReview.locator(".viewer-adjacent-previous");
+  await expect(previous).toContainText("Previous planner.rs");
+
+  // The short diff ends at the viewer's bottom with the cards.
+  const [previousBox, viewerBox, rootFontSize] = await Promise.all([
+    previous.boundingBox(),
+    taskReview.locator("caffold-diff-viewer").boundingBox(),
+    page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).fontSize)),
+  ]);
+  const space = viewerBox.y + viewerBox.height - (previousBox.y + previousBox.height);
+  expect(space).toBeCloseTo((testInfo.project.name === "phone" ? 1.25 : 0.75) * rootFontSize, 0);
+});
+
 test("ends a notice about a changed file with the files around it", { tag: "@server-steady" }, async ({
   page,
 }) => {

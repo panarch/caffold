@@ -2016,7 +2016,8 @@ Visual leaves place them in their `end` slot, after the last line or under the
 pictures; a code or diff leaf's scroll content is a row that takes the rest of
 the viewer's height and a row for the cards, so the cards end a short file at
 the viewer's bottom, and they keep to the viewer's width while the lines scroll
-sideways. Choosing
+sideways. The cards keep 0.75rem of space below them, or 1.25rem on a phone
+held upright, which clears the screen's rounded corners. Choosing
 one sends `caffold:file-viewer-open-adjacent` with its path. Integrated Review
 hands over the changed files around one opened from Changes, in the order the
 list shows them, a file in both Working Tree groups counted where it first
