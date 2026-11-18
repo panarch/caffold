@@ -36,6 +36,11 @@ Whisper is the provider until you choose another.
 ready, the voice button reads **Set up voice input** and opens
 **Settings → Voice Input** instead.
 
+On an iPhone or iPad, Safari asks again after a short while and whenever
+Caffold reopens. To stop it asking, open the **Settings** app, go to
+**Apps → Safari → Microphone**, and choose **Allow**. This allows the
+microphone for every website in Safari, including Caffold on the Home Screen.
+
 ## Where recordings go
 
 The browser sends each recording to the host. With Whisper it stays there; with

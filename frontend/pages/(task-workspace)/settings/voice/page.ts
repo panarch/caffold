@@ -131,6 +131,11 @@ export class CaffoldSettingsVoicePage extends CaffoldElement {
                 Whisper runs on this host. OpenAI, Gemini, and Grok receive each
                 recording from this Caffold server.
               </p>
+              <p>
+                On an iPhone or iPad, Safari keeps asking for the microphone
+                unless you choose Allow under Apps → Safari → Microphone in the
+                Settings app, which allows it for every website.
+              </p>
             </div>
             <button
               ${this.hints.button({
