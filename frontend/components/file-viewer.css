@@ -640,3 +640,11 @@ dd {
   font-size: var(--interface-meta-font-size);
   direction: rtl;
 }
+
+/* A phone held upright ends the cards at its screen's rounded bottom corners,
+   so they stop higher above the edge there. */
+@media (max-width: 520px) and (orientation: portrait) {
+  .viewer-adjacent-files {
+    padding-bottom: max(var(--interface-space-10), env(safe-area-inset-bottom));
+  }
+}
