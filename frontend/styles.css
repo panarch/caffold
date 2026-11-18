@@ -561,6 +561,10 @@ html {
   overflow: hidden;
   touch-action: manipulation;
   -webkit-tap-highlight-color: var(--tap-highlight-color);
+  /* iOS otherwise enlarges text in landscape and can keep it enlarged after
+     rotating back. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {

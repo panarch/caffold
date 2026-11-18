@@ -149,14 +149,9 @@ test("keyboard hint badges share the code typeface wherever they appear", () => 
   }
 });
 
-test("mobile interaction policies fix the page scale and own viewer text sizing narrowly", () => {
+test("mobile interaction policies fix the page scale", () => {
   const root = readFrontend("styles.css");
   const index = readFrontend("index.html");
-  const codeViewer = readFrontend("components/file-viewer/components/code-viewer.css");
-  const diffViewer = readFrontend("components/file-viewer/components/diff-viewer.css");
-  const markdownPreview = readFrontend(
-    "components/markdown-preview.css",
-  );
 
   assert.match(cssBlock(root, "html {"), /touch-action: manipulation/);
   assert.match(
@@ -164,19 +159,13 @@ test("mobile interaction policies fix the page scale and own viewer text sizing 
     /<meta\s+name="viewport"\s+content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/,
     "The viewport fixes the page scale, so touch devices do not zoom the page",
   );
-  for (const [path, source, selector] of [
-    ["components/file-viewer/components/code-viewer.css", codeViewer, ".code-lines {"],
-    ["components/file-viewer/components/diff-viewer.css", diffViewer, ".diff-lines {"],
-    [
-      "components/markdown-preview.css",
-      markdownPreview,
-      ":host {",
-    ],
-  ]) {
-    const block = cssBlock(source, selector);
-    assert.match(block, /-webkit-text-size-adjust: 100%/i, path);
-    assert.match(block, /(?:^|\n)\s*text-size-adjust: 100%/i, path);
-  }
+});
+
+test("the document root keeps mobile browsers from resizing text", () => {
+  const block = cssBlock(readFrontend("styles.css"), "html {");
+
+  assert.match(block, /-webkit-text-size-adjust: 100%/i);
+  assert.match(block, /(?:^|\n)\s*text-size-adjust: 100%/i);
 });
 
 test("color roles keep neutral chrome, interactions, and semantic feedback separate", () => {

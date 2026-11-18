@@ -796,9 +796,9 @@ Appearance, Keyboard, and Files choices are persisted in browser-local settings
 rather than Task or server state.
 
 On phones and tablets the page keeps one scale: pinching does not zoom it, and
-neither does tapping into a field. Appearance's Interface scale, Conversation
-text, and Code text set the sizes instead. Desktop browsers keep their own page
-zoom.
+neither does tapping into a field. Turning the device does not resize the text.
+Appearance's Interface scale, Conversation text, and Code text set the sizes
+instead. Desktop browsers keep their own page zoom.
 
 Notifications reconcile a browser-owned `PushSubscription` and local
 installation ID with server-owned registration or revocation state. Permission
