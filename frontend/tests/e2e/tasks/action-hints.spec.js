@@ -1714,10 +1714,12 @@ test("keeps badges aligned and legible at appearance and zoom extremes", { tag: 
     })
     .toBe(true);
   const devtools = await context.newCDPSession(page);
+  // A mobile browser holds the page at the viewport's fixed scale.
+  const pageZooms = !testInfo.project.use.isMobile;
 
   for (const scenario of [
     { interfaceScalePercent: 90, pageScaleFactor: 1, themeMode: "light" },
-    { interfaceScalePercent: 120, pageScaleFactor: 1.25, themeMode: "dark" },
+    { interfaceScalePercent: 120, pageScaleFactor: pageZooms ? 1.25 : 1, themeMode: "dark" },
   ]) {
     await page.evaluate(async ({ interfaceScalePercent, themeMode }) => {
       const { setAppearanceRangeSetting, setThemeMode } = await import(

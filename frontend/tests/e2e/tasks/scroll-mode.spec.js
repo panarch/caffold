@@ -1213,10 +1213,12 @@ test("keeps selector and HUD visible at appearance and zoom extremes", { tag: "@
   await openScrollTask(page, detail);
   const devtools = await context.newCDPSession(page);
   const owner = page.locator(".task-workspace-surface");
+  // A mobile browser holds the page at the viewport's fixed scale.
+  const pageZooms = !testInfo.project.use.isMobile;
 
   for (const [index, scenario] of [
     { interfaceScalePercent: 90, pageScaleFactor: 1, themeMode: "light" },
-    { interfaceScalePercent: 120, pageScaleFactor: 1.25, themeMode: "dark" },
+    { interfaceScalePercent: 120, pageScaleFactor: pageZooms ? 1.25 : 1, themeMode: "dark" },
   ].entries()) {
     await page.evaluate(async ({ interfaceScalePercent, themeMode }) => {
       const { setAppearanceRangeSetting, setThemeMode } = await import(
@@ -1274,7 +1276,7 @@ test("keeps selector and HUD visible at appearance and zoom extremes", { tag: "@
       expect(selectorVisual.outlineWidth).toBeGreaterThanOrEqual(2);
     }
 
-    if (index === 0) {
+    if (index === 0 && pageZooms) {
       await devtools.send("Emulation.setPageScaleFactor", {
         pageScaleFactor: 1.1,
       });
