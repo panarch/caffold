@@ -204,7 +204,7 @@ impl TaskRuntime {
                             .sessions
                             .restore_managed_composer_settings(
                                 &managed.thread_id,
-                                managed.fast_mode,
+                                &managed.speed,
                                 managed.permission_mode.as_deref(),
                             )
                             .await;
@@ -1140,7 +1140,7 @@ mod tests {
         assert!(answered.get("isError").is_none(), "{answered}");
         assert_eq!(
             answered["content"][0]["text"],
-            r#"{"agent":"claude","model":"opus[1m]","reasoningEffort":"xhigh","fastMode":false,"permissionMode":"auto"}"#
+            r#"{"agent":"claude","model":"opus[1m]","reasoningEffort":"xhigh","speed":"default","permissionMode":"auto"}"#
         );
 
         state
@@ -1151,7 +1151,7 @@ mod tests {
                     &ComposerSettings {
                         model: Some("sonnet".to_string()),
                         reasoning_effort: None,
-                        fast_mode: true,
+                        speed: "fast".to_string(),
                         permission_mode: Some("caffold:ask-jev-first".to_string()),
                     },
                 )
@@ -1161,7 +1161,7 @@ mod tests {
         let answered = call_answered(&runner, 22).await;
         assert_eq!(
             answered["content"][0]["text"],
-            r#"{"agent":"claude","model":"sonnet","reasoningEffort":null,"fastMode":true,"permissionMode":"caffold:ask-jev-first"}"#
+            r#"{"agent":"claude","model":"sonnet","reasoningEffort":null,"speed":"fast","permissionMode":"caffold:ask-jev-first"}"#
         );
     }
 

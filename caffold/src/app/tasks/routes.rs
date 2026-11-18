@@ -76,7 +76,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
 use crate::{
-    agent::{ConversationItem, TurnOptions, TurnState, codex::CodexStatusResponse},
+    agent::{ConversationItem, NORMAL_SPEED, TurnOptions, TurnState, codex::CodexStatusResponse},
     app::tasks::sessions::SessionsDiagnostics,
 };
 
@@ -126,8 +126,8 @@ struct CreateTaskRequest {
     provider: Option<String>,
     model: Option<String>,
     effort: Option<String>,
-    #[serde(default)]
-    fast_mode: bool,
+    #[serde(default = "normal_speed")]
+    speed: String,
     permission_mode: Option<String>,
 }
 
@@ -141,10 +141,15 @@ struct TaskPromptRequest {
     image_paths: Vec<String>,
     model: Option<String>,
     effort: Option<String>,
-    #[serde(default)]
-    fast_mode: bool,
+    #[serde(default = "normal_speed")]
+    speed: String,
     permission_mode: Option<String>,
     active_turn_id: Option<String>,
+}
+
+/// A request that names no speed asks for the ordinary one.
+fn normal_speed() -> String {
+    NORMAL_SPEED.to_string()
 }
 
 #[derive(Debug, Serialize)]
@@ -419,7 +424,7 @@ pub(super) async fn test_task_stream(
 pub(super) async fn test_claim_task(state: &TaskState, task: &TaskRecord) -> Result<(), ApiError> {
     task_store_claim(
         state,
-        managed_thread_from_task_record(task, None, None, false),
+        managed_thread_from_task_record(task, None, None, NORMAL_SPEED),
     )
     .await
     .map(|_| ())
@@ -439,7 +444,7 @@ pub(super) async fn test_store_update_composer_settings(
     thread_id: &str,
     model: Option<&str>,
     reasoning_effort: Option<&str>,
-    fast_mode: bool,
+    speed: &str,
     permission_mode: Option<&str>,
 ) -> Result<Option<ManagedThread>, ApiError> {
     task_store_update_composer_settings(
@@ -447,7 +452,7 @@ pub(super) async fn test_store_update_composer_settings(
         thread_id,
         model,
         reasoning_effort,
-        fast_mode,
+        speed,
         permission_mode,
     )
     .await
@@ -605,11 +610,18 @@ pub(super) mod test_support {
                         { "reasoningEffort": "ultra", "description": "Automatic delegation" }
                     ],
                     "defaultReasoningEffort": "low",
-                    "serviceTiers": [{
-                        "id": "priority",
-                        "name": "Fast",
-                        "description": "1.5x speed, increased usage"
-                    }],
+                    "serviceTiers": [
+                        {
+                            "id": "priority",
+                            "name": "Fast",
+                            "description": "1.5x speed, increased usage"
+                        },
+                        {
+                            "id": "ultrafast",
+                            "name": "Ultrafast",
+                            "description": "The fastest available responses for latency-sensitive work."
+                        }
+                    ],
                     "defaultServiceTier": null,
                     "inputModalities": ["text", "image"],
                     "supportsPersonality": false,

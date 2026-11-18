@@ -1394,7 +1394,7 @@ test("mixed surfaces keep content and controls on separate axes", () => {
   );
   assert.match(
     turnOptions,
-    /\.task-model-button\.is-fast \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto auto;/,
+    /\.task-model-button\.has-speed \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto auto;/,
   );
   assert.doesNotMatch(turnOptions, /\.task-(?:model-(?:icon|caret)|permission-caret)/);
   // The permission shield never sits beside its label: it stands in for the
@@ -1422,7 +1422,7 @@ test("mixed surfaces keep content and controls on separate axes", () => {
   );
   assert.match(
     turnOptions,
-    /\.task-model-fast-icon \{[\s\S]*width: 0\.75rem;[\s\S]*height: 0\.75rem;[\s\S]*fill: currentColor;[\s\S]*stroke-width: 2;/,
+    /\.task-model-speed-icon \{[\s\S]*width: 0\.75rem;[\s\S]*height: 0\.75rem;[\s\S]*fill: currentColor;[\s\S]*stroke-width: 2;/,
   );
 
   const approval = readFrontend(

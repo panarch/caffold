@@ -49,7 +49,7 @@ function taskDetail(task, text, revision, nextCursor = null) {
     permissionMode: "approveForMe",
     model: "gpt-test",
     reasoningEffort: "xhigh",
-    fastMode: true,
+    speed: "priority",
   };
 }
 
@@ -174,7 +174,7 @@ test("uses one SSE snapshot for initial detail, reconnect, and cursor history", 
     .poll(() =>
       tasksPage.locator("caffold-task-detail").evaluate((detail) => ({
         cursor: detail.eventsPage?.nextCursor,
-        fastMode: detail.currentDetail()?.fastMode,
+        speed: detail.currentDetail()?.speed,
         model: detail.currentDetail()?.model,
         permissionMode: detail.currentDetail()?.permissionMode,
         reasoningEffort: detail.currentDetail()?.reasoningEffort,
@@ -182,7 +182,7 @@ test("uses one SSE snapshot for initial detail, reconnect, and cursor history", 
     )
     .toEqual({
       cursor: "older-cursor",
-      fastMode: true,
+      speed: "priority",
       model: "gpt-test",
       permissionMode: "approveForMe",
       reasoningEffort: "xhigh",

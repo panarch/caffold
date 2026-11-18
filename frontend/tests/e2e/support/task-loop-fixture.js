@@ -835,7 +835,7 @@ export async function installTaskLoopFixture(
             model: "gpt-5.6-sol",
             effort: "xhigh",
             permissionMode: "approveForMe",
-            fastMode: false,
+            speed: "default",
             activeTurnId: null,
             imagePaths: [path],
           }),

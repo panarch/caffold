@@ -12,7 +12,7 @@ export const AGENT_CATALOG = {
       isDefault: true,
       defaultEffort: "medium",
       efforts: ["low", "medium", "high", "xhigh", "max"],
-      supportsFastMode: true,
+      speeds: [{ id: "priority", name: "Fast", description: null }],
       supportsAutoMode: false,
     },
     {
@@ -23,7 +23,10 @@ export const AGENT_CATALOG = {
       isDefault: false,
       defaultEffort: "low",
       efforts: ["low", "medium", "high", "xhigh"],
-      supportsFastMode: true,
+      speeds: [
+        { id: "priority", name: "Fast", description: null },
+        { id: "ultrafast", name: "Ultrafast", description: null },
+      ],
       supportsAutoMode: false,
     },
     {
@@ -34,7 +37,7 @@ export const AGENT_CATALOG = {
       isDefault: false,
       defaultEffort: null,
       efforts: ["low", "medium", "high", "xhigh", "max"],
-      supportsFastMode: false,
+      speeds: [],
       supportsAutoMode: true,
     },
     {
@@ -45,7 +48,7 @@ export const AGENT_CATALOG = {
       isDefault: false,
       defaultEffort: null,
       efforts: [],
-      supportsFastMode: false,
+      speeds: [],
       supportsAutoMode: false,
     },
     {
@@ -56,7 +59,7 @@ export const AGENT_CATALOG = {
       isDefault: true,
       defaultEffort: "xhigh",
       efforts: ["low", "medium", "high", "xhigh"],
-      supportsFastMode: false,
+      speeds: [],
       supportsAutoMode: true,
     },
   ],

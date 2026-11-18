@@ -509,7 +509,7 @@ export async function handoffTask(
     provider?: string;
     model?: string;
     effort?: string;
-    fastMode?: boolean;
+    speed?: string;
     permissionMode?: string;
   },
 ) {
@@ -1609,6 +1609,12 @@ export interface LineChanges {
 }
 
 // The models the agents offer, and the agents that could not be asked.
+export interface AgentSpeed {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
 export interface AgentModels {
   models: AgentModel[];
   unavailable: Array<{ provider: string; message: string }>;
@@ -1621,7 +1627,8 @@ export interface AgentModel {
   isDefault: boolean;
   defaultEffort: string | null;
   efforts: string[];
-  supportsFastMode: boolean;
+  // The speeds the model offers beyond `default`, in the agent's own words.
+  speeds: AgentSpeed[];
 }
 
 // The ways an agent lets a model work in a directory, as the agent offers
@@ -1922,11 +1929,12 @@ export interface ActiveTaskRecovery extends ActiveTask {
   };
 }
 
-// What a Section's Tasks last ran under.
+// What a Section's Tasks last ran under, and which agent ran them.
 export interface ActiveTaskComposerSettings {
+  provider: string;
   model: string | null;
   effort: string | null;
-  fastMode: boolean;
+  speed: string;
   permissionMode?: string;
 }
 
@@ -2029,7 +2037,7 @@ export interface TaskDetail {
   provider?: string;
   model?: string;
   reasoningEffort?: string;
-  fastMode?: boolean;
+  speed?: string;
   permissionMode?: string;
   context?: TaskContextUsage | null;
 }

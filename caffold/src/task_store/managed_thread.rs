@@ -1,4 +1,4 @@
-use super::{ComposerSettings, Result, TaskStoreError};
+use super::{ComposerSettings, NORMAL_SPEED, Result, TaskStoreError};
 use chrono::{DateTime, NaiveDateTime, Utc};
 #[cfg(test)]
 use gluesql::core::data::Schema;
@@ -34,6 +34,17 @@ pub(crate) enum TaskProvider {
 }
 
 impl TaskProvider {
+    /// The agent a stored name says, or none for a name no agent here has.
+    pub(super) fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "codex" => Some(Self::Codex),
+            "claude" => Some(Self::Claude),
+            "grok" => Some(Self::Grok),
+            "antigravity" => Some(Self::Antigravity),
+            _ => None,
+        }
+    }
+
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Codex => "codex",
@@ -260,7 +271,6 @@ const COLUMN_DEFINITIONS: &[&str] = &[
     "last_completed_at TIMESTAMP NULL",
     "model TEXT NULL",
     "reasoning_effort TEXT NULL",
-    "fast_mode BOOLEAN NOT NULL DEFAULT FALSE",
     "display_name TEXT",
     "section_id TEXT NULL",
     "position_in_section INTEGER NULL",
@@ -270,6 +280,7 @@ const COLUMN_DEFINITIONS: &[&str] = &[
     "permission_instructions TEXT NULL",
     "pin_position INTEGER NULL",
     "claude_config_dir TEXT NULL",
+    "speed TEXT NOT NULL DEFAULT 'default'",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -290,7 +301,8 @@ pub(crate) struct ManagedThread {
     pub last_completed_at_ms: Option<u64>,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
-    pub fast_mode: bool,
+    /// [`NORMAL_SPEED`], or a faster speed under the agent's own name for it.
+    pub speed: String,
     pub permission_mode: Option<String>,
 }
 
@@ -316,7 +328,7 @@ impl ManagedThread {
             last_completed_at_ms: None,
             model,
             reasoning_effort,
-            fast_mode: false,
+            speed: NORMAL_SPEED.to_string(),
             permission_mode: None,
         }
     }
@@ -360,7 +372,7 @@ impl ManagedThread {
         ComposerSettings {
             model: self.model.clone(),
             reasoning_effort: self.reasoning_effort.clone(),
-            fast_mode: self.fast_mode,
+            speed: self.speed.clone(),
             permission_mode: self.permission_mode.clone(),
         }
     }
@@ -377,7 +389,7 @@ pub(super) struct ManagedThreadRow {
     pub last_completed_at: Option<NaiveDateTime>,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
-    pub fast_mode: bool,
+    pub speed: String,
     pub permission_mode: Option<String>,
     /// What this Task's own prompts have settled, oldest first.
     ///
@@ -428,7 +440,7 @@ impl TryFrom<&ManagedThread> for ManagedThreadRow {
             )?,
             model: thread.model.clone(),
             reasoning_effort: thread.reasoning_effort.clone(),
-            fast_mode: thread.fast_mode,
+            speed: thread.speed.clone(),
             permission_mode: thread.permission_mode.clone(),
             // A Task permits nothing of its own when it is first written,
             // and every later whole-thread write names the fields it changes.
@@ -468,7 +480,7 @@ impl TryFrom<ManagedThreadRow> for ManagedThread {
             )?,
             model: row.model,
             reasoning_effort: row.reasoning_effort,
-            fast_mode: row.fast_mode,
+            speed: row.speed,
             permission_mode: row.permission_mode,
         })
     }
@@ -546,7 +558,7 @@ where
         if thread.reasoning_effort.is_none() {
             thread.reasoning_effort = existing.reasoning_effort;
         }
-        thread.fast_mode = existing.fast_mode;
+        thread.speed = existing.speed;
         if thread.permission_mode.is_none() {
             thread.permission_mode = existing.permission_mode;
         }
@@ -895,7 +907,7 @@ where
             "reasoning_effort",
             optional_text(settings.reasoning_effort.as_deref()),
         )
-        .set("fast_mode", glue_value(Value::Bool(settings.fast_mode)));
+        .set("speed", text(settings.speed.clone()));
     if let Some(permission_mode) = settings.permission_mode.as_deref() {
         query = query.set("permission_mode", optional_text(Some(permission_mode)));
     }
@@ -1214,7 +1226,7 @@ where
             "reasoning_effort",
             optional_text(row.reasoning_effort.as_deref()),
         )
-        .set("fast_mode", glue_value(Value::Bool(row.fast_mode)))
+        .set("speed", text(row.speed.clone()))
         .execute(glue)?;
     Ok(())
 }
@@ -1954,7 +1966,7 @@ mod tests {
             last_completed_at_ms: Some(150),
             model: Some("gpt-test".to_string()),
             reasoning_effort: Some("xhigh".to_string()),
-            fast_mode: true,
+            speed: "priority".to_string(),
             permission_mode: Some("autoMode".to_string()),
         };
 
@@ -2141,7 +2153,7 @@ mod tests {
             &ComposerSettings {
                 model: Some("gpt-test".to_string()),
                 reasoning_effort: Some("xhigh".to_string()),
-                fast_mode: true,
+                speed: "ultrafast".to_string(),
                 permission_mode: None,
             },
         )
@@ -2153,7 +2165,7 @@ mod tests {
         assert_eq!(refreshed.last_seen_activity_ms, None);
         assert_eq!(refreshed.model.as_deref(), Some("gpt-test"));
         assert_eq!(refreshed.reasoning_effort.as_deref(), Some("xhigh"));
-        assert!(refreshed.fast_mode);
+        assert_eq!(refreshed.speed, "ultrafast");
         assert!(!refreshed.unseen());
 
         let completed = update_completed_at(&mut glue, "task", 45).unwrap().unwrap();

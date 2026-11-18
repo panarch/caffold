@@ -97,7 +97,7 @@ export async function installTaskApiFixture(page, overrides = {}) {
             isDefault: true,
             defaultEffort: "medium",
             efforts: ["medium", "xhigh"],
-            supportsFastMode: true,
+            speeds: [{ id: "priority", name: "Fast", description: null }],
           },
         ],
         unavailable: [],
@@ -130,7 +130,7 @@ export function taskDetailFixture({
   running = false,
   model = null,
   reasoningEffort = null,
-  fastMode = false,
+  speed = "default",
 } = {}) {
   return {
     provider: "codex",
@@ -164,7 +164,7 @@ export function taskDetailFixture({
     permissionMode: "approveForMe",
     model,
     reasoningEffort,
-    fastMode,
+    speed,
   };
 }
 

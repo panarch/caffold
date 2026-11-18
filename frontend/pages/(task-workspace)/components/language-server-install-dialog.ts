@@ -275,7 +275,7 @@ export class CaffoldLanguageServerInstallDialog extends CaffoldElement {
         return;
       }
       this.pending = false;
-      this.turnOptions.value?.resetFastMode();
+      this.turnOptions.value?.resetSpeed();
       this.dialog.value?.close("started");
     } catch (error) {
       if (requestId !== this.createRequestId) {
@@ -390,14 +390,15 @@ function normalizeComposerSettings(
   if (!settings || typeof settings !== "object") {
     return null;
   }
-  const { model, effort, fastMode, permissionMode } = settings as Record<
+  const { provider, model, effort, speed, permissionMode } = settings as Record<
     string,
     unknown
   >;
   return {
+    modelProvider: `${provider ?? ""}`,
     model: `${model ?? ""}`,
     effort: `${effort ?? ""}`,
-    fastMode: Boolean(fastMode),
+    speed: `${speed ?? ""}`,
     permissionMode: `${permissionMode ?? ""}`,
   };
 }

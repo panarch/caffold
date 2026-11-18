@@ -110,7 +110,7 @@ fn read_current_task_name_tool() -> McpToolSpec {
 pub(in crate::agent) fn read_current_task_agent_settings_tool() -> McpToolSpec {
     McpToolSpec {
         name: READ_CURRENT_TASK_AGENT_SETTINGS_TOOL_NAME,
-        description: "Read which agent runs the current Caffold task and the settings Caffold started the task's latest turn with: the model, the reasoning effort, whether fast mode was on, and the permission mode. Each value is the choice exactly as Caffold recorded it, under the agent's own name for it except Caffold's own `caffold:ask-jev-first` permission mode, so a model can be an alias such as `opus` rather than an exact version. A null value means Caffold has no record of that setting, so the agent's own default applied. Caffold does not ask the agent, and a setting changed after the turn started is not reflected. The result is JSON.",
+        description: "Read which agent runs the current Caffold task and the settings Caffold started the task's latest turn with: the model, the reasoning effort, the speed, and the permission mode. Each value is the choice exactly as Caffold recorded it, under the agent's own name for it except Caffold's own `caffold:ask-jev-first` permission mode and `default` speed, so a model can be an alias such as `opus` rather than an exact version and a faster speed reads as the agent names it, such as Codex's `priority` or `ultrafast`. A null value means Caffold has no record of that setting, so the agent's own default applied. Caffold does not ask the agent, and a setting changed after the turn started is not reflected. The result is JSON.",
         input_schema: json!({
             "type": "object",
             "additionalProperties": false,

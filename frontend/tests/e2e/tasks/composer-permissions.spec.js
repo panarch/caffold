@@ -27,7 +27,7 @@ const CLAUDE_MODELS = [
     isDefault: true,
     defaultEffort: "high",
     efforts: ["high"],
-    supportsFastMode: false,
+    speeds: [],
   },
   {
     provider: "claude",
@@ -37,7 +37,7 @@ const CLAUDE_MODELS = [
     isDefault: false,
     defaultEffort: null,
     efforts: [],
-    supportsFastMode: false,
+    speeds: [],
   },
 ];
 
@@ -82,7 +82,7 @@ const GROK_MODELS = [
     isDefault: true,
     defaultEffort: "xhigh",
     efforts: ["low", "medium", "high", "xhigh"],
-    supportsFastMode: false,
+    speeds: [],
   },
 ];
 
@@ -357,7 +357,7 @@ test("an untouched approval mode is the mode a new task starts under", { tag: "@
 
   await expect.poll(() => created.body).not.toBeNull();
   expect(created.body).toMatchObject({ permissionMode: "approveForMe" });
-  expect(created.body.fastMode).toBe(false);
+  expect(created.body.speed).toBe("default");
 });
 
 test("explicit approval mode is sent with a new task prompt", { tag: "@server-steady" }, async ({ page }) => {
@@ -425,7 +425,7 @@ test("new tasks start in Normal mode and submit an explicit Fast choice", { tag:
   await page.route("**/api/tasks", (route) => {
     if (route.request().method() === "POST") {
       submittedBody = route.request().postDataJSON();
-      return route.fulfill({ json: createdTaskFixture({ fastMode: true }) });
+      return route.fulfill({ json: createdTaskFixture({ speed: "priority" }) });
     }
     return route.fulfill({ json: activeTaskProjection() });
   });
@@ -444,9 +444,9 @@ test("new tasks start in Normal mode and submit an explicit Fast choice", { tag:
   await page.goto("/tasks/new?cwd=src");
   const form = page.locator('.task-new-form[data-task-form="create"]');
   const modelPicker = form.getByRole("button", { name: /Choose model/ });
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
-  await expect(form.locator(".task-model-fast")).toHaveCount(0);
-  await expect(modelPicker).not.toHaveClass(/\bis-fast\b/);
+  await expect(form.locator('input[name="speed"]')).toHaveValue("default");
+  await expect(form.locator(".task-model-speed")).toHaveCount(0);
+  await expect(modelPicker).not.toHaveClass(/\bhas-speed\b/);
   const normalGridColumns = await modelPicker.evaluate(
     (button) => getComputedStyle(button).gridTemplateColumns.split(" ").length,
   );
@@ -457,7 +457,7 @@ test("new tasks start in Normal mode and submit an explicit Fast choice", { tag:
     name: "Model, reasoning, and speed options",
   });
   await expect(modelMenu.getByText("Speed", { exact: true })).toBeVisible();
-  const normalOption = modelMenu.locator('[data-fast-mode="false"]');
+  const normalOption = modelMenu.locator('[data-speed="default"]');
   await expect(normalOption.locator(".task-model-check")).toBeVisible();
   const normalOptionMetrics = await normalOption.evaluate((option) => {
     const rootStyle = getComputedStyle(document.documentElement);
@@ -474,19 +474,19 @@ test("new tasks start in Normal mode and submit an explicit Fast choice", { tag:
   });
   expect(normalOptionMetrics.fontWeight).toBe("600");
   expect(normalOptionMetrics.heightDelta).toBeCloseTo(0, 1);
-  await modelMenu.locator('[data-fast-mode="true"]').click();
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
-  await expect(form.locator(".task-model-fast")).toHaveAttribute(
+  await modelMenu.locator('[data-speed="priority"]').click();
+  await expect(form.locator('input[name="speed"]')).toHaveValue("priority");
+  await expect(form.locator(".task-model-speed")).toHaveAttribute(
     "title",
-    "Fast mode",
+    "Fast",
   );
-  await expect(modelPicker).toHaveClass(/\bis-fast\b/);
+  await expect(modelPicker).toHaveClass(/\bhas-speed\b/);
   const fastGridColumns = await modelPicker.evaluate(
     (button) => getComputedStyle(button).gridTemplateColumns.split(" ").length,
   );
   expect(fastGridColumns).toBe(3);
   const fastIconMetrics = await form
-    .locator(".task-model-fast-icon")
+    .locator(".task-model-speed-icon")
     .evaluate((icon) => ({
       fill: getComputedStyle(icon).fill,
       color: getComputedStyle(icon).color,
@@ -504,17 +504,97 @@ test("new tasks start in Normal mode and submit an explicit Fast choice", { tag:
   await form.getByRole("textbox", { name: "New task prompt" }).fill("Use Fast mode");
   await form.getByRole("textbox", { name: "New task prompt" }).press("Enter");
   await expect.poll(() => submittedBody).not.toBeNull();
-  expect(submittedBody.fastMode).toBe(true);
+  expect(submittedBody.speed).toBe("priority");
   await expect.poll(() => promptBody).not.toBeNull();
-  expect(promptBody.fastMode).toBe(true);
+  expect(promptBody.speed).toBe("priority");
 
   await expect(page).toHaveURL(/\/tasks\/thread-1$/);
   await page.locator("caffold-tasks-page").evaluate((element) => {
     element.requestNewTaskRoute();
   });
   const nextForm = page.locator('.task-new-form[data-task-form="create"]');
-  await expect(nextForm.locator('input[name="fastMode"]')).toHaveValue("false");
-  await expect(nextForm.locator(".task-model-fast")).toHaveCount(0);
+  await expect(nextForm.locator('input[name="speed"]')).toHaveValue("default");
+  await expect(nextForm.locator(".task-model-speed")).toHaveCount(0);
+});
+
+test("a model's Ultrafast is chosen and sent like Fast and drawn as a rocket", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  await page.route("**/api/agent/models", (route) =>
+    route.fulfill({
+      json: {
+        models: [
+          {
+            provider: "codex",
+            model: "gpt-test",
+            displayName: "GPT Test",
+            description: "Test model",
+            isDefault: true,
+            defaultEffort: "medium",
+            efforts: ["medium", "xhigh"],
+            speeds: [
+              { id: "priority", name: "Fast", description: "2x speed" },
+              { id: "ultrafast", name: "Ultrafast", description: "Fastest" },
+            ],
+          },
+        ],
+        unavailable: [],
+      },
+    }),
+  );
+  await page.unroute("**/api/tasks");
+  let submittedBody = null;
+  let promptBody = null;
+  await page.route("**/api/tasks", (route) => {
+    if (route.request().method() === "POST") {
+      submittedBody = route.request().postDataJSON();
+      return route.fulfill({ json: createdTaskFixture({ speed: "ultrafast" }) });
+    }
+    return route.fulfill({ json: activeTaskProjection() });
+  });
+  await page.route("**/api/tasks/*/prompts", (route) => {
+    promptBody = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-created-1",
+        userMessageId: "message-created-1",
+        steered: false,
+      },
+    });
+  });
+
+  await page.goto("/tasks/new?cwd=src");
+  const form = page.locator('.task-new-form[data-task-form="create"]');
+  const modelPicker = form.getByRole("button", { name: /Choose model/ });
+  const modelMenu = form.getByRole("menu", {
+    name: "Model, reasoning, and speed options",
+  });
+  // The paths the Lucide stub in browser-defaults draws for Zap and Rocket.
+  const zap = form.locator('.task-model-speed-icon path[d^="M4 14a1 1 0 0 1-.78-1.63"]');
+  const rocket = form.locator('.task-model-speed-icon path[d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"]');
+  await modelPicker.click();
+  await expect(modelMenu.locator("[data-speed] strong")).toHaveText(["Normal", "Fast", "Ultrafast"]);
+  await modelMenu.locator('[data-speed="priority"]').click();
+  await expect(form.locator(".task-model-speed")).toHaveAttribute("title", "Fast");
+  await expect(zap).toHaveCount(1);
+  await expect(rocket).toHaveCount(0);
+
+  await modelPicker.click();
+  await modelMenu.locator('[data-speed="ultrafast"]').click();
+  await expect(form.locator('input[name="speed"]')).toHaveValue("ultrafast");
+  await expect(form.locator(".task-model-speed")).toHaveAttribute("title", "Ultrafast");
+  await expect(modelPicker).toHaveAttribute("title", "GPT Test · medium · Ultrafast");
+  await expect(rocket).toHaveCount(1);
+  await expect(zap).toHaveCount(0);
+
+  await form.getByRole("textbox", { name: "New task prompt" }).fill("Use Ultrafast");
+  await form.getByRole("textbox", { name: "New task prompt" }).press("Enter");
+  await expect.poll(() => submittedBody).not.toBeNull();
+  expect(submittedBody.speed).toBe("ultrafast");
+  await expect.poll(() => promptBody).not.toBeNull();
+  expect(promptBody.speed).toBe("ultrafast");
 });
 
 test("resets option-only New Task selections after Settings navigation", { tag: "@server-steady" }, async ({
@@ -535,21 +615,21 @@ test("resets option-only New Task selections after Settings navigation", { tag: 
   const form = page.locator('.task-new-form[data-task-form="create"]');
   const modelPicker = form.getByRole("button", { name: /Choose model/ });
   await modelPicker.click();
-  await form.locator('[data-fast-mode="true"]').click();
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
+  await form.locator('[data-speed="priority"]').click();
+  await expect(form.locator('input[name="speed"]')).toHaveValue("priority");
 
   await switchWorkspaceMode(page, "settings");
   await expect(page).toHaveURL("/settings");
   await switchWorkspaceMode(page, "tasks");
   await expect(page).toHaveURL("/tasks/new?cwd=src");
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
-  await expect(form.locator(".task-model-fast")).toHaveCount(0);
+  await expect(form.locator('input[name="speed"]')).toHaveValue("default");
+  await expect(form.locator(".task-model-speed")).toHaveCount(0);
 
   const prompt = form.getByRole("textbox", { name: "New task prompt" });
   await prompt.fill("Use the reset Normal mode");
   await prompt.press("Enter");
   await expect.poll(() => submittedBody).not.toBeNull();
-  expect(submittedBody.fastMode).toBe(false);
+  expect(submittedBody.speed).toBe("default");
 });
 
 test("preserves and clears New Task options with their meaningful draft", { tag: "@server-steady" }, async ({
@@ -567,7 +647,7 @@ test("preserves and clears New Task options with their meaningful draft", { tag:
   await modelPicker.click();
   await form.locator('[data-effort="xhigh"]').click();
   await modelPicker.click();
-  await form.locator('[data-fast-mode="true"]').click();
+  await form.locator('[data-speed="priority"]').click();
   await permissionPicker.click();
   await form.getByRole("button", { name: /^Ask for approval/ }).click();
   await prompt.fill("Keep this complete draft snapshot");
@@ -581,7 +661,7 @@ test("preserves and clears New Task options with their meaningful draft", { tag:
   await expect(form.locator(".task-composer-attachment")).toHaveCount(1);
   await expect(form.locator('input[name="model"]')).toHaveValue("gpt-test");
   await expect(form.locator('input[name="effort"]')).toHaveValue("xhigh");
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
+  await expect(form.locator('input[name="speed"]')).toHaveValue("priority");
   await expect(form.locator('input[name="permissionMode"]')).toHaveValue(
     "askForApproval",
   );
@@ -598,7 +678,7 @@ test("preserves and clears New Task options with their meaningful draft", { tag:
   await expect(form.locator(".task-composer-attachment")).toHaveCount(0);
   await expect(form.locator('input[name="model"]')).toHaveValue("gpt-test");
   await expect(form.locator('input[name="effort"]')).toHaveValue("medium");
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
+  await expect(form.locator('input[name="speed"]')).toHaveValue("default");
   await expect(form.locator('input[name="permissionMode"]')).toHaveValue(
     "approveForMe",
   );
@@ -608,7 +688,7 @@ test("preserves and clears New Task options with their meaningful draft", { tag:
     ),
   ).toMatchObject({
     modelExplicit: false,
-    fastModeExplicit: false,
+    speedExplicit: false,
     permissionExplicit: false,
   });
 });
@@ -621,7 +701,7 @@ test("reconciles an option-only follow-up to canonical Normal after Task switchi
     const detail = taskDetailFixture({
       model: "gpt-test",
       reasoningEffort: "medium",
-      fastMode: false,
+      speed: "default",
     });
     detail.threadId = threadId;
     detail.task = {
@@ -661,8 +741,8 @@ test("reconciles an option-only follow-up to canonical Normal after Task switchi
   );
   const modelPicker = form.getByRole("button", { name: /Choose model/ });
   await modelPicker.click();
-  await form.locator('[data-fast-mode="true"]').click();
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
+  await form.locator('[data-speed="priority"]').click();
+  await expect(form.locator('input[name="speed"]')).toHaveValue("priority");
 
   const navigator = page.locator("caffold-task-navigator");
   await navigator
@@ -689,10 +769,10 @@ test("reconciles an option-only follow-up to canonical Normal after Task switchi
     options: {
       model: "gpt-test",
       effort: "medium",
-      fastMode: false,
+      speed: "default",
       permissionMode: "approveForMe",
       modelExplicit: false,
-      fastModeExplicit: false,
+      speedExplicit: false,
       permissionExplicit: false,
     },
   });
@@ -702,8 +782,8 @@ test("reconciles an option-only follow-up to canonical Normal after Task switchi
     .click();
   await emitTaskDetailBootstrap(page, detailA);
   await expect(page).toHaveURL("/tasks/thread_option_a");
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
-  await expect(form.locator(".task-model-fast")).toHaveCount(0);
+  await expect(form.locator('input[name="speed"]')).toHaveValue("default");
+  await expect(form.locator(".task-model-speed")).toHaveCount(0);
 });
 
 test("approval modes follow the agent the chosen model belongs to", { tag: "@server-steady" }, async ({
@@ -725,7 +805,7 @@ test("approval modes follow the agent the chosen model belongs to", { tag: "@ser
             isDefault: true,
             defaultEffort: "medium",
             efforts: ["medium"],
-            supportsFastMode: false,
+            speeds: [],
           },
           {
             provider: "claude",
@@ -735,7 +815,7 @@ test("approval modes follow the agent the chosen model belongs to", { tag: "@ser
             isDefault: false,
             defaultEffort: "high",
             efforts: ["high"],
-            supportsFastMode: false,
+            speeds: [],
           },
         ],
         unavailable: [],
@@ -815,7 +895,7 @@ test("a model that works at one depth offers no depth to choose", { tag: "@all-v
             isDefault: true,
             defaultEffort: null,
             efforts: [],
-            supportsFastMode: false,
+            speeds: [],
           },
         ],
         unavailable: [],
@@ -1024,7 +1104,7 @@ test("switching to a model without Fast support normalizes to Normal and hides S
             isDefault: true,
             defaultEffort: "low",
             efforts: ["low"],
-            supportsFastMode: true,
+            speeds: [{ id: "priority", name: "Fast", description: null }],
           },
           {
             provider: "codex",
@@ -1034,7 +1114,7 @@ test("switching to a model without Fast support normalizes to Normal and hides S
             isDefault: false,
             defaultEffort: "low",
             efforts: ["low"],
-            supportsFastMode: false,
+            speeds: [],
           },
         ],
         unavailable: [],
@@ -1046,13 +1126,13 @@ test("switching to a model without Fast support normalizes to Normal and hides S
   const form = page.locator('.task-new-form[data-task-form="create"]');
   const picker = form.getByRole("button", { name: /Choose model/ });
   await picker.click();
-  await form.locator('[data-fast-mode="true"]').click();
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
+  await form.locator('[data-speed="priority"]').click();
+  await expect(form.locator('input[name="speed"]')).toHaveValue("priority");
 
   await picker.click();
   await form.locator('[data-model="gpt-normal-only"]').click();
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
-  await expect(form.locator(".task-model-fast")).toHaveCount(0);
+  await expect(form.locator('input[name="speed"]')).toHaveValue("default");
+  await expect(form.locator(".task-model-speed")).toHaveCount(0);
   await expect(form.locator(".task-model-popover")).toBeVisible();
   await expect(
     form.getByRole("menu", { name: /Model.*options/ }).getByText("Speed", {
@@ -1112,7 +1192,7 @@ test("new task submission stays single-flight and restores local input after rej
     element.dataset.instanceMarker = "stable";
   });
   await form.getByRole("button", { name: /Choose model/ }).click();
-  await form.locator('[data-fast-mode="true"]').click();
+  await form.locator('[data-speed="priority"]').click();
   await prompt.fill("Retry this exact task");
   await pasteImage(prompt, "create-retry.png");
   await prompt.press("Enter");
@@ -1130,13 +1210,13 @@ test("new task submission stays single-flight and restores local input after rej
   await expect(prompt).toHaveValue("Retry this exact task");
   await expect(prompt).toBeFocused();
   await expect(form.locator(".task-composer-attachment")).toHaveCount(1);
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
+  await expect(form.locator('input[name="speed"]')).toHaveValue("priority");
 
   await prompt.press("Enter");
   await expect.poll(() => submittedBodies).toHaveLength(2);
   expect(submittedBodies[1]).toMatchObject({
     cwd: "src",
-    fastMode: true,
+    speed: "priority",
     titleSource: "Retry this exact task",
   });
   expect(submittedBodies[1]).not.toHaveProperty("images");
@@ -1150,7 +1230,7 @@ test("new task submission stays single-flight and restores local input after rej
   expect(initialPromptBody).toMatchObject({
     prompt: withAttachedFiles("Retry this exact task", [sent.uploads[0].path]),
     imagePaths: [sent.uploads[0].path],
-    fastMode: true,
+    speed: "priority",
     activeTurnId: null,
   });
   expect(adoptedDetailReads).toBe(0);
@@ -1869,7 +1949,7 @@ test("managed tasks restore their last applied model, reasoning, and speed", { t
   const detail = taskDetailFixture({
     model: "gpt-test",
     reasoningEffort: "xhigh",
-    fastMode: true,
+    speed: "priority",
   });
   await page.route("**/api/tasks/thread-1", (route) =>
     route.fulfill({ json: detail }),
@@ -1901,18 +1981,18 @@ test("managed tasks restore their last applied model, reasoning, and speed", { t
   });
   await expect(picker.locator(".task-model-name")).toHaveText("Test");
   await expect(picker.locator(".task-model-effort")).toContainText("xhigh");
-  await expect(picker.locator(".task-model-fast")).toHaveAttribute(
+  await expect(picker.locator(".task-model-speed")).toHaveAttribute(
     "title",
-    "Fast mode",
+    "Fast",
   );
   await page.reload();
   await emitTaskDetailBootstrap(page, detail);
   await expect(picker.locator(".task-model-name")).toHaveText("Test");
   await expect(picker.locator(".task-model-effort")).toContainText("xhigh");
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
+  await expect(form.locator('input[name="speed"]')).toHaveValue("priority");
   await picker.click();
-  await form.locator('[data-fast-mode="false"]').click();
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
+  await form.locator('[data-speed="default"]').click();
+  await expect(form.locator('input[name="speed"]')).toHaveValue("default");
   await form.getByRole("textbox", { name: "Follow-up prompt" }).fill("Continue");
   await form.getByRole("textbox", { name: "Follow-up prompt" }).press("Enter");
 
@@ -1920,14 +2000,14 @@ test("managed tasks restore their last applied model, reasoning, and speed", { t
   expect(submittedBody).toMatchObject({
     model: "gpt-test",
     effort: "xhigh",
-    fastMode: false,
+    speed: "default",
   });
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
+  await expect(form.locator('input[name="speed"]')).toHaveValue("default");
 
   const normalizedDetail = taskDetailFixture({
     model: "gpt-test",
     reasoningEffort: "xhigh",
-    fastMode: false,
+    speed: "default",
   });
   normalizedDetail.revision = 2;
   normalizedDetail.events = [
@@ -1948,7 +2028,7 @@ test("managed tasks restore their last applied model, reasoning, and speed", { t
       reason: "canonical-refresh",
     });
   }, normalizedDetail);
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
+  await expect(form.locator('input[name="speed"]')).toHaveValue("default");
 });
 
 test("canonical task sync preserves an open follow-up model picker", { tag: "@server-changes" }, async ({
@@ -2015,7 +2095,7 @@ test("keeps a tall follow-up model menu inside the conversation pane", { tag: "@
           isDefault: index === 0,
           defaultEffort: "medium",
           efforts: ["medium", "xhigh"],
-          supportsFastMode: false,
+          speeds: [],
         })),
         unavailable: [],
       },
@@ -2133,7 +2213,7 @@ test("active turns lock the approval mode until the next turn", { tag: "@all-vie
   expect(submittedBody).not.toHaveProperty("permissionMode");
   expect(submittedBody).not.toHaveProperty("model");
   expect(submittedBody).not.toHaveProperty("effort");
-  expect(submittedBody).not.toHaveProperty("fastMode");
+  expect(submittedBody).not.toHaveProperty("speed");
   await expect(primaryAction).toHaveAttribute("data-primary-action", "stop");
   await expect
     .poll(() =>

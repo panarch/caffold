@@ -1942,7 +1942,7 @@ test("starts a Task from a Section-scoped GitHub Issue", { tag: "@server-steady"
     sectionComposerSettings: {
       model: "gpt-5.6-sol",
       effort: "xhigh",
-      fastMode: true,
+      speed: "priority",
     },
   });
   await page.goto(
@@ -1968,7 +1968,7 @@ test("starts a Task from a Section-scoped GitHub Issue", { tag: "@server-steady"
   ).toMatchObject({
     model: "gpt-5.6-sol",
     effort: "xhigh",
-    fastMode: true,
+    speed: "priority",
   });
   await dialog.locator("select[name='baseRef']").selectOption("main");
   await dialog.getByRole("button", {
@@ -1981,7 +1981,7 @@ test("starts a Task from a Section-scoped GitHub Issue", { tag: "@server-steady"
   expect(fixture.requests.taskCreates[0]).toMatchObject({
     model: "gpt-5.6-sol",
     effort: "xhigh",
-    fastMode: true,
+    speed: "priority",
   });
   expect(fixture.requests.taskCreates[0].titleSource).toContain(
     "--- BEGIN UNTRUSTED ISSUE DATA ---",
@@ -2006,7 +2006,7 @@ test("names the tools a Claude Task actually has in its issue setup prompt", { t
             isDefault: true,
             defaultEffort: "low",
             efforts: ["low", "medium", "high"],
-            supportsFastMode: true,
+            speeds: [{ id: "priority", name: "Fast", description: null }],
           },
           {
             provider: "claude",
@@ -2016,7 +2016,7 @@ test("names the tools a Claude Task actually has in its issue setup prompt", { t
             isDefault: false,
             defaultEffort: "medium",
             efforts: ["low", "medium", "high"],
-            supportsFastMode: false,
+            speeds: [],
           },
         ],
         unavailable: [],
@@ -2072,7 +2072,7 @@ test("names the tools a Grok Task actually has in its issue setup prompt", { tag
             isDefault: true,
             defaultEffort: "low",
             efforts: ["low", "medium", "high"],
-            supportsFastMode: true,
+            speeds: [{ id: "priority", name: "Fast", description: null }],
           },
           {
             provider: "grok",
@@ -2082,7 +2082,7 @@ test("names the tools a Grok Task actually has in its issue setup prompt", { tag
             isDefault: false,
             defaultEffort: "xhigh",
             efforts: ["low", "medium", "high", "xhigh"],
-            supportsFastMode: false,
+            speeds: [],
             supportsAutoMode: true,
           },
         ],

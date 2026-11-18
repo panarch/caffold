@@ -418,7 +418,7 @@ test("hydrates, orders, and restores Tasks through the local navigator ledger", 
         images: [],
         model: TASK_MODEL,
         effort: LIVE_REASONING_EFFORT,
-        fastMode: false,
+        speed: "default",
         activeTurnId: null,
       },
     });
@@ -542,7 +542,7 @@ test("rechecks externally archived and deleted Codex Threads through explicit Re
       images: [],
       model: TASK_MODEL,
       effort: LIVE_REASONING_EFFORT,
-      fastMode: false,
+      speed: "default",
       activeTurnId: null,
     },
   });
@@ -664,14 +664,14 @@ test("creates a real Codex task in Fast mode and restores the task setting", asy
   const tasksPage = page.locator("caffold-tasks-page");
   const form = tasksPage.locator('.task-new-form[data-task-form="create"]');
   await chooseModel(form, "fast");
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
+  await expect(form.locator('input[name="speed"]')).toHaveValue("default");
 
   await form.getByRole("button", { name: /Choose model/ }).click();
-  const fastOption = form.locator('[data-fast-mode="true"]');
+  const fastOption = form.locator('[data-speed="priority"]');
   await expect(fastOption, `${FAST_MODEL} should advertise Fast mode`).toBeVisible();
   await fastOption.click();
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
-  await expect(form.locator(".task-model-fast")).toHaveAttribute("title", "Fast mode");
+  await expect(form.locator('input[name="speed"]')).toHaveValue("priority");
+  await expect(form.locator(".task-model-speed")).toHaveAttribute("title", "Fast");
 
   const prompt = form.getByRole("textbox", { name: "New task prompt" });
   await prompt.fill(`Reply with exactly ${reply}. Do not modify files or run commands.`);
@@ -690,14 +690,14 @@ test("creates a real Codex task in Fast mode and restores the task setting", asy
   await expect
     .poll(async () => {
       const response = await request.get(`/api/tasks/${threadId}`);
-      return response.ok() ? (await response.json()).fastMode : null;
+      return response.ok() ? (await response.json()).speed : null;
     })
-    .toBe(true);
+    .toBe("priority");
 
   await page.reload();
   const followUp = tasksPage.locator('.task-follow-up-form[data-task-form="follow-up"]');
-  await expect(followUp.locator('input[name="fastMode"]')).toHaveValue("true");
-  await expect(followUp.locator(".task-model-fast")).toHaveAttribute("title", "Fast mode");
+  await expect(followUp.locator('input[name="speed"]')).toHaveValue("priority");
+  await expect(followUp.locator(".task-model-speed")).toHaveAttribute("title", "Fast");
 });
 
 test("creates and resumes a real Codex task through Caffold with Luna", async ({

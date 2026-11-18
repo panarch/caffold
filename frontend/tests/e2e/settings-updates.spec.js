@@ -413,7 +413,7 @@ test("starts an update Task from About in the update directory", { tag: ["@deskt
   projection.sections[0].composerSettings = {
     model: "gpt-5.6-sol",
     effort: "low",
-    fastMode: false,
+    speed: "default",
     permissionMode: "fullAccess",
   };
   const created = {

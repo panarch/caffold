@@ -1666,7 +1666,8 @@ fn model_options(state: &ModelState) -> Vec<ModelOption> {
                 .iter()
                 .map(|effort| effort.value.clone())
                 .collect(),
-            supports_fast_mode: false,
+            // Grok has no faster tier.
+            speeds: Vec::new(),
             supports_auto_mode: true,
         })
         .collect()
@@ -2214,7 +2215,7 @@ mod tests {
         assert!(models[0].is_default);
         assert_eq!(models[0].default_effort.as_deref(), Some("xhigh"));
         assert_eq!(models[0].efforts, ["xhigh", "high", "medium", "low"]);
-        assert!(!models[0].supports_fast_mode);
+        assert!(models[0].speeds.is_empty());
         assert!(!models[1].is_default);
         let modes = client.permission_modes();
         assert_eq!(modes.default_mode, "ask");
@@ -2254,7 +2255,7 @@ mod tests {
             &TurnOptions {
                 model: Some("grok-4.5".to_string()),
                 effort: Some("low".to_string()),
-                fast_mode: true,
+                speed: "priority".to_string(),
                 permission_mode: Some("autoMode".to_string()),
             },
         )

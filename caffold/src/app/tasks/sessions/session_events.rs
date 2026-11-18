@@ -822,7 +822,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_settings_change_updates_fast_mode() {
+    async fn a_settings_change_updates_the_speed() {
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
@@ -842,7 +842,7 @@ mod tests {
                         settings: std::collections::BTreeMap::from([
                             ("model".to_string(), json!("gpt-5.6-sol")),
                             ("reasoningEffort".to_string(), json!("low")),
-                            ("serviceTier".to_string(), json!("priority")),
+                            ("serviceTier".to_string(), json!("ultrafast")),
                         ]),
                     },
                 ),
@@ -850,7 +850,7 @@ mod tests {
             .await;
 
         let snapshot = sessions.snapshot("thread-1").await.unwrap();
-        assert!(snapshot.fast_mode);
+        assert_eq!(snapshot.speed, "ultrafast");
         assert_eq!(snapshot.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(snapshot.reasoning_effort.as_deref(), Some("low"));
     }

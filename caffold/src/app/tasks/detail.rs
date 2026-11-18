@@ -32,7 +32,7 @@ use super::{
 use crate::agent::AgentError;
 use crate::{
     agent::{
-        ContextUsage, Conversation,
+        ContextUsage, Conversation, NORMAL_SPEED,
         codex::{CodexConnection, CodexThreadClient, CodexThreadError},
     },
     app::error::{ApiError, ErrorBody},
@@ -94,7 +94,7 @@ pub(in crate::app::tasks) struct TaskDetailResponse {
     pub(in crate::app::tasks) permission_mode: Option<String>,
     pub(in crate::app::tasks) model: Option<String>,
     pub(in crate::app::tasks) reasoning_effort: Option<String>,
-    pub(in crate::app::tasks) fast_mode: bool,
+    pub(in crate::app::tasks) speed: String,
     /// How full the agent last said this conversation's context is. Only a
     /// session that has heard it can say, so an answer read without one does
     /// not.
@@ -172,7 +172,7 @@ pub(in crate::app) struct TaskDetailState {
     permission_mode: Option<String>,
     model: Option<String>,
     reasoning_effort: Option<String>,
-    fast_mode: bool,
+    speed: String,
     context: Option<ContextUsage>,
 }
 
@@ -188,7 +188,7 @@ impl TaskDetailState {
             permission_mode: detail.permission_mode,
             model: detail.model,
             reasoning_effort: detail.reasoning_effort,
-            fast_mode: detail.fast_mode,
+            speed: detail.speed,
             context: detail.context,
         }
     }
@@ -556,7 +556,7 @@ impl DetailContext {
         let permission_mode = snapshot.permission_mode;
         let session_model = snapshot.model.clone();
         let session_reasoning_effort = snapshot.reasoning_effort.clone();
-        let session_fast_mode = snapshot.fast_mode;
+        let session_speed = snapshot.speed.clone();
         let context = snapshot.context;
         let thread_id = snapshot
             .conversation
@@ -634,7 +634,7 @@ impl DetailContext {
                 permission_mode,
                 model,
                 reasoning_effort,
-                fast_mode: session_fast_mode,
+                speed: session_speed,
                 context,
             });
         }
@@ -794,7 +794,7 @@ impl DetailContext {
         self.sessions
             .restore_managed_composer_settings(
                 thread_id,
-                managed.fast_mode,
+                &managed.speed,
                 managed.permission_mode.as_deref(),
             )
             .await;
@@ -829,7 +829,7 @@ pub(in crate::app::tasks) fn loading_detail(
         permission_mode: managed.and_then(|thread| thread.permission_mode.clone()),
         model: managed.and_then(|thread| thread.model.clone()),
         reasoning_effort: managed.and_then(|thread| thread.reasoning_effort.clone()),
-        fast_mode: managed.is_some_and(|thread| thread.fast_mode),
+        speed: managed.map_or_else(|| NORMAL_SPEED.to_string(), |thread| thread.speed.clone()),
         context: None,
     }
 }
@@ -886,7 +886,7 @@ fn without_conversation(detail: &TaskDetailResponse) -> TaskDetailResponse {
         permission_mode: detail.permission_mode.clone(),
         model: detail.model.clone(),
         reasoning_effort: detail.reasoning_effort.clone(),
-        fast_mode: detail.fast_mode,
+        speed: detail.speed.clone(),
         context: detail.context,
     }
 }
@@ -1444,7 +1444,7 @@ mod request_tests {
             permission_mode: None,
             model: None,
             reasoning_effort: None,
-            fast_mode: false,
+            speed: NORMAL_SPEED.to_string(),
             context: None,
         };
         let mut updates = state.task_sync.subscribe_updates();
@@ -1565,7 +1565,7 @@ mod request_tests {
             thread_id,
             Some("gpt-5.6-sol"),
             Some("xhigh"),
-            true,
+            "priority",
             None,
         )
         .await
@@ -1582,7 +1582,7 @@ mod request_tests {
         assert!(detail.events_range.is_none());
         assert_eq!(detail.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(detail.reasoning_effort.as_deref(), Some("xhigh"));
-        assert!(detail.fast_mode);
+        assert_eq!(detail.speed, "priority");
         assert_eq!(detail.permission_mode, None);
         assert_eq!(detail.context, None);
     }
@@ -1624,7 +1624,7 @@ mod request_tests {
                 thread_id,
                 Some("gpt-5.6-sol"),
                 Some("xhigh"),
-                true,
+                "priority",
                 None,
             )
             .await
@@ -1643,11 +1643,11 @@ mod request_tests {
 
             assert_eq!(detail.model.as_deref(), Some("gpt-5.6-luna"));
             assert_eq!(detail.reasoning_effort.as_deref(), effort);
-            assert!(!detail.fast_mode);
+            assert_eq!(detail.speed, NORMAL_SPEED);
             let stored = test_store_get(&state, thread_id).await.unwrap().unwrap();
             assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
             assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
-            assert!(stored.fast_mode);
+            assert_eq!(stored.speed, "priority");
         }
     }
 
@@ -1746,7 +1746,7 @@ mod request_tests {
             thread_id,
             Some("gpt-5.6-sol"),
             Some("xhigh"),
-            true,
+            "priority",
             None,
         )
         .await
@@ -1769,11 +1769,11 @@ mod request_tests {
         assert_eq!(requests[0].1["serviceTier"], "priority");
         assert_eq!(detail.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(detail.reasoning_effort.as_deref(), Some("xhigh"));
-        assert!(!detail.fast_mode);
+        assert_eq!(detail.speed, NORMAL_SPEED);
         let stored = test_store_get(&state, thread_id).await.unwrap().unwrap();
         assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
-        assert!(stored.fast_mode);
+        assert_eq!(stored.speed, "priority");
     }
 
     /// The agent answers with a mode of its own whether or not anyone chose it,
@@ -1812,7 +1812,7 @@ mod request_tests {
             thread_id,
             None,
             None,
-            false,
+            NORMAL_SPEED,
             Some(REVIEWED_PERMISSION_MODE),
         )
         .await
@@ -1895,7 +1895,7 @@ mod request_tests {
             permission_mode: None,
             model: None,
             reasoning_effort: None,
-            fast_mode: false,
+            speed: NORMAL_SPEED.to_string(),
             context: None,
         };
 
@@ -1991,7 +1991,7 @@ mod request_tests {
             permission_mode: None,
             model: None,
             reasoning_effort: None,
-            fast_mode: false,
+            speed: NORMAL_SPEED.to_string(),
             context: None,
         };
         let mut late_live_prompt = task_event_record(
@@ -3636,7 +3636,7 @@ mod request_tests {
             permission_mode: Some("askForApproval".to_string()),
             model: Some("gpt-test".to_string()),
             reasoning_effort: Some("xhigh".to_string()),
-            fast_mode: true,
+            speed: "priority".to_string(),
             context: Some(ContextUsage {
                 used_tokens: 32_147,
                 window_tokens: 200_000,

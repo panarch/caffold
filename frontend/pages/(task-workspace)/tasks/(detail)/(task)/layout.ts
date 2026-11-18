@@ -105,7 +105,10 @@ import "./components/permission-instructions-dialog.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import { scopedStyle } from "#app/scoped-style.js";
 import { closestAcrossShadowRoots } from "#app/shadow-roots.js";
-import type { TurnOptionsSnapshot } from "../../components/task-turn-options.js";
+import {
+  NORMAL_SPEED,
+  type TurnOptionsSnapshot,
+} from "../../components/task-turn-options.js";
 import type { TaskCreatedHandoff } from "../../layout.js";
 import type {
   BrokenTaskDeleteIntent,
@@ -805,7 +808,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       permissionMode: message.permissionMode,
       model: message.model,
       reasoningEffort: message.reasoningEffort,
-      fastMode: message.fastMode,
+      speed: message.speed,
       context: message.context,
     };
     this.draw();
@@ -2197,7 +2200,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       provider: `${this.taskDetail?.provider ?? ""}`.trim(),
       model: `${this.taskDetail?.model ?? ""}`.trim(),
       effort: `${this.taskDetail?.reasoningEffort ?? ""}`.trim(),
-      fastMode: Boolean(this.taskDetail?.fastMode),
+      speed: this.taskDetail?.speed ?? NORMAL_SPEED,
       permissionMode: `${this.taskDetail?.permissionMode ?? ""}`.trim(),
     });
     composer.setContextUsage(this.taskDetail?.context ?? null);

@@ -257,10 +257,12 @@ Managed-worktree preparation happens explicitly from the resulting Task; it
 is not an implicit side effect of task creation.
 
 Global New and Section New provide the same Composer, turn options, and error
-behavior. Section New fixes cwd to the Section's managed logical path and shows
-it where Global New shows the directory field, without the field's controls. It
-omits setup guidance and preserves its draft across same-Section surface
-switches.
+behavior. The model menu offers a model's speeds after **Normal**, under the
+names its agent gives them, and the closed model control marks a faster speed
+with a lightning bolt, or a rocket for **Ultrafast**. Section New fixes cwd to
+the Section's managed logical path and shows it where Global New shows the
+directory field, without the field's controls. It omits setup guidance and
+preserves its draft across same-Section surface switches.
 
 Section New presents an **Existing conversations** card with **Fork conversation**.
 The native dialog offers Codex, Claude and Grok. It accepts a native Thread ID

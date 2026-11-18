@@ -51,7 +51,7 @@ async fn create_task_owned(
     let turn_options = TurnOptions {
         model: request.model,
         effort: request.effort,
-        fast_mode: request.fast_mode,
+        speed: request.speed,
         permission_mode: request.permission_mode,
     };
 
@@ -108,13 +108,13 @@ async fn task_prompt_owned(
     let agent = state.task_runtime.task_agent(&thread_id).await?;
     let requested_model = request.model;
     let requested_effort = request.effort;
-    let requested_fast_mode = request.fast_mode;
+    let requested_speed = request.speed;
     let requested_permission_mode = request.permission_mode;
     state
         .task_sessions
         .restore_managed_composer_settings(
             &thread_id,
-            managed.fast_mode,
+            &managed.speed,
             managed.permission_mode.as_deref(),
         )
         .await;
@@ -175,7 +175,7 @@ async fn task_prompt_owned(
                 let chosen = TurnOptions {
                     model: requested_model.clone(),
                     effort: requested_effort.clone(),
-                    fast_mode: requested_fast_mode,
+                    speed: requested_speed.clone(),
                     permission_mode: requested_permission_mode.clone(),
                 };
                 let driver = agent.driver();
@@ -286,7 +286,7 @@ async fn task_prompt_owned(
                 &thread_id,
                 snapshot.model.as_deref(),
                 snapshot.reasoning_effort.as_deref(),
-                snapshot.fast_mode,
+                &snapshot.speed,
                 snapshot.permission_mode.as_deref(),
             )
             .await;
@@ -406,7 +406,7 @@ pub(super) async fn task_interrupt(
         .task_sessions
         .restore_managed_composer_settings(
             &thread_id,
-            managed.fast_mode,
+            &managed.speed,
             managed.permission_mode.as_deref(),
         )
         .await;
@@ -599,7 +599,7 @@ pub(super) fn managed_thread_from_task_record(
     task: &TaskRecord,
     model: Option<String>,
     reasoning_effort: Option<String>,
-    fast_mode: bool,
+    speed: &str,
 ) -> ManagedThread {
     let mut managed = ManagedThread::new(
         task.thread_id.clone(),
@@ -608,7 +608,7 @@ pub(super) fn managed_thread_from_task_record(
         model,
         reasoning_effort,
     );
-    managed.fast_mode = fast_mode;
+    managed.speed = speed.to_string();
     managed.last_completed_at_ms = task.last_completed_ms;
     managed
 }
@@ -758,7 +758,7 @@ mod tests {
     };
     use crate::app::tasks::active_list::ActiveTaskComposerSettings;
     use crate::git;
-    use crate::task_store;
+    use crate::task_store::{self, TaskProvider};
     use axum::body::Body;
     use serde_json::{Value as JsonValue, json};
     use tower::ServiceExt;
@@ -766,6 +766,7 @@ mod tests {
     /// Decode a fixture the way the adapter decodes a real answer.
     use super::super::test_support::*;
     use super::*;
+    use crate::agent::NORMAL_SPEED;
     use crate::{
         app::tasks::test_support::*,
         fs::RootedFs,
@@ -1294,7 +1295,7 @@ mod tests {
                 cwd: None,
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
             }),
         )
@@ -1385,7 +1386,7 @@ mod tests {
                 cwd: None,
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: Some("approveForMe".to_string()),
             }),
         )
@@ -1437,7 +1438,7 @@ mod tests {
                 image_paths: Vec::new(),
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: Some("approveForMe".to_string()),
                 active_turn_id: None,
             }),
@@ -1553,7 +1554,7 @@ mod tests {
                 cwd: None,
                 model: Some("gpt-5.6-sol".to_string()),
                 effort: Some("xhigh".to_string()),
-                fast_mode: true,
+                speed: "ultrafast".to_string(),
                 permission_mode: None,
             }),
         )
@@ -1562,7 +1563,7 @@ mod tests {
 
         assert_eq!(response.0.detail.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(response.0.detail.reasoning_effort.as_deref(), Some("xhigh"));
-        assert!(response.0.detail.fast_mode);
+        assert_eq!(response.0.detail.speed, "ultrafast");
         let placement = &response.0.active_top_placement;
         assert_eq!(placement.section.id, "section-root");
         assert!(placement.before_thread_id.is_none());
@@ -1593,7 +1594,7 @@ mod tests {
             stored_after_creation.reasoning_effort.as_deref(),
             Some("xhigh")
         );
-        assert!(stored_after_creation.fast_mode);
+        assert_eq!(stored_after_creation.speed, "ultrafast");
 
         state.task_sessions.lapse_retention(thread_id).await;
         wait_for_mock_method(&client, "thread/unsubscribe").await;
@@ -1606,7 +1607,7 @@ mod tests {
                 image_paths: Vec::new(),
                 model: Some("gpt-5.6-sol".to_string()),
                 effort: Some("xhigh".to_string()),
-                fast_mode: true,
+                speed: "ultrafast".to_string(),
                 permission_mode: None,
                 active_turn_id: None,
             }),
@@ -1625,9 +1626,10 @@ mod tests {
                 assert_eq!(
                     update.composer_settings,
                     ActiveTaskComposerSettings {
+                        provider: TaskProvider::Codex,
                         model: Some("gpt-5.6-sol".to_string()),
                         effort: Some("xhigh".to_string()),
-                        fast_mode: true,
+                        speed: "ultrafast".to_string(),
                         permission_mode: Some("askForApproval".to_string()),
                     }
                 );
@@ -1640,7 +1642,7 @@ mod tests {
             .expect("managed thread settings");
         assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
-        assert!(stored.fast_mode);
+        assert_eq!(stored.speed, "ultrafast");
         assert_eq!(stored.permission_mode.as_deref(), Some("askForApproval"));
         let section = state
             .task_store
@@ -1651,23 +1653,26 @@ mod tests {
             .unwrap();
         assert_eq!(
             section.last_composer_settings,
-            Some(task_store::ComposerSettings {
-                model: Some("gpt-5.6-sol".to_string()),
-                reasoning_effort: Some("xhigh".to_string()),
-                fast_mode: true,
-                permission_mode: Some("askForApproval".to_string()),
+            Some(task_store::SectionComposerSettings {
+                provider: TaskProvider::Codex,
+                settings: task_store::ComposerSettings {
+                    model: Some("gpt-5.6-sol".to_string()),
+                    reasoning_effort: Some("xhigh".to_string()),
+                    speed: "ultrafast".to_string(),
+                    permission_mode: Some("askForApproval".to_string()),
+                },
             })
         );
         assert_eq!(state.task_list_events.refresh_count(), 0);
         let requests = client.mock_requests().await;
         assert_eq!(requests[1].0, "thread/start");
-        assert_eq!(requests[1].1["serviceTier"], "priority");
+        assert_eq!(requests[1].1["serviceTier"], "ultrafast");
         let prompt = requests
             .iter()
             .find(|(method, _)| method == "turn/start")
             .unwrap();
         assert_eq!(prompt.1["model"], "gpt-5.6-sol");
-        assert_eq!(prompt.1["serviceTier"], "priority");
+        assert_eq!(prompt.1["serviceTier"], "ultrafast");
         assert_eq!(prompt.1["effort"], "xhigh");
     }
 
@@ -1719,7 +1724,7 @@ mod tests {
                 cwd: None,
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
             }),
         )
@@ -1794,7 +1799,7 @@ mod tests {
                 image_paths: Vec::new(),
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
                 active_turn_id: None,
             }),
@@ -1841,7 +1846,7 @@ mod tests {
                 cwd: None,
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
             }),
         )
@@ -1860,7 +1865,7 @@ mod tests {
                 image_paths: Vec::new(),
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
                 active_turn_id: None,
             }),
@@ -1959,7 +1964,7 @@ mod tests {
                 cwd: None,
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
             }),
         )
@@ -2023,7 +2028,7 @@ mod tests {
             thread_id,
             Some("gpt-5.6-luna"),
             Some("medium"),
-            false,
+            NORMAL_SPEED,
             None,
         )
         .await
@@ -2039,7 +2044,7 @@ mod tests {
                 image_paths: Vec::new(),
                 model: Some("gpt-5.6-sol".to_string()),
                 effort: Some("xhigh".to_string()),
-                fast_mode: true,
+                speed: "priority".to_string(),
                 permission_mode: None,
                 active_turn_id: None,
             }),
@@ -2051,7 +2056,7 @@ mod tests {
         let stored = task_store_get(&state, thread_id).await.unwrap().unwrap();
         assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
-        assert!(stored.fast_mode);
+        assert_eq!(stored.speed, "priority");
         assert_eq!(stored.permission_mode.as_deref(), Some("askForApproval"));
         match tokio::time::timeout(std::time::Duration::from_secs(1), list_updates.recv())
             .await
@@ -2065,7 +2070,7 @@ mod tests {
                     Some("gpt-5.6-sol")
                 );
                 assert_eq!(update.composer_settings.effort.as_deref(), Some("xhigh"));
-                assert!(update.composer_settings.fast_mode);
+                assert_eq!(update.composer_settings.speed, "priority");
             }
             update => panic!("expected Section settings update, got {update:?}"),
         }
@@ -2079,11 +2084,14 @@ mod tests {
             .unwrap();
         assert_eq!(
             section.last_composer_settings,
-            Some(task_store::ComposerSettings {
-                model: Some("gpt-5.6-sol".to_string()),
-                reasoning_effort: Some("xhigh".to_string()),
-                fast_mode: true,
-                permission_mode: Some("askForApproval".to_string()),
+            Some(task_store::SectionComposerSettings {
+                provider: TaskProvider::Codex,
+                settings: task_store::ComposerSettings {
+                    model: Some("gpt-5.6-sol".to_string()),
+                    reasoning_effort: Some("xhigh".to_string()),
+                    speed: "priority".to_string(),
+                    permission_mode: Some("askForApproval".to_string()),
+                },
             })
         );
         assert_eq!(state.task_list_events.refresh_count(), 0);
@@ -2169,7 +2177,7 @@ mod tests {
                 image_paths: Vec::new(),
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
                 active_turn_id: None,
             }),
@@ -2224,7 +2232,7 @@ mod tests {
                 image_paths: Vec::new(),
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
                 active_turn_id: None,
             }),
@@ -2276,7 +2284,7 @@ mod tests {
                 image_paths: Vec::new(),
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
                 active_turn_id: None,
             }),
@@ -2328,7 +2336,7 @@ mod tests {
                 image_paths: Vec::new(),
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
                 active_turn_id: None,
             }),
@@ -2409,7 +2417,7 @@ mod tests {
                 image_paths: Vec::new(),
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
                 active_turn_id: Some("turn-isolation".to_string()),
             }),
@@ -2506,7 +2514,7 @@ mod tests {
                 image_paths: Vec::new(),
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
                 active_turn_id: Some(turn_id.to_string()),
             }),
@@ -2736,7 +2744,7 @@ mod tests {
                 image_paths: Vec::new(),
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
                 active_turn_id: None,
             }),
@@ -2817,7 +2825,7 @@ mod tests {
                 image_paths: Vec::new(),
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
                 active_turn_id: None,
             }),
@@ -2887,7 +2895,7 @@ mod tests {
                 image_paths: vec![shot.to_string()],
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
                 active_turn_id: None,
             }),
@@ -2968,7 +2976,7 @@ mod tests {
                 image_paths: Vec::new(),
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
                 active_turn_id: Some(turn_id.to_string()),
             }),
@@ -3056,7 +3064,7 @@ mod tests {
             thread_id,
             Some("gpt-before-steer"),
             Some("medium"),
-            false,
+            NORMAL_SPEED,
             None,
         )
         .await
@@ -3071,7 +3079,7 @@ mod tests {
                 image_paths: Vec::new(),
                 model: Some("gpt-not-applied-by-steer".to_string()),
                 effort: Some("xhigh".to_string()),
-                fast_mode: true,
+                speed: "priority".to_string(),
                 permission_mode: None,
                 active_turn_id: Some(turn_id.to_string()),
             }),
@@ -3106,7 +3114,7 @@ mod tests {
         let stored = task_store_get(&state, thread_id).await.unwrap().unwrap();
         assert_eq!(stored.model.as_deref(), Some("gpt-before-steer"));
         assert_eq!(stored.reasoning_effort.as_deref(), Some("medium"));
-        assert!(!stored.fast_mode);
+        assert_eq!(stored.speed, NORMAL_SPEED);
         let section_id = stored.section_id().unwrap();
         let section = state
             .task_store
@@ -3117,11 +3125,14 @@ mod tests {
             .unwrap();
         assert_eq!(
             section.last_composer_settings,
-            Some(task_store::ComposerSettings {
-                model: Some("gpt-before-steer".to_string()),
-                reasoning_effort: Some("medium".to_string()),
-                fast_mode: false,
-                permission_mode: None,
+            Some(task_store::SectionComposerSettings {
+                provider: TaskProvider::Codex,
+                settings: task_store::ComposerSettings {
+                    model: Some("gpt-before-steer".to_string()),
+                    reasoning_effort: Some("medium".to_string()),
+                    speed: NORMAL_SPEED.to_string(),
+                    permission_mode: None,
+                },
             })
         );
         assert_eq!(
@@ -3225,7 +3236,7 @@ mod tests {
                 image_paths: Vec::new(),
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
                 active_turn_id: Some(stale_turn_id.to_string()),
             }),
@@ -3508,7 +3519,7 @@ mod grok_tests {
         assert_eq!(grok_models[0]["model"], "grok-4.6");
         assert_eq!(grok_models[0]["isDefault"], true);
         assert_eq!(grok_models[0]["defaultEffort"], "xhigh");
-        assert_eq!(grok_models[0]["supportsFastMode"], false);
+        assert_eq!(grok_models[0]["speeds"], json!([]));
 
         let (status, modes) = call(
             &app,

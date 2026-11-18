@@ -32,10 +32,13 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::antigravity::AntigravityClient;
-use super::claude::{ClaudeClient, ClaudeTurnOptions, WorkingDirectoryMove, claude_turn_options};
+use super::claude::{
+    ClaudeClient, ClaudeTurnOptions, WorkingDirectoryMove, claude_runs_fast, claude_speed,
+    claude_turn_options,
+};
 use super::codex::{
     CodexThreadClient, CodexTurnOptions, codex_mode_id, codex_models, codex_permission_mode_name,
-    codex_permission_modes, codex_turn_options, is_fast_service_tier, service_tier_for_fast_mode,
+    codex_permission_modes, codex_turn_options, service_tier_for_speed, speed_from_service_tier,
 };
 use super::grok::{GrokClient, GrokTurnOptions, grok_turn_options};
 use super::{
@@ -128,9 +131,9 @@ pub(crate) struct OpenedConversation {
 ///
 /// Every agent describes a model the same way once its own parts are set
 /// aside: something to send back, something to show, whether it is the one
-/// chosen by default, the depths it works at, and whether it has a faster tier.
-/// Everything else — service tiers by name, modalities, adaptive thinking — is
-/// the agent's own and stays there.
+/// chosen by default, the depths it works at, and the faster speeds it offers.
+/// Everything else — modalities, adaptive thinking — is the agent's own and
+/// stays there.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ModelOption {
@@ -144,7 +147,9 @@ pub(crate) struct ModelOption {
     /// The depths this model works at, in the agent's own words. Empty when it
     /// offers no choice.
     pub(crate) efforts: Vec<String>,
-    pub(crate) supports_fast_mode: bool,
+    /// The speeds this model offers beyond [`NORMAL_SPEED`], in the agent's own
+    /// words and order. Empty when it offers none.
+    pub(crate) speeds: Vec<SpeedOption>,
     /// Whether this model can decide permissions for itself.
     ///
     /// A capability of the model rather than of the agent: Claude offers a mode
@@ -153,6 +158,22 @@ pub(crate) struct ModelOption {
     /// on which model they chose.
     pub(crate) supports_auto_mode: bool,
 }
+
+/// A speed a model offers beyond [`NORMAL_SPEED`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SpeedOption {
+    /// What to send back when this one is chosen. The agent's own name for it.
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) description: Option<String>,
+}
+
+/// The speed a turn runs at when nothing faster was chosen.
+///
+/// Every other speed is an agent's own name, carried back unread; this one is
+/// Caffold's, and each driver decides what its agent's ordinary speed is.
+pub(crate) const NORMAL_SPEED: &str = "default";
 
 /// The ways a person can let an agent work, as that agent offers them.
 ///
@@ -260,17 +281,29 @@ pub(crate) enum AgentInstallation {
 /// What a person chose for a turn.
 ///
 /// Every field is Caffold's word for something, and what each one means to an
-/// agent is the agent's to work out — which model answers to that name, whether
-/// it has a faster tier, what that permission mode does.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// agent is the agent's to work out — which model answers to that name, what
+/// that speed is, what that permission mode does.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TurnOptions {
     pub(crate) model: Option<String>,
     pub(crate) effort: Option<String>,
-    pub(crate) fast_mode: bool,
+    /// [`NORMAL_SPEED`], or a faster speed under the agent's own name for it.
+    pub(crate) speed: String,
     /// A mode the agent itself offered, carried back under the agent's own name
     /// for it. Caffold reads only one value here, its own
     /// [`REVIEWED_PERMISSION_MODE`]; every other name means nothing to it.
     pub(crate) permission_mode: Option<String>,
+}
+
+impl Default for TurnOptions {
+    fn default() -> Self {
+        Self {
+            model: None,
+            effort: None,
+            speed: NORMAL_SPEED.to_string(),
+            permission_mode: None,
+        }
+    }
 }
 
 /// A value a person typed, or nothing when they typed nothing.
@@ -497,7 +530,7 @@ impl Driver {
                     applied: TurnOptions {
                         model: codex.model.clone(),
                         effort: codex.effort.clone(),
-                        fast_mode: is_fast_service_tier(codex.service_tier.as_deref()),
+                        speed: speed_from_service_tier(codex.service_tier.as_deref()),
                         permission_mode: options.permission_mode.clone(),
                     },
                     agreed: AgreedTurnOptions::Codex(codex),
@@ -509,7 +542,7 @@ impl Driver {
                     applied: TurnOptions {
                         model: accepted.model.clone(),
                         effort: accepted.effort.clone(),
-                        fast_mode: accepted.fast_mode,
+                        speed: claude_speed(accepted.fast_mode),
                         // What was applied is the mode that was chosen. A
                         // driver running [`REVIEWED_PERMISSION_MODE`] under one
                         // of its own is doing that privately, and a composer
@@ -529,7 +562,7 @@ impl Driver {
                         // Grok has no faster tier; a request for speed is
                         // answered with the ordinary one, and the person is
                         // told what they got.
-                        fast_mode: false,
+                        speed: NORMAL_SPEED.to_string(),
                         permission_mode: options.permission_mode.clone(),
                     },
                     agreed: AgreedTurnOptions::Grok(accepted),
@@ -556,7 +589,7 @@ impl Driver {
                     .get("reasoningEffort")
                     .and_then(Value::as_str)
                     .map(str::to_string),
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: settings
                     .get("permissionMode")
                     .and_then(Value::as_str)
@@ -571,9 +604,7 @@ impl Driver {
                     .get("reasoningEffort")
                     .and_then(Value::as_str)
                     .map(str::to_string),
-                fast_mode: is_fast_service_tier(
-                    settings.get("serviceTier").and_then(Value::as_str),
-                ),
+                speed: speed_from_service_tier(settings.get("serviceTier").and_then(Value::as_str)),
                 permission_mode: codex_permission_mode_name(settings),
             },
             Self::Claude(_) => TurnOptions {
@@ -585,10 +616,12 @@ impl Driver {
                     .get("reasoningEffort")
                     .and_then(Value::as_str)
                     .map(str::to_string),
-                fast_mode: settings
-                    .get("fastMode")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false),
+                speed: claude_speed(
+                    settings
+                        .get("fastMode")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                ),
                 permission_mode: settings
                     .get("permissionMode")
                     .and_then(Value::as_str)
@@ -603,7 +636,7 @@ impl Driver {
                     .get("reasoningEffort")
                     .and_then(Value::as_str)
                     .map(str::to_string),
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: settings
                     .get("permissionMode")
                     .and_then(Value::as_str)
@@ -641,14 +674,14 @@ impl Driver {
                         codex
                             .service_tier
                             .as_deref()
-                            .unwrap_or_else(|| service_tier_for_fast_mode(false)),
+                            .unwrap_or_else(|| service_tier_for_speed(NORMAL_SPEED)),
                     )
                     .await?;
                 Ok(StartedConversation {
                     settings: TurnOptions {
                         model: started.model.clone(),
                         effort: started.reasoning_effort.clone(),
-                        fast_mode: started.fast_mode,
+                        speed: started.speed,
                         permission_mode: started.permission_mode.map(codex_mode_id),
                     },
                     conversation: Conversation::from(&started.thread),
@@ -892,18 +925,14 @@ impl Driver {
         &self,
         conversation_id: &str,
         destination: &str,
-        fast_mode: bool,
+        speed: &str,
     ) -> Result<Conversation, AgentError> {
         match self {
             Self::Antigravity(client) => {
                 Ok(client.move_directory(conversation_id, destination).await?)
             }
             Self::Codex(client) => Ok(client
-                .move_working_directory(
-                    conversation_id,
-                    destination,
-                    service_tier_for_fast_mode(fast_mode),
-                )
+                .move_working_directory(conversation_id, destination, service_tier_for_speed(speed))
                 .await?),
             Self::Claude(claude) => {
                 match claude
@@ -940,13 +969,13 @@ impl Driver {
         &self,
         conversation_id: &str,
         destination: &str,
-        fast_mode: bool,
+        speed: &str,
     ) -> Result<Conversation, AgentError> {
         match self {
             Self::Codex(client) => {
                 client.unarchive_thread(conversation_id).await?;
                 let moved = self
-                    .move_working_directory(conversation_id, destination, fast_mode)
+                    .move_working_directory(conversation_id, destination, speed)
                     .await;
                 let archived = client.archive_thread(conversation_id).await;
                 match (moved, archived) {
@@ -974,14 +1003,14 @@ impl Driver {
                     ));
                 }
                 let conversation = self
-                    .move_working_directory(conversation_id, destination, fast_mode)
+                    .move_working_directory(conversation_id, destination, speed)
                     .await?;
                 self.archive_conversation(conversation_id).await?;
                 Ok(conversation)
             }
             Self::Grok(_) | Self::Antigravity(_) => {
                 let conversation = self
-                    .move_working_directory(conversation_id, destination, fast_mode)
+                    .move_working_directory(conversation_id, destination, speed)
                     .await?;
                 self.archive_conversation(conversation_id).await?;
                 Ok(conversation)
@@ -1003,7 +1032,7 @@ impl Driver {
         &self,
         conversation_id: &str,
         with_turns: bool,
-        fast_mode: bool,
+        speed: &str,
     ) -> Result<OpenedConversation, AgentError> {
         match self {
             Self::Antigravity(client) => Ok(client
@@ -1014,7 +1043,7 @@ impl Driver {
                     .resume_thread_with_page(
                         conversation_id,
                         with_turns,
-                        service_tier_for_fast_mode(fast_mode),
+                        service_tier_for_speed(speed),
                     )
                     .await?;
                 Ok(OpenedConversation {
@@ -1026,7 +1055,7 @@ impl Driver {
             }
             Self::Claude(claude) => {
                 let options = ClaudeTurnOptions {
-                    fast_mode,
+                    fast_mode: claude_runs_fast(speed),
                     ..ClaudeTurnOptions::default()
                 };
                 let conversation = claude
@@ -1416,9 +1445,13 @@ mod tests {
 
     #[tokio::test]
     async fn how_fast_to_work_reaches_the_agent_in_the_agents_own_terms() {
-        // Fast mode is Caffold's word. Codex answers it with a service tier,
+        // A speed is Caffold's word. Codex answers it with a service tier,
         // and deciding that is the driver's job rather than the caller's.
-        for (fast_mode, tier) in [(true, "priority"), (false, "default")] {
+        for (speed, tier) in [
+            ("ultrafast", "ultrafast"),
+            ("priority", "priority"),
+            (NORMAL_SPEED, "default"),
+        ] {
             let client = codex(vec![MockCodexResponse::ok(
                 "thread/resume",
                 conversation_answer(),
@@ -1426,7 +1459,7 @@ mod tests {
 
             client
                 .driver()
-                .open_conversation("thread_1", true, fast_mode)
+                .open_conversation("thread_1", true, speed)
                 .await
                 .expect("the conversation opens");
 
@@ -1434,9 +1467,26 @@ mod tests {
             assert_eq!(requests[0].0, "thread/resume");
             assert_eq!(
                 requests[0].1["serviceTier"], tier,
-                "fast mode {fast_mode} must reach Codex as the tier Codex calls it"
+                "speed {speed} must reach Codex as the tier Codex calls it"
             );
         }
+    }
+
+    #[test]
+    fn each_agent_reads_back_its_own_speed() {
+        let (claude, _runner) = ClaudeClient::mock();
+        let claude = claude.driver("/tmp/project", None);
+        let codex = codex(Vec::new()).driver();
+        let read = |driver: &Driver, key: &str, value: Value| {
+            driver
+                .read_settings(&BTreeMap::from([(key.to_string(), value)]))
+                .speed
+        };
+
+        assert_eq!(read(&claude, "fastMode", Value::Bool(true)), "fast");
+        assert_eq!(read(&claude, "fastMode", Value::Bool(false)), NORMAL_SPEED);
+        assert_eq!(read(&codex, "serviceTier", json!("ultrafast")), "ultrafast");
+        assert_eq!(read(&codex, "serviceTier", json!("default")), NORMAL_SPEED);
     }
 
     #[tokio::test]
@@ -1449,7 +1499,7 @@ mod tests {
 
         let opened = client
             .driver()
-            .open_conversation("thread_1", false, false)
+            .open_conversation("thread_1", false, NORMAL_SPEED)
             .await
             .expect("the conversation opens");
 
@@ -1467,7 +1517,7 @@ mod tests {
 
         let opened = client
             .driver()
-            .open_conversation("thread_1", true, false)
+            .open_conversation("thread_1", true, NORMAL_SPEED)
             .await
             .expect("the conversation opens");
 

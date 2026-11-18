@@ -147,7 +147,7 @@ impl TaskSessions {
         // sent. Keep its operation lock and completion alive until the RPC ends.
         tokio::spawn(async move {
             let _operation = entry.operation.lock().await;
-            let (preserve_subscription, base_revision, fast_mode, observation_epoch) = {
+            let (preserve_subscription, base_revision, speed, observation_epoch) = {
                 let mut state = entry.state.lock().await;
                 let subscribed = state.generation == generation
                     && state.lifecycle == SessionLifecycle::Subscribed;
@@ -166,12 +166,12 @@ impl TaskSessions {
                 (
                     subscribed,
                     state.revision,
-                    state.fast_mode,
+                    state.speed.clone(),
                     state.observation_epoch,
                 )
             };
             let opened = driver
-                .open_conversation(&thread_id, kind != OpenKind::Prompt, fast_mode)
+                .open_conversation(&thread_id, kind != OpenKind::Prompt, &speed)
                 .await;
             let mut state = entry.state.lock().await;
             if !state.same_observation(generation, observation_epoch) {
@@ -245,7 +245,7 @@ impl TaskSessions {
         state.permission_mode = settings.permission_mode;
         state.model = settings.model;
         state.reasoning_effort = settings.reasoning_effort;
-        state.fast_mode = settings.fast_mode;
+        state.speed = settings.speed;
         state.turns_page = turns_page;
         state.history_base_revision = history_base_revision;
         state.runtime_lease = false;
@@ -1216,7 +1216,7 @@ mod tests {
                     permission_mode: Some("askForApproval".to_string()),
                     model: Some("gpt-test".to_string()),
                     reasoning_effort: Some("xhigh".to_string()),
-                    fast_mode: true,
+                    speed: "priority".to_string(),
                 },
             )
             .await;
@@ -1227,7 +1227,7 @@ mod tests {
         assert!(snapshot.active_turn_id.is_none());
         assert_eq!(snapshot.model.as_deref(), Some("gpt-test"));
         assert_eq!(snapshot.reasoning_effort.as_deref(), Some("xhigh"));
-        assert!(snapshot.fast_mode);
+        assert_eq!(snapshot.speed, "priority");
         assert!(methods(&client).await.is_empty());
     }
 }

@@ -87,7 +87,8 @@ pub(crate) use conversation::{
     ToolResultPart, Turn, TurnOrigin, TurnPage, TurnState, TurnStatus,
 };
 pub(crate) use driver::{
-    AgentError, Driver, OpenedConversation, PermissionModes, PromptImage, TurnOptions, TurnRejected,
+    AgentError, Driver, NORMAL_SPEED, OpenedConversation, PermissionModes, PromptImage,
+    TurnOptions, TurnRejected,
 };
 
 #[cfg(test)]

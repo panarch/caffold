@@ -142,7 +142,7 @@ export interface TaskStateMessage {
   provider?: string;
   model?: string;
   reasoningEffort?: string;
-  fastMode?: boolean;
+  speed?: string;
   permissionMode?: string;
   context?: TaskContextUsage | null;
 }

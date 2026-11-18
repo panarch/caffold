@@ -19,15 +19,14 @@ import type {
 import "./composer/components/context-usage.js";
 import type { CaffoldTaskContextUsage } from "./composer/components/context-usage.js";
 import "./composer/components/voice-level-meter.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import type { CaffoldVoiceLevelMeter } from "./composer/components/voice-level-meter.js";
 import {
   formatRecordingDuration,
   VoiceRecorder,
   voiceCaptureSupport,
 } from "./composer/voice-recorder.js";
-import "./task-turn-options.js";
-import { CaffoldElement } from "#app/caffold-element.js";
-import { scopedStyle } from "#app/scoped-style.js";
 import type {
   CaffoldTaskTurnOptions,
   TurnOptionsContext,
@@ -35,6 +34,7 @@ import type {
   TurnOptionsSnapshot,
   TurnSubmissionOptions,
 } from "./task-turn-options.js";
+import { NORMAL_SPEED } from "./task-turn-options.js";
 
 import busySpin from "#app/pages/component-styles/busy-spin.css.js";
 import styles from "./composer.css.js";
@@ -65,9 +65,11 @@ export interface ComposerContext {
   interrupting: boolean;
   interruptError: string;
   provider?: string;
+  // The agent `model` belongs to, when a Section remembers it.
+  modelProvider?: string;
   model?: string;
   effort?: string;
-  fastMode: boolean;
+  speed: string;
   permissionMode?: string;
 }
 
@@ -222,7 +224,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
     uploading: false,
     interrupting: false,
     interruptError: "",
-    fastMode: false,
+    speed: NORMAL_SPEED,
   };
   voice: VoiceState = {
     phase: "checking",
@@ -764,8 +766,8 @@ export class CaffoldTaskComposer extends CaffoldElement {
           <input type="hidden" name="effort" .value=${options?.effort ?? ""}>
           <input
             type="hidden"
-            name="fastMode"
-            .value=${options?.fastMode ? "true" : "false"}
+            name="speed"
+            .value=${options?.speed ?? NORMAL_SPEED}
           >
           <input
             type="hidden"
@@ -982,9 +984,10 @@ export class CaffoldTaskComposer extends CaffoldElement {
       allowHandoff:
         this.context.mode === "follow-up" && this.context.allowHandoff,
       initialSelection: {
+        modelProvider: this.context.modelProvider ?? "",
         model: this.context.model ?? "",
         effort: this.context.effort ?? "",
-        fastMode: this.context.fastMode,
+        speed: this.context.speed,
         permissionMode: this.context.permissionMode ?? "",
       },
       locked: requestLocked || this.context.settingsLocked,
@@ -1573,7 +1576,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
       ++this.submissionSequence,
     ].join(":");
     const options = this.turnOptions()?.submissionOptions() ?? {
-      fastMode: false,
+      speed: NORMAL_SPEED,
     };
     const textarea = this.promptField.value;
     const restorePromptFocusOnRejection =

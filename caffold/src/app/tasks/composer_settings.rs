@@ -24,7 +24,11 @@ pub(super) async fn persist_started_turn_composer_settings(
             let section = match thread.section_id() {
                 Some(section_id) => Some(
                     tables
-                        .update_managed_section_composer_settings(section_id, &settings)?
+                        .update_managed_section_composer_settings(
+                            section_id,
+                            thread.run_by.provider(),
+                            &settings,
+                        )?
                         .ok_or(TaskStoreError::UnexpectedPayload)?,
                 ),
                 None => None,
@@ -40,18 +44,18 @@ pub(super) async fn persist_started_turn_composer_settings(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::task_store::RunBy;
+    use crate::task_store::{RunBy, SectionComposerSettings, TaskProvider};
 
-    fn settings(model: &str, effort: &str, fast_mode: bool) -> ComposerSettings {
+    fn settings(model: &str, effort: &str, speed: &str) -> ComposerSettings {
         ComposerSettings {
             model: Some(model.to_string()),
             reasoning_effort: Some(effort.to_string()),
-            fast_mode,
+            speed: speed.to_string(),
             permission_mode: Some("autoMode".to_string()),
         }
     }
 
-    fn place_thread(store: &TaskStore, thread_id: &str, section_id: &str) {
+    fn place_thread(store: &TaskStore, thread_id: &str, section_id: &str, run_by: RunBy) {
         store
             .transaction(|tables| {
                 tables.upsert_managed_section(&ManagedSection {
@@ -61,7 +65,7 @@ mod tests {
                     last_composer_settings: None,
                 })?;
                 tables.claim_managed_thread_at_top(
-                    ManagedThread::new(thread_id, RunBy::Codex, Some(1), None, None),
+                    ManagedThread::new(thread_id, run_by, Some(1), None, None),
                     thread_id,
                     section_id,
                     1,
@@ -73,9 +77,17 @@ mod tests {
     #[tokio::test]
     async fn updates_the_task_and_its_section_in_one_transaction() {
         let store = TaskStore::memory().unwrap();
-        place_thread(&store, "thread-a", "section-a");
-        place_thread(&store, "thread-b", "section-b");
-        let selected = settings("gpt-selected", "xhigh", true);
+        let claude = RunBy::Claude {
+            cwd: "/Users/example/project".to_string(),
+            config_dir: None,
+        };
+        place_thread(&store, "thread-a", "section-a", claude);
+        place_thread(&store, "thread-b", "section-b", RunBy::Codex);
+        let selected = settings("opus", "xhigh", "fast");
+        let remembered = SectionComposerSettings {
+            provider: TaskProvider::Claude,
+            settings: selected.clone(),
+        };
 
         let persisted =
             persist_started_turn_composer_settings(store.clone(), "thread-a", selected.clone())
@@ -86,10 +98,10 @@ mod tests {
         assert_eq!(persisted.thread.composer_settings(), selected);
         assert_eq!(
             persisted.section.unwrap().last_composer_settings,
-            Some(selected.clone())
+            Some(remembered.clone())
         );
         let sections = store.read(|tables| tables.managed_sections()).unwrap();
-        assert_eq!(sections[0].last_composer_settings, Some(selected));
+        assert_eq!(sections[0].last_composer_settings, Some(remembered));
         assert_eq!(sections[1].last_composer_settings, None);
     }
 
@@ -100,7 +112,7 @@ mod tests {
         let persisted = persist_started_turn_composer_settings(
             store.clone(),
             "missing-thread",
-            settings("gpt-selected", "high", true),
+            settings("gpt-selected", "high", "priority"),
         )
         .await
         .unwrap();
@@ -131,7 +143,7 @@ mod tests {
         let result = persist_started_turn_composer_settings(
             store.clone(),
             "thread-orphan",
-            settings("gpt-selected", "high", true),
+            settings("gpt-selected", "high", "priority"),
         )
         .await;
 
@@ -155,7 +167,7 @@ mod tests {
                 1,
             )
             .unwrap();
-        let selected = settings("gpt-selected", "medium", false);
+        let selected = settings("gpt-selected", "medium", "default");
 
         let persisted =
             persist_started_turn_composer_settings(store, "thread-unsectioned", selected.clone())

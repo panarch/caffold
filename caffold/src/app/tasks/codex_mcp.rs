@@ -1243,7 +1243,7 @@ mod tests {
         store
             .claim(
                 ManagedThread {
-                    fast_mode: true,
+                    speed: "ultrafast".to_string(),
                     permission_mode: Some("caffold:ask-jev-first".to_string()),
                     ..ManagedThread::new(
                         "thread_1",
@@ -1293,7 +1293,7 @@ mod tests {
             assert_eq!(read["result"]["isError"], false, "{read}");
             assert_eq!(
                 read["result"]["content"][0]["text"],
-                r#"{"agent":"codex","model":"gpt-6-astra","reasoningEffort":"max","fastMode":true,"permissionMode":"caffold:ask-jev-first"}"#
+                r#"{"agent":"codex","model":"gpt-6-astra","reasoningEffort":"max","speed":"ultrafast","permissionMode":"caffold:ask-jev-first"}"#
             );
         }
 
@@ -1301,7 +1301,7 @@ mod tests {
             response_json(bound_request(&host, &unrecorded, read_settings(json!({}))).await).await;
         assert_eq!(
             read["result"]["content"][0]["text"],
-            r#"{"agent":"codex","model":null,"reasoningEffort":null,"fastMode":false,"permissionMode":null}"#
+            r#"{"agent":"codex","model":null,"reasoningEffort":null,"speed":"default","permissionMode":null}"#
         );
 
         let with_arguments = response_json(

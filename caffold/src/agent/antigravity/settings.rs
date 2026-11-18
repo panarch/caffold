@@ -4,7 +4,9 @@ use super::{
     AntigravityClient, AntigravityError, ModelOption, PermissionModes, Session, TurnOptions,
     protocol, usage::UsageStatus,
 };
-use crate::agent::driver::{PermissionModeOption, REVIEWED_PERMISSION_MODE, TurnRejected, bounded};
+use crate::agent::driver::{
+    NORMAL_SPEED, PermissionModeOption, REVIEWED_PERMISSION_MODE, TurnRejected, bounded,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -58,7 +60,8 @@ impl AntigravityClient {
                     .flat_map(|option| &option.options)
                     .map(|choice| choice.value.clone())
                     .collect(),
-                supports_fast_mode: false,
+                // The native agent has no faster tier.
+                speeds: Vec::new(),
                 supports_auto_mode: false,
             })
             .collect())
@@ -135,7 +138,7 @@ impl AntigravityClient {
         Ok(TurnOptions {
             model,
             effort,
-            fast_mode: false,
+            speed: NORMAL_SPEED.to_string(),
             permission_mode: mode,
         })
     }
@@ -249,7 +252,7 @@ fn settings(
             .iter()
             .find(|option| option.id == protocol::THINKING)
             .map(|option| option.current_value.clone()),
-        fast_mode: false,
+        speed: NORMAL_SPEED.to_string(),
         permission_mode: Some(if bypass {
             BYPASS.into()
         } else if reviewed {
@@ -412,7 +415,7 @@ mod tests {
             .accept_options(&TurnOptions {
                 model: None,
                 effort: None,
-                fast_mode: false,
+                speed: NORMAL_SPEED.to_string(),
                 permission_mode: None,
             })
             .await
@@ -442,15 +445,16 @@ mod tests {
         );
         // Like Grok, the native agent has no faster tier; the applied
         // settings explicitly report ordinary speed.
-        assert!(
-            !client
+        assert_eq!(
+            client
                 .accept_options(&TurnOptions {
-                    fast_mode: true,
+                    speed: "fast".into(),
                     ..options.clone()
                 })
                 .await
                 .unwrap()
-                .fast_mode
+                .speed,
+            NORMAL_SPEED
         );
         assert!(
             client
@@ -502,7 +506,7 @@ mod tests {
         let options = TurnOptions {
             model: Some("native-model".into()),
             effort: Some("low".into()),
-            fast_mode: false,
+            speed: NORMAL_SPEED.to_string(),
             permission_mode: None,
         };
         assert!(matches!(

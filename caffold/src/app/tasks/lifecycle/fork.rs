@@ -137,7 +137,7 @@ impl TaskLifecycle {
             if managed.permission_mode.as_deref() == Some(REVIEWED_PERMISSION_MODE) {
                 source_before.settings.permission_mode = managed.permission_mode.clone();
             }
-            source_before.settings.fast_mode = managed.fast_mode;
+            source_before.settings.speed = managed.speed.clone();
         }
         let title = format!(
             "Fork of {}",
@@ -172,7 +172,7 @@ impl TaskLifecycle {
                 agent.run_by(&cwd),
                 forked.settings.model.clone(),
                 forked.settings.effort.clone(),
-                forked.settings.fast_mode,
+                forked.settings.speed.clone(),
                 forked.settings.permission_mode.clone(),
             );
             let placement = self
@@ -200,7 +200,7 @@ impl TaskLifecycle {
                     permission_mode: forked.settings.permission_mode,
                     model: forked.settings.model,
                     reasoning_effort: forked.settings.effort,
-                    fast_mode: forked.settings.fast_mode,
+                    speed: forked.settings.speed,
                 },
             )
             .await;

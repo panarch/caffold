@@ -344,15 +344,6 @@ pub(crate) struct ModelServiceTier {
     pub description: String,
 }
 
-impl Model {
-    pub(crate) fn fast_service_tier_id(&self) -> Option<&str> {
-        self.service_tiers
-            .iter()
-            .find(|tier| tier.name.eq_ignore_ascii_case("Fast"))
-            .map(|tier| tier.id.as_str())
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ModelListResponse {

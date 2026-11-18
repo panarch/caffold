@@ -31,14 +31,17 @@ import type {
   DirectoryChosenDetail,
 } from "./directory-field.js";
 import { directoryPathDisplay, type ServerPaths } from "./directory-path.js";
+import { NORMAL_SPEED } from "./task-turn-options.js";
 
 import styles from "./task-create.css.js";
 
-// What a New Task surface last ran under, which a new Task starts from.
+// What a New Task surface last ran under, which a new Task starts from, and
+// the agent that ran it.
 export interface ComposerSettings {
+  provider: string;
   model: string;
   effort: string;
-  fastMode: boolean;
+  speed: string;
   permissionMode: string;
 }
 
@@ -253,9 +256,10 @@ export class CaffoldTaskCreate extends CaffoldElement {
       ariaLabel: "New task prompt",
       submitLabel: "Start task",
       cancel: false,
+      modelProvider: settings?.provider ?? "",
       model: settings?.model ?? "",
       effort: settings?.effort ?? "",
-      fastMode: Boolean(settings?.fastMode),
+      speed: settings?.speed ?? NORMAL_SPEED,
       permissionMode: settings?.permissionMode ?? "",
       disabled: !this.transportAvailable || this.taskOperationsBlocked,
       requestError: this.error?.message ?? "",
@@ -351,9 +355,10 @@ function normalizeComposerSettings(
     return null;
   }
   return {
+    provider: settings.provider ?? "",
     model: settings.model ?? "",
     effort: settings.effort ?? "",
-    fastMode: Boolean(settings.fastMode),
+    speed: settings.speed ?? NORMAL_SPEED,
     permissionMode: settings.permissionMode ?? "",
   };
 }

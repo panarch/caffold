@@ -3566,7 +3566,7 @@ mod tests {
             .unwrap();
         state
             .task_sessions
-            .restore_managed_composer_settings(thread_id, false, None)
+            .restore_managed_composer_settings(thread_id, "default", None)
             .await;
         assert_eq!(state.task_sessions.diagnostics().await.tracked_sessions, 1);
 

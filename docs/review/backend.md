@@ -197,6 +197,11 @@ release that can still upgrade it.
   adapting mechanically to a compiler or dependency API change.
 - Shared transaction, reporting, and temporary-file lifecycle helpers may be
   reused because they do not define a schema or data-conversion contract.
+- A transition reads and writes only the store it is given. It does not start,
+  ask, or wait on an agent, app-server, runner, network service, or any file
+  outside the store. A value an agent would decide is derived from the store's
+  own columns by a fixed rule, or left for the agent's adapter to settle after
+  startup.
 
 Review every migration with exact input-version, output-version, data
 preservation, wrong-version rollback, migration-history, and supported

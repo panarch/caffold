@@ -40,7 +40,7 @@ test("browses providers without changing the selected model or requesting its pe
   await expect(menu.locator('[data-model][aria-pressed="true"]')).toHaveCount(0);
   await expect(menu.locator(".task-model-settings")).toBeEmpty();
   expect(await picker.evaluate((element) => element.submissionOptions())).toMatchObject({
-    provider: "codex", model: "shared", effort: "xhigh", fastMode: false,
+    provider: "codex", model: "shared", effort: "xhigh", speed: "default",
   });
   expect(requests).toHaveLength(initialRequests);
 
@@ -58,7 +58,7 @@ test("chooses a model before exposing only that model's settings", { tag: "@serv
   const menu = picker.locator(".task-model-popover");
   const trigger = picker.locator(".task-model-button");
   await trigger.click();
-  await menu.locator('[data-fast-mode="true"]').click();
+  await menu.locator('[data-speed="priority"]').click();
   await trigger.click();
   await menu.getByRole("button", { name: "Claude", exact: true }).click();
   await menu.locator('[data-model="shared"]').click();
@@ -67,32 +67,32 @@ test("chooses a model before exposing only that model's settings", { tag: "@serv
   await expect(menu.locator(".task-model-settings")).not.toContainText("Claude Shared");
   await expect(menu.locator('[data-effort="high"]')).toHaveAttribute("aria-pressed", "true");
   await expect(menu.locator('[data-effort="xhigh"]')).toHaveAttribute("aria-pressed", "false");
-  await expect(menu.locator('[data-fast-mode="false"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(menu.locator('[data-speed="default"]')).toHaveAttribute("aria-pressed", "true");
   await expect.poll(() => requests.at(-1)).toEqual({ provider: "claude", model: "shared" });
 
   await menu.getByRole("button", { name: "gemini", exact: true }).click();
   await menu.locator('[data-model="budget-model"]').click();
   await expect(menu.locator('[data-effort]')).toHaveCount(2);
   await expect(menu.locator('[data-effort="adaptive"]')).toHaveAttribute("aria-pressed", "true");
-  await expect(menu.locator('[data-fast-mode]')).toHaveCount(0);
+  await expect(menu.locator('[data-speed]')).toHaveCount(0);
   expect(await picker.evaluate((element) => element.submissionOptions())).toMatchObject({
-    provider: "gemini", model: "budget-model", effort: "adaptive", fastMode: false,
+    provider: "gemini", model: "budget-model", effort: "adaptive", speed: "default",
   });
 
   await menu.getByRole("button", { name: "Grok", exact: true }).click();
   await menu.locator('[data-model="grok-4.5"]').click();
   await expect(menu.locator('[data-effort]')).toHaveCount(4);
   await expect(menu.locator('[data-effort="xhigh"]')).toHaveAttribute("aria-pressed", "true");
-  await expect(menu.locator('[data-fast-mode]')).toHaveCount(0);
+  await expect(menu.locator('[data-speed]')).toHaveCount(0);
   expect(await picker.evaluate((element) => element.submissionOptions())).toMatchObject({
-    provider: "grok", model: "grok-4.5", effort: "xhigh", fastMode: false,
+    provider: "grok", model: "grok-4.5", effort: "xhigh", speed: "default",
   });
 
   await menu.getByRole("button", { name: "sample", exact: true }).click();
   await menu.locator('[data-model="plain-model"]').click();
   await expect(menu.locator(".task-model-settings")).toBeEmpty();
   const options = await picker.evaluate((element) => element.submissionOptions());
-  expect(options).toMatchObject({ provider: "sample", model: "plain-model", fastMode: false });
+  expect(options).toMatchObject({ provider: "sample", model: "plain-model", speed: "default" });
   expect(options).not.toHaveProperty("effort");
 });
 
@@ -256,12 +256,12 @@ test("keeps the Task's provider boundary when handoff is not available", { tag: 
 // with no settings at all.
 function catalog() {
   return [
-    { provider: "codex", model: "shared", displayName: "Codex Shared", isDefault: true, defaultEffort: "xhigh", efforts: ["low", "medium", "high", "xhigh", "max", "ultra"], supportsFastMode: true },
-    { provider: "claude", model: "shared", displayName: "Claude Shared", defaultEffort: "high", efforts: ["high", "xhigh"], supportsFastMode: true },
-    { provider: "grok", model: "grok-4.6", displayName: "Grok 4.6", description: "Grok 4.6 (Latest)", defaultEffort: "xhigh", efforts: ["low", "medium", "high", "xhigh"], supportsFastMode: false, supportsAutoMode: true },
-    { provider: "grok", model: "grok-4.5", displayName: "Grok 4.5", description: "Grok 4.5", defaultEffort: "xhigh", efforts: ["low", "medium", "high", "xhigh"], supportsFastMode: false, supportsAutoMode: true },
-    { provider: "gemini", model: "budget-model", displayName: "Adaptive Model", defaultEffort: "adaptive", efforts: ["adaptive", "budgeted"], supportsFastMode: false },
-    { provider: "sample", model: "plain-model", displayName: "Plain Model", efforts: [], supportsFastMode: false },
+    { provider: "codex", model: "shared", displayName: "Codex Shared", isDefault: true, defaultEffort: "xhigh", efforts: ["low", "medium", "high", "xhigh", "max", "ultra"], speeds: [{ id: "priority", name: "Fast", description: null }] },
+    { provider: "claude", model: "shared", displayName: "Claude Shared", defaultEffort: "high", efforts: ["high", "xhigh"], speeds: [{ id: "fast", name: "Fast", description: null }] },
+    { provider: "grok", model: "grok-4.6", displayName: "Grok 4.6", description: "Grok 4.6 (Latest)", defaultEffort: "xhigh", efforts: ["low", "medium", "high", "xhigh"], speeds: [], supportsAutoMode: true },
+    { provider: "grok", model: "grok-4.5", displayName: "Grok 4.5", description: "Grok 4.5", defaultEffort: "xhigh", efforts: ["low", "medium", "high", "xhigh"], speeds: [], supportsAutoMode: true },
+    { provider: "gemini", model: "budget-model", displayName: "Adaptive Model", defaultEffort: "adaptive", efforts: ["adaptive", "budgeted"], speeds: [] },
+    { provider: "sample", model: "plain-model", displayName: "Plain Model", efforts: [], speeds: [] },
   ];
 }
 

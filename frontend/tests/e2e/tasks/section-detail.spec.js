@@ -1322,9 +1322,10 @@ test("uses the Section's last composer settings for its next Task request", { ta
       name: rootPath,
       repository: false,
       composerSettings: {
+        provider: "codex",
         model: "gpt-5.6-sol",
         effort: "xhigh",
-        fastMode: true,
+        speed: "ultrafast",
       },
       tasks: [activeListTask(task)],
     }],
@@ -1339,7 +1340,7 @@ test("uses the Section's last composer settings for its next Task request", { ta
         json: createdTaskFixture({
           model: "gpt-5.6-sol",
           reasoningEffort: "xhigh",
-          fastMode: true,
+          speed: "ultrafast",
         }),
       });
     }
@@ -1364,7 +1365,7 @@ test("uses the Section's last composer settings for its next Task request", { ta
   const form = page.locator('caffold-section-detail .task-new-form[data-task-form="create"]');
   await expect(form.locator('input[name="model"]')).toHaveValue("gpt-5.6-sol");
   await expect(form.locator('input[name="effort"]')).toHaveValue("xhigh");
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
+  await expect(form.locator('input[name="speed"]')).toHaveValue("ultrafast");
 
   await form.getByRole("textbox", { name: "New task prompt" }).fill("Use the Section settings");
   await expect(form.locator(".task-primary-action-button")).toBeEnabled();
@@ -1376,14 +1377,14 @@ test("uses the Section's last composer settings for its next Task request", { ta
     titleSource: "Use the Section settings",
     model: "gpt-5.6-sol",
     effort: "xhigh",
-    fastMode: true,
+    speed: "ultrafast",
   });
   await expect.poll(() => promptBody).not.toBeNull();
   expect(promptBody).toMatchObject({
     prompt: "Use the Section settings",
     model: "gpt-5.6-sol",
     effort: "xhigh",
-    fastMode: true,
+    speed: "ultrafast",
     activeTurnId: null,
   });
 });
@@ -1566,9 +1567,10 @@ test("falls back stale Section settings and applies targeted updates without rel
           name: rootPath,
           repository: false,
           composerSettings: {
+            provider: "codex",
             model: "retired-model",
             effort: "retired-effort",
-            fastMode: false,
+            speed: "default",
           },
           tasks: [activeListTask(task)],
         }],
@@ -1584,7 +1586,7 @@ test("falls back stale Section settings and applies targeted updates without rel
   const form = page.locator('caffold-section-detail .task-new-form[data-task-form="create"]');
   await expect(form.locator('input[name="model"]')).toHaveValue("gpt-5.6-sol");
   await expect(form.locator('input[name="effort"]')).toHaveValue("low");
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
+  await expect(form.locator('input[name="speed"]')).toHaveValue("default");
   await expect.poll(() => page.evaluate(() =>
     window.__sectionComposerSources.some((source) =>
       source.url.startsWith("/api/tasks/stream")
@@ -1598,16 +1600,17 @@ test("falls back stale Section settings and applies targeted updates without rel
     source.emit("section-composer-settings", {
       sectionId: id,
       composerSettings: {
+        provider: "codex",
         model: "gpt-5.6-sol",
         effort: "xhigh",
-        fastMode: true,
+        speed: "priority",
       },
     });
   }, sectionId);
 
   await expect(form.locator('input[name="model"]')).toHaveValue("gpt-5.6-sol");
   await expect(form.locator('input[name="effort"]')).toHaveValue("xhigh");
-  await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
+  await expect(form.locator('input[name="speed"]')).toHaveValue("priority");
   expect(taskListReads).toBe(1);
 });
 
@@ -1644,9 +1647,10 @@ test("moves Section New to the agent whose model a Section update names", { tag:
           name: rootPath,
           repository: false,
           composerSettings: {
+            provider: "codex",
             model: "gpt-6-astra",
             effort: "max",
-            fastMode: false,
+            speed: "default",
             permissionMode: "askForApproval",
           },
           tasks: [activeListTask(task)],
@@ -1689,9 +1693,10 @@ test("moves Section New to the agent whose model a Section update names", { tag:
     source.emit("section-composer-settings", {
       sectionId: id,
       composerSettings: {
+        provider: "claude",
         model: "opus[1m]",
         effort: "max",
-        fastMode: false,
+        speed: "default",
         permissionMode: "auto",
       },
     });

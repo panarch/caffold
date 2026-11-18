@@ -551,7 +551,7 @@ impl Task {
             "prompt": text,
             "images": [],
             "model": model,
-            "fastMode": false,
+            "speed": "default",
             "permissionMode": permission_mode,
         }))
         .await

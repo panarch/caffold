@@ -14,7 +14,7 @@ for (const managed of [true, false]) {
     await mockAgentModels(page);
     await page.route(/\/api\/agent\/models(?:\?|$)/, route => route.fulfill({json: {
       models: [AGENT_MODELS_FIXTURE.models[0], ...["claude", "grok", "antigravity"].map(provider => ({
-        provider, model: `${provider}-model`, displayName: `${provider} model`, isDefault: true, efforts: [], supportsFastMode: false,
+        provider, model: `${provider}-model`, displayName: `${provider} model`, isDefault: true, efforts: [], speeds: [],
       }))], unavailable: [],
     }}));
     const task = (id, title) => ({
@@ -200,7 +200,7 @@ test("updates handoff availability while Archive is pending and after it fails",
   await installEventSourceMock(page, { autoOpen: true });
   await mockAgentModels(page);
   await page.route(/\/api\/agent\/models(?:\?|$)/, route => route.fulfill({ json: {
-    models: [AGENT_MODELS_FIXTURE.models[0], { provider: "claude", model: "claude-model", displayName: "Claude model", isDefault: true, efforts: [], supportsFastMode: false }], unavailable: [],
+    models: [AGENT_MODELS_FIXTURE.models[0], { provider: "claude", model: "claude-model", displayName: "Claude model", isDefault: true, efforts: [], speeds: [] }], unavailable: [],
   } }));
   const task = {
     id: "archive-handoff", threadId: "archive-handoff", title: "Retain the checkout",

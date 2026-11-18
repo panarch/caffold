@@ -1238,7 +1238,7 @@ impl TaskRuntime {
             agent: managed.run_by.provider().as_str(),
             model: managed.model,
             reasoning_effort: managed.reasoning_effort,
-            fast_mode: managed.fast_mode,
+            speed: managed.speed,
             permission_mode: managed.permission_mode,
         })
         .map_err(|error| error.to_string())
@@ -1496,7 +1496,8 @@ struct TaskAgentSettings {
     agent: &'static str,
     model: Option<String>,
     reasoning_effort: Option<String>,
-    fast_mode: bool,
+    /// `default`, or the agent's own name for the faster speed it ran at.
+    speed: String,
     permission_mode: Option<String>,
 }
 

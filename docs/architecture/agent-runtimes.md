@@ -109,11 +109,20 @@ a concise situation summary, then waits for the next user request. The source
 agent generates no summary and receives no inference prompt. The managed checkout
 rules belong to [Worktree Lifecycle](worktree-lifecycle.md#continue-in-the-same-workspace).
 
-Codex, Claude, Grok, and Antigravity models may expose different effort levels, fast modes,
+Codex, Claude, Grok, and Antigravity models may expose different effort levels, speeds,
 and permission modes. The composer shows what the selected agent offers. A choice
 travels back under the agent's own name, and the driver verifies it before a
 conversation or turn is created. Caffold never invents a common permission
 profile and does not silently substitute one agent's default for another's.
+
+A model lists the speeds it offers beyond the ordinary one, each under its
+agent's own name: Codex's service tiers such as `priority` and `ultrafast`, and
+`fast` for Claude's fast mode, which Claude Code turns on and off without naming.
+`default` is Caffold's name for the ordinary speed, and each driver decides what
+its agent runs at for it. A speed the chosen model does not offer runs at the
+ordinary one rather than refusing the turn. Grok and Antigravity offer no other
+speed. Shared code stores and returns a speed without reading it; only the
+drivers translate it.
 
 One mode in every list is Caffold's own, **Ask Jev first**, and it is the only
 value the composer sends that a driver reads rather than passes on. Each driver
@@ -841,13 +850,14 @@ whichever agent asks, and no agent is consulted for it. The pre-MCP Codex
 dynamic-tool path does not serve it.
 
 `read_current_task_agent_settings` takes no arguments either. It answers with the
-JSON object `{agent, model, reasoningEffort, fastMode, permissionMode}`: `agent`
+JSON object `{agent, model, reasoningEffort, speed, permissionMode}`: `agent`
 is the Task's recorded agent, and the rest are the Task's composer settings in
 Caffold Redb, as its latest successfully started non-steering turn committed them
 ([Active Navigator Projection](codex-app-server.md#active-navigator-projection-and-archived-pagination)).
 Each value is the choice as recorded, under the agent's own name for it except
-Caffold's own `caffold:ask-jev-first` permission mode, so a Claude model can be
-an alias such as `opus`; `null` means Caffold holds no record of that setting. No agent is consulted, so a setting changed after the turn started is
+Caffold's own `caffold:ask-jev-first` permission mode and `default` speed, so a
+Claude model can be an alias such as `opus`; `null` means Caffold holds no
+record of that setting. No agent is consulted, so a setting changed after the turn started is
 not reflected and an unreachable agent does not change the answer. The pre-MCP
 Codex dynamic-tool path does not serve it.
 
