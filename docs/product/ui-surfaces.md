@@ -525,6 +525,12 @@ width instead of scrolling them sideways; a wrapped line goes on from the start
 of the code column. Each browser remembers the choice for every file view,
 Git's and GitHub's included.
 
+Where a file view is narrow, as on a phone, its line numbers scroll sideways
+with the code, and Diff shows one number for each line: the old file's on a
+removed line and the new file's on the others. Once Source's numbers have
+scrolled out of view, each line the scope changed keeps its mark as a thin strip
+at the left edge.
+
 A file opened from Changes ends, in Diff, Source, Visual, and a notice about
 it, with cards for the changed files before and after it in the list's order,
 a file in both Working Tree groups counted where it first shows; a card opens

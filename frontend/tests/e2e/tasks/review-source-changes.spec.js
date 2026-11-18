@@ -128,6 +128,56 @@ test("wraps Source with each mark across the whole of a wrapped line", { tag: "@
   expect(look.ruleCenter).toBeCloseTo(look.wideBottom, 1);
 });
 
+test("keeps each Source mark at the left edge once a narrow viewer's numbers scroll away", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/files");
+  // Source in a viewer just narrow enough and one just too wide, over the page.
+  await page.evaluate(
+    async ({ content, lineChanges }) => {
+      await import("/assets/components/file-viewer.js");
+      for (const [index, width] of [520, 521].entries()) {
+        const viewer = document.createElement("caffold-review-file-viewer");
+        viewer.style.cssText = `display: block; position: fixed; left: 0; top: ${index * 320}px; z-index: 2147483647; width: ${width}px; height: 300px;`;
+        document.body.append(viewer);
+        viewer.setFile({ path: "src/planner.rs", content, lineChanges });
+      }
+      await new Promise(requestAnimationFrame);
+    },
+    { content: SOURCE, lineChanges: CHANGES },
+  );
+
+  const before = await readLeftEdge(page, "start");
+  const after = await readLeftEdge(page, "end");
+
+  // Before the lines move, the number covers the strip; once it has scrolled
+  // past the edge, the strip shows what it marked.
+  expect(before.narrow).toEqual({
+    resting: "addedBackground",
+    added: "addedBackground",
+    plain: "gutter",
+    between: true,
+    first: true,
+    last: true,
+  });
+  expect(after.narrow).toEqual({
+    resting: null,
+    added: "addedText",
+    plain: "code",
+    between: true,
+    first: true,
+    last: true,
+  });
+  expect(after.wide).toEqual({
+    resting: "addedBackground",
+    added: "addedBackground",
+    plain: "gutter",
+    between: true,
+    first: true,
+    last: true,
+  });
+});
+
 test("reads Source against the base of the scope it is in", { tag: "@server-steady" }, async ({
   page,
 }) => {
@@ -254,6 +304,93 @@ function readMarkLook(viewer) {
       },
     };
   });
+}
+
+// What each viewer over the page shows with its lines at their `start` or
+// scrolled to their `end`: the token color where line 2's strip rests, and at
+// the left edge beside an added line (2) and an unmarked line (4); and whether
+// a removed-lines rule lies across the boundary above line 6, above line 1,
+// and below line 8 there.
+async function readLeftEdge(page, position) {
+  const viewers = await page.evaluate(async (position) => {
+    const roots = [...document.querySelectorAll("caffold-review-file-viewer")].map(
+      (viewer) => viewer.shadowRoot.querySelector("caffold-code-viewer").shadowRoot,
+    );
+    for (const root of roots) {
+      const scroller = root.querySelector(".code-lines");
+      scroller.scrollLeft = position === "start" ? 0 : scroller.scrollWidth;
+    }
+    await new Promise(requestAnimationFrame);
+    const token = (root, name) => {
+      const probe = document.createElement("span");
+      probe.style.backgroundColor = `var(${name})`;
+      root.append(probe);
+      const value = getComputedStyle(probe).backgroundColor.match(/\d+/g).map(Number);
+      probe.remove();
+      return value;
+    };
+    return roots.map((root) => {
+      const left = root.querySelector(".code-lines").getBoundingClientRect().left;
+      const row = (line) =>
+        root.querySelector(`.code-row[data-line-number="${line}"]`).getBoundingClientRect();
+      // A 2px rule drawn on whole pixels covers the pixel on each side of
+      // its center. Above line 1 no row is there to reach into, so that rule
+      // lies whole inside it, 1px lower.
+      const across = (center) =>
+        [-1, 0].map((step) => [left + 5, Math.round(center) + step]);
+      const number = root
+        .querySelector('.code-row[data-line-number="2"] .line-number')
+        .getBoundingClientRect();
+      return {
+        // Where line 2's strip rests until it reaches the edge: the end of
+        // its number, its colored side 8px in. None once the number has
+        // left the viewer.
+        resting: number.right > left ? [number.right - 7, (row(2).top + row(2).bottom) / 2] : null,
+        added: [left + 1, (row(2).top + row(2).bottom) / 2],
+        plain: [left + 1, (row(4).top + row(4).bottom) / 2],
+        between: across(row(6).top),
+        first: across(row(1).top + 1),
+        last: across(row(8).bottom),
+        tokens: {
+          addedBackground: token(root, "--diff-added-bg"),
+          addedText: token(root, "--diff-added-text"),
+          removedRule: token(root, "--diff-removed-rule"),
+          gutter: token(root, "--code-gutter"),
+          code: token(root, "--code-bg"),
+        },
+      };
+    });
+  }, position);
+
+  const screenshot = await page.screenshot({ animations: "disabled", caret: "hide", scale: "css" });
+  const [narrow, wide] = await page.evaluate(
+    async ({ base64, viewers }) => {
+      const bitmap = await createImageBitmap(
+        new Blob([Uint8Array.from(atob(base64), (character) => character.charCodeAt(0))]),
+      );
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const context = canvas.getContext("2d");
+      context.drawImage(bitmap, 0, 0);
+      const color = ([x, y]) =>
+        [...context.getImageData(Math.floor(x), Math.floor(y), 1, 1).data.slice(0, 3)];
+      const near = (pixel, token) =>
+        pixel.reduce((sum, channel, index) => sum + Math.abs(channel - token[index]), 0) <= 6;
+      const named = (point, tokens) =>
+        Object.keys(tokens).find((name) => near(color(point), tokens[name])) ?? `${color(point)}`;
+      const ruled = (points, tokens) =>
+        points.every((point) => near(color(point), tokens.removedRule));
+      return viewers.map(({ resting, added, plain, between, first, last, tokens }) => ({
+        resting: resting && named(resting, tokens),
+        added: named(added, tokens),
+        plain: named(plain, tokens),
+        between: ruled(between, tokens),
+        first: ruled(first, tokens),
+        last: ruled(last, tokens),
+      }));
+    },
+    { base64: screenshot.toString("base64"), viewers },
+  );
+  return { narrow, wide };
 }
 
 async function emitGitRefsChanged(page) {

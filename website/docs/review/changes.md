@@ -39,7 +39,7 @@ edge; tap it to open the list over the file, and choosing a file closes it.
 The right side shows the selected file in one of these ways, as the file
 allows:
 
-- **Diff**, the unified diff of the change, with line numbers on both sides;
+- **Diff**, the unified diff of the change;
 - **Visual**, for images, the picture before and after the change: **Side by
   side** shows both with their size, and **Difference** paints the pixels that
   changed in red;
