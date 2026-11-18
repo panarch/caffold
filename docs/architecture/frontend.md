@@ -2646,8 +2646,10 @@ axis.
 `user-scalable=no` in its viewport, so a phone or tablet neither pinch-zooms the
 page nor zooms into a focused field; sizes change only through the Interface,
 Conversation, and Code settings. `touch-action: manipulation` on `html` turns
-off double-tap zoom. Desktop browsers do not apply viewport limits and keep
-their own page zoom.
+off double-tap zoom. `text-size-adjust: 100%` on `html`, also declared as
+`-webkit-text-size-adjust` for Safari, keeps a mobile browser from enlarging
+text on its own, as iOS does in landscape. Desktop browsers do not apply
+viewport limits and keep their own page zoom.
 
 Interface faces are bundled as one variable file each and declare a weight
 range, which is what lets interface weights between Regular and Bold render as

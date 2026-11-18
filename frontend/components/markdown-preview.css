@@ -14,8 +14,6 @@
   font-family: var(--font-ui);
   font-size: var(--conversation-font-size);
   line-height: var(--conversation-line-height);
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
 }
 
 :host([hidden]) {
