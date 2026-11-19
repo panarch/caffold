@@ -52,12 +52,13 @@ validate_app() {
 }
 
 matching_processes() {
-  local executable="$1"
-  ps -axo pid=,command= | awk -v executable="${executable}" '
+  local executable="$1" excluded="${2:-}"
+  ps -axo pid=,command= | awk -v executable="${executable}" -v excluded="${excluded}" '
     {
       pid = $1
       $1 = ""
       sub(/^[[:space:]]+/, "")
+      if (excluded != "" && ($0 == excluded || index($0, excluded " ") == 1)) next
       if ($0 == executable || index($0, executable " ") == 1) {
         print pid "\t" $0
       }
@@ -70,7 +71,8 @@ wrapper_processes() {
 }
 
 bundled_server_processes() {
-  matching_processes "${TARGET_SERVER}"
+  # The runner owns Task adapters across replacement of their parent server app.
+  matching_processes "${TARGET_SERVER}" "${TARGET_SERVER} copilot-adapter"
 }
 
 listener_pids() {

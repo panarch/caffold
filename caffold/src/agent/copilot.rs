@@ -7,6 +7,7 @@ mod lifecycle;
 mod permission;
 mod protocol;
 mod record;
+mod runtime;
 mod settings;
 mod transport;
 mod usage;
@@ -36,7 +37,7 @@ use std::{
     sync::{Arc, OnceLock},
     time::Instant,
 };
-use tokio::sync::{Mutex, broadcast};
+use tokio::sync::{Mutex, RwLock, broadcast};
 use transport::{Connection, runner_error};
 use uuid::Uuid;
 
@@ -61,6 +62,9 @@ pub(crate) enum CopilotRuntimeEvent {
         approval_id: String,
         outcome: ApprovalOutcome,
     },
+    Closed {
+        conversation_id: String,
+    },
     Unreachable {
         conversation_id: String,
         message: String,
@@ -74,6 +78,7 @@ struct Inner {
     runner: RunnerClient,
     mcp: OnceLock<(TaskMcpBindings, String)>,
     slots: Mutex<HashMap<String, TaskSlot>>,
+    runtime_gate: RwLock<()>,
     events: broadcast::Sender<CopilotRuntimeEvent>,
     catalog: Mutex<Option<(Instant, Vec<ModelOption>)>>,
     enabled: bool,
@@ -100,6 +105,7 @@ impl CopilotClient {
                 runner: RunnerClient::at_socket(data.join("runner.sock")),
                 mcp: OnceLock::new(),
                 slots: Default::default(),
+                runtime_gate: RwLock::new(()),
                 events,
                 catalog: Default::default(),
                 enabled,
@@ -170,6 +176,7 @@ impl CopilotClient {
     }
 
     async fn current(&self, task: &str) -> Result<Arc<Connection>, AgentError> {
+        let _runtime = self.runtime_access()?;
         let slot = self.slot(task).await?;
         let mut slot = slot.lock().await;
         self.open_locked(&mut slot, &mut self.binding(task)?).await
@@ -371,6 +378,7 @@ impl CopilotClient {
         cwd: &str,
         settings: &TurnOptions,
     ) -> Result<StartedConversation, AgentError> {
+        let _runtime = self.runtime_access()?;
         self.program()?;
         let binding = self.reserve(cwd, settings, None)?;
         let opened = match self.open_conversation(&binding.task_id, false).await {
@@ -430,6 +438,7 @@ impl CopilotClient {
         images: &[PromptImage],
         settings: &TurnOptions,
     ) -> Result<StartedTurn, AgentError> {
+        let _runtime = self.runtime_access()?;
         let slot = self.slot(task).await?;
         let mut slot = slot.lock().await;
         let mut binding = self.binding(task)?;

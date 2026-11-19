@@ -1,12 +1,19 @@
 //! Passive installation checks and on-demand account and model observations.
 
+mod quota;
+
 use super::connect;
-use crate::agent::driver::{AgentInstallation, ModelOption};
+use crate::agent::{
+    driver::{AgentInstallation, ModelOption},
+    runner::RunnerStatus,
+};
 use copilot_sdk::{Client, Model, rpc::ModelPolicyState};
+use quota::AccountUsage;
 use semver::Version;
 use serde::Serialize;
 use std::{
     env,
+    fmt::Display,
     io::ErrorKind,
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
@@ -19,10 +26,14 @@ use tokio::{process::Command, time::timeout};
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CopilotStatus {
     installation: AgentInstallation,
+    runtime: RunnerStatus,
+    cli_path: Option<PathBuf>,
     protocol_version: Option<u32>,
     authenticated: Option<bool>,
     login: Option<String>,
+    usage: Option<AccountUsage>,
     models: Vec<ModelOption>,
+    models_error: Option<String>,
     error: Option<String>,
 }
 
@@ -50,7 +61,7 @@ pub(crate) async fn installation() -> AgentInstallation {
 
 async fn inspect(path: &Path) -> AgentInstallation {
     let child = Command::new(path)
-        .arg("--version")
+        .args(["--no-auto-update", "--version"])
         .stdin(Stdio::null())
         .kill_on_drop(true)
         .output();
@@ -80,17 +91,21 @@ fn parse_version(output: &str) -> Option<Version> {
     Version::parse(version).ok()
 }
 
-pub(super) async fn status_for(program: Option<PathBuf>) -> CopilotStatus {
+pub(super) async fn status_for(program: Option<PathBuf>, runtime: RunnerStatus) -> CopilotStatus {
     let installation = match &program {
         Some(program) => inspect(program).await,
         None => AgentInstallation::NotInstalled,
     };
     let mut status = CopilotStatus {
         installation,
+        runtime,
+        cli_path: program.clone(),
         protocol_version: None,
         authenticated: None,
         login: None,
+        usage: None,
         models: vec![],
+        models_error: None,
         error: None,
     };
 
@@ -100,18 +115,11 @@ pub(super) async fn status_for(program: Option<PathBuf>) -> CopilotStatus {
         let observed = timeout(Duration::from_secs(30), connect(&path)).await;
         match observed {
             Ok(Ok(client)) => {
-                match timeout(Duration::from_secs(30), read_runtime(&client, &mut status)).await {
-                    Ok(Ok(())) => {}
-                    Ok(Err(error)) => status.error = Some(error.to_string()),
-                    Err(_) => {
-                        status.error = Some("Copilot CLI did not answer the status request.".into())
-                    }
+                if let Err(error) = read_runtime(&client, &mut status).await {
+                    status.error = Some(error);
                 }
-
-                if let Err(error) = client.stop().await
-                    && status.error.is_none()
-                {
-                    status.error = Some(error.to_string());
+                if let Err(error) = observe(client.stop()).await {
+                    status.error.get_or_insert(error);
                 }
             }
             Ok(Err(error)) => status.error = Some(error.to_string()),
@@ -121,25 +129,43 @@ pub(super) async fn status_for(program: Option<PathBuf>) -> CopilotStatus {
     status
 }
 
-async fn read_runtime(client: &Client, status: &mut CopilotStatus) -> copilot_sdk::Result<()> {
-    status.protocol_version = Some(client.get_status().await?.protocol_version);
+async fn observe<T, E: Display>(request: impl Future<Output = Result<T, E>>) -> Result<T, String> {
+    timeout(Duration::from_secs(15), request)
+        .await
+        .map_err(|_| "Copilot CLI did not answer in time.".to_string())?
+        .map_err(|error| error.to_string())
+}
 
-    let auth = client.get_auth_status().await?;
+async fn read_runtime(client: &Client, status: &mut CopilotStatus) -> Result<(), String> {
+    let (runtime, auth) = tokio::join!(
+        observe(client.get_status()),
+        observe(client.get_auth_status())
+    );
+    match runtime {
+        Ok(runtime) => {
+            status.installation = AgentInstallation::Ready {
+                version: runtime.version,
+            };
+            status.protocol_version = Some(runtime.protocol_version);
+        }
+        Err(error) => status.error = Some(error),
+    }
+
+    let auth = auth?;
     status.authenticated = Some(auth.is_authenticated);
     status.login = auth.login;
 
-    if auth.is_authenticated {
-        status.models = client
-            .list_models()
-            .await?
-            .into_iter()
-            .filter_map(model_option)
-            .collect();
-    } else {
-        status.error = Some(
-            auth.status_message
-                .unwrap_or_else(|| "Sign in to GitHub with copilot login.".into()),
-        );
+    if !auth.is_authenticated {
+        return Err(auth
+            .status_message
+            .unwrap_or_else(|| "Sign in to GitHub with copilot login.".into()));
+    }
+
+    let (models, usage) = tokio::join!(observe(client.list_models()), quota::read(client));
+    status.usage = Some(usage);
+    match models {
+        Ok(models) => status.models = models.into_iter().filter_map(model_option).collect(),
+        Err(error) => status.models_error = Some(error),
     }
     Ok(())
 }
@@ -168,6 +194,21 @@ pub(super) fn model_option(model: Model) -> Option<ModelOption> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn version_probe_uses_the_same_executable_version_as_sdk_tasks() {
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("copilot");
+        std::fs::write(
+            &program,
+            "#!/bin/sh\ncase \"$*\" in\n  '--no-auto-update --version') echo 1.0.114;;\n  '--version') echo 9.0.0;;\n  *) exit 1;;\nesac\n",
+        ).unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert!(
+            matches!(inspect(&program).await, AgentInstallation::Ready { version } if version == "1.0.114")
+        );
+    }
 
     #[test]
     fn the_cli_version_comes_from_its_banner() {

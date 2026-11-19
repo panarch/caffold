@@ -71,6 +71,16 @@ test("local installer accepts a fully stopped target runtime", () => {
   assert.match(result.stdout, /fully stopped/);
 });
 
+test("a surviving Copilot Task adapter does not own the stopped backend", () => {
+  const server = "/Applications/Caffold Server.app/Contents/Resources/caffold";
+  const adapter = ` 430 ${server} copilot-adapter --program /usr/local/bin/copilot\n`;
+  assert.equal(checkStopped(adapter).status, 0);
+  const stillServing = checkStopped(`${adapter} 431 ${server} serve --port 5178\n`);
+  assert.notEqual(stillServing.status, 0);
+  assert.match(stillServing.stderr, /431/);
+  assert.doesNotMatch(stillServing.stderr, /430/);
+});
+
 test("local installer detects a bundled server after its listener is gone", () => {
   const server = "/Applications/Caffold Server.app/Contents/Resources/caffold";
   const result = checkStopped(` 431 ${server} serve --port 5178\n`);

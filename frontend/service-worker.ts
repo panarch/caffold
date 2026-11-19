@@ -261,6 +261,7 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/settings/antigravity/page.css.js",
   "/assets/pages/(task-workspace)/settings/copilot/page.js",
   "/assets/pages/(task-workspace)/settings/copilot/page.css.js",
+  "/assets/pages/(task-workspace)/settings/copilot/usage.js",
   "/assets/pages/(task-workspace)/settings/grok/display.js",
   "/assets/pages/(task-workspace)/settings/about/page.css.js",
   "/assets/pages/(task-workspace)/settings/about/page.js",

@@ -1,8 +1,8 @@
 //! Durable Task ownership, read-only native history, independent forks, and writer retirement.
 
 use super::{
-    CopilotClient, binding::validate_session, protocol::Operation, record::Record, sdk_error,
-    transport::runner_error,
+    CopilotClient, CopilotRuntimeEvent, binding::validate_session, protocol::Operation,
+    record::Record, sdk_error, transport::runner_error,
 };
 use crate::agent::{
     AgentError, Conversation, TurnOptions, TurnPage,
@@ -44,7 +44,7 @@ impl CopilotClient {
         self.read_cold(task).await?.page(before, limit)
     }
 
-    async fn read_cold(&self, task: &str) -> Result<Record, AgentError> {
+    pub(super) async fn read_cold(&self, task: &str) -> Result<Record, AgentError> {
         let binding = self.binding(task)?;
         let mut record = Record::read(
             &self.reader().await?,
@@ -97,18 +97,29 @@ impl CopilotClient {
     }
 
     pub(crate) async fn close_conversation(&self, task: &str) -> Result<(), AgentError> {
+        let _runtime = self.runtime_access()?;
+        self.close_writer(task).await
+    }
+
+    pub(super) async fn close_writer(&self, task: &str) -> Result<(), AgentError> {
         let slot = self.slot(task).await?;
         let mut slot = slot.lock().await;
         if let Some(connection) = slot.as_ref() {
             connection.retire();
         }
-        self.inner
-            .runner
-            .close_recoverable(task)
-            .await
-            .map_err(runner_error)?;
+        let closed = self.inner.runner.close_recoverable(task).await;
         self.inner.runner.release_observer(task).await;
-        slot.take();
+        if let Some(connection) = slot.take() {
+            connection.wait_for_disconnect().await;
+        }
+        if let Err(error) = closed {
+            let error = runner_error(error);
+            let _ = self.inner.events.send(CopilotRuntimeEvent::Unreachable {
+                conversation_id: task.into(),
+                message: error.to_string(),
+            });
+            return Err(error);
+        }
 
         if let Some(binding) = self.inner.bindings.read(task)?
             && let Some((mcp, _)) = self.inner.mcp.get()
@@ -177,6 +188,7 @@ impl CopilotClient {
         task: &str,
         cwd: &str,
     ) -> Result<Conversation, AgentError> {
+        let _runtime = self.runtime_access()?;
         let slot = self.slot(task).await?;
         let mut slot = slot.lock().await;
         let mut binding = self.binding(task)?;
@@ -214,6 +226,8 @@ impl CopilotClient {
         binding.destination = destination.clone();
         self.inner.bindings.write(&binding)?;
 
+        // Preserve the Git destination even when runtime replacement defers the native move.
+        let _runtime = self.runtime_access()?;
         let connection = self.open_locked(&mut slot, &mut binding).await?;
         connection
             .request(Operation::FinishIsolation { destination })
@@ -327,6 +341,7 @@ impl CopilotClient {
         title: &str,
         settings: &TurnOptions,
     ) -> Result<ForkedConversation, AgentError> {
+        let _runtime = self.runtime_access()?;
         let ForkRevision::Copilot { native_id, .. } = &source.revision else {
             return Err(AgentError::Failed("Unexpected Copilot fork source.".into()));
         };

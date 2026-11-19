@@ -770,6 +770,14 @@ Settings includes:
   reads alone start no native job. **Runtime** shows the runner process and
   offers a confirmed **Restart runtime** that ends its sessions and uses the
   installed runner binary while retaining Google sign-in and saved conversations;
+- GitHub Copilot shows account allowances under **Usage**, followed by the
+  signed-in GitHub account, plan, CLI version and path, and SDK protocol.
+  **Service status** opens GitHub Status. **Refresh** reads the account,
+  quotas and model catalog again. **Runtime** shows
+  the server's Copilot runner and its session count. **Restart runtime**
+  asks for confirmation before ending running Copilot turns and starting
+  a fresh runner. Tasks can resume their saved conversations. **Models** at
+  the bottom lists the available models in catalog order;
 - About Caffold in two sections. **Updates** has the shape of Codex Settings'
   Updates panel: the version the server runs, the newest release linked to its
   page, the last update's outcome, and one button as wide as its label. The

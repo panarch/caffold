@@ -106,6 +106,11 @@ impl Connection {
         self.retired.store(true, Ordering::Release);
     }
 
+    pub async fn wait_for_disconnect(&self) {
+        // All SDK observations queued for this writer precede its closure event.
+        let _ = self.ready.subscribe().wait_for(Result::is_err).await;
+    }
+
     pub fn lost(&self) -> bool {
         self.ready.borrow().is_err()
     }

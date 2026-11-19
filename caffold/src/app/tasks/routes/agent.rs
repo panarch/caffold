@@ -2,6 +2,7 @@ use super::commands::{require_codex_thread_client, task_cwd};
 use crate::agent::codex::codex_installation;
 use crate::agent::copilot;
 use crate::agent::driver::reviewed_permission_option;
+use crate::agent::runner::RunnerStatus;
 use crate::agent::{AgentError, PermissionModes};
 use crate::app::error::ApiError;
 use crate::app::tasks::TaskState;
@@ -68,8 +69,43 @@ pub(super) struct AgentPermissionsQuery {
     model: Option<String>,
 }
 
-pub(super) async fn copilot_status(State(state): State<TaskState>) -> Json<copilot::CopilotStatus> {
-    Json(state.task_runtime.copilot().status().await)
+pub(super) async fn copilot_status(
+    State(state): State<TaskState>,
+) -> Result<Json<copilot::CopilotStatus>, ApiError> {
+    // Finish closing the temporary SDK session even when the browser navigates away.
+    let client = state.task_runtime.copilot().clone();
+    tokio::spawn(async move { Json(client.status().await) })
+        .await
+        .map_err(|_| ApiError::Internal("Copilot status worker failed.".into()))
+}
+
+pub(super) async fn copilot_runtime(State(state): State<TaskState>) -> Json<RunnerStatus> {
+    Json(state.task_runtime.copilot().runtime_status().await)
+}
+
+pub(super) async fn copilot_restart(
+    State(state): State<TaskState>,
+) -> Result<Json<copilot::CopilotStatus>, ApiError> {
+    let client = state.task_runtime.copilot().clone();
+    // Once confirmed, the server finishes retiring writers even if the browser leaves.
+    tokio::spawn(async move {
+        client
+            .restart_runtime()
+            .await
+            .map_err(|error| match error {
+                AgentError::Held(message) => ApiError::Conflict {
+                    code: "copilot_runtime_busy",
+                    message,
+                },
+                error => ApiError::Unavailable {
+                    code: "copilot_runtime_unavailable",
+                    message: error.to_string(),
+                },
+            })?;
+        Ok(Json(client.status().await))
+    })
+    .await
+    .map_err(|_| ApiError::Internal("Copilot restart worker failed.".into()))?
 }
 
 pub(super) async fn agent_models(

@@ -311,16 +311,25 @@ edge cases and layout stress data belong in the owning behavioral fixtures.
 
 ## GitHub Copilot CLI integration
 
-Run `cargo test -p caffold copilot` for SDK message identity, usage, approval scopes and task-bound MCP discovery. The Copilot Settings browser test checks the account, model list and refresh through the normal Settings route.
+Run `cargo test -p caffold copilot` for SDK message identity, usage, approval scopes and task-bound MCP discovery. The Copilot Settings browser tests check account switching, finite and unlimited allowances, the CLI path, and the ordered model list on wide and narrow panels. They also cover the GitHub Status link, keyboard confirmation, leaving and returning during a restart, and runner polling without another quota read.
 
 For a live smoke test, point a development server at an empty Git checkout and a separate data directory. Open **Settings → GitHub Copilot**, create a Task with an available model, and send a short prompt. Record the returned user message ID. Restart the backend using the same port and data directory, then reopen the Task and check the original input and response. A synthetic model can hold a second Task at a tool approval to check that the original request remains answerable through the same runner.
 
 With the installed Copilot CLI and its existing GitHub login, run the HTTP
-integration tests below. They use temporary native storage. One test replaces
+integration tests below. They use temporary native storage. Check that the
+account probe leaves no saved conversation or running Task runner. One test replaces
 the backend and archives, restores and deletes the same named Task. The fork
 test previews a native session, creates an independent child and checks that
-the parent can stay archived while serving as a fork source. Both use empty
+the parent can stay archived while serving as a fork source. The runtime
+restart test checks the runner PID and session count before and after the
+restart and reads the original Task history. These tests use empty
 conversations and run without inference.
+
+To check an explicit runner restart during work, hold one response and one
+tool approval in two Tasks against a local model fixture. Confirm **Restart
+runtime** in Settings. Check that both turns end, the old approval can no
+longer be answered, and each Task accepts a new prompt in its original native
+session.
 
 ```sh
 cargo test -p caffold --test copilot_live -- --ignored

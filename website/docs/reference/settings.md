@@ -122,10 +122,29 @@ the sign-in remain; open a Task to resume its conversation.
 
 ## GitHub Copilot
 
-The page shows the installed Copilot CLI version, SDK protocol, GitHub account, and models available to that account. Use **Refresh** to check again after signing in on the host.
+**Usage** shows the allowances GitHub reports for the signed-in account. For
+a finite allowance, read the amount used, the limit, the percentage remaining
+and the reset date when available. GitHub can report **AI credits**, **Chat**
+and **Code completions** separately. An unlimited allowance reads **Unlimited**.
 
-![GitHub Copilot CLI version, account and available models](../assets/screenshots/settings-copilot-light-desktop.png#only-light)
-![GitHub Copilot CLI version, account and available models](../assets/screenshots/settings-copilot-dark-desktop.png#only-dark)
+**Agent** shows the GitHub account, its plan, the CLI version and path Caffold
+uses, and the SDK protocol. Choose **Refresh** after signing in, switching
+accounts or updating the CLI. **Service status** opens GitHub Status.
+
+![Copilot account allowances, plan and installed CLI path](../assets/screenshots/settings-copilot-light-desktop.png#only-light)
+![Copilot account allowances, plan and installed CLI path](../assets/screenshots/settings-copilot-dark-desktop.png#only-dark)
+
+**Runtime** shows the Copilot runner shared by all Tasks on this Caffold
+server, its process ID, session count, build and idle timeout. To use an
+updated CLI in existing Tasks, choose **Restart runtime** and confirm. This
+ends running Copilot turns. Open a Task to continue its saved conversation
+with the installed CLI and the same GitHub sign-in.
+
+**Models** at the bottom lists the models available to the account. Choose a
+model when you open **New Task**.
+
+![Copilot runner and available models](../assets/screenshots/settings-copilot-models-light-desktop.png#only-light)
+![Copilot runner and available models](../assets/screenshots/settings-copilot-models-dark-desktop.png#only-dark)
 
 ## About Caffold
 

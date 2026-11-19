@@ -567,7 +567,11 @@ unknown or at its last observation. Refresh and Task startup never call
 
 ## GitHub Copilot lifecycle
 
-One Copilot runner serves every repository and worktree of a Caffold server. Each active Task has a separate adapter process running the official Rust SDK and an installed Copilot CLI child over stdio. The runner transports frames. The Copilot driver translates SDK notifications into session events and permission requests for the Task runtime. The CLI owns the GitHub sign-in, model, tools, permissions and native conversation. Settings opens the installed runtime to inspect its account. The menu checks only the executable version.
+One Copilot runner serves every repository and worktree of a Caffold server. Each active Task has a separate adapter process running the official Rust SDK and an installed Copilot CLI child over stdio. The runner transports frames. The Copilot driver translates SDK notifications into session events and permission requests for the Task runtime. The CLI owns the GitHub sign-in, model, tools, permissions and native conversation.
+
+Settings reports the executable passed to the SDK and reads its running CLI version and protocol. The menu probes the same path with `--no-auto-update --version`, matching the SDK's launch mode. A short-lived connection reads the signed-in account, model catalog and account allowances. One temporary session refreshes the plan and provider budgets and is deleted after the read. The driver joins authoritative GitHub budgets to the matching account allowance by its compatibility key. Runner polling uses the runner socket alone and leaves a stopped runner idle.
+
+A confirmed runtime restart takes exclusive access to the Copilot runner. The driver asks each responsive writer to stop its active work and pending approvals before closing it, including writers that survived replacement of the backend. After closure it publishes the Task's idle state and reconciles its last turns from the native journal. A writer that cannot acknowledge Stop can still be closed. On resume the CLI reports any requests it retained. The replacement runner opens each Task's saved native session on demand.
 
 A private binding associates the Task with its native UUID, effective working directory and MCP header. The adapter subscribes before creating or resuming the session. A new session receives a name and must be saved and verified before Caffold accepts the first prompt. Caffold records the first submission attempt before sending. A lost receipt never triggers automatic resubmission.
 

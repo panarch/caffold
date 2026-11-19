@@ -8,6 +8,7 @@ use crate::agent::{
     driver::{
         AgentInstallation, ModelOption, PermissionModeOption, REVIEWED_PERMISSION_MODE, bounded,
     },
+    runner::RunnerStatus,
 };
 use copilot_sdk::CreateSessionOptions;
 use std::sync::Arc;
@@ -22,7 +23,12 @@ impl CopilotClient {
     }
 
     pub(crate) async fn status(&self) -> CopilotStatus {
-        installation::status_for(self.program().ok()).await
+        installation::status_for(self.program().ok(), self.runtime_status().await).await
+    }
+
+    pub(crate) async fn runtime_status(&self) -> RunnerStatus {
+        let restarting = self.inner.runtime_gate.try_read().is_err();
+        self.inner.runner.settings_status(restarting).await
     }
 
     pub(crate) async fn models(&self) -> Result<Vec<ModelOption>, AgentError> {

@@ -18,6 +18,14 @@ async fn installed_cli_keeps_a_named_empty_task_across_backend_replacement() {
     assert_eq!(status["installation"]["state"], "ready", "{status}");
     assert_eq!(status["authenticated"], true, "{status}");
     assert!(!status["models"].as_array().unwrap().is_empty());
+    let program = std::path::Path::new(status["cliPath"].as_str().expect("selected CLI path"));
+    assert!(program.is_absolute() && program.is_file());
+    assert!(status["modelsError"].is_null());
+    assert_eq!(status["usage"]["errors"], json!([]), "{status}");
+    assert!(status["usage"]["quotas"].is_array());
+    let runtime = server.get("/api/copilot/runtime").await.unwrap();
+    assert_eq!(runtime["running"], false);
+    assert_eq!(runtime, status["runtime"]);
 
     let created = server
         .post(
@@ -88,6 +96,67 @@ async fn installed_cli_keeps_a_named_empty_task_across_backend_replacement() {
         sessions().is_empty(),
         "the temporary native session survived deletion"
     );
+}
+
+#[tokio::test]
+#[ignore = "requires the installed Copilot CLI and an active GitHub login"]
+async fn explicit_restart_replaces_the_copilot_runner_and_preserves_cold_task_history() {
+    let native = tempfile::tempdir().unwrap();
+    let server = support::Backend::start_with_environment(&[
+        ("COPILOT_HOME", native.path().to_str().unwrap()),
+        ("COPILOT_AUTO_UPDATE", "false"),
+    ])
+    .await;
+    let status = server.get("/api/copilot/status").await.unwrap();
+    assert_eq!(status["runtime"]["running"], false, "{status}");
+
+    let created = server
+        .post(
+            "/api/tasks",
+            json!({
+                "provider": "copilot", "cwd": "notes", "permissionMode": "manual",
+                "titleSource": "Copilot runner restart",
+            }),
+        )
+        .await
+        .unwrap();
+    let task = created["detail"]["threadId"].as_str().unwrap();
+    let before = server.get("/api/copilot/status").await.unwrap();
+    let pid = before["runtime"]["pid"].as_u64().unwrap();
+    assert_eq!(before["runtime"]["sessions"], 1);
+    let sessions = native.path().join("session-state");
+    let journal = std::fs::read_dir(&sessions)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path().join("events.jsonl"))
+        .find(|file| file.is_file())
+        .unwrap();
+    let history = std::fs::read_to_string(&journal).unwrap();
+    assert!(!history.is_empty());
+
+    let after = server
+        .post("/api/copilot/restart", json!({}))
+        .await
+        .unwrap();
+    assert_eq!(after["runtime"]["running"], true, "{after}");
+    assert_ne!(after["runtime"]["pid"].as_u64().unwrap(), pid);
+    assert_eq!(after["runtime"]["sessions"], 0);
+    assert_eq!(
+        after["installation"]["version"],
+        before["installation"]["version"]
+    );
+
+    let detail = server.get(&format!("/api/tasks/{task}")).await.unwrap();
+    assert_eq!(detail["threadId"], task);
+    assert_eq!(detail["task"]["threadStatus"]["type"], "idle");
+    assert!(
+        std::fs::read_to_string(journal)
+            .unwrap()
+            .starts_with(&history)
+    );
+    let observed = server.get("/api/copilot/status").await.unwrap();
+    assert_eq!(observed["runtime"]["pid"], after["runtime"]["pid"]);
+    assert_eq!(observed["runtime"]["sessions"], 0);
 }
 
 #[tokio::test]

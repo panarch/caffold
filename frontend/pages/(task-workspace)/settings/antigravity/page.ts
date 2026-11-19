@@ -18,9 +18,10 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "../components/detail-list.js";
 import "../components/refresh-button.js";
 import type { CaffoldSettingsRefreshButton } from "../components/refresh-button.js";
-
-import "../components/runtime.js";
-import type { CaffoldSettingsRuntime } from "../components/runtime.js";
+import {
+  type CaffoldSettingsRuntime,
+  runnerStatusRows,
+} from "../components/runtime.js";
 
 import styles from "./page.css.js";
 
@@ -195,7 +196,7 @@ export class CaffoldSettingsAntigravityPage extends CaffoldElement {
         <section aria-label="Runtime">
           <caffold-settings-runtime ${drawn(this.runtime)} .agentName=${"Antigravity"}
             .description=${"Restarting stops the runner and every Antigravity session it holds. Conversations resume from their files as their Tasks are opened."}
-            .rows=${this.runtimeRows()} .disabled=${locked}
+            .rows=${runnerStatusRows(status?.runtime)} .disabled=${locked}
             .restarting=${status?.runtime.restarting === true || (request && this.requestAction === restartAntigravityRuntime)}
             .message=${this.restartMessage}
             @caffold:runtime-restart-confirmed=${() => this.run(restartAntigravityRuntime, "Antigravity runner restarted.")}
@@ -240,44 +241,6 @@ export class CaffoldSettingsAntigravityPage extends CaffoldElement {
 
   keyboardNavigationContexts() {
     return this.runtime.value?.keyboardNavigationContexts() ?? [];
-  }
-
-  private runtimeRows() {
-    const runtime = this.status?.runtime;
-    if (!runtime) return [{ key: "runner", label: "Runner" }];
-    if (runtime.running === null)
-      return [
-        {
-          key: "runner",
-          label: "Runner",
-          value: `Unavailable${runtime.error ? ` — ${runtime.error}` : ""}`,
-          state: "negative",
-        },
-      ];
-    if (!runtime.running)
-      return [{ key: "runner", label: "Runner", value: "Not running" }];
-    return [
-      { key: "runner", label: "Runner", value: `Running · pid ${runtime.pid}` },
-      { key: "sessions", label: "Sessions", value: String(runtime.sessions) },
-      {
-        key: "runner-build",
-        label: "Runner build",
-        value: runtime.version,
-        kind: "code" as const,
-      },
-      ...(runtime.idleTimeoutSecs !== null
-        ? [
-            {
-              key: "idle-timeout",
-              label: "Idle timeout",
-              value:
-                runtime.idleTimeoutSecs < 60
-                  ? `${runtime.idleTimeoutSecs}s`
-                  : `${Math.round(runtime.idleTimeoutSecs / 60)} min`,
-            },
-          ]
-        : []),
-    ];
   }
 
   private usageRows() {

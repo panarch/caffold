@@ -2543,6 +2543,7 @@ test("keeps Service status with the page description", { tag: "@all-viewports" }
     ["claude", "https://status.claude.com"],
     ["codex", "https://status.openai.com"],
     ["grok", "https://status.x.ai"],
+    ["copilot", "https://www.githubstatus.com/"],
   ];
   for (const [, url] of pages) {
     await context.route(url, (route) => route.fulfill({

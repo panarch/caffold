@@ -52,6 +52,15 @@ impl TaskRuntime {
                             .end_copilot_approval(&conversation_id, &approval_id, outcome)
                             .await;
                     }
+                    Ok(CopilotRuntimeEvent::Closed { conversation_id }) => {
+                        runtime
+                            .restore_copilot_approvals(&conversation_id, Vec::new())
+                            .await;
+                        runtime
+                            .sessions
+                            .session_needs_opening_again(&conversation_id)
+                            .await;
+                    }
                     Ok(CopilotRuntimeEvent::Unreachable {
                         conversation_id,
                         message,

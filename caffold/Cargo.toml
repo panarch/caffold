@@ -55,6 +55,7 @@ serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 sha2 = "0.10.9"
 syntect = { version = "5.3.0", default-features = false, features = ["parsing", "regex-onig"] }
+tempfile = "3.20.0"
 thiserror = "2.0.12"
 tokio = { version = "1.45.1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-tungstenite = "0.30.0"
@@ -75,5 +76,4 @@ whisper-rs = { version = "0.16.0", features = ["metal"] }
 serde_json = "1.0.140"
 
 [dev-dependencies]
-tempfile = "3.20.0"
 tokio = { version = "1.45.1", features = ["test-util"] }

@@ -795,6 +795,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/settings/copilot/page.js"
         )))),
+        "pages/(task-workspace)/settings/copilot/usage.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/copilot/usage.js"
+        )))),
         "pages/(task-workspace)/settings/grok/display.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/settings/grok/display.js"
@@ -3155,6 +3159,7 @@ mod tests {
             "pages/(task-workspace)/settings/grok/page.js",
             "pages/(task-workspace)/settings/antigravity/page.js",
             "pages/(task-workspace)/settings/copilot/page.js",
+            "pages/(task-workspace)/settings/copilot/usage.js",
             "pages/(task-workspace)/settings/grok/display.js",
             "pages/(task-workspace)/settings/about/page.js",
             "pages/(task-workspace)/tasks/components/directory-field/control.js",
