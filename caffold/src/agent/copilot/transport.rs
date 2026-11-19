@@ -1,4 +1,5 @@
 //! One observer lease on the Task adapter. Only a completed replay can accept a command.
+
 use super::{
     CopilotRuntimeEvent,
     binding::Binding,
@@ -61,6 +62,7 @@ impl Connection {
             record: Mutex::new(record),
             events,
         });
+
         let reading = this.clone();
         tokio::spawn(async move {
             let mut stream = session.events;
@@ -83,10 +85,12 @@ impl Connection {
                     }
                 }
             };
+
             let _ = reading.ready.send_replace(Err(error.clone()));
             for (_, answer) in reading.waiting.lock().await.drain() {
                 let _ = answer.send(Err(error.clone()));
             }
+
             if reading.retired.load(Ordering::Acquire) {
                 return;
             }
@@ -110,21 +114,23 @@ impl Connection {
         let mut ready = self.ready.subscribe();
         tokio::time::timeout(
             Duration::from_secs(60),
-            ready.wait_for(|v| !matches!(v, Ok(false))),
+            ready.wait_for(|state| !matches!(state, Ok(false))),
         )
         .await
         .map_err(|_| AgentError::TimedOut("Copilot runner replay timed out.".into()))?
-        .map_err(|e| AgentError::Unreachable(e.to_string()))?
+        .map_err(|error| AgentError::Unreachable(error.to_string()))?
         .clone()?;
+
         let id = uuid::Uuid::new_v4().to_string();
         let frame = to_raw_value(&Request {
             version: VERSION,
             id: id.clone(),
             operation,
         })
-        .map_err(|e| AgentError::Failed(e.to_string()))?;
-        let (tx, rx) = oneshot::channel();
-        self.waiting.lock().await.insert(id.clone(), tx);
+        .map_err(|error| AgentError::Failed(error.to_string()))?;
+
+        let (reply_sender, reply) = oneshot::channel();
+        self.waiting.lock().await.insert(id.clone(), reply_sender);
         let result = async {
             {
                 let through = self.through.lock().await;
@@ -133,7 +139,8 @@ impl Connection {
                     .await
                     .map_err(runner_error)?;
             }
-            tokio::time::timeout(Duration::from_secs(90), rx)
+
+            tokio::time::timeout(Duration::from_secs(90), reply)
                 .await
                 .map_err(|_| {
                     AgentError::TimedOut(
@@ -146,6 +153,7 @@ impl Connection {
                 })?
         }
         .await;
+
         self.waiting.lock().await.remove(&id);
         result
     }
@@ -158,22 +166,22 @@ impl Connection {
     ) -> Result<(), AgentError> {
         let mut through = self.through.lock().await;
         let fence = matches!(body, RecoveryOutput::Fence);
-        if incarnation != self.incarnation
-            || (if fence {
-                seq != self.fence || seq != *through
-            } else {
-                through.checked_add(1) != Some(seq)
-            })
-        {
+        let valid_sequence = if fence {
+            seq == self.fence && seq == *through
+        } else {
+            through.checked_add(1) == Some(seq)
+        };
+        if incarnation != self.incarnation || !valid_sequence {
             return Err(AgentError::Failed(
                 "Non-contiguous Copilot runner journal.".into(),
             ));
         }
+
         let mut reply = None;
         let mut lost = None;
         match body {
             RecoveryOutput::Frame(line) => match serde_json::from_str::<Output>(&line)
-                .map_err(|e| AgentError::Failed(e.to_string()))?
+                .map_err(|error| AgentError::Failed(error.to_string()))?
             {
                 Output::Event { event } => self.observe(&event).await?,
                 Output::Reply { id, result } => {
@@ -209,6 +217,7 @@ impl Connection {
             }
             RecoveryOutput::Fence => {}
         }
+
         if fence {
             self.frames
                 .finish_replay(seq, VERSION.to_string())
@@ -222,6 +231,7 @@ impl Connection {
                 .map_err(runner_error)?;
         }
         *through = seq;
+
         if let Some(message) = lost {
             return Err(AgentError::Unreachable(message));
         }
@@ -239,6 +249,7 @@ impl Connection {
         for kind in changes {
             self.publish(kind);
         }
+
         match event.event_type.as_str() {
             "permission.requested" => {
                 let data = &event.data;
@@ -323,11 +334,13 @@ impl Connection {
         if snapshot["activeTurn"].is_null() && snapshot["processing"] == false {
             record.settle_cold();
         }
+
         if let Some(context) = context(&snapshot["context"]) {
             record.context = Some(context);
             self.publish(SessionEventKind::ContextReported { context });
         }
         record.conversation.background_work = snapshot["background"].as_bool().unwrap_or(false);
+
         let usage = snapshot["usageTurn"]
             .as_str()
             .and_then(|turn| {
@@ -342,6 +355,7 @@ impl Connection {
                 usage: usage.normalized(record.context.map(|c| c.window_tokens)),
             });
         }
+
         let requests = permission::pending_permissions(snapshot)?
             .into_iter()
             .map(|(id, request)| self.approval(record, id, request))

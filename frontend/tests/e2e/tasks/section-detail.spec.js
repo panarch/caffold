@@ -813,7 +813,12 @@ test("the fork chooser remains available when Codex is missing", { tag: "@server
   await expect(shortcuts).toBeVisible();
   await shortcuts.getByRole("button", {name:"Fork conversation"}).click();
   const chooser = page.getByRole("dialog", {name:"Fork a conversation"});
-  await expect(chooser.getByLabel("Agent").locator("option")).toHaveText(["Codex","Claude","Grok","GitHub Copilot"]);
+  await expect(chooser.getByLabel("Agent").locator("option")).toHaveText([
+    "Codex",
+    "Claude",
+    "Grok",
+    "GitHub Copilot",
+  ]);
   await chooser.getByLabel("Agent").selectOption("claude");
   await expect(chooser.getByLabel("Session ID")).toBeEnabled();
 });

@@ -96,22 +96,42 @@ test("chooses a model before exposing only that model's settings", { tag: "@serv
   expect(options).not.toHaveProperty("effort");
 });
 
-test("selecting a GitHub Copilot model asks for its permissions and submits its native model ID", { tag: "@server-steady" }, async ({page}) => {
-  const models = [...catalog(), {
-    provider: "copilot", model: "mai-code-2-flash", displayName: "MAI Code 2 Flash",
-    isDefault: false, efforts: [], speeds: [], supportsAutoMode: false,
-  }];
-  const requests = await installCatalog(page, models);
-  await page.goto("/tasks/new?cwd=src");
-  const picker = page.locator(".task-new-form caffold-task-turn-options");
-  await picker.locator(".task-model-button").click();
-  await picker.getByRole("button", { name: "GitHub Copilot", exact: true }).click();
-  await picker.locator('[data-model="mai-code-2-flash"]').click();
-  await expect.poll(() => requests.at(-1)).toEqual({provider: "copilot", model: "mai-code-2-flash"});
-  const options = await picker.evaluate(element => element.submissionOptions());
-  expect(options).toMatchObject({provider: "copilot", model: "mai-code-2-flash", speed: "default"});
-  expect(options).not.toHaveProperty("effort");
-});
+test(
+  "selecting a GitHub Copilot model asks for its permissions and submits its native model ID",
+  { tag: "@server-steady" },
+  async ({ page }) => {
+    const requests = await installCatalog(page, [
+      ...catalog(),
+      {
+        provider: "copilot",
+        model: "mai-code-2-flash",
+        displayName: "MAI Code 2 Flash",
+        isDefault: false,
+        efforts: [],
+        speeds: [],
+        supportsAutoMode: false,
+      },
+    ]);
+
+    await page.goto("/tasks/new?cwd=src");
+    const picker = page.locator(".task-new-form caffold-task-turn-options");
+    await picker.locator(".task-model-button").click();
+    await picker.getByRole("button", { name: "GitHub Copilot", exact: true }).click();
+    await picker.locator('[data-model="mai-code-2-flash"]').click();
+
+    await expect.poll(() => requests.at(-1)).toEqual({
+      provider: "copilot",
+      model: "mai-code-2-flash",
+    });
+    const options = await picker.evaluate((element) => element.submissionOptions());
+    expect(options).toMatchObject({
+      provider: "copilot",
+      model: "mai-code-2-flash",
+      speed: "default",
+    });
+    expect(options).not.toHaveProperty("effort");
+  },
+);
 
 test("retains two readable columns and model-specific controls at each viewport", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   await installCatalog(page, visualCatalog());

@@ -1,4 +1,5 @@
 //! Query the CLI under its signed-in account and the policy applying to this directory.
+
 use super::{
     CopilotClient, CopilotStatus, installation, permission::PendingPermissions, sdk_error,
 };
@@ -19,9 +20,11 @@ impl CopilotClient {
             AgentInstallation::NotInstalled
         }
     }
+
     pub(crate) async fn status(&self) -> CopilotStatus {
         installation::status_for(self.program().ok()).await
     }
+
     pub(crate) async fn models(&self) -> Result<Vec<ModelOption>, AgentError> {
         let mut catalog = self.inner.catalog.lock().await;
         if let Some((fetched, models)) = &*catalog
@@ -29,6 +32,7 @@ impl CopilotClient {
         {
             return Ok(models.clone());
         }
+
         let reader = self.reader().await?;
         let auth = reader.get_auth_status().await.map_err(sdk_error)?;
         if !auth.is_authenticated {
@@ -36,6 +40,7 @@ impl CopilotClient {
                 "Sign in to GitHub with copilot login.".into(),
             ));
         }
+
         let models: Vec<_> = reader
             .list_models()
             .await
@@ -57,20 +62,22 @@ impl CopilotClient {
             Some(id) => Some(
                 models
                     .iter()
-                    .find(|m| &m.model == id)
+                    .find(|model| &model.model == id)
                     .ok_or(TurnRejected::Model)?,
             ),
             None => None,
         };
+
         let effort = bounded(options.effort.as_deref(), 64).ok_or(TurnRejected::Effort)?;
         if let Some(effort) = &effort
             && !chosen.map_or_else(
-                || models.iter().any(|m| m.efforts.contains(effort)),
-                |m| m.efforts.contains(effort),
+                || models.iter().any(|model| model.efforts.contains(effort)),
+                |model| model.efforts.contains(effort),
             )
         {
             return Err(TurnRejected::Effort);
         }
+
         let mode = options.permission_mode.as_deref().unwrap_or("manual");
         if !matches!(
             mode,
@@ -80,6 +87,7 @@ impl CopilotClient {
                 "Unknown Copilot permission mode.".into(),
             )));
         }
+
         Ok(TurnOptions {
             model,
             effort,
@@ -94,20 +102,24 @@ impl CopilotClient {
         let options = CreateSessionOptions::default()
             .with_session_id(id.clone())
             .with_working_directory(cwd)
-            .with_github(|g| g.with_fetch_managed_settings(true))
-            .with_permissions(|p| p.with_on_request(Arc::new(PendingPermissions)));
+            .with_github(|github| github.with_fetch_managed_settings(true))
+            .with_permissions(|permissions| {
+                permissions.with_on_request(Arc::new(PendingPermissions))
+            });
         let session = reader.create_session(options).await.map_err(sdk_error)?;
         if session.id().as_str() != id {
             return Err(AgentError::Failed(
                 "Copilot returned an unexpected settings session.".into(),
             ));
         }
+
         let caps = session.rpc().permissions().get_capabilities().await;
         session.disconnect().await.map_err(sdk_error)?;
         reader
             .delete_session(session.id())
             .await
             .map_err(sdk_error)?;
+
         let caps = caps.map_err(sdk_error)?;
         let options = [
             (

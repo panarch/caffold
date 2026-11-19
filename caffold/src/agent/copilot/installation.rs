@@ -30,6 +30,7 @@ pub(super) fn executable() -> Option<PathBuf> {
     let paths = env::var_os("PATH");
     let directories = paths.as_deref().into_iter().flat_map(env::split_paths);
     let local_bin = env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/bin"));
+
     directories
         .chain(local_bin)
         .filter(|dir| dir.is_absolute())
@@ -92,6 +93,7 @@ pub(super) async fn status_for(program: Option<PathBuf>) -> CopilotStatus {
         models: vec![],
         error: None,
     };
+
     if let Some(path) = program
         && matches!(status.installation, AgentInstallation::Ready { .. })
     {
@@ -105,6 +107,7 @@ pub(super) async fn status_for(program: Option<PathBuf>) -> CopilotStatus {
                         status.error = Some("Copilot CLI did not answer the status request.".into())
                     }
                 }
+
                 if let Err(error) = client.stop().await
                     && status.error.is_none()
                 {
@@ -120,9 +123,11 @@ pub(super) async fn status_for(program: Option<PathBuf>) -> CopilotStatus {
 
 async fn read_runtime(client: &Client, status: &mut CopilotStatus) -> copilot_sdk::Result<()> {
     status.protocol_version = Some(client.get_status().await?.protocol_version);
+
     let auth = client.get_auth_status().await?;
     status.authenticated = Some(auth.is_authenticated);
     status.login = auth.login;
+
     if auth.is_authenticated {
         status.models = client
             .list_models()

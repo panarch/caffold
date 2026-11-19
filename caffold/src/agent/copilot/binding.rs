@@ -1,4 +1,5 @@
 //! The exact native session created for one Task, without conversation data.
+
 use crate::agent::http_mcp::valid_binding;
 use crate::agent::{AgentError, TurnOptions};
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,7 @@ use uuid::Uuid;
 pub(super) struct Bindings {
     directory: PathBuf,
 }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Binding {
@@ -32,10 +34,12 @@ pub(super) struct Binding {
     pub(super) replaced_empty: bool,
     pub(super) destination: Option<String>,
 }
+
 impl Bindings {
     pub(super) fn new(directory: PathBuf) -> Self {
         Self { directory }
     }
+
     pub(super) fn read(&self, task: &str) -> Result<Option<Binding>, AgentError> {
         self.check_directory()?;
         let mut file = match fs::OpenOptions::new()
@@ -50,6 +54,7 @@ impl Bindings {
         if !file.metadata().map_err(binding_error)?.is_file() {
             return Err(binding_error("binding is not a regular file"));
         }
+
         let mut bytes = Vec::new();
         Read::by_ref(&mut file)
             .take(65537)
@@ -58,18 +63,22 @@ impl Bindings {
         if bytes.len() > 65536 {
             return Err(binding_error("binding is too large"));
         }
+
         let binding: Binding = serde_json::from_slice(&bytes).map_err(binding_error)?;
         binding.validate(task)?;
         Ok(Some(binding))
     }
+
     pub(super) fn write(&self, binding: &Binding) -> Result<(), AgentError> {
         binding.validate(&binding.task_id)?;
         fs::create_dir_all(&self.directory).map_err(binding_error)?;
         self.check_directory()?;
+
         let path = self.path(&binding.task_id)?;
         let temporary = self
             .directory
             .join(format!(".{}.{}.tmp", binding.task_id, Uuid::new_v4()));
+
         let result = (|| {
             let mut file = fs::OpenOptions::new()
                 .write(true)
@@ -90,6 +99,7 @@ impl Bindings {
         }
         result
     }
+
     pub(super) fn remove(&self, task: &str) -> Result<(), AgentError> {
         self.check_directory()?;
         match fs::remove_file(self.path(task)?) {
@@ -98,10 +108,12 @@ impl Bindings {
             Err(e) => Err(binding_error(e)),
         }
     }
+
     fn path(&self, task: &str) -> Result<PathBuf, AgentError> {
         validate_session(task)?;
         Ok(self.directory.join(format!("{task}.json")))
     }
+
     fn check_directory(&self) -> Result<(), AgentError> {
         match fs::symlink_metadata(&self.directory) {
             Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => Ok(()),
@@ -113,6 +125,7 @@ impl Bindings {
         }
     }
 }
+
 impl Binding {
     pub(super) fn validate(&self, task: &str) -> Result<(), AgentError> {
         validate_session(task)?;
@@ -156,6 +169,7 @@ mod tests {
     #[test]
     fn reserved_identity_and_first_attempt_survive_reopen_without_following_replaced_files() {
         use std::os::unix::fs::{PermissionsExt, symlink};
+
         let root = tempfile::tempdir().unwrap();
         let bindings = Bindings::new(root.path().join("bindings"));
         let task = Uuid::new_v4().to_string();
@@ -172,6 +186,7 @@ mod tests {
             saved: true,
             destination: None,
         };
+
         assert!(bindings.read(&task).unwrap().is_none());
         bindings.write(&original).unwrap();
         let file = bindings.path(&task).unwrap();
@@ -179,6 +194,7 @@ mod tests {
             fs::metadata(&file).unwrap().permissions().mode() & 0o777,
             0o600
         );
+
         original.first_attempted = true;
         original.destination = Some("/worktree".into());
         bindings.write(&original).unwrap();
@@ -190,6 +206,7 @@ mod tests {
         assert_eq!(recovered.mcp_binding, original.mcp_binding);
         assert!(recovered.first_attempted);
         assert_eq!(recovered.destination.as_deref(), Some("/worktree"));
+
         let old = root.path().join("saved");
         fs::rename(&file, &old).unwrap();
         symlink(&old, &file).unwrap();

@@ -1,4 +1,5 @@
 //! Call spending and current context occupancy are independent SDK observations.
+
 use crate::agent::{TokenCount, TokenUsage};
 use copilot_sdk::rpc::UsageGetMetricsResult;
 use serde::{Deserialize, Serialize};
@@ -9,6 +10,7 @@ pub(super) struct Usage {
     pub total: Counters,
     pub last: Counters,
 }
+
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub(super) struct Counters {
     input: u64,
@@ -28,6 +30,7 @@ impl Counters {
             reasoning: data["reasoningTokens"].as_u64().unwrap_or(0),
         })
     }
+
     pub fn from_metrics(metrics: &UsageGetMetricsResult) -> Self {
         let mut total = Self::default();
         for model in metrics.model_metrics.values() {
@@ -42,6 +45,7 @@ impl Counters {
         }
         total
     }
+
     pub fn add(&mut self, other: Self) {
         self.input += other.input;
         self.output += other.output;
@@ -49,6 +53,7 @@ impl Counters {
         self.cache_write += other.cache_write;
         self.reasoning += other.reasoning;
     }
+
     fn normalized(self) -> TokenCount {
         TokenCount {
             total_tokens: self.input + self.output,
@@ -60,6 +65,7 @@ impl Counters {
         }
     }
 }
+
 impl Usage {
     pub fn normalized(self, window: Option<u64>) -> TokenUsage {
         TokenUsage {
@@ -74,22 +80,24 @@ impl Usage {
 mod tests {
     use super::*;
     use serde_json::json;
+
     #[test]
     fn summed_model_calls_keep_cache_and_reasoning_details_separate_from_context() {
         let mut usage = Usage::default();
         for call in [
-            json!({"inputTokens":30,"outputTokens":4,"cacheReadTokens":12}),
-            json!({"inputTokens":40,"outputTokens":8,"reasoningTokens":3}),
+            json!({ "inputTokens": 30, "outputTokens": 4, "cacheReadTokens": 12 }),
+            json!({ "inputTokens": 40, "outputTokens": 8, "reasoningTokens": 3 }),
         ] {
             let counters = Counters::from_call(&call).unwrap();
             usage.total.add(counters);
             usage.last.add(counters);
         }
+
         let report = usage.normalized(None);
         assert_eq!(report.last.total_tokens, 82);
         assert_eq!(report.total.cached_input_tokens, 12);
         assert_eq!(report.last.reasoning_output_tokens, 3);
         assert_eq!(report.model_context_window, None);
-        assert!(Counters::from_call(&json!({"cost":12})).is_none());
+        assert!(Counters::from_call(&json!({ "cost": 12 })).is_none());
     }
 }

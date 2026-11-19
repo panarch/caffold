@@ -321,7 +321,12 @@ for (const theme of ["light", "dark"]) {
       await page.goto(`/?section=${MANUAL_SECTION_ID}`);
       await page.getByRole("button", {name:"Fork conversation"}).click();
       const dialog = page.getByRole("dialog", {name:"Fork a conversation"});
-      await expect(dialog.getByLabel("Agent").locator("option")).toHaveText(["Codex","Claude","Grok","GitHub Copilot"]);
+      await expect(dialog.getByLabel("Agent").locator("option")).toHaveText([
+        "Codex",
+        "Claude",
+        "Grok",
+        "GitHub Copilot",
+      ]);
       await dialog.getByLabel("Agent").selectOption("claude");
       await dialog.getByLabel("Session ID").fill(sourceId);
       await dialog.getByRole("button", {name:"Preview conversation"}).click();

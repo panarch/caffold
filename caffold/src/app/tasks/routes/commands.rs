@@ -4710,11 +4710,23 @@ mod claude_tests {
         for frame in [
             running_frame(),
             init_frame(),
-            json!({ "type": "result", "subtype": "success", "is_error": false, "stop_reason": "end_turn", "session_id": SESSION }),
-            json!({ "type": "system", "subtype": "session_state_changed", "state": "idle", "session_id": SESSION }),
+            json!({
+                "type": "result",
+                "subtype": "success",
+                "is_error": false,
+                "stop_reason": "end_turn",
+                "session_id": SESSION,
+            }),
+            json!({
+                "type": "system",
+                "subtype": "session_state_changed",
+                "state": "idle",
+                "session_id": SESSION,
+            }),
         ] {
             runner.say(SESSION, frame).await;
         }
+
         // Deliver the start to TaskSessions and hold back the end. The route
         // selects the first turn, while the native driver already sees idle.
         timeout(WAIT, async {

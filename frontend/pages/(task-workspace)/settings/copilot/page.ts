@@ -18,11 +18,14 @@ import styles from "./page.css.js";
 @customElement("caffold-settings-copilot-page")
 export class CaffoldSettingsCopilotPage extends CaffoldElement {
   static override styles = styles;
+
   @state() private accessor status: CopilotStatus | null = null;
   @state() private accessor loading = false;
   @state() private accessor error = "";
+
   private active = false;
   private read: AbortController | null = null;
+
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly refreshButton = new DrawnRef<CaffoldSettingsRefreshButton>(
     this,
@@ -33,7 +36,10 @@ export class CaffoldSettingsCopilotPage extends CaffoldElement {
   private readonly surfaces = new ScrollSurfaces(this);
 
   activate() {
-    if (this.active) return;
+    if (this.active) {
+      return;
+    }
+
     this.active = true;
     void this.reconcile();
   }
@@ -51,23 +57,32 @@ export class CaffoldSettingsCopilotPage extends CaffoldElement {
   }
 
   async reconcile() {
-    if (!this.active || document.visibilityState === "hidden") return;
+    if (!this.active || document.visibilityState === "hidden") {
+      return;
+    }
+
     this.read?.abort();
     const read = new AbortController();
     this.read = read;
     this.loading = true;
     this.error = "";
+
     try {
       const status = await getCopilotStatus(read.signal);
-      if (this.read === read) this.status = status;
+      if (this.read === read) {
+        this.status = status;
+      }
     } catch (error) {
-      if (this.read === read)
+      if (this.read === read) {
         this.error =
           error instanceof Error
             ? error.message
             : "Could not read Copilot status.";
+      }
     } finally {
-      if (this.read === read) this.loading = false;
+      if (this.read === read) {
+        this.loading = false;
+      }
     }
   }
 
@@ -84,6 +99,12 @@ export class CaffoldSettingsCopilotPage extends CaffoldElement {
       : status?.authenticated === false
         ? "Signed out"
         : "Unavailable";
+    const models =
+      status?.authenticated && !status.error
+        ? status.models.map((model) => model.displayName).join(", ") || "None"
+        : "Unavailable";
+    const error = this.error || status?.error;
+
     const rows = [
       {
         key: "version",
@@ -103,26 +124,36 @@ export class CaffoldSettingsCopilotPage extends CaffoldElement {
       {
         key: "models",
         label: "Available models",
-        value:
-          status?.authenticated && !status.error
-            ? status.models.map((model) => model.displayName).join(", ") ||
-              "None"
-            : status
-              ? "Unavailable"
-              : undefined,
+        value: status ? models : undefined,
       },
     ];
-    return html`<div ${drawn(this.scrollport)} ${this.surfaces.surface({ id: "scroll", clipRoots: () => [this, this.scrollport.value] })} class="settings-content-scroll">
-      <div class="settings-content-section">
-        <header>
-          <p>Uses the GitHub account signed in to Copilot CLI on this server.</p>
-          <caffold-settings-refresh-button ${drawn(this.refreshButton)} .refreshing=${this.loading}
-            @caffold:settings-refresh-intent=${this.reconcile}></caffold-settings-refresh-button>
-        </header>
-        <section aria-label="Copilot CLI"><caffold-settings-detail-list .rows=${rows}></caffold-settings-detail-list></section>
-        ${this.error || status?.error ? html`<p role="status">${this.error || status?.error}</p>` : nothing}
+
+    return html`
+      <div
+        class="settings-content-scroll"
+        ${drawn(this.scrollport)}
+        ${this.surfaces.surface({
+          id: "scroll",
+          clipRoots: () => [this, this.scrollport.value],
+        })}
+      >
+        <div class="settings-content-section">
+          <header>
+            <p>Uses the GitHub account signed in to Copilot CLI on this server.</p>
+            <caffold-settings-refresh-button
+              ${drawn(this.refreshButton)}
+              .refreshing=${this.loading}
+              @caffold:settings-refresh-intent=${this.reconcile}
+            ></caffold-settings-refresh-button>
+          </header>
+
+          <section aria-label="Copilot CLI">
+            <caffold-settings-detail-list .rows=${rows}></caffold-settings-detail-list>
+          </section>
+          ${error ? html`<p role="status">${error}</p>` : nothing}
+        </div>
       </div>
-    </div>`;
+    `;
   }
 
   actionHintScope({

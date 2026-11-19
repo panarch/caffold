@@ -553,10 +553,16 @@ mod tests {
                 }))
             })
         });
-        assert!(
-            matches!(client.read_fork_source(ForkSourceId::Native { id: &Uuid::now_v7().to_string(), owner: None }).await,
-            Err(AgentError::Failed(message)) if message.contains("complete session list"))
-        );
+
+        let id = Uuid::now_v7().to_string();
+        let source = ForkSourceId::Native {
+            id: &id,
+            owner: None,
+        };
+        assert!(matches!(
+            client.read_fork_source(source).await,
+            Err(AgentError::Failed(message)) if message.contains("complete session list")
+        ));
         assert!(leader.requests("session/load").is_empty());
     }
 

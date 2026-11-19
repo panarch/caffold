@@ -42,6 +42,7 @@ struct Adapter {
 pub(crate) async fn run(program: &Path) -> anyhow::Result<()> {
     let client = connect(program).await?;
     let (output, mut receive) = mpsc::channel::<Output>(256);
+
     let writing = tokio::spawn(async move {
         let mut stdout = tokio::io::stdout();
         while let Some(frame) = receive.recv().await {
@@ -52,6 +53,7 @@ pub(crate) async fn run(program: &Path) -> anyhow::Result<()> {
         }
         Ok::<_, anyhow::Error>(())
     });
+
     let mut state = Adapter {
         session: None,
         settings: TurnOptions::default(),
@@ -62,6 +64,7 @@ pub(crate) async fn run(program: &Path) -> anyhow::Result<()> {
         isolation: false,
         destination: None,
     };
+
     let mut stdin = BufReader::new(tokio::io::stdin()).lines();
     let result = async {
         loop {
@@ -78,18 +81,19 @@ pub(crate) async fn run(program: &Path) -> anyhow::Result<()> {
                     continue;
                 }
             };
-            let req: Request = serde_json::from_str(&line)?;
-            let answer = if req.version == VERSION {
-                state.execute(&client, req.operation, &output).await
+
+            let request: Request = serde_json::from_str(&line)?;
+            let answer = if request.version == VERSION {
+                state.execute(&client, request.operation, &output).await
             } else {
                 Err(Failure::Failed(format!(
                     "Unsupported Caffold Copilot adapter protocol {}.",
-                    req.version
+                    request.version
                 )))
             };
             output
                 .send(Output::Reply {
-                    id: req.id,
+                    id: request.id,
                     result: answer,
                 })
                 .await?;
@@ -97,11 +101,12 @@ pub(crate) async fn run(program: &Path) -> anyhow::Result<()> {
         Ok::<_, anyhow::Error>(())
     }
     .await;
+
     if let Some(events) = state.events.take() {
         events.abort();
     }
     if let Err(error) = client.stop().await {
-        tracing::warn!(%error,"Copilot shutdown failed");
+        tracing::warn!(%error, "Copilot shutdown failed");
     }
     drop(output);
     writing.await??;
@@ -132,38 +137,7 @@ impl Adapter {
             } => Ok(json!(
                 permission::decide(self.session()?, &request, decision, source).await?
             )),
-            Operation::PrepareIsolation => {
-                let session = self.session()?;
-                if self.isolation {
-                    return Err(Failure::Held(
-                        "Copilot is already preparing the worktree.".into(),
-                    ));
-                }
-                session
-                    .rpc()
-                    .queue()
-                    .set_drain_paused(serde_json::from_value(json!({"paused": true}))?)
-                    .await?;
-                self.isolation = true;
-                let pending = self.session()?.rpc().queue().pending_items().await;
-                match pending {
-                    Ok(queue)
-                        if queue.steering_messages.len() as i64
-                            <= queue.in_flight_steering_count.unwrap_or(0) =>
-                    {
-                        Ok(Value::Null)
-                    }
-                    other => {
-                        self.release_queue().await?;
-                        match other {
-                            Err(error) => Err(error.into()),
-                            Ok(_) => Err(Failure::Held(
-                                "Read the pending follow-up before retrying worktree isolation. The worktree has not been created.".into()
-                            )),
-                        }
-                    }
-                }
-            }
+            Operation::PrepareIsolation => self.prepare_isolation().await,
             Operation::FinishIsolation { destination } => {
                 self.destination = destination;
                 if self.destination.is_none() {
@@ -199,7 +173,7 @@ impl Adapter {
                 self.session()?
                     .rpc()
                     .name()
-                    .set(serde_json::from_value(json!({"name":name}))?)
+                    .set(serde_json::from_value(json!({ "name": name }))?)
                     .await?;
                 Ok(Value::Null)
             }
@@ -220,6 +194,7 @@ impl Adapter {
         let mode = rpc.permissions().get_mode().await?;
         let processing = rpc.metadata().is_processing().await?.processing;
         let active_jobs = background_jobs(session).await?;
+
         let live = self.live.lock().await;
         Ok(json!({
             "metadata": snapshot,
@@ -243,7 +218,8 @@ impl Adapter {
         output
             .send(Output::Background { active })
             .await
-            .map_err(|e| Failure::Failed(e.to_string()))?;
+            .map_err(|error| Failure::Failed(error.to_string()))?;
+
         if self.destination.is_some() && !session.rpc().metadata().is_processing().await?.processing
         {
             self.finish_move().await?;
@@ -251,12 +227,46 @@ impl Adapter {
         Ok(())
     }
 
+    async fn prepare_isolation(&mut self) -> Result<Value, Failure> {
+        let session = self.session()?;
+        if self.isolation {
+            return Err(Failure::Held(
+                "Copilot is already preparing the worktree.".into(),
+            ));
+        }
+
+        session
+            .rpc()
+            .queue()
+            .set_drain_paused(serde_json::from_value(json!({ "paused": true }))?)
+            .await?;
+        self.isolation = true;
+
+        let failure = match self.session()?.rpc().queue().pending_items().await {
+            Ok(queue)
+                if queue.steering_messages.len() as i64
+                    <= queue.in_flight_steering_count.unwrap_or(0) =>
+            {
+                return Ok(Value::Null);
+            }
+            Ok(_) => Failure::Held(
+                "Read the pending follow-up before retrying worktree isolation. \
+                 The worktree has not been created."
+                    .into(),
+            ),
+            Err(error) => error.into(),
+        };
+
+        self.release_queue().await?;
+        Err(failure)
+    }
+
     async fn release_queue(&mut self) -> Result<(), Failure> {
         if self.isolation {
             self.session()?
                 .rpc()
                 .queue()
-                .set_drain_paused(serde_json::from_value(json!({"paused":false}))?)
+                .set_drain_paused(serde_json::from_value(json!({ "paused": false }))?)
                 .await?;
             self.isolation = false;
         }
@@ -276,6 +286,7 @@ impl Adapter {
                     "Copilot did not confirm the destination worktree.".into(),
                 ));
             }
+
             self.release_queue().await?;
             self.destination = None;
         }
@@ -297,6 +308,7 @@ impl Adapter {
         } else if active.is_some() {
             return Err(Failure::TurnRunning);
         }
+
         if target.is_none() {
             if self.destination.is_some() {
                 self.finish_move().await?;
@@ -314,35 +326,14 @@ impl Adapter {
                 self.release_queue().await?;
             }
         }
+
         if let Some(settings) = settings {
-            let session = self.session()?;
-            if let Some(model) = &settings.model {
-                let options = settings
-                    .effort
-                    .as_ref()
-                    .map(|e| SetModelOptions::default().with_reasoning_effort(e));
-                session.set_model(model, options).await?;
-            }
-            let mode = native_mode(&settings);
-            let result = session
-                .rpc()
-                .permissions()
-                .set_mode(PermissionsSetModeRequest {
-                    mode: mode.clone(),
-                    ..Default::default()
-                })
-                .await?;
-            if !result.success || result.mode != mode {
-                return Err(Failure::Held(
-                    "Copilot policy refused the selected permission mode.".into(),
-                ));
-            }
-            self.settings = settings;
+            self.apply_settings(settings).await?;
         }
         let attachments = images
             .into_iter()
-            .map(|p| Attachment::File {
-                path: p.into(),
+            .map(|path| Attachment::File {
+                path: path.into(),
                 display_name: None,
                 line_range: None,
             })
@@ -351,6 +342,9 @@ impl Adapter {
         if target.is_some() && !self.isolation {
             message = message.with_mode(DeliveryMode::Immediate);
         }
+
+        // A turn can finish during the SDK calls above. Hold the lock from
+        // the final target check until the submitted message ID is recorded.
         let mut live = self.live.lock().await;
         if target
             .as_ref()
@@ -361,13 +355,43 @@ impl Adapter {
         if target.is_none() && live.active_turn.is_some() {
             return Err(Failure::TurnRunning);
         }
+
         let id = self.session()?.send(message).await?;
         if target.is_some() {
             live.pending_inputs.push_back((id.clone(), prompt));
         } else {
             live.active_turn = Some(id.clone());
         }
-        Ok(json!({"messageId":id}))
+        Ok(json!({ "messageId": id }))
+    }
+
+    async fn apply_settings(&mut self, settings: TurnOptions) -> Result<(), Failure> {
+        let session = self.session()?;
+        if let Some(model) = &settings.model {
+            let options = settings
+                .effort
+                .as_ref()
+                .map(|effort| SetModelOptions::default().with_reasoning_effort(effort));
+            session.set_model(model, options).await?;
+        }
+
+        let mode = native_mode(&settings);
+        let result = session
+            .rpc()
+            .permissions()
+            .set_mode(PermissionsSetModeRequest {
+                mode: mode.clone(),
+                ..Default::default()
+            })
+            .await?;
+        if !result.success || result.mode != mode {
+            return Err(Failure::Held(
+                "Copilot policy refused the selected permission mode.".into(),
+            ));
+        }
+
+        self.settings = settings;
+        Ok(())
     }
 
     async fn stop(&mut self) -> Result<Value, Failure> {
@@ -376,15 +400,17 @@ impl Adapter {
             self.session()?
                 .rpc()
                 .queue()
-                .set_drain_paused(serde_json::from_value(json!({"paused":true}))?)
+                .set_drain_paused(serde_json::from_value(json!({ "paused": true }))?)
                 .await?;
         }
+
         let result = self.stop_with_queue_paused().await;
+
         if own_pause {
             self.session()?
                 .rpc()
                 .queue()
-                .set_drain_paused(serde_json::from_value(json!({"paused":false}))?)
+                .set_drain_paused(serde_json::from_value(json!({ "paused": false }))?)
                 .await?;
         }
         result
@@ -393,18 +419,23 @@ impl Adapter {
     async fn stop_with_queue_paused(&mut self) -> Result<Value, Failure> {
         let session = self.session()?;
         let rpc = session.rpc();
-        rpc.interrupt_main_turn(serde_json::from_value(json!({"flushQueued":true}))?)
+        rpc.interrupt_main_turn(serde_json::from_value(json!({ "flushQueued": true }))?)
             .await?;
+
         let mut pending = rpc.queue().pending_items().await?;
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
         while pending.steering_messages.len() as i64 > pending.in_flight_steering_count.unwrap_or(0)
         {
             if tokio::time::Instant::now() >= deadline {
-                return Err(Failure::Held("Copilot has not finished moving pending messages to its queue. Stop can be retried.".into()));
+                return Err(Failure::Held(
+                    "Copilot has not finished moving pending messages to its queue. Stop can be retried."
+                        .into(),
+                ));
             }
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
             pending = rpc.queue().pending_items().await?;
         }
+
         let sent = self.live.lock().await.pending_inputs.clone();
         let mut cancelled = Vec::new();
         for (id, prompt) in sent {
@@ -414,13 +445,14 @@ impl Adapter {
                 .find(|item| item.message_id.as_deref() == Some(&id))
                 && rpc
                     .queue()
-                    .remove_at(serde_json::from_value(json!({"id":item.id}))?)
+                    .remove_at(serde_json::from_value(json!({ "id": item.id }))?)
                     .await?
                     .removed
             {
                 cancelled.push(prompt);
             }
         }
+
         session.abort().await?;
         for id in background_jobs(session).await? {
             rpc.tasks()

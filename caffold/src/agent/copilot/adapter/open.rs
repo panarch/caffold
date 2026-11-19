@@ -1,4 +1,5 @@
 //! Establish the native session, subscribing before create or resume emits its first event.
+
 use super::{Adapter, Live, native_mode};
 use crate::agent::{
     CAFFOLD_CLARIFICATION_FEEDBACK, CAFFOLD_SESSION_INSTRUCTIONS,
@@ -49,6 +50,7 @@ impl Adapter {
                 resume.tools = options.tools;
                 client.prepare_resume_session(resume)?
             };
+
             let mut subscription = prepared.subscribe();
             let live = self.live.clone();
             let changed = self.changed.clone();
@@ -57,6 +59,7 @@ impl Adapter {
             let watching = tokio::spawn(async move {
                 observe(&mut subscription, &live, &changed, &closed, &output).await
             });
+
             let started = match prepared.start().await {
                 Ok(session) => session,
                 Err(error) => {
@@ -70,19 +73,23 @@ impl Adapter {
                     "Copilot returned a different session ID.".into(),
                 ));
             }
+
             self.session = Some(started);
             self.events = Some(watching);
             self.settings = open.settings.clone();
+
             let session = self.session()?;
             let metrics = session.rpc().usage().get_metrics().await?;
             self.live.lock().await.usage.total = Counters::from_metrics(&metrics);
         }
+
         let mode = self.session()?.rpc().permissions().get_mode().await?.mode;
         if mode != native_mode(&self.settings) {
             return Err(Failure::Held(
                 "Copilot policy refused the selected permission mode.".into(),
             ));
         }
+
         if open.create || open.persist {
             let session_id: copilot_sdk::SessionId = open.session.into();
             client
@@ -104,6 +111,7 @@ impl Adapter {
                 ));
             }
         }
+
         self.inspect().await
     }
 }
@@ -112,8 +120,13 @@ fn options(open: &OpenSession) -> CreateSessionOptions {
     let mut instructions =
         format!("{CAFFOLD_SESSION_INSTRUCTIONS}\n\n{CAFFOLD_CLARIFICATION_FEEDBACK}");
     if open.first {
-        instructions.push_str("\n\nOn the first ordinary user request, use the Caffold MCP server's rename_current_task tool to give this Task a concise name for that work. Do this once, then continue the user's request.");
+        instructions.push_str(
+            "\n\nOn the first ordinary user request, use the Caffold MCP server's rename_current_task \
+             tool to give this Task a concise name for that work. Do this once, then continue the \
+             user's request.",
+        );
     }
+
     let server = McpHttpServerConfig {
         url: open.endpoint.clone(),
         tools: Some(vec!["*".into()]),
@@ -122,17 +135,19 @@ fn options(open: &OpenSession) -> CreateSessionOptions {
             .collect(),
         ..Default::default()
     };
+
     let mut options = CreateSessionOptions::default()
         .with_session_id(open.session.clone())
         .with_name(format!("Caffold {}", open.session))
         .with_working_directory(&open.cwd)
-        .with_github(|g| g.with_fetch_managed_settings(true))
-        .with_permissions(|p| {
-            p.with_on_request(Arc::new(PendingPermissions))
+        .with_github(|github| github.with_fetch_managed_settings(true))
+        .with_permissions(|permissions| {
+            permissions
+                .with_on_request(Arc::new(PendingPermissions))
                 .with_mode(native_mode(&open.settings))
         })
-        .with_mcp(|m| {
-            m.with_servers(
+        .with_mcp(|mcp| {
+            mcp.with_servers(
                 [(
                     CAFFOLD_MCP_SERVER_NAME.into(),
                     McpServerConfig::Http(server),
@@ -141,17 +156,18 @@ fn options(open: &OpenSession) -> CreateSessionOptions {
                 .collect(),
             )
         })
-        .with_tools(|t| t.with_excluded_tools(["ask_user"]))
+        .with_tools(|tools| tools.with_excluded_tools(["ask_user"]))
         .with_system_message(
             SystemMessageConfig::new()
                 .with_mode("append")
                 .with_content(instructions),
         );
+
     if let Some(model) = &open.settings.model {
         options = options.with_model(model);
     }
     if let Some(effort) = &open.settings.effort {
-        options = options.with_inference(|i| i.with_reasoning_effort(effort));
+        options = options.with_inference(|inference| inference.with_reasoning_effort(effort));
     }
     options
 }
@@ -183,13 +199,16 @@ async fn observe(
                 return;
             }
         };
+
         let mut usage = None;
         if event.agent_id.is_none() {
             let mut state = live.lock().await;
             match event.event_type.as_str() {
                 "user.message" => {
                     let id = event.data["messageId"].as_str().unwrap_or(&event.id);
-                    state.pending_inputs.retain(|(mid, _)| mid != id);
+                    state
+                        .pending_inputs
+                        .retain(|(message_id, _)| message_id != id);
                     if event.data["delivery"] != "steering" {
                         state.active_turn = Some(id.to_owned());
                         if state.usage_turn.as_deref() != Some(id) {
@@ -220,6 +239,7 @@ async fn observe(
                 _ => {}
             }
         }
+
         if output.send(Output::Event { event }).await.is_err() {
             return;
         }

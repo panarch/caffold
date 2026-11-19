@@ -12,11 +12,25 @@ for (const managed of [true, false]) {
   test(`continues a ${managed ? "managed worktree" : "directory"} in the selected agent and submits only to the target`, { tag: "@all-viewports" }, async ({ page }, info) => {
     await installEventSourceMock(page, { autoOpen: true });
     await mockAgentModels(page);
-    await page.route(/\/api\/agent\/models(?:\?|$)/, route => route.fulfill({json: {
-      models: [AGENT_MODELS_FIXTURE.models[0], ...["claude", "grok", "antigravity", "copilot"].map(provider => ({
-        provider, model: `${provider}-model`, displayName: `${provider} model`, isDefault: true, efforts: [], speeds: [],
-      }))], unavailable: [],
-    }}));
+    await page.route(/\/api\/agent\/models(?:\?|$)/, (route) =>
+      route.fulfill({
+        json: {
+          models: [
+            AGENT_MODELS_FIXTURE.models[0],
+            ...["claude", "grok", "antigravity", "copilot"].map((provider) => ({
+              provider,
+              model: `${provider}-model`,
+              displayName: `${provider} model`,
+              isDefault: true,
+              efforts: [],
+              speeds: [],
+            })),
+          ],
+          unavailable: [],
+        },
+      }),
+    );
+
     const task = (id, title) => ({
       id, threadId: id, title, preview: title, ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
       cwd: `src/${"long-directory-name/".repeat(8)}project`,
@@ -68,7 +82,13 @@ for (const managed of [true, false]) {
     const modelLabel = await modelButton.innerText();
     await modelButton.click();
     const menu = composer.locator(".task-model-popover");
-    await expect(menu.locator(".task-provider-option")).toHaveText(["Codex", "Claude", "Grok", "Antigravity", "GitHub Copilot"]);
+    await expect(menu.locator(".task-provider-option")).toHaveText([
+      "Codex",
+      "Claude",
+      "Grok",
+      "Antigravity",
+      "GitHub Copilot",
+    ]);
     await menu.getByRole("button", { name: "Antigravity", exact: true }).click();
     await expect(menu.getByRole("button", { name: "Continue with Antigravity", exact: true })).toBeVisible();
     await expect(menu.locator('[data-turn-options-action="select-model"]')).toHaveCount(0);

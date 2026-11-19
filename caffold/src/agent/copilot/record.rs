@@ -59,6 +59,7 @@ impl Record {
     ) -> Result<Self, AgentError> {
         let mut record = Self::new(task, cwd);
         let mut cursor = None;
+
         loop {
             let page = client
                 .rpc()
@@ -76,6 +77,7 @@ impl Record {
                     "Copilot history changed while it was being read. Reopen the Task.".into(),
                 ));
             }
+
             for event in page.events {
                 record.apply(&event);
             }
@@ -115,6 +117,7 @@ impl Record {
         if turn.status != TurnStatus::InProgress {
             return None;
         }
+
         turn.status = status;
         turn.completed_at_ms = time;
         self.conversation.status = ThreadStatus::Idle;
@@ -134,6 +137,7 @@ impl Record {
         if event.agent_id.is_some() {
             return Vec::new();
         }
+
         let data = &event.data;
         let time = chrono::DateTime::parse_from_rfc3339(&event.timestamp)
             .ok()
@@ -141,6 +145,7 @@ impl Record {
         if let Some(time) = time {
             self.conversation.updated_at_ms = self.conversation.updated_at_ms.max(time);
         }
+
         let mut events = Vec::new();
         match event.event_type.as_str() {
             "session.start" => {
@@ -161,55 +166,8 @@ impl Record {
                     title: self.conversation.title.clone(),
                 });
             }
-            "user.message" => {
-                let id = data["messageId"].as_str().unwrap_or(&event.id);
-                let interaction = string(data, "interactionId");
-                let same = interaction.is_some() && interaction == self.interaction;
-                if self.active_turn().is_none() || (!same && data["delivery"] != "steering") {
-                    events.extend(self.finish(TurnStatus::Completed, time));
-                    let turn = Turn {
-                        id: id.into(),
-                        origin: TurnOrigin::User,
-                        status: TurnStatus::InProgress,
-                        started_at_ms: time,
-                        completed_at_ms: None,
-                        items: vec![],
-                    };
-                    events.push(SessionEventKind::TurnStarted {
-                        turn: TurnState::from(&turn),
-                    });
-                    self.conversation.turns.push(turn);
-                    self.conversation.status = ThreadStatus::Active {
-                        active_flags: vec![],
-                    };
-                    self.final_message = false;
-                }
-                if interaction.is_some() {
-                    self.interaction = interaction;
-                }
-                let text = data["content"].as_str().unwrap_or_default();
-                if self.conversation.preview.is_empty() {
-                    self.conversation.preview = text.into();
-                }
-                let images = data["attachments"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|a| string(a, "path"))
-                    .collect::<Vec<_>>();
-                let mut item = submitted_user_message(id, text, &images);
-                item.observed_at_ms = time;
-                events.extend(self.item(item, time));
-                if data["delivery"] == "queued"
-                    && let Ok(turns_page) = self.page(None, 8)
-                {
-                    events.push(SessionEventKind::ConversationReplaced { turns_page });
-                    if let Some(context) = self.context {
-                        events.push(SessionEventKind::ContextReported { context });
-                    }
-                }
-                self.conversation.recency_at_ms = time;
-            }
+
+            "user.message" => self.apply_user_message(event, time, &mut events),
             "assistant.message"
             | "assistant.message_delta"
             | "assistant.reasoning"
@@ -235,6 +193,7 @@ impl Record {
                     events.push(SessionEventKind::DiffChanged);
                 }
             }
+
             "assistant.turn_start" => self.final_message = false,
             "abort" => events.extend(self.finish(TurnStatus::Interrupted, time)),
             "session.idle" => events.extend(self.finish(
@@ -253,6 +212,7 @@ impl Record {
                 },
                 time,
             )),
+
             "session.usage_record" => {
                 if let Some(call) = super::usage::Counters::from_call(&data["usage"])
                     && let Some(turn) = self.conversation.turns.last()
@@ -285,6 +245,65 @@ impl Record {
         events
     }
 
+    fn apply_user_message(
+        &mut self,
+        event: &SessionEvent,
+        time: Option<u64>,
+        events: &mut Vec<SessionEventKind>,
+    ) {
+        let data = &event.data;
+        let id = data["messageId"].as_str().unwrap_or(&event.id);
+        let interaction = string(data, "interactionId");
+        let same_interaction = interaction.is_some() && interaction == self.interaction;
+
+        if self.active_turn().is_none() || (!same_interaction && data["delivery"] != "steering") {
+            events.extend(self.finish(TurnStatus::Completed, time));
+            let turn = Turn {
+                id: id.into(),
+                origin: TurnOrigin::User,
+                status: TurnStatus::InProgress,
+                started_at_ms: time,
+                completed_at_ms: None,
+                items: vec![],
+            };
+            events.push(SessionEventKind::TurnStarted {
+                turn: TurnState::from(&turn),
+            });
+            self.conversation.turns.push(turn);
+            self.conversation.status = ThreadStatus::Active {
+                active_flags: vec![],
+            };
+            self.final_message = false;
+        }
+        if interaction.is_some() {
+            self.interaction = interaction;
+        }
+
+        let text = data["content"].as_str().unwrap_or_default();
+        if self.conversation.preview.is_empty() {
+            self.conversation.preview = text.into();
+        }
+        let images = data["attachments"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|attachment| string(attachment, "path"))
+            .collect::<Vec<_>>();
+        let mut item = submitted_user_message(id, text, &images);
+        item.observed_at_ms = time;
+        events.extend(self.item(item, time));
+
+        if data["delivery"] == "queued"
+            && let Ok(turns_page) = self.page(None, 8)
+        {
+            events.push(SessionEventKind::ConversationReplaced { turns_page });
+            if let Some(context) = self.context {
+                events.push(SessionEventKind::ContextReported { context });
+            }
+        }
+        self.conversation.recency_at_ms = time;
+    }
+
     pub fn has_final_message(&self) -> bool {
         self.final_message
     }
@@ -313,46 +332,48 @@ impl Record {
     }
 
     fn native_item(&self, event: &SessionEvent, time: Option<u64>) -> Option<ConversationItem> {
-        let d = &event.data;
+        let data = &event.data;
         let event_type = event.event_type.as_str();
         let id = match event_type {
-            "assistant.message" | "assistant.message_delta" => d["messageId"].as_str(),
-            "assistant.reasoning" | "assistant.reasoning_delta" => d["reasoningId"].as_str(),
-            "tool.execution_start" | "tool.execution_complete" => d["toolCallId"].as_str(),
+            "assistant.message" | "assistant.message_delta" => data["messageId"].as_str(),
+            "assistant.reasoning" | "assistant.reasoning_delta" => data["reasoningId"].as_str(),
+            "tool.execution_start" | "tool.execution_complete" => data["toolCallId"].as_str(),
             _ => None,
         }
         .unwrap_or(&event.id);
+
         let old = self
             .conversation
             .turns
             .last()?
             .items
             .iter()
-            .find(|i| i.id == id);
+            .find(|item| item.id == id);
         if event_type.ends_with("_delta")
             && old.is_some_and(|item| item.status == ActivityStatus::Completed)
         {
             return None;
         }
+
         let mut status = ActivityStatus::Completed;
         let kind = match event_type {
             "assistant.message" | "assistant.message_delta" => {
                 let text = if event_type.ends_with("_delta") {
                     status = ActivityStatus::InProgress;
-                    let prefix = match old.map(|i| &i.kind) {
+                    let prefix = match old.map(|item| &item.kind) {
                         Some(ItemKind::AssistantMessage { text, .. }) => text.as_str(),
                         _ => "",
                     };
-                    format!("{prefix}{}", d["deltaContent"].as_str()?)
+                    format!("{prefix}{}", data["deltaContent"].as_str()?)
                 } else {
-                    d["content"].as_str()?.into()
+                    data["content"].as_str()?.into()
                 };
                 if text.is_empty() {
                     return None;
                 }
                 ItemKind::AssistantMessage {
                     text,
-                    phase: match d["phase"].as_str() {
+                    phase: match data["phase"].as_str() {
                         Some("final_answer") => Some(MessagePhase::Final),
                         Some("commentary") => Some(MessagePhase::Progress),
                         _ => None,
@@ -363,13 +384,13 @@ impl Record {
             "assistant.reasoning" | "assistant.reasoning_delta" => {
                 let text = if event_type.ends_with("_delta") {
                     status = ActivityStatus::InProgress;
-                    let prefix = match old.map(|i| &i.kind) {
+                    let prefix = match old.map(|item| &item.kind) {
                         Some(ItemKind::Reasoning { content, .. }) => content.concat(),
                         _ => String::new(),
                     };
-                    format!("{prefix}{}", d["deltaContent"].as_str()?)
+                    format!("{prefix}{}", data["deltaContent"].as_str()?)
                 } else {
-                    d["content"].as_str()?.into()
+                    data["content"].as_str()?.into()
                 };
                 ItemKind::Reasoning {
                     summary: vec![],
@@ -379,9 +400,9 @@ impl Record {
             "tool.execution_start" => {
                 status = ActivityStatus::InProgress;
                 ItemKind::ToolCall(ToolCall {
-                    name: string(d, "toolName")?,
-                    server: string(d, "mcpServerName"),
-                    input: d.get("arguments").cloned(),
+                    name: string(data, "toolName")?,
+                    server: string(data, "mcpServerName"),
+                    input: data.get("arguments").cloned(),
                     result: vec![],
                     duration_ms: None,
                 })
@@ -391,10 +412,10 @@ impl Record {
                     return None;
                 };
                 let mut tool = tool.clone();
-                if d["success"] == false {
+                if data["success"] == false {
                     status = ActivityStatus::Failed;
                 }
-                if let Some(result) = d.get("result").or_else(|| d.get("error")) {
+                if let Some(result) = data.get("result").or_else(|| data.get("error")) {
                     tool.result = vec![match result
                         .get("content")
                         .and_then(Value::as_str)
@@ -409,14 +430,15 @@ impl Record {
             "session.error" => {
                 status = ActivityStatus::Failed;
                 ItemKind::Failure {
-                    text: string(d, "message")?,
+                    text: string(data, "message")?,
                 }
             }
             _ => return None,
         };
+
         Some(ConversationItem {
             id: id.into(),
-            observed_at_ms: old.and_then(|i| i.observed_at_ms).or(time),
+            observed_at_ms: old.and_then(|item| item.observed_at_ms).or(time),
             status,
             kind,
         })
@@ -426,6 +448,7 @@ impl Record {
 pub(super) fn string(data: &Value, key: &str) -> Option<String> {
     data[key].as_str().map(str::to_owned)
 }
+
 pub(super) fn context(data: &Value) -> Option<ContextUsage> {
     let used_tokens = data["currentTokens"].as_u64()?;
     let window_tokens = data["tokenLimit"].as_u64().filter(|n| *n > 0)?;
@@ -441,8 +464,16 @@ mod tests {
     use serde_json::json;
 
     fn event(id: &str, kind: &str, data: Value) -> SessionEvent {
-        serde_json::from_value(json!({"id":id,"timestamp":"2026-11-19T06:01:00Z","parentId":null,"type":kind,"data":data})).unwrap()
+        serde_json::from_value(json!({
+            "id": id,
+            "timestamp": "2026-11-19T06:01:00Z",
+            "parentId": null,
+            "type": kind,
+            "data": data,
+        }))
+        .unwrap()
     }
+
     #[test]
     fn recorded_usage_recovers_call_totals_without_reconstructing_context_occupancy() {
         let mut record = Record::new("task", "/work");
@@ -450,16 +481,17 @@ mod tests {
             record.apply(&event(
                 id,
                 "user.message",
-                json!({"messageId":id,"delivery":"idle","content":id}),
+                json!({ "messageId": id, "delivery": "idle", "content": id }),
             ));
             let account = event(
                 &format!("usage-{id}"),
                 "session.usage_record",
-                json!({"usage":{"inputTokens":tokens,"outputTokens":2}}),
+                json!({ "usage": { "inputTokens": tokens, "outputTokens": 2 } }),
             );
             record.apply(&account);
             record.apply(&account);
         }
+
         assert!(record.context.is_none());
         let (turn, usage) = record.recorded_usage.unwrap();
         assert_eq!(turn, "two");
@@ -474,31 +506,57 @@ mod tests {
         let first = event(
             "a",
             "user.message",
-            json!({"messageId":"one","interactionId":"first","delivery":"idle","content":"original"}),
+            json!({
+                "messageId": "one",
+                "interactionId": "first",
+                "delivery": "idle",
+                "content": "original",
+            }),
         );
         record.apply(&first);
         record.apply(&first);
-        record.apply(&event("b", "user.message", json!({
-            "messageId": "immediate", "interactionId": "first", "delivery": "steering", "content": "follow"
-        })));
-        let relocated = record.apply(&event("c", "user.message", json!({
-            "messageId": "queued", "interactionId": "second", "delivery": "queued", "content": "follow"
-        })));
+        record.apply(&event(
+            "b",
+            "user.message",
+            json!({
+                "messageId": "immediate",
+                "interactionId": "first",
+                "delivery": "steering",
+                "content": "follow",
+            }),
+        ));
+
+        let relocated = record.apply(&event(
+            "c",
+            "user.message",
+            json!({
+                "messageId": "queued",
+                "interactionId": "second",
+                "delivery": "queued",
+                "content": "follow",
+            }),
+        ));
         assert!(matches!(
             relocated.last(),
             Some(SessionEventKind::ConversationReplaced { .. })
         ));
+
         record.apply(&event(
             "d",
             "assistant.message_delta",
-            json!({"messageId":"response","deltaContent":"hel"}),
+            json!({ "messageId": "response", "deltaContent": "hel" }),
         ));
         record.apply(&event(
             "e",
             "assistant.message",
-            json!({"messageId":"response","content":"hello","phase":"final_answer"}),
+            json!({
+                "messageId": "response",
+                "content": "hello",
+                "phase": "final_answer",
+            }),
         ));
         record.settle_cold();
+
         let newest = record.page(None, 1).unwrap();
         assert_eq!(newest.turns[0].id, "queued");
         assert_eq!(
@@ -510,6 +568,7 @@ mod tests {
             ["queued", "response"]
         );
         assert_eq!(newest.turns[0].status, TurnStatus::Completed);
+
         let older = record.page(newest.next_cursor.as_deref(), 1).unwrap();
         assert_eq!(
             older.turns[0]
@@ -526,13 +585,13 @@ mod tests {
     #[test]
     fn context_occupancy_requires_both_native_measurements() {
         assert_eq!(
-            context(&json!({"currentTokens":0,"tokenLimit":128000})),
+            context(&json!({ "currentTokens": 0, "tokenLimit": 128000 })),
             Some(ContextUsage {
                 used_tokens: 0,
                 window_tokens: 128000
             })
         );
-        assert!(context(&json!({"currentTokens":40})).is_none());
-        assert!(context(&json!({"currentTokens":40,"tokenLimit":0})).is_none());
+        assert!(context(&json!({ "currentTokens": 40 })).is_none());
+        assert!(context(&json!({ "currentTokens": 40, "tokenLimit": 0 })).is_none());
     }
 }
