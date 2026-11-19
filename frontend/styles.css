@@ -324,6 +324,14 @@
   --task-group-font-size: 0.75rem;
   --task-group-row-height: max(1.75rem, var(--interface-target-floor));
   --task-list-icon-size: 0.9375rem;
+  /* The Composer's prompt inset and the follow-up Composer's place in the
+     Task column; text placed above that Composer starts where its prompt
+     text does. */
+  --task-follow-up-composer-gutter: 0.875rem;
+  --task-follow-up-composer-max-width: 980px;
+  --task-follow-up-composer-panel-border-inline: 1px;
+  --task-follow-up-composer-panel-padding-inline: 0px;
+  --task-composer-prompt-padding-inline: 1rem;
   --font-ui: "Caffold Geist Sans", system-ui, sans-serif;
   --font-code: "Caffold Geist Mono", ui-monospace, monospace;
   font-size: calc(var(--interface-base-font-size) * var(--interface-scale));
@@ -589,5 +597,23 @@ body {
     --interface-target-floor: 40px;
     --file-tree-row-height: 36px;
     --task-list-row-height: 36px;
+  }
+}
+
+@media (max-width: 860px), (pointer: coarse) {
+  :root {
+    --task-follow-up-composer-gutter: 0.625rem;
+    --task-composer-prompt-padding-inline: 0.875rem;
+  }
+}
+
+/* On a phone held upright the follow-up Composer is a bar across the bottom
+   edge: no gutter or side borders, and its padding keeps the text off the
+   screen edge. */
+@media (max-width: 520px) and (orientation: portrait) {
+  :root {
+    --task-follow-up-composer-gutter: 0px;
+    --task-follow-up-composer-panel-border-inline: 0px;
+    --task-follow-up-composer-panel-padding-inline: 0.75rem;
   }
 }
