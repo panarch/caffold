@@ -44,6 +44,7 @@ impl Adapter {
                 resume.model = options.model;
                 resume.github = options.github;
                 resume.inference = options.inference;
+                resume.events = options.events;
                 resume.permissions = options.permissions;
                 resume.mcp = options.mcp;
                 resume.system_message = options.system_message;
@@ -140,6 +141,7 @@ fn options(open: &OpenSession) -> CreateSessionOptions {
         .with_session_id(open.session.clone())
         .with_name(format!("Caffold {}", open.session))
         .with_working_directory(&open.cwd)
+        .with_events(|events| events.with_streaming(true))
         .with_github(|github| github.with_fetch_managed_settings(true))
         .with_permissions(|permissions| {
             permissions

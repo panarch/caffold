@@ -27,7 +27,7 @@ type Waiting = HashMap<String, oneshot::Sender<Reply>>;
 
 pub(super) struct Connection {
     retired: AtomicBool,
-    permission_revision: AtomicU64,
+    snapshot_revision: AtomicU64,
     restoring: Mutex<()>,
     task: String,
     incarnation: String,
@@ -50,7 +50,7 @@ impl Connection {
         let (ready, _) = watch::channel(Ok(false));
         let this = Arc::new(Self {
             retired: AtomicBool::new(false),
-            permission_revision: AtomicU64::new(0),
+            snapshot_revision: AtomicU64::new(0),
             restoring: Mutex::new(()),
             task: binding.task_id.clone(),
             incarnation: session.snapshot.incarnation,
@@ -251,6 +251,11 @@ impl Connection {
         }
 
         match event.event_type.as_str() {
+            "user.message" | "abort" | "session.error" | "session.idle" | "session.shutdown"
+                if event.agent_id.is_none() =>
+            {
+                self.snapshot_revision.fetch_add(1, Ordering::Relaxed);
+            }
             "permission.requested" => {
                 let data = &event.data;
                 if let (Some(id), Some(request)) = (
@@ -259,7 +264,7 @@ impl Connection {
                         .filter(|v| !v.is_null())
                         .or_else(|| data.get("permissionRequest")),
                 ) {
-                    self.permission_revision.fetch_add(1, Ordering::Relaxed);
+                    self.snapshot_revision.fetch_add(1, Ordering::Relaxed);
                     let request = self.approval(&record, id, request)?;
                     let _ = self.events.send(CopilotRuntimeEvent::Approval {
                         conversation_id: self.task.clone(),
@@ -269,7 +274,7 @@ impl Connection {
             }
             "permission.completed" => {
                 if let Some(id) = event.data["requestId"].as_str() {
-                    self.permission_revision.fetch_add(1, Ordering::Relaxed);
+                    self.snapshot_revision.fetch_add(1, Ordering::Relaxed);
                     let outcome = if event.data.pointer("/result/kind").and_then(Value::as_str)
                         == Some("cancelled")
                     {
@@ -304,12 +309,12 @@ impl Connection {
         )?)
     }
 
-    /// Apply the native snapshot in order with permission notifications. If one arrived
-    /// while the SDK was reading, only repeat the read, even when the first command was Open.
+    /// If activity or permissions changed during a snapshot read, repeat Inspect.
+    /// Open can create a session, so it must only run once.
     pub async fn restore(&self, mut operation: Operation) -> Result<(), AgentError> {
         let _restoring = self.restoring.lock().await;
         loop {
-            let revision = self.permission_revision.load(Ordering::Relaxed);
+            let revision = self.snapshot_revision.load(Ordering::Relaxed);
             let snapshot = self.request(operation).await?;
             let mut record = self.record.lock().await;
             if self.retired.load(Ordering::Acquire) || self.lost() {
@@ -317,7 +322,7 @@ impl Connection {
                     "Copilot disconnected while reading the session.".into(),
                 ));
             }
-            if self.permission_revision.load(Ordering::Relaxed) == revision {
+            if self.snapshot_revision.load(Ordering::Relaxed) == revision {
                 return self.restore_snapshot(&mut record, &snapshot);
             }
             operation = Operation::Inspect;
@@ -331,8 +336,8 @@ impl Connection {
         {
             record.conversation.cwd = cwd.into();
         }
-        if snapshot["activeTurn"].is_null() && snapshot["processing"] == false {
-            record.settle_cold();
+        if let Some(event) = record.restore_activity(snapshot) {
+            self.publish(event);
         }
 
         if let Some(context) = context(&snapshot["context"]) {

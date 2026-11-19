@@ -5,7 +5,7 @@ use super::{
     transport::runner_error,
 };
 use crate::agent::{
-    AgentError, Conversation, ThreadStatus, TurnOptions, TurnPage,
+    AgentError, Conversation, TurnOptions, TurnPage,
     fork::{ForkRevision, ForkSource, ForkSourceId, ForkedConversation},
     history::RecordedPage,
 };
@@ -293,13 +293,7 @@ impl CopilotClient {
             {
                 record.conversation.cwd = cwd.to_owned();
             }
-            if snapshot["processing"] == true || snapshot["activeTurn"].is_string() {
-                record.conversation.status = ThreadStatus::Active {
-                    active_flags: vec![],
-                };
-            } else {
-                record.settle_cold();
-            }
+            record.restore_activity(&snapshot);
             record.conversation.background_work = snapshot["background"] == true;
         } else if binding.is_some() || record.has_final_message() {
             record.settle_cold();

@@ -112,7 +112,8 @@ impl Record {
         })
     }
 
-    pub fn finish(&mut self, status: TurnStatus, time: Option<u64>) -> Option<SessionEventKind> {
+    fn finish(&mut self, status: TurnStatus, time: Option<u64>) -> Option<SessionEventKind> {
+        self.conversation.status = ThreadStatus::Idle;
         let turn = self.conversation.turns.last_mut()?;
         if turn.status != TurnStatus::InProgress {
             return None;
@@ -120,7 +121,6 @@ impl Record {
 
         turn.status = status;
         turn.completed_at_ms = time;
-        self.conversation.status = ThreadStatus::Idle;
         Some(SessionEventKind::TurnEnded {
             turn: TurnState::from(&*turn),
         })
@@ -146,6 +146,7 @@ impl Record {
             self.conversation.updated_at_ms = self.conversation.updated_at_ms.max(time);
         }
 
+        let previous_status = self.conversation.status.clone();
         let mut events = Vec::new();
         match event.event_type.as_str() {
             "session.start" => {
@@ -242,6 +243,10 @@ impl Record {
             "session.compaction_complete" => self.context = None,
             _ => {}
         }
+
+        if self.conversation.status != previous_status {
+            events.push(self.activity_event());
+        }
         events
     }
 
@@ -315,6 +320,27 @@ impl Record {
             TurnStatus::Interrupted
         };
         self.finish(status, Some(self.conversation.updated_at_ms));
+    }
+
+    pub fn restore_activity(&mut self, snapshot: &Value) -> Option<SessionEventKind> {
+        if snapshot["processing"] == true || snapshot["activeTurn"].is_string() {
+            self.conversation.status = ThreadStatus::Active {
+                active_flags: vec![],
+            };
+        } else if snapshot["processing"] == false && snapshot["activeTurn"].is_null() {
+            self.settle_cold();
+        } else {
+            return None;
+        }
+
+        // On reattach the journal and the server can have different last observations.
+        Some(self.activity_event())
+    }
+
+    fn activity_event(&self) -> SessionEventKind {
+        SessionEventKind::ActivityChanged {
+            status: self.conversation.status.clone(),
+        }
     }
 
     fn item(&mut self, item: ConversationItem, time: Option<u64>) -> Option<SessionEventKind> {
@@ -472,6 +498,87 @@ mod tests {
             "data": data,
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn a_foreground_turn_reports_working_until_the_session_is_idle() {
+        let mut record = Record::new("task", "/work");
+        let started = record.apply(&event(
+            "prompt",
+            "user.message",
+            json!({ "messageId": "one", "content": "hello" }),
+        ));
+        assert!(matches!(
+            started.as_slice(),
+            [
+                SessionEventKind::TurnStarted { turn },
+                SessionEventKind::ItemChanged { .. },
+                SessionEventKind::ActivityChanged { status: ThreadStatus::Active { active_flags } },
+            ] if turn.id == "one" && active_flags.is_empty()
+        ));
+
+        // The SDK can finish a model call and start another in the same user turn.
+        for kind in ["assistant.turn_end", "assistant.turn_start"] {
+            assert!(record.apply(&event(kind, kind, json!({}))).is_empty());
+        }
+        for (chunk_id, delta, expected) in [("a", "hel", "hel"), ("b", "lo", "hello")] {
+            let changes = record.apply(&event(
+                chunk_id,
+                "assistant.message_delta",
+                json!({ "messageId": "reply", "deltaContent": delta }),
+            ));
+            assert!(matches!(
+                changes.as_slice(),
+                [SessionEventKind::ItemChanged { item, .. }]
+                    if item.id == "reply" && item.status == ActivityStatus::InProgress
+                    && matches!(&item.kind, ItemKind::AssistantMessage { text, .. } if text == expected)
+            ));
+        }
+
+        let ended = record.apply(&event("idle", "session.idle", json!({})));
+        assert!(matches!(
+            ended.as_slice(),
+            [
+                SessionEventKind::TurnEnded { turn },
+                SessionEventKind::ActivityChanged { status: ThreadStatus::Idle },
+            ] if turn.id == "one" && turn.status == TurnStatus::Completed
+        ));
+        assert!(
+            record
+                .apply(&event("shutdown", "session.shutdown", json!({})))
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn reconnect_reports_native_activity_even_when_the_journal_already_agrees() {
+        let mut record = Record::new("task", "/work");
+        for snapshot in [
+            json!({ "processing": true, "activeTurn": null }),
+            json!({ "processing": false, "activeTurn": "one" }),
+        ] {
+            assert!(matches!(
+                record.restore_activity(&snapshot),
+                Some(SessionEventKind::ActivityChanged {
+                    status: ThreadStatus::Active { .. }
+                })
+            ));
+        }
+
+        // A restored session can become idle before a user message is available locally.
+        let idle = record.apply(&event("idle", "session.idle", json!({})));
+        assert!(matches!(
+            idle.as_slice(),
+            [SessionEventKind::ActivityChanged {
+                status: ThreadStatus::Idle
+            }]
+        ));
+        assert!(matches!(
+            record.restore_activity(&json!({ "processing": false, "activeTurn": null })),
+            Some(SessionEventKind::ActivityChanged {
+                status: ThreadStatus::Idle
+            })
+        ));
     }
 
     #[test]
