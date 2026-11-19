@@ -2031,6 +2031,204 @@ test("managed tasks restore their last applied model, reasoning, and speed", { t
   await expect(form.locator('input[name="speed"]')).toHaveValue("default");
 });
 
+// A Claude Task last run on Sonnet. Its next turn's settings reach the Task at
+// the session revision the prompt response names; a state built before that
+// revision still holds Sonnet.
+const SENT_MODEL_DETAIL = {
+  ...taskDetailFixture(),
+  provider: "claude",
+  model: "sonnet",
+  reasoningEffort: "high",
+  permissionMode: "auto",
+};
+
+// The prompt response waits for the test, so the accepted message is already
+// in the conversation when the response names it.
+async function routeSentModelTask(page) {
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: SENT_MODEL_DETAIL }),
+  );
+  await page.route("**/api/tasks/thread-1/stream*", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: ": ready\n\n",
+    }),
+  );
+  const submitted = [];
+  let releasePrompt;
+  const promptGate = new Promise((resolve) => {
+    releasePrompt = resolve;
+  });
+  await page.route("**/api/tasks/thread-1/prompts", async (route) => {
+    submitted.push(route.request().postDataJSON());
+    await promptGate;
+    await route.fulfill({
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-2",
+        userMessageId: "message-sent-model",
+        steered: false,
+        revision: 3,
+      },
+    });
+  });
+  return { submitted, releasePrompt };
+}
+
+function emitSentModelPrompt(page) {
+  return page.evaluate((threadId) => {
+    window.__caffoldTaskSse.source(threadId).emit("task-event", {
+      threadId,
+      revision: 3,
+      eventRevision: 2,
+      event: {
+        id: "event-sent-model-prompt",
+        threadId,
+        type: "user_message",
+        summary: "User prompt",
+        payload: {
+          turnId: "turn-2",
+          itemId: "message-sent-model",
+          text: "Continue",
+        },
+        position: { anchorMs: 3, index: 0 },
+      },
+    });
+  }, SENT_MODEL_DETAIL.threadId);
+}
+
+function emitSentModelState(page, revision, model) {
+  return page.evaluate(
+    (state) => {
+      window.__caffoldTaskSse.source(state.threadId).emit("task-state", state);
+    },
+    {
+      threadId: SENT_MODEL_DETAIL.threadId,
+      revision,
+      task: SENT_MODEL_DETAIL.task,
+      provider: "claude",
+      permissionMode: model === "sonnet" ? "auto" : "default",
+      model,
+      reasoningEffort: model === "sonnet" ? "high" : null,
+      speed: "default",
+      context: null,
+    },
+  );
+}
+
+test("a follow-up keeps the model it was sent with until the Task's settings catch up", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  await installClaudeAgent(page);
+  const { submitted, releasePrompt } = await routeSentModelTask(page);
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, SENT_MODEL_DETAIL);
+  const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
+  const modelPicker = form.getByRole("button", { name: /Choose model/ });
+  const modelName = modelPicker.locator(".task-model-name");
+  await expect(modelName).toHaveText("Sonnet");
+  await modelPicker.click();
+  await form.locator('.task-model-popover [data-model="haiku"]').click();
+  await expect(modelName).toHaveText("Haiku");
+  // A turn is sent only under a mode from Haiku's own list.
+  await expect(
+    form.getByRole("button", { name: "Choose approval mode" }),
+  ).toContainText("Ask each time");
+
+  // Every name the closed control shows from here on, once per task, so a
+  // name shown between two deliveries is caught as well as the last one.
+  await modelPicker.evaluate((button) => {
+    window.__shownModelNames = [];
+    new MutationObserver(() => {
+      window.__shownModelNames.push(
+        button.querySelector(".task-model-name")?.textContent ?? "",
+      );
+    }).observe(button, { subtree: true, childList: true, characterData: true });
+  });
+  const prompt = form.getByRole("textbox", { name: "Follow-up prompt" });
+  await prompt.fill("Continue");
+  await prompt.press("Enter");
+  await expect.poll(() => submitted.length).toBe(1);
+  expect(submitted[0]).toMatchObject({ model: "haiku" });
+
+  await emitSentModelPrompt(page);
+  await expect(
+    page.locator('[data-event-id="event-sent-model-prompt"]'),
+  ).toBeVisible();
+  releasePrompt();
+  await expect(form).toHaveAttribute("aria-busy", "false");
+  expect(await page.evaluate(() => window.__shownModelNames)).not.toContain(
+    "Sonnet",
+  );
+  await expect(modelPicker).toBeDisabled();
+
+  await emitSentModelState(page, 2, "sonnet");
+  await emitSentModelState(page, 3, "haiku");
+  await expect(modelPicker).toBeEnabled();
+  await expect(modelName).toHaveText("Haiku");
+  expect(await page.evaluate(() => window.__shownModelNames)).not.toContain(
+    "Sonnet",
+  );
+
+  // Caught up, the control follows the Task's settings again.
+  await emitSentModelState(page, 4, "sonnet");
+  await expect(modelName).toHaveText("Sonnet");
+});
+
+test("a Task read again after a reconnect lets the sent model go", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  await installClaudeAgent(page);
+  const { submitted, releasePrompt } = await routeSentModelTask(page);
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, SENT_MODEL_DETAIL);
+  const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
+  const modelPicker = form.getByRole("button", { name: /Choose model/ });
+  const modelName = modelPicker.locator(".task-model-name");
+  await expect(modelName).toHaveText("Sonnet");
+  await modelPicker.click();
+  await form.locator('.task-model-popover [data-model="haiku"]').click();
+  await expect(modelName).toHaveText("Haiku");
+  await expect(
+    form.getByRole("button", { name: "Choose approval mode" }),
+  ).toContainText("Ask each time");
+  const prompt = form.getByRole("textbox", { name: "Follow-up prompt" });
+  await prompt.fill("Continue");
+  await prompt.press("Enter");
+  await expect.poll(() => submitted.length).toBe(1);
+  await emitSentModelPrompt(page);
+  await expect(
+    page.locator('[data-event-id="event-sent-model-prompt"]'),
+  ).toBeVisible();
+  releasePrompt();
+  await expect(form).toHaveAttribute("aria-busy", "false");
+  await expect(modelPicker).toBeDisabled();
+
+  // A reconnect reads the Task from the start. Session revisions start again
+  // with the server, so that read is the Task's settings whatever revision it
+  // carries.
+  await page.evaluate((threadId) => {
+    window.__caffoldTaskSse.source(threadId).emitError();
+  }, SENT_MODEL_DETAIL.threadId);
+  await expect(
+    page.locator('.app-foreground-recovery[data-recovery-state="reconnecting"]'),
+  ).toContainText("Reconnecting to Caffold server");
+  await emitTaskDetailBootstrap(page, {
+    ...SENT_MODEL_DETAIL,
+    model: "haiku",
+    reasoningEffort: null,
+    permissionMode: "default",
+  });
+  await expect(modelPicker).toBeEnabled();
+  await expect(modelName).toHaveText("Haiku");
+  await emitSentModelState(page, 2, "sonnet");
+  await expect(modelName).toHaveText("Sonnet");
+});
+
 test("canonical task sync preserves an open follow-up model picker", { tag: "@server-changes" }, async ({
   page,
 }) => {

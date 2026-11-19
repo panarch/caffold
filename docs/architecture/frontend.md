@@ -1203,6 +1203,15 @@ Detail applies it when its revision is current or newer, leaves the
 conversation as it is, and keeps only the newest one while it waits for a
 readable bootstrap.
 
+A confirmed prompt that started a turn leaves the Composer's one-turn choices
+in place, with its turn options locked, until Detail holds Task metadata at or
+after the session revision the prompt response names. That revision recorded
+the turn's composer settings, so the Composer is shown them before the choices
+go and moves from what was sent straight to what the Task recorded. A stream
+bootstrap answers for those settings whatever revision it carries, because
+session revisions start again with the server. A response without a revision
+lets the choices go at once, and a steered prompt keeps them.
+
 Detail applies every Detail answer, whether a bootstrap, a notification
 snapshot, or an older cursor page, through one rule keyed on the answer's
 declared `eventsRange`: retained records inside that extent are replaced by

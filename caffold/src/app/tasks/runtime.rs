@@ -720,6 +720,19 @@ impl TaskRuntime {
         self.signals.subscribe()
     }
 
+    /// Tell viewers about a change beside the conversation that no agent
+    /// report carries, such as the settings a prompt's turn was recorded with.
+    pub(in crate::app::tasks) fn announce_task_state(
+        &self,
+        thread_id: &str,
+        snapshot: SessionSnapshot,
+    ) {
+        let _ = self.signals.send(TaskRuntimeSignal::TaskStateChanged {
+            thread_id: thread_id.to_string(),
+            snapshot: Box::new(snapshot),
+        });
+    }
+
     /// Claude, however it is being reached.
     pub(in crate::app::tasks) fn claude(&self) -> &ClaudeClient {
         &self.claude

@@ -232,7 +232,9 @@ interface FollowUpRequest {
   // Whether the Composer's one-turn choices go once the message is confirmed:
   // null until the agent answers, false for a message that steered a turn.
   resetOverridesOnCanonical: boolean | null;
-  overridesReleased: boolean;
+  // The session revision that recorded the message.
+  settingsRevision: number | null;
+  overridesHeld: boolean;
 }
 
 type UpdateKind = ConversationSnapshot["updateKind"];
@@ -258,6 +260,9 @@ export class CaffoldTaskDetail extends CaffoldElement {
   private reviewView: TaskDetailView = "conversation";
   private taskDetail: TaskDetail | null = null;
   private readonly taskDetailRevisionByThread = new Map<string, number>();
+  // The revision each Task's settings must reach before its Composer lets a
+  // confirmed turn's choices go; until then its turn options stay locked.
+  private readonly heldTurnChoices = new Map<string, number>();
   private readonly projectionsByThread = new Map<
     string,
     ConversationProjection
@@ -839,6 +844,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       return false;
     }
     this.taskDetailRevisionByThread.delete(threadId);
+    this.restartHeldTurnChoiceRevision(threadId);
     this.projectionFor(threadId).reset();
     this.history.activate(threadId);
     return (
@@ -912,6 +918,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       // Session revisions are process-local, so a reconnect after a server
       // restart can authoritatively bootstrap at a lower revision.
       this.taskDetailRevisionByThread.delete(threadId);
+      this.restartHeldTurnChoiceRevision(threadId);
       this.projectionFor(threadId).reset();
       this.history.activate(threadId);
     }
@@ -1073,22 +1080,33 @@ export class CaffoldTaskDetail extends CaffoldElement {
             (event) => event.id !== request.optimisticEventId,
           ),
     );
-    this.releaseConfirmedFollowUpOverrides(request);
+    this.holdConfirmedFollowUpOverrides(request);
     request.composer.resolveSubmission(request.submissionId, {
       status: "accepted",
     });
   }
 
-  private releaseConfirmedFollowUpOverrides(request: FollowUpRequest) {
+  // A confirmed turn's choices stay until Detail holds the Task's settings at
+  // the revision that recorded them, and go once the Composer is shown those
+  // settings. Without a revision they go at the next drawing.
+  private holdConfirmedFollowUpOverrides(request: FollowUpRequest) {
     if (
-      request.overridesReleased ||
+      request.overridesHeld ||
       !request.canonicalConfirmed ||
       request.resetOverridesOnCanonical !== true
     ) {
       return;
     }
-    request.composer.resetOverrides();
-    request.overridesReleased = true;
+    this.heldTurnChoices.set(request.threadId, request.settingsRevision ?? 0);
+    request.overridesHeld = true;
+  }
+
+  // Revisions start again with the server, so a Task read from the start holds
+  // its settings whatever revision it carries.
+  private restartHeldTurnChoiceRevision(threadId: string) {
+    if (this.heldTurnChoices.has(threadId)) {
+      this.heldTurnChoices.set(threadId, 0);
+    }
   }
 
   private acceptTaskDetailRevision(
@@ -1339,7 +1357,8 @@ export class CaffoldTaskDetail extends CaffoldElement {
       upload,
       canonicalConfirmed: false,
       resetOverridesOnCanonical: null,
-      overridesReleased: false,
+      settingsRevision: null,
+      overridesHeld: false,
     };
     this.followUpRequests.set(threadId, followUpRequest);
     this.setThreadEvents(
@@ -1377,7 +1396,8 @@ export class CaffoldTaskDetail extends CaffoldElement {
       );
       followUpRequest.acceptedItemId = `${response.userMessageId}`;
       followUpRequest.resetOverridesOnCanonical = !response?.steered;
-      this.releaseConfirmedFollowUpOverrides(followUpRequest);
+      followUpRequest.settingsRevision = response.revision ?? null;
+      this.holdConfirmedFollowUpOverrides(followUpRequest);
       this.reconcilePendingPrompt(
         threadId,
         this.eventsByThread.get(threadId) ?? [],
@@ -2104,9 +2124,12 @@ export class CaffoldTaskDetail extends CaffoldElement {
     threadId: string,
     composer: CaffoldTaskComposer | null | undefined,
   ) {
-    composer?.endEditingLifetime({
+    const reset = composer?.endEditingLifetime({
       preserveOptions: this.followUpRequests.has(threadId),
     });
+    if (reset) {
+      this.heldTurnChoices.delete(threadId);
+    }
   }
 
   private shouldRetainFollowUpComposer(
@@ -2145,6 +2168,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       composer.remove();
       this.followUpComposers.delete(threadId);
       this.followUpComposerLastUsed.delete(threadId);
+      this.heldTurnChoices.delete(threadId);
     }
   }
 
@@ -2154,6 +2178,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
     }
     this.followUpComposers.clear();
     this.followUpComposerLastUsed.clear();
+    this.heldTurnChoices.clear();
     this.followUpComposerUseSequence = 0;
     this.activeFollowUpComposerThreadId = "";
   }
@@ -2170,6 +2195,13 @@ export class CaffoldTaskDetail extends CaffoldElement {
       return;
     }
     const composer = this.ensureFollowUpComposer(threadId);
+    const heldUntil = this.heldTurnChoices.get(threadId);
+    const settingsCaughtUp =
+      heldUntil !== undefined &&
+      (this.taskDetailRevisionByThread.get(threadId) ?? 0) >= heldUntil;
+    if (settingsCaughtUp) {
+      this.heldTurnChoices.delete(threadId);
+    }
     composer.setContext({
       mode: "follow-up",
       threadId,
@@ -2187,7 +2219,8 @@ export class CaffoldTaskDetail extends CaffoldElement {
         ),
       settingsLocked:
         isTaskActivelyWorking(task) ||
-        this.taskDetail?.workspaceAccess?.mode === "readOnly",
+        this.taskDetail?.workspaceAccess?.mode === "readOnly" ||
+        this.heldTurnChoices.has(threadId),
       allowHandoff: this.handoffAvailable(),
       turnActive: isTaskActivelyWorking(task),
       uploading:
@@ -2205,6 +2238,9 @@ export class CaffoldTaskDetail extends CaffoldElement {
       speed: this.taskDetail?.speed ?? NORMAL_SPEED,
       permissionMode: `${this.taskDetail?.permissionMode ?? ""}`.trim(),
     });
+    if (settingsCaughtUp) {
+      composer.resetOverrides();
+    }
     composer.setContextUsage(this.taskDetail?.context ?? null);
     this.activateFollowUpComposer(threadId);
   }
