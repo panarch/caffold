@@ -5,7 +5,11 @@
 //! native fork, and claims only a child that survives every validation step.
 
 use crate::{
-    agent::{Conversation, ThreadStatus, driver::REVIEWED_PERMISSION_MODE},
+    agent::{
+        AgentError, Conversation, Driver, ThreadStatus,
+        driver::REVIEWED_PERMISSION_MODE,
+        fork::{ForkSource, ForkSourceId},
+    },
     app::error::ApiError,
     task_store::{ManagedSection, ManagedThread},
 };
@@ -34,22 +38,51 @@ pub(in crate::app::tasks) enum ForkTaskSource {
 }
 
 impl ForkTaskSource {
-    fn owner(&self) -> Option<&ManagedThread> {
+    pub(in crate::app::tasks) fn owner(&self) -> Option<&ManagedThread> {
         match self {
             Self::Managed(source) => Some(source),
             Self::External { owner, .. } => owner.as_deref(),
         }
     }
 
-    fn is_external(&self) -> bool {
-        matches!(self, Self::External { .. })
+    fn address(&self) -> ForkSourceId<'_> {
+        match self {
+            Self::Managed(task) => ForkSourceId::Task(&task.thread_id),
+            Self::External { thread_id, owner } => ForkSourceId::Native {
+                id: thread_id,
+                owner: owner.as_ref().map(|task| task.thread_id.as_str()),
+            },
+        }
     }
 
-    fn thread_id(&self) -> &str {
-        match self {
-            Self::Managed(source) => &source.thread_id,
-            Self::External { thread_id, .. } => thread_id,
+    pub(in crate::app::tasks) async fn read(
+        &self,
+        driver: &Driver,
+        with_turns: bool,
+    ) -> Result<ForkSource, ApiError> {
+        let address = self.address();
+        let source =
+            driver
+                .read_fork_source(address, with_turns)
+                .await
+                .map_err(|error| match error {
+                    AgentError::ConversationGone(message)
+                        if matches!(self, Self::External { .. }) =>
+                    {
+                        ApiError::NotFound {
+                            code: "task_fork_source_unresolved",
+                            message,
+                        }
+                    }
+                    error => error.into(),
+                })?;
+        if source.conversation.id != address.id() {
+            return Err(ApiError::BadRequest {
+                code: "task_fork_source_mismatch",
+                message: "The agent returned a different source conversation".into(),
+            });
         }
+        Ok(source)
     }
 
     fn display_name(&self, conversation: &Conversation) -> String {
@@ -90,33 +123,16 @@ impl TaskLifecycle {
             section,
             cwd,
         } = request;
-        let source_thread_id = source.thread_id().to_string();
-        let _mutation = match &source {
-            ForkTaskSource::Managed(source) => {
-                Some(self.sessions.reserve_mutation(&source.thread_id).await)
-            }
-            ForkTaskSource::External {
-                owner: Some(owner), ..
-            } => Some(self.sessions.reserve_mutation(&owner.thread_id).await),
-            ForkTaskSource::External { owner: None, .. } => None,
+        let _mutation = match source.owner() {
+            Some(owner) => Some(self.sessions.reserve_mutation(&owner.thread_id).await),
+            None => None,
         };
         self.ensure_fork_target_is_current(&section).await?;
         if let Some(owner) = source.owner() {
             self.ensure_managed_fork_source_is_current(owner).await?;
         }
         let driver = agent.driver();
-        let external = source.is_external();
-        let mut source_before = driver
-            .read_fork_source(&source_thread_id, external, false)
-            .await?;
-        if !matches!(agent, TaskAgent::Grok { .. })
-            && source_before.conversation.id != source_thread_id
-        {
-            return Err(ApiError::BadRequest {
-                code: "task_fork_source_mismatch",
-                message: "The agent returned a different source conversation".into(),
-            });
-        }
+        let mut source_before = source.read(&driver, false).await?;
         if !source.can_fork(&source_before.conversation.status)
             || source_before.conversation.background_work
         {
@@ -152,9 +168,7 @@ impl TaskLifecycle {
         let child_thread_id = forked.conversation.id.clone();
         let request = self.sessions.reserve_request(&child_thread_id).await;
         let validated = async {
-            let source_after = driver
-                .read_fork_source(&source_thread_id, external, false)
-                .await?;
+            let source_after = source.read(&driver, false).await?;
             if !source_before.same_revision(&source_after)
                 || !source.can_fork(&source_after.conversation.status)
                 || source_after.conversation.background_work
@@ -244,7 +258,7 @@ impl TaskLifecycle {
         let section_id = source.section_id().map(str::to_string);
         let provider = source.run_by.provider();
         let archived_at_ms = source.archived_at_ms;
-        let current = tokio::task::spawn_blocking(move || store.get(&source_thread_id))
+        let current = tokio::task::spawn_blocking(move || store.find(&source_thread_id))
             .await
             .map_err(task_store_worker_error)?
             .map_err(|error| ApiError::Internal(error.to_string()))?;

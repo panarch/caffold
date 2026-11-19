@@ -121,6 +121,9 @@ pub(crate) enum ClaudeError {
     /// A turn was asked for while the agent is running one.
     #[error("{0}")]
     TurnRunning(String),
+    /// The turn selected for a follow-up ended before its message was sent.
+    #[error("{0}")]
+    TurnGone(String),
     /// The config directory Settings saved cannot be read, so which account a
     /// new start would run as is not known.
     #[error("Claude settings cannot be read: {0}")]
@@ -1183,7 +1186,7 @@ impl ClaudeClient {
         let (item, said_at_ms) = {
             let mut state = session.state.lock().await;
             if state.active_turn.as_deref() != Some(turn_id) {
-                return Err(ClaudeError::Protocol(format!(
+                return Err(ClaudeError::TurnGone(format!(
                     "turn {turn_id} is not running on conversation {conversation_id}"
                 )));
             }
@@ -1631,6 +1634,7 @@ impl From<ClaudeError> for AgentError {
             // conversation is simply not there to be asked about.
             ClaudeError::NotWatching(_) => AgentError::ConversationGone(error.to_string()),
             ClaudeError::TurnRunning(_) => AgentError::TurnRunning(error.to_string()),
+            ClaudeError::TurnGone(_) => AgentError::TurnGone(error.to_string()),
             ClaudeError::Protocol(_)
             | ClaudeError::Agent(_)
             | ClaudeError::History(_)

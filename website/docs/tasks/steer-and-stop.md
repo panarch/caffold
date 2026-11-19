@@ -2,7 +2,7 @@
 
 ## Steer a running turn
 
-Codex, Claude Code, Grok, and Antigravity accept more instructions while a turn
+Codex, Claude Code, Grok, Antigravity, and GitHub Copilot accept more instructions while a turn
 runs. Antigravity takes them except while a permission request is waiting:
 answer it or stop the turn first.
 

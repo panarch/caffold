@@ -5,6 +5,7 @@ import {
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
+import type { RunnerStatus } from "#app/api.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "./runtime/components/runtime-restart-dialog.js";
@@ -62,6 +63,44 @@ export class CaffoldSettingsRuntime extends CaffoldElement {
     return this.hints.scope(pull);
   }
 }
+
+export function runnerStatusRows(runtime?: RunnerStatus): SettingsDetailRow[] {
+  if (!runtime) return [{ key: "runner", label: "Runner" }];
+  if (runtime.running === null)
+    return [
+      {
+        key: "runner",
+        label: "Runner",
+        value: `Unavailable${runtime.error ? ` — ${runtime.error}` : ""}`,
+        state: "negative",
+      },
+    ];
+  if (!runtime.running)
+    return [{ key: "runner", label: "Runner", value: "Not running" }];
+  return [
+    { key: "runner", label: "Runner", value: `Running · pid ${runtime.pid}` },
+    { key: "sessions", label: "Sessions", value: String(runtime.sessions) },
+    {
+      key: "runner-build",
+      label: "Runner build",
+      value: runtime.version,
+      kind: "code",
+    },
+    ...(runtime.idleTimeoutSecs !== null
+      ? [
+          {
+            key: "idle-timeout",
+            label: "Idle timeout",
+            value:
+              runtime.idleTimeoutSecs < 60
+                ? `${runtime.idleTimeoutSecs}s`
+                : `${Math.round(runtime.idleTimeoutSecs / 60)} min`,
+          },
+        ]
+      : []),
+  ];
+}
+
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-settings-runtime": CaffoldSettingsRuntime;

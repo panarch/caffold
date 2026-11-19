@@ -15,9 +15,7 @@ on the host or on your other devices.
                    |
   +----------+-----+----+----------+
   |          |          |          |
-Codex   Claude Code   Grok    Antigravity
-  |          |          |          |
-  +----------+-----+----+----------+
+Codex · Claude Code · Grok · Antigravity · GitHub Copilot
                    |
       Git checkouts and worktrees
 ```
@@ -45,7 +43,7 @@ stay awake and reachable, with Caffold running.
 
 A Task holds one agent conversation together with the directory it works in,
 usually a Git repository. The model you choose when you start a Task also
-chooses the agent — Codex, Claude Code, Grok, or Antigravity — and the Task stays with that
+chooses the agent — Codex, Claude Code, Grok, Antigravity, or GitHub Copilot — and the Task stays with that
 agent.
 
 You write to the agent in the **Composer**, the prompt box at the bottom of the

@@ -28,6 +28,8 @@ standard dynamic loader the binaries need.
 
 ## Build
 
+The manylinux 2.28 build image needs `openssl3-devel` for the Copilot SDK build script. Set `OPENSSL_INCLUDE_DIR=/usr/include/openssl3` and `OPENSSL_LIB_DIR=/usr/lib64/openssl3` when building there. The package verifier checks the shipped binaries against the system library allowlist.
+
 ```sh
 distribution/linux/package archive
 ```

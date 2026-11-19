@@ -849,6 +849,7 @@ fn approval_request(frame: &ControlRequestFrame, turn_id: Option<String>) -> App
         (None, None) => format!("Use {tool}"),
     };
     ApprovalRequest {
+        requires_human: false,
         id: frame.request_id.clone(),
         turn_id,
         item_id: frame.request.tool_use_id.clone(),

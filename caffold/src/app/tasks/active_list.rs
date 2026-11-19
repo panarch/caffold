@@ -318,7 +318,7 @@ pub(in crate::app::tasks) async fn load_runtime_snapshot(
             // process has loaded are being watched; the rest are described
             // from their rows, like Claude's.
             RunBy::Grok { .. } => grok.watched_conversation(&managed.thread_id).await,
-            RunBy::Antigravity { .. } => sessions
+            RunBy::Antigravity { .. } | RunBy::Copilot { .. } => sessions
                 .snapshot(&managed.thread_id)
                 .await
                 .filter(|snapshot| snapshot.lifecycle == SessionLifecycle::Subscribed)

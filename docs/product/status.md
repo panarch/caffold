@@ -22,7 +22,7 @@ boundaries.
   and an **Ask Jev first** approval mode in every agent's composer that has Jev
   hold back only what an automatic mode would stop for, plus whatever those
   rules name, and leaves the rest to a person;
-- Tasks backed by Codex, Claude Code, Grok, or Antigravity, with the agent selected by model
+- Tasks backed by Codex, Claude Code, Grok, Antigravity, or GitHub Copilot, with the agent selected by model
   when the Task is created and fixed for the Task's lifetime;
 - [Continue with another agent](workflows.md#continue-with-another-agent), starting
   a separate Task at the same files with history available for preparation;
@@ -54,7 +54,7 @@ boundaries.
   screen from any device, with `⌘J` or `` Ctrl+` `` to enter and leave it and,
   for touch screens, a special key row with Copy and Paste and text selection
   by a held finger;
-- separate Codex, Claude, Grok, and Antigravity Settings diagnostics, including Claude
+- separate Codex, Claude, Grok, Antigravity, and GitHub Copilot Settings diagnostics, including Claude
   account, plan usage, and runner state, and the Grok executable, leader,
   connection, account, and plan usage, as each CLI reports them;
 - selectable managed Sections with fixed-directory Task creation;
@@ -80,7 +80,7 @@ boundaries.
 
 ## Current boundaries
 
-- Codex, Claude Code, Grok, and Antigravity are the complete built-in agent set. Caffold
+- Codex, Claude Code, Grok, Antigravity, and GitHub Copilot are the complete built-in agent set. Caffold
   has no runtime agent plugin registry. Antigravity is a fixed ACP integration.
 - Antigravity requires a pending native permission to be answered or the turn
   stopped before it accepts another prompt.
@@ -128,7 +128,7 @@ boundaries.
 The current product supports these flows:
 
 1. Start a Task from Global New or a managed Section's fixed directory, choose
-   an available Codex, Claude, Grok, or Antigravity model, and see live repository/worktree context.
+   an available Codex, Claude, Grok, Antigravity, or GitHub Copilot model, and see live repository/worktree context.
 2. Continue, steer, interrupt, and approve real work through the selected
    agent's native runtime without changing the Task's agent.
 3. Reconnect the Caffold backend to an active Codex daemon thread, a

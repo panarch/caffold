@@ -8,7 +8,7 @@ use crate::{
     app::error::ApiError,
     fs::RootedFs,
     git,
-    task_store::{ManagedThread, ManagedWorktreeState, RunBy, TaskStore},
+    task_store::{ManagedThread, ManagedWorktreeState, TaskStore},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -109,16 +109,12 @@ pub(in crate::app::tasks) fn task_record_from_conversation(
 /// What Caffold's own row says about a conversation, for an agent that cannot
 /// be asked without being started.
 ///
-/// A Claude Task's row carries where it works, and where it works is what a
-/// Section placement and a worktree are worked out from — so the row is enough
-/// to describe one, and it goes through the same reading as a conversation the
-/// agent answered with.
+/// The recorded working directory supplies the Section and worktree context
+/// while the provider has no live observation to offer.
 pub(in crate::app::tasks) fn conversation_from_row(
     managed: &ManagedThread,
 ) -> Result<Conversation, ApiError> {
-    let (RunBy::Claude { cwd, .. } | RunBy::Grok { cwd } | RunBy::Antigravity { cwd }) =
-        &managed.run_by
-    else {
+    let Some(cwd) = managed.run_by.cwd() else {
         return Err(ApiError::Internal(format!(
             "no agent answered for Task {}",
             managed.thread_id

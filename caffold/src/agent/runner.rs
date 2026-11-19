@@ -20,6 +20,7 @@ use caffold_runner::protocol::{
     Checkpoint, ErrorBody, EventKind, Outcome, RECOVERY_VERSION, RecoveryLimits, RecoverySnapshot,
     ReplyBody, Request, Response, SessionInfo, SpawnRequest, WireEvent, WireResponse,
 };
+use serde::Serialize;
 use serde_json::value::RawValue;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
@@ -78,6 +79,19 @@ pub(crate) struct RunnerClient {
     withheld_environment: &'static [&'static str],
     /// The one subscribed connection every session shares, once one is up.
     wire: Arc<AsyncMutex<Option<Arc<Wire>>>>,
+}
+
+/// What Settings could observe on this runner's socket without starting it.
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RunnerStatus {
+    restarting: bool,
+    running: Option<bool>,
+    pid: Option<u32>,
+    version: Option<String>,
+    sessions: Option<usize>,
+    idle_timeout_secs: Option<u64>,
+    error: Option<String>,
 }
 
 /// The backend's one connection to the runner.
@@ -485,6 +499,25 @@ impl RunnerClient {
             .map_err(|_| {
                 RunnerError::Unavailable("the runner did not answer within 30 seconds".into())
             })?
+    }
+
+    pub(super) async fn settings_status(&self, restarting: bool) -> RunnerStatus {
+        let mut status = RunnerStatus {
+            restarting,
+            ..Default::default()
+        };
+        match self.inspect().await {
+            Ok(Some(daemon)) => {
+                status.running = Some(true);
+                status.pid = Some(daemon.pid);
+                status.version = Some(daemon.runner_version);
+                status.sessions = Some(daemon.sessions);
+                status.idle_timeout_secs = daemon.idle_timeout_secs;
+            }
+            Ok(None) => status.running = Some(false),
+            Err(error) => status.error = Some(error.to_string()),
+        }
+        status
     }
 
     /// Why no runner can ever listen where this client looks, or nothing

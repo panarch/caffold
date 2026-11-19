@@ -21,7 +21,7 @@ request:
 | **Allow** | Allows this request once. |
 | **Allow for this session** | Codex: allows requests like this one for the rest of the session. |
 | **Allow Always** | Allows it now and keeps the rule the agent proposed, so the agent stops asking. Grok keeps that rule for the working directory, shared by every Caffold Task there. |
-| **Deny** | Refuses the request. Codex, Claude Code, and Antigravity can carry on without it; a Grok turn ends. |
+| **Deny** | Refuses the request. Codex, Claude Code, Antigravity, and GitHub Copilot can carry on without it; a Grok turn ends. |
 | **Deny and Stop** | Refuses the request and stops the turn. |
 | **Cancel** | Skips a Codex or Antigravity tool call without asking to stop the turn. |
 
@@ -34,8 +34,10 @@ Caffold has it ask in the conversation. Answer it in the Composer like any
 other message.
 
 Caffold's own tools, which name the Task, prepare a worktree, and keep Notes,
-add no Caffold approval request. Antigravity may ask through its own native
+add no Caffold approval request. Antigravity and GitHub Copilot may ask through their native
 permission flow before calling them.
+
+If a GitHub Copilot approval loses its connection, reopen the Task. A request the CLI still needs keeps its original card so you can answer it.
 
 ## Approval modes
 
@@ -51,9 +53,10 @@ such a mode.
 ![The Permissions menu of a Codex Task](../assets/screenshots/approval-modes-dark-desktop.png#only-dark)
 
 - The next turn always runs under the mode the Composer shows.
-- In a Codex, Claude Code, or Antigravity Task you can change the mode between turns.
+- In a Codex, Claude Code, Antigravity, or GitHub Copilot Task you can change the mode between turns.
 - Antigravity's **Bypass permissions** skips native permission prompts.
   Entering or leaving it restarts the idle CLI session and resumes the same conversation.
+- GitHub Copilot offers the modes your organization allows. A request your organization requires you to approve goes directly to you, including under **Ask Jev first**.
 - A Grok Task fixes its mode when its conversation starts. Its Composer shows
   the mode but cannot change it; start a new Task to use another mode.
 

@@ -88,7 +88,7 @@ for (const theme of ["light", "dark"]) {
       await form.getByRole("button", { name: /^Choose model/ }).click();
       const menu = form.locator(".task-model-popover");
       await expect(menu.locator(".task-provider-option")).toHaveText([
-        "Codex", "Claude", "Grok", "Antigravity",
+        "Codex", "Claude", "Grok", "Antigravity", "GitHub Copilot",
       ]);
       await expect(menu.locator('section[aria-label="Reasoning level"]')).toBeVisible();
       await expect(menu.locator('section[aria-label="Speed"]')).toBeVisible();
@@ -310,7 +310,7 @@ for (const theme of ["light", "dark"]) {
       await captureReviewScreenshot(page, testInfo, `section-detail-${theme}`);
     });
 
-    test("a conversation fork offers Codex Claude and Grok and previews the selected source", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
+    test("a conversation fork lists supported agents and previews the selected source", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
       const sourceId = "cc4d185a-ff87-4c2d-9f70-7c2a7ec05963";
       await page.route(/\/api\/task-forks\/preview$/, route => route.fulfill({json:{
         provider:"claude",sourceId,displayName:"Settings accessibility review",
@@ -321,7 +321,12 @@ for (const theme of ["light", "dark"]) {
       await page.goto(`/?section=${MANUAL_SECTION_ID}`);
       await page.getByRole("button", {name:"Fork conversation"}).click();
       const dialog = page.getByRole("dialog", {name:"Fork a conversation"});
-      await expect(dialog.getByLabel("Agent").locator("option")).toHaveText(["Codex","Claude","Grok"]);
+      await expect(dialog.getByLabel("Agent").locator("option")).toHaveText([
+        "Codex",
+        "Claude",
+        "Grok",
+        "GitHub Copilot",
+      ]);
       await dialog.getByLabel("Agent").selectOption("claude");
       await dialog.getByLabel("Session ID").fill(sourceId);
       await dialog.getByRole("button", {name:"Preview conversation"}).click();

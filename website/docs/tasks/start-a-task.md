@@ -66,7 +66,7 @@ them with the worktree.
 
 ## The model chooses the agent
 
-Every model belongs to one agent: Codex, Claude Code, Grok, or Antigravity. The model you
+Every model belongs to one agent: Codex, Claude Code, Grok, Antigravity, or GitHub Copilot. The model you
 choose for a new Task decides which agent runs it, and the Task keeps that
 agent for its whole life. To continue the same files with another agent, open
 the model picker, choose that agent, then its **Continue with** button; see
@@ -82,5 +82,5 @@ can change depends on the agent; see [Approval modes](approvals.md#approval-mode
   directory with the choices last used there. See [Sections](sections.md).
 - **From GitHub.** An Issue or a Pull Request can start a Task that prepares its
   own worktree. See [GitHub](../review/github.md).
-- **From an existing conversation.** Fork a Codex, Claude Code, or Grok
+- **From an existing conversation.** Fork a Codex, Claude Code, Grok, or GitHub Copilot
   conversation into a new Task. See [Fork a conversation](fork.md).

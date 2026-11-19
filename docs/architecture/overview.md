@@ -111,7 +111,7 @@ and rationale for that boundary belongs to
 
 ### Agent runtimes
 
-A Task is bound to Codex, Claude, Grok, or Antigravity. Codex app-server owns Codex thread,
+A Task is bound to Codex, Claude, Grok, Antigravity, or GitHub Copilot. Codex app-server owns Codex thread,
 turn, approval, cwd, and event behavior. Claude Code owns its transcript,
 stream-json/control behavior, tools, and permission model. Caffold's Claude
 runner supplies process survival and frame relay without parsing the agent
@@ -239,7 +239,7 @@ caffold/src/app/language_servers.rs    language server settings, status, and def
 caffold/src/language_servers.rs        language server finding, LSP connections, and lifetimes
 caffold/src/watch.rs                   reference-counted native filesystem watches
 caffold/src/task_store.rs              Caffold-owned durable Task, Notes, and recovery data
-runners/caffold/                         transport-only process supervisor for separate Claude/Antigravity instances
+runners/caffold/                         transport-only process supervisor for separate Claude, Antigravity, and Copilot instances
 ```
 
 `caffold/src/app.rs` constructs completed feature applications; it does not own

@@ -37,6 +37,10 @@ impl TaskMcpBindings {
         }
     }
 
+    pub(crate) fn is_bound(&self, binding: &str) -> bool {
+        self.bound().contains_key(binding)
+    }
+
     /// A new binding, bound to the Task before its session is asked for.
     pub(crate) fn bind(&self, thread_id: &str) -> String {
         let binding = new_binding_value();

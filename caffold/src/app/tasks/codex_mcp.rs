@@ -672,7 +672,7 @@ mod tests {
             )
             .unwrap();
         let (shutdown, _) = broadcast::channel(1);
-        let runtime = TaskRuntime::new(
+        let runtime = TaskRuntime::for_tests(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
@@ -812,7 +812,7 @@ mod tests {
             .unwrap();
         let client = CodexThreadClient::mock(Vec::new());
         let (shutdown, _) = broadcast::channel(1);
-        let runtime = TaskRuntime::new(
+        let runtime = TaskRuntime::for_tests(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
@@ -930,7 +930,7 @@ mod tests {
         let client =
             CodexThreadClient::mock(vec![MockCodexResponse::ok("thread/name/set", json!({}))]);
         let (shutdown, _) = broadcast::channel(1);
-        let runtime = TaskRuntime::new(
+        let runtime = TaskRuntime::for_tests(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
@@ -1018,7 +1018,7 @@ mod tests {
             .unwrap();
         let client = CodexThreadClient::mock(Vec::new());
         let (shutdown, _) = broadcast::channel(1);
-        let runtime = TaskRuntime::new(
+        let runtime = TaskRuntime::for_tests(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
@@ -1118,7 +1118,7 @@ mod tests {
             json!({"type":"assistant","uuid":"answer","parentUuid":"question","message":{"role":"assistant","content":[{"type":"text","text":"Original decision"}]}})));
         let codex = CodexThreadClient::mock(Vec::new());
         let (shutdown, _) = broadcast::channel(1);
-        let runtime = TaskRuntime::new(
+        let runtime = TaskRuntime::for_tests(
             claude,
             GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
@@ -1182,7 +1182,7 @@ mod tests {
             .unwrap();
         let client = CodexThreadClient::mock(Vec::new());
         let (shutdown, _) = broadcast::channel(1);
-        let runtime = TaskRuntime::new(
+        let runtime = TaskRuntime::for_tests(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
@@ -1264,7 +1264,7 @@ mod tests {
             .unwrap();
         let client = CodexThreadClient::mock(Vec::new());
         let (shutdown, _) = broadcast::channel(1);
-        let runtime = TaskRuntime::new(
+        let runtime = TaskRuntime::for_tests(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
@@ -1343,7 +1343,7 @@ mod tests {
         }
         let client = CodexThreadClient::mock(Vec::new());
         let (shutdown, _) = broadcast::channel(1);
-        let runtime = TaskRuntime::new(
+        let runtime = TaskRuntime::for_tests(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
@@ -1401,7 +1401,7 @@ mod tests {
             .unwrap();
         let client = CodexThreadClient::mock(Vec::new());
         let (shutdown, _) = broadcast::channel(1);
-        let runtime = TaskRuntime::new(
+        let runtime = TaskRuntime::for_tests(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
@@ -1455,7 +1455,7 @@ mod tests {
             .unwrap();
         let client = CodexThreadClient::mock(Vec::new());
         let (shutdown, _) = broadcast::channel(1);
-        let runtime = TaskRuntime::new(
+        let runtime = TaskRuntime::for_tests(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
@@ -1517,7 +1517,7 @@ mod tests {
         .unwrap();
         let store = TaskStore::memory().unwrap();
         let (runtime_shutdown, _) = broadcast::channel(1);
-        let runtime = TaskRuntime::new(
+        let runtime = TaskRuntime::for_tests(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
@@ -1587,7 +1587,7 @@ mod tests {
 
         let store = TaskStore::memory().unwrap();
         let (runtime_shutdown, _) = broadcast::channel(1);
-        let runtime = TaskRuntime::new(
+        let runtime = TaskRuntime::for_tests(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
@@ -1743,7 +1743,7 @@ mod tests {
             ensure!(replacement_address == address, "replacement MCP endpoint changed");
             active_server = Some((shutdown, server));
             let (replacement_shutdown, _) = broadcast::channel(1);
-            let replacement_runtime = TaskRuntime::new(
+            let replacement_runtime = TaskRuntime::for_tests(
                 ClaudeClient::mock().0,
                 GrokClient::unreachable(),
                 AntigravityClient::uninstalled(),
@@ -1876,7 +1876,7 @@ mod tests {
             .expect("inspect Codex for isolated runtime-restart test");
         let store = TaskStore::memory().unwrap();
         let (runtime_shutdown, _) = broadcast::channel(1);
-        let runtime = TaskRuntime::new(
+        let runtime = TaskRuntime::for_tests(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
             AntigravityClient::uninstalled(),

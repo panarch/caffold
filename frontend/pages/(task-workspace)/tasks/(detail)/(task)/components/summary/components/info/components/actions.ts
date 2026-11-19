@@ -580,7 +580,9 @@ function forkDisabledReason(snapshot: TaskInfoActionsSnapshot) {
   if (!snapshot.canonicalTaskAvailable) {
     return "Fork is unavailable until Task details load.";
   }
-  if (!["codex", "claude", "grok"].includes(snapshot.provider ?? "")) {
+  if (
+    !["codex", "claude", "grok", "copilot"].includes(snapshot.provider ?? "")
+  ) {
     return "Fork is available for Codex, Claude and Grok Tasks.";
   }
   if (isTaskTransportStale(snapshot.transportState)) {

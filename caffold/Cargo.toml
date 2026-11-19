@@ -21,14 +21,20 @@ path = "tests/claude_live.rs"
 name = "antigravity_live"
 path = "tests/antigravity_live.rs"
 
+[[test]]
+name = "copilot_live"
+path = "tests/copilot_live.rs"
+
 [dependencies]
 alacritty_terminal = "0.26.0"
 anyhow = "1.0.98"
+async-trait = "0.1"
 axum = { version = "0.8.4", features = ["ws"] }
 base64 = "0.22.1"
 caffold-runner = { path = "../runners/caffold" }
 chrono = "0.4.45"
 clap = { version = "4.5.40", features = ["derive"] }
+copilot-sdk = { version = "=2.0.0", default-features = false, features = ["local-runtime"] }
 futures-util = "0.3.32"
 gluesql = { git = "https://github.com/gluesql/gluesql.git", branch = "main", default-features = false, features = ["gluesql_memory_storage", "gluesql-redb-storage"] }
 hmac = "0.12.1"
@@ -49,8 +55,9 @@ serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 sha2 = "0.10.9"
 syntect = { version = "5.3.0", default-features = false, features = ["parsing", "regex-onig"] }
+tempfile = "3.20.0"
 thiserror = "2.0.12"
-tokio = { version = "1.45.1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { version = "1.45.1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-tungstenite = "0.30.0"
 tower = "0.5.3"
 tracing = "0.1.41"
@@ -69,5 +76,4 @@ whisper-rs = { version = "0.16.0", features = ["metal"] }
 serde_json = "1.0.140"
 
 [dev-dependencies]
-tempfile = "3.20.0"
 tokio = { version = "1.45.1", features = ["test-util"] }

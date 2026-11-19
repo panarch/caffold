@@ -335,7 +335,8 @@ private func runTests() throws {
            "version": "2.1.239 (Claude Code)"},
           {"provider": "grok", "name": "Grok", "state": "notInstalled"},
           {"provider": "antigravity", "name": "Antigravity", "state": "unavailable",
-           "version": "1.4.5"}
+           "version": "1.4.5"},
+          {"provider":"copilot","name":"GitHub Copilot","state":"ready","version":"1.0.114"}
         ]}
         """,
         url: agentStatusURL,
@@ -345,19 +346,19 @@ private func runTests() throws {
         throw TestFailure(description: "a listed answer must read as agents")
     }
     try require(
-        agents.map(\.provider) == ["codex", "claude", "grok", "antigravity"],
+        agents.map(\.provider) == ["codex", "claude", "grok", "antigravity", "copilot"],
         "rows must keep the server's order and providers"
     )
     try require(
-        agents.map(\.status.name) == ["Codex", "Claude", "Grok", "Antigravity"],
+        agents.map(\.status.name) == ["Codex", "Claude", "Grok", "Antigravity", "GitHub Copilot"],
         "rows must use the names the server gives"
     )
     try require(
-        agents.map(\.status.state) == [.ready, .ready, .notInstalled, .unavailable],
+        agents.map(\.status.state) == [.ready, .ready, .notInstalled, .unavailable, .ready],
         "each installation state must keep its own menu state"
     )
     try require(
-        agents.map(\.status.status) == ["Ready", "Ready", "Not installed", "Unavailable"],
+        agents.map(\.status.status) == ["Ready", "Ready", "Not installed", "Unavailable", "Ready"],
         "each installation state must keep its own compact status"
     )
     try require(

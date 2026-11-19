@@ -240,6 +240,7 @@ test("About offers its update action and the Settings list names the entry with 
     ["claude", "Open Claude settings"],
     ["grok", "Open Grok settings"],
     ["antigravity", "Open Antigravity settings"],
+    ["copilot", "Open GitHub Copilot settings"],
   ]);
   await page.goto("/settings/keyboard");
   await expect.poll(async () =>

@@ -143,6 +143,16 @@ impl TaskStoreTables<'_> {
         }
     }
 
+    pub(crate) fn managed_threads_for_provider(
+        &mut self,
+        provider: TaskProvider,
+    ) -> Result<Vec<ManagedThread>> {
+        match self {
+            Self::Memory(glue) => managed_thread::list_for_provider(glue, provider),
+            Self::Redb(glue) => managed_thread::list_for_provider(glue, provider),
+        }
+    }
+
     pub(crate) fn managed_worktrees(&mut self) -> Result<Vec<ManagedWorktree>> {
         match self {
             Self::Memory(glue) => managed_worktree::list(glue),

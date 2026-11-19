@@ -32,6 +32,7 @@ import type { CaffoldSettingsNavigator } from "./components/navigator.js";
 import "./files/page.js";
 import "./grok/page.js";
 import "./antigravity/page.js";
+import "./copilot/page.js";
 import "./jev/page.js";
 import "./keyboard/page.js";
 import "./language-servers/page.js";
@@ -64,6 +65,7 @@ const TITLES: Readonly<Record<string, string>> = {
   claude: "Claude",
   grok: "Grok",
   antigravity: "Antigravity",
+  copilot: "GitHub Copilot",
   about: "About Caffold",
 };
 const SETTINGS_MASTER_DETAIL_MEDIA_QUERY = "(min-width: 900px)";
@@ -74,6 +76,7 @@ const ACTIVE_PAGES = [
   "claude",
   "grok",
   "antigravity",
+  "copilot",
   "notifications",
   "name-and-icon",
   "remote-access",
@@ -257,6 +260,10 @@ export class CaffoldSettingsWorkspace extends CaffoldElement {
             ${drawn(this.pages.of("antigravity"))}
             ?hidden=${presented !== "antigravity"}
           ></caffold-settings-antigravity-page>
+          <caffold-settings-copilot-page
+            ${drawn(this.pages.of("copilot"))}
+            ?hidden=${presented !== "copilot"}
+          ></caffold-settings-copilot-page>
           <caffold-settings-about-page
             ${drawn(this.pages.of("about"))}
             ?hidden=${presented !== "about"}

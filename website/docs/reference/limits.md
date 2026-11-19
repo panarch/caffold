@@ -9,8 +9,8 @@ lists what is planned.
   internet; see [Who can use Caffold](data-and-privacy.md#who-can-use-caffold).
   It runs on Apple silicon Macs with macOS 14 or later, and on x86_64 and
   aarch64 Linux with glibc 2.28 or later and systemd.
-- **Four built-in agents.** Caffold works with Codex, Claude Code, Grok, and
-  Antigravity, and cannot load other agents. A Task keeps its agent for its
+- **Five built-in agents.** Caffold works with Codex, Claude Code, Grok,
+  Antigravity, and GitHub Copilot, and cannot load other agents. A Task keeps its agent for its
   whole life;
   [continuing with another agent](../tasks/worktrees.md#continue-with-another-agent)
   starts a new Task on the same files. Not every feature exists for every

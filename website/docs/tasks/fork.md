@@ -1,7 +1,6 @@
 # Fork a conversation
 
-Forking starts a new Task with the saved history of a Codex, Claude Code, or
-Grok conversation. The child uses the same agent. Antigravity is not offered.
+Forking starts a new Task with the saved history of a Codex, Claude Code, Grok, or GitHub Copilot conversation. The child uses the same agent. Antigravity is not offered.
 
 ## Fork a Task
 
@@ -16,7 +15,7 @@ Open an idle Task, choose **Task details** at its top right, and choose
 1. Select a Section to open it.
 2. Under **Existing conversations**, choose **Fork conversation**.
 3. Select the source agent. Enter its Thread ID (Codex) or Session ID
-   (Claude or Grok). Codex also accepts a `codex://threads/…` link.
+   (Claude, Grok, or GitHub Copilot). Codex also accepts a `codex://threads/…` link.
 4. Choose **Preview conversation** and check the source name, status, working
    directory, and recent messages. Changing the agent or ID clears the preview.
 5. Choose **Fork task**.
@@ -29,6 +28,8 @@ resuming it or adding it to the Task list. A known active conversation cannot
 be forked. **Live status unavailable** means Caffold can read saved history but
 cannot confirm the external session's live status; it does not mean idle.
 Caffold cannot prevent another external client from changing that source.
+
+For GitHub Copilot, enter the CLI session ID. If a Caffold Task owns that session, the preview shows its current status and working directory. **Fork task** in Task details looks up the session ID for you.
 
 For Grok, use the native Session ID when entering an external source. A Task
 that has moved to a worktree can run on a different native session than its

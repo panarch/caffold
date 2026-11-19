@@ -27,8 +27,8 @@ see [Install on Linux](../get-started/install.md#install-on-linux).
 
 ## Agents
 
-A row for each agent Caffold works with: Codex, Claude, Grok, and
-Antigravity. A row shows only whether the agent's command-line tool is
+A row for each agent Caffold works with: Codex, Claude, Grok,
+Antigravity, and GitHub Copilot. A row shows only whether the agent's command-line tool is
 installed. Sign-in, plan, and usage are on the agent's page in
 [Settings](settings.md).
 

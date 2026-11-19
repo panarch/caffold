@@ -1,4 +1,4 @@
-//! Task-bound streamable HTTP MCP endpoints for Grok and Antigravity.
+//! Task-bound streamable HTTP MCP endpoints for Grok, Antigravity, and Copilot.
 //!
 //! Grok sessions are declared with this address and a binding already bound to
 //! their Task, so an `initialize` here either answers with the session signed
@@ -42,18 +42,21 @@ pub(in crate::app) struct HttpMcpHost {
 enum McpAgent {
     Grok,
     Antigravity,
+    Copilot,
 }
 impl McpAgent {
     fn path(self) -> &'static str {
         match self {
             Self::Grok => GROK_MCP_PATH,
             Self::Antigravity => "/api/antigravity/mcp",
+            Self::Copilot => "/api/copilot/mcp",
         }
     }
     fn provider(self) -> TaskProvider {
         match self {
             Self::Grok => TaskProvider::Grok,
             Self::Antigravity => TaskProvider::Antigravity,
+            Self::Copilot => TaskProvider::Copilot,
         }
     }
 }
@@ -65,6 +68,9 @@ impl HttpMcpHost {
     }
     pub(in crate::app) fn antigravity(origin: &str, signer: McpSessionSigner) -> Self {
         Self::at(origin, signer, McpAgent::Antigravity)
+    }
+    pub(in crate::app) fn copilot(origin: &str, signer: McpSessionSigner) -> Self {
+        Self::at(origin, signer, McpAgent::Copilot)
     }
     fn at(origin: &str, signer: McpSessionSigner, agent: McpAgent) -> Self {
         Self {
@@ -144,6 +150,15 @@ async fn serve_mcp(State(host): State<HttpMcpHost>, headers: HeaderMap, body: By
                 .expect("Caffold MCP session values contain only HTTP header characters"),
         );
         return response;
+    }
+
+    if matches!(host.agent, McpAgent::Copilot)
+        && !headers.contains_key(MCP_SESSION_ID_HEADER)
+        && let McpRequest::Unsupported { id, method } = &request
+        && method == "server/discover"
+        && host.bindings.is_bound(binding)
+    {
+        return Json(unsupported_method(id.clone(), method)).into_response();
     }
 
     let Some(session) = headers
@@ -280,6 +295,63 @@ mod tests {
 
     fn forged_thread_session() -> String {
         format!("s1.{}.{}.{}", "dGhyZWFkXzE", "B".repeat(43), "C".repeat(43))
+    }
+
+    #[tokio::test]
+    async fn copilot_discovery_precedes_initialize_only_for_its_own_registered_binding() {
+        let host = HttpMcpHost::copilot("http://localhost", McpSessionSigner::memory());
+        let binding = host.bindings.bind("copilot-task");
+        let discover = json!({"jsonrpc":"2.0","id":9,"method":"server/discover"});
+        let send_discovery = |key: String, session: Option<String>| {
+            let host = host.clone();
+            let discover = discover.clone();
+            async move {
+                send(
+                    host.router(),
+                    host.agent.path(),
+                    Some(&key),
+                    session.as_deref(),
+                    discover,
+                )
+                .await
+            }
+        };
+        let response = send_discovery(binding.clone(), None).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(!response.headers().contains_key(MCP_SESSION_ID_HEADER));
+        assert_eq!(response_json(response).await["error"]["code"], -32601);
+        for (key, session) in [
+            (binding.clone(), Some("unsigned".into())),
+            ("unknown".into(), None),
+        ] {
+            assert_eq!(
+                send_discovery(key, session).await.status(),
+                StatusCode::UNAUTHORIZED
+            );
+        }
+        let other = HttpMcpHost::antigravity("http://localhost", McpSessionSigner::memory());
+        let other_binding = other.bindings.bind("antigravity-task");
+        assert_eq!(
+            send_discovery(other_binding.clone(), None).await.status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            send(
+                other.router(),
+                other.agent.path(),
+                Some(&other_binding),
+                None,
+                discover.clone()
+            )
+            .await
+            .status(),
+            StatusCode::UNAUTHORIZED
+        );
+        host.bindings.release(&binding);
+        assert_eq!(
+            send_discovery(binding, None).await.status(),
+            StatusCode::UNAUTHORIZED
+        );
     }
 
     #[test]
@@ -529,7 +601,7 @@ mod tests {
             )
             .unwrap();
         let (shutdown, _) = broadcast::channel(1);
-        host.attach_runtime(TaskRuntime::new(
+        host.attach_runtime(TaskRuntime::for_tests(
             ClaudeClient::mock().0,
             GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
@@ -605,7 +677,7 @@ mod tests {
                 )
                 .unwrap();
             let (shutdown, _) = broadcast::channel(1);
-            host.attach_runtime(TaskRuntime::new(
+            host.attach_runtime(TaskRuntime::for_tests(
                 ClaudeClient::mock().0,
                 GrokClient::unreachable(),
                 AntigravityClient::uninstalled(),

@@ -369,6 +369,7 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "brand/antigravity-icon.svg" => Some(svg(include_str!(
             "../../frontend/assets/brand/antigravity-icon.svg"
         ))),
+        "brand/copilot.svg" => Some(svg(include_str!("../../frontend/assets/brand/copilot.svg"))),
         "brand/grok-template.png" => Some(png(include_bytes!(
             "../../frontend/assets/brand/grok-template.png"
         ))),
@@ -778,6 +779,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/settings/antigravity/page.css.js"
             ))))
         }
+        "pages/(task-workspace)/settings/copilot/page.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/copilot/page.css.js"
+        )))),
         "pages/(task-workspace)/settings/grok/page.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/settings/grok/page.js"
@@ -785,6 +790,14 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/antigravity/page.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/settings/antigravity/page.js"
+        )))),
+        "pages/(task-workspace)/settings/copilot/page.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/copilot/page.js"
+        )))),
+        "pages/(task-workspace)/settings/copilot/usage.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/copilot/usage.js"
         )))),
         "pages/(task-workspace)/settings/grok/display.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
@@ -2827,6 +2840,7 @@ mod tests {
             "pages/(task-workspace)/settings/language-servers/page.css",
             "pages/(task-workspace)/settings/grok/page.css",
             "pages/(task-workspace)/settings/antigravity/page.css",
+            "pages/(task-workspace)/settings/copilot/page.css",
             "pages/(task-workspace)/settings/jev/page.css",
             "pages/(task-workspace)/settings/keyboard/page.css",
             "pages/(task-workspace)/settings/layout.css",
@@ -2914,6 +2928,7 @@ mod tests {
         for path in [
             "brand/github-invertocat-light.svg",
             "brand/antigravity-icon.svg",
+            "brand/copilot.svg",
         ] {
             let brand_svg = get(path).expect("brand svg asset");
             assert_eq!(brand_svg.content_type, "image/svg+xml");
@@ -3143,6 +3158,8 @@ mod tests {
             "pages/(task-workspace)/settings/components/runtime.js",
             "pages/(task-workspace)/settings/grok/page.js",
             "pages/(task-workspace)/settings/antigravity/page.js",
+            "pages/(task-workspace)/settings/copilot/page.js",
+            "pages/(task-workspace)/settings/copilot/usage.js",
             "pages/(task-workspace)/settings/grok/display.js",
             "pages/(task-workspace)/settings/about/page.js",
             "pages/(task-workspace)/tasks/components/directory-field/control.js",

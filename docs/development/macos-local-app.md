@@ -8,8 +8,8 @@ application's Redb data.
 Replacement restarts the macOS wrapper and its bundled Caffold backend. It
 closes only Caffold's disposable Codex proxy connection; the persistent Codex
 app-server daemon and its active turns continue while the new backend
-reconnects. The separate Claude runner also remains available for the new
-backend to reattach to any sessions it still holds.
+reconnects. The standalone agent runners retain their Task processes for the
+new backend to reattach.
 
 ## Install a local build
 
@@ -24,7 +24,7 @@ desktop/macos/install-local
 The installer:
 
 1. cleans Caffold's release build metadata and builds the application bundle;
-2. validates the backend and Claude runner executables, plist, and code
+2. validates the backend and runner executables, plist, and code
    signature;
 3. stages the bundle next to the installation target;
 4. asks the installed application to quit;
@@ -44,8 +44,9 @@ desktop/macos/install-local --check-stopped
 ```
 
 The preflight deliberately fails when the wrapper is gone but its bundled
-server still exists, or when another process owns the configured port. Do not
-work around that result by killing a process selected only by name or port.
+server still exists, or when another process owns the configured port. The
+Copilot runner keeps its Task adapters alive across backend replacement. If
+the check fails, inspect the reported wrapper, backend and listener PIDs.
 
 ## Process shutdown contract
 

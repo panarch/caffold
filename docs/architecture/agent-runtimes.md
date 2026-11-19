@@ -2,7 +2,7 @@
 
 This document owns Caffold's implemented multi-agent boundary: why supported
 agents keep separate native integrations, what the Task application shares,
-and which state and lifecycle remain specific to Codex, Claude Code, Grok, or Antigravity.
+and which state and lifecycle remain specific to Codex, Claude Code, Grok, Antigravity, or GitHub Copilot.
 
 It is a current architecture description, not a plugin API or a compatibility
 promise for agents Caffold does not drive.
@@ -19,11 +19,11 @@ The integration therefore follows four rules:
 1. **Use the agent's native programmatic surface.** Codex is reached through
    app-server. Claude is reached through the Claude Code CLI's stream-json and
    control protocols. Grok is reached through the Grok CLI's leader and its
-   stdio agent protocol. Antigravity uses the official ACP server.
+   stdio agent protocol. Antigravity uses the official ACP server. GitHub Copilot uses its official SDK with the installed CLI.
 2. **Do not copy state the agent already owns.** Codex threads remain in
    app-server; Claude conversations remain in Claude's transcript files; Grok
    sessions remain in the leader and its session files; Antigravity records
-   remain in its native SQLite trajectory.
+   remain in its native SQLite trajectory. Copilot reads its own durable session events through the SDK.
 3. **Share only verified product semantics.** Conversation, turns, activity,
    approvals, and Task operations have a Caffold vocabulary. Wire methods,
    payloads, models, and permission modes remain agent-specific.
@@ -42,13 +42,12 @@ Browser / PWA
 Tasks application
       |
 Caffold conversation, event, approval, and driver vocabulary
-      |                    |                    |                    |
-Codex driver         Claude driver         Grok driver        Antigravity driver
-      |                    |                    |                    |
-app-server           CLI protocol         leader protocol        ACP protocol
-      |                    |                    |                    |
-Codex daemon      runner -> claude      Caffold-started      dedicated runner
-                                          leader             -> ACP child
+      |
+      +-- Codex driver       -> app-server -> Codex daemon
+      +-- Claude driver      -> runner -> Claude CLI
+      +-- Grok driver        -> bridge -> Grok leader
+      +-- Antigravity driver -> runner -> ACP child
+      +-- Copilot driver     -> runner -> SDK adapter -> Copilot CLI
 ```
 
 `caffold/src/agent/` is the boundary. Its top-level conversation and approval
@@ -93,7 +92,7 @@ agent's Settings report stays separate.
 ## A Task belongs to one agent
 
 The model list labels every model with the provider that offered it. Choosing a
-model for a New Task therefore chooses Codex, Claude, Grok, or Antigravity without guessing
+model for a New Task therefore chooses Codex, Claude, Grok, Antigravity, or GitHub Copilot without guessing
 from the model name. The managed Task row persists that provider before the Task
 appears in the navigator.
 
@@ -109,7 +108,7 @@ a concise situation summary, then waits for the next user request. The source
 agent generates no summary and receives no inference prompt. The managed checkout
 rules belong to [Worktree Lifecycle](worktree-lifecycle.md#continue-in-the-same-workspace).
 
-Codex, Claude, Grok, and Antigravity models may expose different effort levels, speeds,
+Codex, Claude, Grok, Antigravity, and GitHub Copilot models may expose different effort levels, speeds,
 and permission modes. The composer shows what the selected agent offers. A choice
 travels back under the agent's own name, and the driver verifies it before a
 conversation or turn is created. Caffold never invents a common permission
@@ -190,20 +189,20 @@ retains the binding for retry. None of these paths deletes a Git branch.
 
 ## Runtime comparison
 
-| Boundary | Codex | Claude Code | Grok | Antigravity |
-| --- | --- | --- | --- | --- |
-| Native surface | Experimental v2 app-server protocol | CLI stream-json plus bidirectional control protocol | Leader socket with stdio agent bridges speaking JSON-RPC in ACP's shape plus `_x.ai` extensions | Installed Antigravity CLI 1.5.1 or newer, through ACP |
-| Long-lived process | User-global app-server daemon | One Caffold runner per data directory, with one `claude` child per live session | One `grok agent leader` Caffold starts on its own socket and leaves running | Dedicated Caffold runner, one ACP child per Task |
-| Caffold transport | Disposable proxy child and JSON-RPC/WebSocket connection | Unix-socket runner connection carrying raw newline-delimited frames to child stdio | One `grok agent … stdio` bridge child per backend, multiplexing every Grok session | Opaque recoverable stdio over Unix socket |
-| Conversation history | App-server thread and paged turns | Claude-owned JSONL transcript read tolerantly by Caffold | Leader-owned session record, read in turn windows | Read-only native SQLite trajectory |
-| Active-turn survival across backend replacement | The daemon owns the turn; a new proxy reconnects | The runner owns the child; a new backend reattaches and asks the session for current state | The leader owns the turn; a new bridge loads the session and reads the record for the turn's end | Same child and exact checkpoint/replay fence |
-| Working directory | Reported and owned by the Codex thread | Persisted with the Caffold Task and supplied whenever the Claude session starts or resumes | Persisted with the Task; the driver's binding names the native session that runs there, and a worktree move forks the session | Same native UUID loaded at the destination between requests |
-| Caffold-served tools | Caffold-owned HTTP MCP config on thread start and resume; calls from dynamic tools persisted by pre-MCP threads remain supported | In-process MCP server declared whenever the session is initialized | Caffold-owned HTTP MCP server declared on session start and load, bound to the Task before its session exists | Task-bound HTTP MCP at `/api/antigravity/mcp` |
-| Session instruction carrier | Caffold MCP `initialize` result `instructions` | Initialize `appendSystemPrompt` on fresh and resumed sessions | `_meta.rules` on a new session and the MCP `initialize` instructions on every load | Native system prompt append on new/load |
-| Prompt pictures | A `localImage` input naming the uploaded file, which Codex opens | A base64 image block the driver reads from the uploaded file | An ACP image block the driver reads from the uploaded file | ACP image bytes from validated upload |
-| Context usage | `thread/tokenUsage/updated`: the last model request's `totalTokens` against `modelContextWindow`, on every request and again when a thread is resumed | `get_context_usage` after every assistant message the agent streams outside a subagent, after every result, and when an existing conversation's session is opened: the last response's input, cached or not, against `maxTokens`, as Claude's own status line counts it | `_x.ai/session/info`: `context.used` against `context.total`, or the model list's window, on every load and after every turn | Native `usage_update`: `used` against `size`, including load and replay; last report restored for the same ACP child |
-| Readiness | Typed, blocking installation and app-server readiness | Diagnostic status; an attempted operation reports its own failure | Diagnostic status; an attempted operation reports its own failure | Installed CLI readiness, account and catalog observations in Settings |
-| Idle release | A thread subscription may be dropped when no viewer, request, or runtime lease remains | The session stays attached; detaching and immediately reattaching is not a free operation | The session stays loaded on the bridge; the leader is not asked to unload | Keeps the native child; observer can detach |
+| Boundary | Codex | Claude Code | Grok | Antigravity | GitHub Copilot |
+| --- | --- | --- | --- | --- | --- |
+| Native surface | Experimental v2 app-server protocol | CLI stream-json plus bidirectional control protocol | Leader socket with stdio agent bridges speaking JSON-RPC in ACP's shape plus `_x.ai` extensions | Installed Antigravity CLI 1.5.1 or newer, through ACP | Official Rust SDK with the installed CLI |
+| Long-lived process | User-global app-server daemon | One Caffold runner per data directory, with one `claude` child per live session | One `grok agent leader` Caffold starts on its own socket and leaves running | Dedicated Caffold runner, one ACP child per Task | One Caffold runner per server, one adapter and CLI per active Task |
+| Caffold transport | Disposable proxy child and JSON-RPC/WebSocket connection | Unix-socket runner connection carrying raw newline-delimited frames to child stdio | One `grok agent … stdio` bridge child per backend, multiplexing every Grok session | Opaque recoverable stdio over Unix socket | Private versioned frames over the recovery protocol |
+| Conversation history | App-server thread and paged turns | Claude-owned JSONL transcript read tolerantly by Caffold | Leader-owned session record, read in turn windows | Read-only native SQLite trajectory | Native persisted events, read through the SDK |
+| Active-turn survival across backend replacement | The daemon owns the turn; a new proxy reconnects | The runner owns the child; a new backend reattaches and asks the session for current state | The leader owns the turn; a new bridge loads the session and reads the record for the turn's end | Same child and exact checkpoint/replay fence | Same adapter and CLI across the runner replay fence |
+| Working directory | Reported and owned by the Codex thread | Persisted with the Caffold Task and supplied whenever the Claude session starts or resumes | Persisted with the Task; the driver's binding names the native session that runs there, and a worktree move forks the session | Same native UUID loaded at the destination between requests | CLI metadata and confirmed worktree moves |
+| Caffold-served tools | Caffold-owned HTTP MCP config on thread start and resume; calls from dynamic tools persisted by pre-MCP threads remain supported | In-process MCP server declared whenever the session is initialized | Caffold-owned HTTP MCP server declared on session start and load, bound to the Task before its session exists | Task-bound HTTP MCP at `/api/antigravity/mcp` | Task-bound HTTP MCP at `/api/copilot/mcp` |
+| Session instruction carrier | Caffold MCP `initialize` result `instructions` | Initialize `appendSystemPrompt` on fresh and resumed sessions | `_meta.rules` on a new session and the MCP `initialize` instructions on every load | Native system prompt append on new/load | Native system message append |
+| Prompt pictures | A `localImage` input naming the uploaded file, which Codex opens | A base64 image block the driver reads from the uploaded file | An ACP image block the driver reads from the uploaded file | ACP image bytes from validated upload | File attachments using validated local paths |
+| Context usage | `thread/tokenUsage/updated`: the last model request's `totalTokens` against `modelContextWindow`, on every request and again when a thread is resumed | `get_context_usage` after every assistant message the agent streams outside a subagent, after every result, and when an existing conversation's session is opened: the last response's input, cached or not, against `maxTokens`, as Claude's own status line counts it | `_x.ai/session/info`: `context.used` against `context.total`, or the model list's window, on every load and after every turn | Native `usage_update`: `used` against `size`, including load and replay; last report restored for the same ACP child | `session.usage_info` occupancy and window, separately from model-call spending |
+| Readiness | Typed, blocking installation and app-server readiness | Diagnostic status; an attempted operation reports its own failure | Diagnostic status; an attempted operation reports its own failure | Installed CLI readiness, account and catalog observations in Settings | Executable version, GitHub account, SDK protocol and models |
+| Idle release | A thread subscription may be dropped when no viewer, request, or runtime lease remains | The session stays attached; detaching and immediately reattaching is not a free operation | The session stays loaded on the bridge; the leader is not asked to unload | Keeps the native child; observer can detach | Runner keeps the Task adapter when observers disconnect |
 
 The table describes ownership, not a feature score. Every driver supports the
 implemented Task loop, but they reach it through different guarantees.
@@ -566,6 +565,20 @@ user to the CLI; generic transport or protocol failures leave authentication
 unknown or at its last observation. Refresh and Task startup never call
 `authenticate` or request an OAuth flow.
 
+## GitHub Copilot lifecycle
+
+One Copilot runner serves every repository and worktree of a Caffold server. Each active Task has a separate adapter process running the official Rust SDK and an installed Copilot CLI child over stdio. The runner transports frames. The Copilot driver translates SDK notifications into session events and permission requests for the Task runtime. The CLI owns the GitHub sign-in, model, tools, permissions and native conversation.
+
+Settings reports the executable passed to the SDK and reads its running CLI version and protocol. The menu probes the same path with `--no-auto-update --version`, matching the SDK's launch mode. A short-lived connection reads the signed-in account, model catalog and account allowances. One temporary session refreshes the plan and provider budgets and is deleted after the read. The driver joins authoritative GitHub budgets to the matching account allowance by its compatibility key. Runner polling uses the runner socket alone and leaves a stopped runner idle.
+
+A confirmed runtime restart takes exclusive access to the Copilot runner. The driver asks each responsive writer to stop its active work and pending approvals before closing it, including writers that survived replacement of the backend. After closure it publishes the Task's idle state and reconciles its last turns from the native journal. A writer that cannot acknowledge Stop can still be closed. On resume the CLI reports any requests it retained. The replacement runner opens each Task's saved native session on demand.
+
+A private binding associates the Task with its native UUID, effective working directory and MCP header. The adapter subscribes before creating or resuming the session. A new session receives a name and must be saved and verified before Caffold accepts the first prompt. Caffold records the first submission attempt before sending. A lost receipt never triggers automatic resubmission.
+
+The SDK's input receipt and recorded user message share a message ID. The delivered interaction selects its actual turn. Stop pauses queue draining and returns only follow-ups the CLI confirms it removed. During worktree isolation the adapter checks for pending steering before Git runs and confirms the native working directory before releasing queued input.
+
+Copilot's managed human-approval requirement applies to the request wherever the backend first observes it. Caffold supplies the actual answer source to the SDK. A separate reader can page through the native journal without opening the writing session. Fork preview and creation resolve the same native session. When a Caffold Task owns the session, both read its live status and working directory. Creation locks that Task, verifies the native event boundary again and registers a separate binding for the child.
+
 ## Conversation and event ownership
 
 Caffold's normalized conversation is a projection, not a second transcript.
@@ -837,7 +850,7 @@ opened lazily and only for a signed session, so neither route initialization
 nor a signing-key failure makes an HTTP MCP agent a prerequisite for a Claude-only
 Caffold service.
 
-All four MCP catalogs use the Task-owned base names `rename_current_task`,
+All five agent tool catalogs use the Task-owned base names `rename_current_task`,
 `isolate_current_task`, `read_current_task_name`, `read_current_task_agent_settings`, and
 `read_task_history`; Claude's transport
 qualifies them as `mcp__caffold__...` and Grok's as `caffold__...`, while Codex
@@ -964,7 +977,7 @@ copied transcript.
 
 ## Extending agent support
 
-Caffold currently compiles support for Codex, Claude, Grok, and Antigravity. It does not
+Caffold currently compiles support for Codex, Claude, Grok, Antigravity, and GitHub Copilot. It does not
 discover drivers or load provider code at runtime. Its Antigravity ACP
 integration has a minimum CLI version and is reviewed with the native reader. This closed set is an
 intentional safety and review boundary: adding an agent requires source,

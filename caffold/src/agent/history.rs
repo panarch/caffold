@@ -115,7 +115,7 @@ impl Driver {
         match self {
             Self::Claude(_) => "mcp__caffold__read_task_history",
             Self::Grok(_) => "caffold__read_task_history",
-            Self::Codex(_) | Self::Antigravity(_) => {
+            Self::Codex(_) | Self::Antigravity(_) | Self::Copilot(_) => {
                 "the Caffold MCP server's read_task_history tool"
             }
         }
@@ -145,6 +145,7 @@ impl Driver {
             Self::Claude(_) => "claude",
             Self::Grok(_) => "grok",
             Self::Antigravity(_) => "antigravity",
+            Self::Copilot(_) => "copilot",
         };
         let mut input = cursor.as_ref().and_then(|cursor| cursor.page.clone());
         let mut identity = cursor.as_ref().map(|cursor| cursor.identity.clone());
@@ -222,6 +223,7 @@ impl Driver {
                 .read_recorded_history(task, &claude.cwd, claude.config_dir.as_deref(), before)
                 .await?),
             Self::Grok(client) => Ok(client.read_recorded_history(task, before).await?),
+            Self::Copilot(client) => client.read_recorded_history(task, before).await,
             Self::Antigravity(client) => Ok(client.read_recorded_history(task, before).await?),
         }
     }

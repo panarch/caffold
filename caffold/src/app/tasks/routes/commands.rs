@@ -507,7 +507,7 @@ pub(super) async fn task_approval(
         .await
     {
         Ok(()) => {}
-        Err(ApprovalResolveError::NotFound) => {
+        Err(ApprovalResolveError::NotFound | ApprovalResolveError::Withdrawn) => {
             return Err(ApiError::BadRequest {
                 code: "approval_not_found",
                 message: "approval request is no longer pending".to_string(),
@@ -525,7 +525,9 @@ pub(super) async fn task_approval(
                 message: "approval decision does not match the pending request".to_string(),
             });
         }
-        Err(ApprovalResolveError::Agent(error)) => return Err(error.into()),
+        Err(ApprovalResolveError::Agent(error) | ApprovalResolveError::Unconfirmed(error)) => {
+            return Err(error.into());
+        }
     }
 
     Ok(Json(state.detail.read(&agent, &thread_id, None).await?))
@@ -570,6 +572,9 @@ pub(super) async fn new_task_agent(
         }),
         Some("antigravity") => Ok(TaskAgent::Antigravity {
             driver: state.task_runtime.antigravity().driver(),
+        }),
+        Some("copilot") => Ok(TaskAgent::Copilot {
+            driver: state.task_runtime.copilot().driver(),
         }),
         Some(_) => Err(ApiError::BadRequest {
             code: "unsupported_provider",
@@ -4085,9 +4090,9 @@ mod claude_tests {
     use serde_json::{Value, json};
     use tokio::time::{Instant, sleep, timeout};
 
-    use crate::agent::ThreadStatus;
-    use crate::agent::claude::{ClaudeTurnOptions, MockRunnerHandle};
+    use crate::agent::claude::{ClaudeRuntimeEvent, ClaudeTurnOptions, MockRunnerHandle};
     use crate::agent::codex::CodexThreadClient;
+    use crate::agent::{SessionEventKind, ThreadStatus};
     use crate::app::tasks::TaskState;
     use crate::app::tasks::routes::router;
     use crate::app::tasks::sessions::{SessionLifecycle, SessionSnapshot};
@@ -4689,6 +4694,85 @@ mod claude_tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn a_follow_up_selected_for_a_finished_claude_turn_is_sent_once_to_a_new_turn() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, runner) = open_claude_task(root.path(), None).await;
+        let app = router(state.clone());
+        let generation = state
+            .task_runtime
+            .task_agent(SESSION)
+            .await
+            .unwrap()
+            .generation();
+        let mut events = state.task_runtime.claude().subscribe();
+        let (status, first) = call(&app, prompt("Start the first turn.")).await;
+        assert_eq!(status, StatusCode::OK, "{first}");
+        for frame in [
+            running_frame(),
+            init_frame(),
+            json!({
+                "type": "result",
+                "subtype": "success",
+                "is_error": false,
+                "stop_reason": "end_turn",
+                "session_id": SESSION,
+            }),
+            json!({
+                "type": "system",
+                "subtype": "session_state_changed",
+                "state": "idle",
+                "session_id": SESSION,
+            }),
+        ] {
+            runner.say(SESSION, frame).await;
+        }
+
+        // Deliver the start to TaskSessions and hold back the end. The route
+        // selects the first turn, while the native driver already sees idle.
+        timeout(WAIT, async {
+            let mut ended = false;
+            loop {
+                let ClaudeRuntimeEvent::Session(event) = events.recv().await.unwrap() else {
+                    continue;
+                };
+                match &event.kind {
+                    SessionEventKind::TurnEnded { .. } => ended = true,
+                    SessionEventKind::ActivityChanged {
+                        status: ThreadStatus::Idle,
+                    }
+                    | SessionEventKind::StatusChanged {
+                        status: ThreadStatus::Idle,
+                    } if ended => break,
+                    _ if !ended => {
+                        state
+                            .task_sessions
+                            .apply_session_event_with_outcome(generation, &event)
+                            .await;
+                    }
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .expect("Claude finished before the follow-up reached it");
+        let cached = state.task_sessions.snapshot(SESSION).await.unwrap();
+        assert_eq!(cached.active_turn_id.as_deref(), first["turnId"].as_str());
+        assert!(matches!(
+            cached.conversation.unwrap().status,
+            ThreadStatus::Active { .. }
+        ));
+
+        let (status, next) = call(&app, prompt("Continue in the next turn.")).await;
+        assert_eq!(status, StatusCode::OK, "{next}");
+        assert_eq!(next["steered"], false);
+        assert_ne!(next["turnId"], first["turnId"]);
+        let prompts = runner.prompts(SESSION).await;
+        assert_eq!(prompts.len(), 2);
+        assert_eq!(prompts[0]["uuid"], first["turnId"]);
+        assert_eq!(prompts[1]["uuid"], next["turnId"]);
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn a_message_that_missed_its_turn_shows_as_the_start_of_the_turn_that_answers_it() {
         let root = tempfile::tempdir().unwrap();
         let cwd = root.path().display().to_string();
@@ -4913,6 +4997,19 @@ mod claude_tests {
         root: &Path,
         config_dir: Option<&str>,
     ) -> (TaskState, MockRunnerHandle) {
+        let (state, runner) = open_claude_task(root, config_dir).await;
+        state.task_runtime.watch_claude();
+        until(&state, "watching takes up the Task", |snapshot| {
+            snapshot.lifecycle == SessionLifecycle::Subscribed
+        })
+        .await;
+        (state, runner)
+    }
+
+    async fn open_claude_task(
+        root: &Path,
+        config_dir: Option<&str>,
+    ) -> (TaskState, MockRunnerHandle) {
         let (state, runner) = task_state_with_agents(
             RootedFs::new(root).unwrap(),
             CodexThreadClient::mock(Vec::new()),
@@ -4938,11 +5035,6 @@ mod claude_tests {
             .open_conversation(SESSION, &cwd, config_dir, &ClaudeTurnOptions::default())
             .await
             .expect("the conversation opens");
-        state.task_runtime.watch_claude();
-        until(&state, "watching takes up the Task", |snapshot| {
-            snapshot.lifecycle == SessionLifecycle::Subscribed
-        })
-        .await;
         (state, runner)
     }
 

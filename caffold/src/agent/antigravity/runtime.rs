@@ -1,53 +1,13 @@
 //! Passive runner evidence and one explicit, provider-local runtime replacement.
 use super::{AntigravityClient, AntigravityError, AntigravityRuntimeEvent};
+use crate::agent::runner::RunnerStatus;
 use crate::agent::{SessionEvent, SessionEventKind};
-use caffold_runner::protocol::DaemonStatus;
-use serde::Serialize;
 use tokio::sync::RwLockReadGuard;
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct RuntimeStatus {
-    restarting: bool,
-    running: Option<bool>,
-    pid: Option<u32>,
-    version: Option<String>,
-    sessions: Option<usize>,
-    idle_timeout_secs: Option<u64>,
-    error: Option<String>,
-}
-
 impl AntigravityClient {
-    pub(super) async fn runtime_status(&self) -> RuntimeStatus {
+    pub(super) async fn runtime_status(&self) -> RunnerStatus {
         let restarting = self.inner.runtime_gate.try_read().is_err();
-        let result = self.inner.runner.inspect().await;
-        let mut report = RuntimeStatus {
-            restarting,
-            running: None,
-            pid: None,
-            version: None,
-            sessions: None,
-            idle_timeout_secs: None,
-            error: None,
-        };
-        match result {
-            Ok(Some(DaemonStatus {
-                pid,
-                runner_version,
-                sessions,
-                idle_timeout_secs,
-                ..
-            })) => {
-                report.running = Some(true);
-                report.pid = Some(pid);
-                report.version = Some(runner_version);
-                report.sessions = Some(sessions);
-                report.idle_timeout_secs = idle_timeout_secs;
-            }
-            Ok(None) => report.running = Some(false),
-            Err(error) => report.error = Some(error.to_string()),
-        }
-        report
+        self.inner.runner.settings_status(restarting).await
     }
 
     pub(super) fn runtime_access(&self) -> Result<RwLockReadGuard<'_, ()>, AntigravityError> {
@@ -123,18 +83,23 @@ impl AntigravityClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
     use std::fs;
     use tokio::{io::AsyncWriteExt, net::UnixListener};
+
+    async fn status(owner: &AntigravityClient) -> Value {
+        serde_json::to_value(owner.runtime_status().await).unwrap()
+    }
 
     #[tokio::test]
     async fn runtime_observation_is_passive_and_does_not_hide_transport_failure() {
         let root = tempfile::tempdir_in("/tmp").unwrap();
         let owner = AntigravityClient::at_paths(root.path(), root.path().join("native"));
         let socket = owner.inner.data.join("runner.sock");
-        let absent = owner.runtime_status().await;
-        assert_eq!(absent.running, Some(false));
-        assert!(!absent.restarting);
-        assert!(absent.error.is_none());
+        let absent = status(&owner).await;
+        assert_eq!(absent["running"], false);
+        assert_eq!(absent["restarting"], false);
+        assert_eq!(absent.get("error"), Some(&Value::Null));
         assert!(!socket.exists(), "a status read must not start a runner");
         fs::create_dir_all(&owner.inner.data).unwrap();
         let listener = UnixListener::bind(&socket).unwrap();
@@ -142,12 +107,12 @@ mod tests {
             let (mut stream, _) = listener.accept().await.unwrap();
             stream.write_all(b"not a runner reply\n").await.unwrap();
         });
-        let failed = owner.runtime_status().await;
+        let failed = status(&owner).await;
         peer.await.unwrap();
-        assert_eq!(failed.running, None);
-        assert!(failed.error.is_some());
-        assert!(failed.pid.is_none());
-        assert_eq!(owner.runtime_status().await.running, Some(false));
+        assert_eq!(failed.get("running"), Some(&Value::Null));
+        assert!(failed["error"].is_string());
+        assert_eq!(failed.get("pid"), Some(&Value::Null));
+        assert_eq!(status(&owner).await["running"], false);
     }
 
     #[tokio::test]
@@ -157,10 +122,10 @@ mod tests {
         // An accepted open/close/refresh must finish before replacement can start.
         let access = owner.runtime_access().unwrap();
         assert!(owner.restart_runtime().await.is_err());
-        assert!(!owner.runtime_status().await.restarting);
+        assert_eq!(status(&owner).await["restarting"], false);
         drop(access);
         let replace = owner.inner.runtime_gate.write().await;
-        assert!(owner.runtime_status().await.restarting);
+        assert_eq!(status(&owner).await["restarting"], true);
         assert!(owner.restart_runtime().await.is_err());
         assert!(owner.refresh_settings("/tmp").await.is_err());
         assert!(
@@ -172,7 +137,7 @@ mod tests {
         assert!(owner.close_conversation("task").await.is_err());
         drop(replace);
         assert!(owner.runtime_access().is_ok());
-        assert!(!owner.runtime_status().await.restarting);
+        assert_eq!(status(&owner).await["restarting"], false);
         assert!(owner.inner.sessions.lock().await.is_empty());
         assert!(!owner.inner.data.join("runner.sock").exists());
     }

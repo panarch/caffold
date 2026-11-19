@@ -1,6 +1,8 @@
 use super::commands::{require_codex_thread_client, task_cwd};
 use crate::agent::codex::codex_installation;
+use crate::agent::copilot;
 use crate::agent::driver::reviewed_permission_option;
+use crate::agent::runner::RunnerStatus;
 use crate::agent::{AgentError, PermissionModes};
 use crate::app::error::ApiError;
 use crate::app::tasks::TaskState;
@@ -67,6 +69,45 @@ pub(super) struct AgentPermissionsQuery {
     model: Option<String>,
 }
 
+pub(super) async fn copilot_status(
+    State(state): State<TaskState>,
+) -> Result<Json<copilot::CopilotStatus>, ApiError> {
+    // Finish closing the temporary SDK session even when the browser navigates away.
+    let client = state.task_runtime.copilot().clone();
+    tokio::spawn(async move { Json(client.status().await) })
+        .await
+        .map_err(|_| ApiError::Internal("Copilot status worker failed.".into()))
+}
+
+pub(super) async fn copilot_runtime(State(state): State<TaskState>) -> Json<RunnerStatus> {
+    Json(state.task_runtime.copilot().runtime_status().await)
+}
+
+pub(super) async fn copilot_restart(
+    State(state): State<TaskState>,
+) -> Result<Json<copilot::CopilotStatus>, ApiError> {
+    let client = state.task_runtime.copilot().clone();
+    // Once confirmed, the server finishes retiring writers even if the browser leaves.
+    tokio::spawn(async move {
+        client
+            .restart_runtime()
+            .await
+            .map_err(|error| match error {
+                AgentError::Held(message) => ApiError::Conflict {
+                    code: "copilot_runtime_busy",
+                    message,
+                },
+                error => ApiError::Unavailable {
+                    code: "copilot_runtime_unavailable",
+                    message: error.to_string(),
+                },
+            })?;
+        Ok(Json(client.status().await))
+    })
+    .await
+    .map_err(|_| ApiError::Internal("Copilot restart worker failed.".into()))?
+}
+
 pub(super) async fn agent_models(
     State(state): State<TaskState>,
 ) -> Result<Json<AgentModelsPayload>, ApiError> {
@@ -74,7 +115,7 @@ pub(super) async fn agent_models(
     let mut unavailable = Vec::new();
 
     // Every agent is asked at once, so none waits its turn behind another.
-    let (codex, claude, grok, antigravity) = tokio::join!(
+    let (codex, claude, grok, antigravity, copilot) = tokio::join!(
         async {
             match state.detail.connection().await {
                 Ok(connection) => connection
@@ -88,6 +129,7 @@ pub(super) async fn agent_models(
         state.task_runtime.claude().models(),
         state.task_runtime.grok().models(),
         state.task_runtime.antigravity().models(),
+        state.task_runtime.copilot().models(),
     );
 
     match codex {
@@ -117,6 +159,13 @@ pub(super) async fn agent_models(
         Ok(offered) => extend(&mut models, TaskProvider::Antigravity, offered),
         Err(error) => unavailable.push(UnavailableAgent {
             provider: TaskProvider::Antigravity.as_str(),
+            message: error.to_string(),
+        }),
+    }
+    match copilot {
+        Ok(offered) => extend(&mut models, TaskProvider::Copilot, offered),
+        Err(error) => unavailable.push(UnavailableAgent {
+            provider: TaskProvider::Copilot.as_str(),
             message: error.to_string(),
         }),
     }
@@ -157,6 +206,7 @@ pub(super) async fn agent_permissions(
         }
         Some("grok") => state.task_runtime.grok().driver(),
         Some("antigravity") => state.task_runtime.antigravity().driver(),
+        Some("copilot") => state.task_runtime.copilot().driver(),
         None | Some("") | Some("codex") => require_codex_thread_client(&state).await?.driver(),
         Some(_) => {
             return Err(ApiError::BadRequest {
@@ -209,17 +259,19 @@ fn extend(models: &mut Vec<AgentModel>, provider: TaskProvider, offered: Vec<Mod
 pub(super) async fn agent_installations(
     State(state): State<TaskState>,
 ) -> Json<AgentInstallationsPayload> {
-    let (codex, claude, grok, antigravity) = tokio::join!(
+    let (codex, claude, grok, antigravity, copilot) = tokio::join!(
         codex_installation(),
         state.task_runtime.claude().installation(),
         state.task_runtime.grok().installation(),
         state.task_runtime.antigravity().installation(),
+        state.task_runtime.copilot().installation(),
     );
     let agents = [
         (TaskProvider::Codex, codex),
         (TaskProvider::Claude, claude),
         (TaskProvider::Grok, grok),
         (TaskProvider::Antigravity, antigravity),
+        (TaskProvider::Copilot, copilot),
     ]
     .into_iter()
     .map(|(provider, installation)| AgentInstallationEntry {
@@ -237,6 +289,7 @@ fn display_name(provider: TaskProvider) -> &'static str {
         TaskProvider::Claude => "Claude",
         TaskProvider::Grok => "Grok",
         TaskProvider::Antigravity => "Antigravity",
+        TaskProvider::Copilot => "GitHub Copilot",
     }
 }
 
@@ -570,6 +623,7 @@ mod tests {
                 (Some("claude"), Some("Claude")),
                 (Some("grok"), Some("Grok")),
                 (Some("antigravity"), Some("Antigravity")),
+                (Some("copilot"), Some("GitHub Copilot")),
             ]
         );
         // Which agents this machine has installed is the machine's business;

@@ -3166,7 +3166,7 @@ mod request_tests {
         };
         let (shutdown, _) = broadcast::channel(1);
         let (claude, _runner) = agent::claude::ClaudeClient::mock();
-        let runtime = TaskRuntime::new(
+        let runtime = TaskRuntime::for_tests(
             claude,
             agent::grok::GrokClient::unreachable(),
             AntigravityClient::uninstalled(),

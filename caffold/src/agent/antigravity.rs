@@ -20,7 +20,7 @@ use super::driver::{
 };
 use super::history::RecordedPage;
 use super::http_mcp::{TaskMcpBindings, new_binding_value};
-use super::runner::RunnerClient;
+use super::runner::{RunnerClient, RunnerStatus};
 use super::{
     ApprovalDecision, ApprovalOutcome, ApprovalRequest, Conversation, ConversationItem, ItemKind,
     MessageContent, SessionEvent, ThreadStatus, TokenCount, Turn, TurnPage, TurnState, TurnStatus,
@@ -30,7 +30,6 @@ use binding::{Binding, Bindings};
 use installation::{Cli, InstallationStatus};
 use notify::RecommendedWatcher;
 use record::Records;
-use runtime::RuntimeStatus;
 use serde::Serialize;
 use serde_json::json;
 use session::{Environment, InputOperation, Session};
@@ -54,7 +53,7 @@ pub(crate) struct AntigravityStatus {
     auth: AuthStatus,
     usage: UsageStatus,
     refreshing: bool,
-    runtime: RuntimeStatus,
+    runtime: RunnerStatus,
     models_available: bool,
     models_error: Option<String>,
 }

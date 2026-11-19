@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { copilotSettings } from "../support/copilot-settings.js";
 import {
   installManualDefaults,
   installManualAntigravity,
@@ -109,6 +110,47 @@ for (const theme of ["light", "dark"]) {
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await captureReviewScreenshot(page, testInfo, `settings-notifications-${theme}`);
     });
+
+    test(
+      "Copilot Settings lists the signed-in GitHub account and its models",
+      { tag: "@desktop" },
+      async ({ page }, testInfo) => {
+        await page.route("**/api/copilot/status", (route) =>
+          route.fulfill({
+            json: {
+              ...copilotSettings,
+              login: "avery",
+              models: [
+                { model: "auto", displayName: "Auto" },
+                { model: "claude-sonnet-5", displayName: "Claude Sonnet 5" },
+                { model: "gpt-5.3-codex", displayName: "GPT-5.3-Codex" },
+                { model: "mai-code-2-flash", displayName: "MAI Code 2 Flash" },
+              ],
+            },
+          }),
+        );
+
+        await page.goto("/settings/copilot");
+        const settings = page.locator("caffold-settings-copilot-page");
+        await expect(settings).toContainText("avery");
+        await expect(settings).toContainText("Copilot Pro");
+        await expect(settings).toContainText("AI credits");
+        await expect(settings).toContainText("87.5% remaining");
+        await expect(settings).toContainText("/usr/local/bin/copilot");
+        const models = settings.getByRole("region", { name: "Models (4)" });
+        await expect(models.getByRole("listitem")).toHaveCount(4);
+        await expect(settings).toContainText("MAI Code 2 Flash");
+        await expect(settings.getByRole("link", { name: "Service status" }))
+          .toHaveAttribute("href", "https://www.githubstatus.com/");
+        await expect(settings.getByRole("button", { name: "Restart runtime" }))
+          .toBeEnabled();
+        await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+        await captureReviewScreenshot(page, testInfo, `settings-copilot-${theme}`);
+        await models.scrollIntoViewIfNeeded();
+        await expect(models.getByText("MAI Code 2 Flash")).toBeInViewport();
+        await captureReviewScreenshot(page, testInfo, `settings-copilot-models-${theme}`);
+      },
+    );
 
     test("Antigravity Settings shows the installed CLI and shared account",{tag:"@desktop"},async({page},testInfo)=>{
       await installManualAntigravity(page);

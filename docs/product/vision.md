@@ -49,7 +49,7 @@ exist, how context is gathered, how permissions are requested, how a turn is
 steered or interrupted, how sessions survive, and how new capabilities reach
 the user. That behavior is a material part of the agent.
 
-Caffold therefore supports Codex, Claude Code, Grok, and Antigravity through separate
+Caffold therefore supports Codex, Claude Code, Grok, Antigravity, and GitHub Copilot through separate
 native drivers. It connects to Codex app-server as Codex's own clients do,
 drives Claude Code through the CLI protocol and transcript Claude itself owns,
 and reaches Grok through the leader and stdio agent protocol the Grok CLI

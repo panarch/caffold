@@ -1,4 +1,4 @@
-use crate::agent::antigravity::AntigravityClient;
+use crate::agent::{antigravity::AntigravityClient, copilot::CopilotClient};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -98,6 +98,7 @@ pub(in crate::app::tasks) struct TaskLifecycle {
     claude: ClaudeClient,
     grok: GrokClient,
     antigravity: AntigravityClient,
+    copilot: CopilotClient,
     terminals: TaskTerminals,
 }
 
@@ -135,6 +136,7 @@ impl TaskLifecycle {
         claude: ClaudeClient,
         grok: GrokClient,
         antigravity: AntigravityClient,
+        copilot: CopilotClient,
         terminals: TaskTerminals,
     ) -> Self {
         Self {
@@ -146,6 +148,7 @@ impl TaskLifecycle {
             claude,
             grok,
             antigravity,
+            copilot,
             terminals,
         }
     }
@@ -209,6 +212,13 @@ impl TaskLifecycle {
         } else {
             None
         };
+        if matches!(agent, TaskAgent::Copilot { .. })
+            && let Err(error) = self.copilot.rename(&conversation_id, &initial_name).await
+        {
+            self.rollback_unclaimed_conversation(agent, &conversation_id)
+                .await;
+            return Err(error.into());
+        }
         started.conversation.title = Some(initial_name);
         let same_directory = handoff.is_none()
             || matches!(
@@ -662,6 +672,11 @@ impl TaskLifecycle {
                     eprintln!("failed to remove an unclaimed Antigravity session: {error}");
                 }
             }
+            TaskAgent::Copilot { .. } => {
+                if let Err(error) = self.copilot.erase(conversation_id).await {
+                    eprintln!("failed to remove an unclaimed Copilot session: {error}");
+                }
+            }
         }
     }
 }
@@ -772,6 +787,7 @@ mod tests {
                 claude,
                 GrokClient::unreachable(),
                 AntigravityClient::uninstalled(),
+                crate::agent::copilot::CopilotClient::uninstalled(),
                 TaskTerminals::for_tests(),
             ),
         )

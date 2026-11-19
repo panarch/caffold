@@ -1,14 +1,21 @@
-use std::{collections::HashMap, fmt::Display, path::PathBuf, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+    path::PathBuf,
+    sync::Arc,
+};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 
 use super::{ApprovalResolveError, TaskAgent, TaskRuntime};
 use crate::agent;
+use crate::agent::approval::ApprovalSource;
 use crate::agent::codex::{
     ApprovalKind, CodexServerRequest, CodexThreadClient, LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
     approval_request, approval_response,
 };
+use crate::agent::copilot::ApprovalReply;
 use crate::agent::driver::REVIEWED_PERMISSION_MODE;
 use crate::agent::history::{HistoryArguments, READ_TASK_HISTORY_TOOL_NAME};
 use crate::agent::http_mcp::{
@@ -59,23 +66,21 @@ pub(super) struct PendingApproval {
 /// This owner coordinates requests, the reviewer, user replies, and provider
 /// completion.
 ///
-/// Absent -> Judging on a request. Judging -> Pending when the request is shown
-/// to a person, or -> Replying when the reviewer answered it first; a failed
-/// reviewer send returns Replying -> Judging so it can still be shown.
-/// Pending -> Replying on one valid reply. Judging/Pending/Replying -> absent on
-/// provider withdrawal. Replying -> absent on send success or failure. A
-/// same-generation duplicate is a no-op. A replay on a new connection creates a
-/// new instance, which old completions cannot retire. Caller cancellation
-/// leaves Replying owned by the runtime until its send completes. A Judging
-/// request has never been shown, so retiring one publishes nothing. Whether a
-/// person was shown the request is its own value rather than a node, because
-/// Replying means two different things depending on who is answering. None of
-/// these transitions writes the provider's Task/turn status.
+/// New requests enter Judging. Showing the card moves Judging to Pending.
+/// A reviewer claims Judging and a person claims Pending by moving it to Replying.
+/// A native completion during delivery moves Replying to EndedDuringReply so the
+/// receipt can still attribute a successful decision to the person or reviewer.
+/// A confirmed decision, withdrawal or expiry retires the instance. An unconfirmed
+/// send restores Pending for a person, or Judging so a failed reviewer answer
+/// can be shown to a person. Replacement instances ignore old completions.
+/// The caller can disconnect while the runtime finishes the claimed reply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ApprovalPhase {
     Judging,
     Pending,
     Replying,
+    /// A native completion raced the receipt for the answer we sent.
+    EndedDuringReply,
 }
 
 /// Which agent is blocked on this answer.
@@ -95,6 +100,7 @@ pub(super) enum AskedBy {
     /// needed here either.
     Grok,
     Antigravity,
+    Copilot,
 }
 
 impl AskedBy {
@@ -105,6 +111,7 @@ impl AskedBy {
             Self::Claude => "claude",
             Self::Grok => "grok",
             Self::Antigravity => "antigravity",
+            Self::Copilot => "copilot",
         }
     }
 }
@@ -362,7 +369,8 @@ impl TaskRuntime {
                 }
                 (AskedBy::Claude, TaskAgent::Claude { .. }) => {}
                 (AskedBy::Grok, TaskAgent::Grok { .. }) => {}
-                (AskedBy::Antigravity, TaskAgent::Antigravity { .. }) => {}
+                (AskedBy::Antigravity, TaskAgent::Antigravity { .. })
+                | (AskedBy::Copilot, TaskAgent::Copilot { .. }) => {}
                 _ => return Err(ApprovalResolveError::ResolutionMismatch),
             }
             if pending.phase != ApprovalPhase::Pending {
@@ -391,23 +399,31 @@ impl TaskRuntime {
         decision: ApprovalDecision,
     ) -> Result<(), ApprovalResolveError> {
         let approval_id = pending.request.id.clone();
-        let result = self.send_decision(&agent, &pending, decision).await;
-        // Publishing while holding the same lock keeps a late result from
-        // overtaking a replay's new requested event.
+        let mut result = self
+            .send_decision(&agent, &pending, decision, ApprovalSource::Human)
+            .await;
+        // Only the instance that made this claim can publish its outcome.
         let mut approvals = self.approvals.lock().await;
-        if approvals
-            .get(&approval_id)
-            .is_some_and(|current| Arc::ptr_eq(&current.instance, &pending.instance))
+        if let Some(current) = approvals.get_mut(&approval_id)
+            && Arc::ptr_eq(&current.instance, &pending.instance)
         {
+            let outcome = match (&result, current.phase) {
+                (Ok(()), _) => ApprovalOutcome::Decided(decision),
+                (Err(_), ApprovalPhase::EndedDuringReply) => {
+                    result = Err(ApprovalResolveError::Withdrawn);
+                    ApprovalOutcome::Unavailable
+                }
+                (Err(ApprovalResolveError::Unconfirmed(_)), _) => {
+                    current.phase = ApprovalPhase::Pending;
+                    return result;
+                }
+                (Err(_), _) => ApprovalOutcome::Unavailable,
+            };
             approvals.remove(&approval_id);
             self.events.publish_local(approval_resolved_event(
                 &pending.thread_id,
                 &pending.request,
-                if result.is_ok() {
-                    ApprovalOutcome::Decided(decision)
-                } else {
-                    ApprovalOutcome::Unavailable
-                },
+                outcome,
                 None,
             ));
         }
@@ -425,7 +441,11 @@ impl TaskRuntime {
         agent: &TaskAgent,
         pending: &PendingApproval,
         decision: ApprovalDecision,
+        source: ApprovalSource,
     ) -> Result<(), ApprovalResolveError> {
+        if pending.request.requires_human && source != ApprovalSource::Human {
+            return Err(ApprovalResolveError::ResolutionMismatch);
+        }
         let approval_id = pending.request.id.as_str();
         let thread_id = pending.thread_id.as_str();
         match (&pending.asked_by, agent) {
@@ -460,6 +480,15 @@ impl TaskRuntime {
                     agent::grok::GrokError::NoSuchApproval(_) => ApprovalResolveError::NotFound,
                     error => ApprovalResolveError::Agent(error.into()),
                 }),
+            (AskedBy::Copilot, TaskAgent::Copilot { .. }) => match self
+                .copilot
+                .resolve_approval(thread_id, approval_id, decision, source)
+                .await
+            {
+                Ok(ApprovalReply::Delivered) => Ok(()),
+                Ok(ApprovalReply::NoLongerPending) => Err(ApprovalResolveError::Withdrawn),
+                Err(error) => Err(ApprovalResolveError::Unconfirmed(error)),
+            },
             (AskedBy::Antigravity, TaskAgent::Antigravity { .. }) => self
                 .antigravity
                 .resolve_approval(thread_id, approval_id, decision)
@@ -664,7 +693,10 @@ impl TaskRuntime {
         let (thread_id, request, asked_by) = {
             let approvals = self.approvals.lock().await;
             let pending = approvals.get(approval_id)?;
-            if !Arc::ptr_eq(&pending.instance, staged) || pending.phase != ApprovalPhase::Judging {
+            if pending.request.requires_human
+                || !Arc::ptr_eq(&pending.instance, staged)
+                || pending.phase != ApprovalPhase::Judging
+            {
                 return None;
             }
             (
@@ -692,7 +724,7 @@ impl TaskRuntime {
                 .reviewed_permissions(&thread_id)
                 .await
                 .ok()?,
-            AskedBy::Codex { .. } | AskedBy::Claude | AskedBy::Grok => {
+            AskedBy::Codex { .. } | AskedBy::Claude | AskedBy::Grok | AskedBy::Copilot => {
                 managed.permission_mode.as_deref() == Some(REVIEWED_PERMISSION_MODE)
             }
         };
@@ -708,6 +740,7 @@ impl TaskRuntime {
         let working_directory = match &asked_by {
             AskedBy::Claude => self.claude.working_directory(&thread_id).await,
             AskedBy::Grok => self.grok.working_directory(&thread_id).await.ok(),
+            AskedBy::Copilot => self.copilot.working_directory(&thread_id).await.ok(),
             AskedBy::Antigravity => self.antigravity.working_directory(&thread_id).await.ok(),
             AskedBy::Codex { .. } => request.detail.cwd.clone(),
         }
@@ -759,23 +792,32 @@ impl TaskRuntime {
             pending.phase = ApprovalPhase::Replying;
             pending.clone()
         };
-        let sent = match self.task_agent(&pending.thread_id).await {
-            Ok(agent) => self
-                .send_decision(&agent, &pending, ApprovalDecision::Allow)
+        let result = match self.task_agent(&pending.thread_id).await {
+            Ok(agent) => {
+                self.send_decision(
+                    &agent,
+                    &pending,
+                    ApprovalDecision::Allow,
+                    ApprovalSource::HostPolicy,
+                )
                 .await
-                .is_ok(),
-            Err(_) => false,
+            }
+            Err(error) => Err(ApprovalResolveError::Agent(error)),
         };
         let mut approvals = self.approvals.lock().await;
         let Some(current) = approvals.get_mut(approval_id) else {
-            return sent;
+            return result.is_ok();
         };
         if !Arc::ptr_eq(&current.instance, staged) {
-            return sent;
+            return result.is_ok();
         }
-        if !sent {
-            // The agent did not take the answer, so the question is a person's
-            // again and has still never been shown.
+        if let Err(error) = result {
+            if matches!(error, ApprovalResolveError::Withdrawn)
+                || current.phase == ApprovalPhase::EndedDuringReply
+            {
+                approvals.remove(approval_id);
+                return true;
+            }
             current.phase = ApprovalPhase::Judging;
             return false;
         }
@@ -957,6 +999,7 @@ impl TaskRuntime {
                 .await
             }
             RunBy::Grok { .. } => self.execute_grok_tool(&managed, tool, arguments).await,
+            RunBy::Copilot { .. } => self.execute_copilot_tool(&managed, tool, arguments).await,
             RunBy::Antigravity { .. } => {
                 self.execute_antigravity_tool(&managed, tool, arguments)
                     .await
@@ -1129,6 +1172,75 @@ impl TaskRuntime {
                         )
                     })?;
                 Ok(isolated_answer(isolated, include_changes))
+            }
+        }
+    }
+
+    async fn execute_copilot_tool(
+        &self,
+        managed: &ManagedThread,
+        tool: CaffoldTaskTool,
+        arguments: JsonValue,
+    ) -> Result<String, String> {
+        let id = &managed.thread_id;
+        match tool {
+            CaffoldTaskTool::RenameCurrentTask => {
+                let name = RenameCurrentTaskArguments::parse(arguments)?;
+                self.copilot
+                    .rename(id, &name)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                self.persist_display_name(id, &name).await?;
+                if let Some(lifecycle) = &self.lifecycle {
+                    lifecycle.refresh_task_list();
+                }
+                Ok(format!("Renamed the current Caffold task to `{name}`."))
+            }
+            CaffoldTaskTool::IsolateCurrentTask => {
+                let args = IsolateCurrentTaskArguments::parse(arguments)?;
+                let lifecycle = self
+                    .lifecycle
+                    .clone()
+                    .ok_or_else(|| "Caffold Task lifecycle is unavailable".to_string())?;
+                let copilot = self.copilot.clone();
+                let id = id.clone();
+                let title = managed.display_name.clone();
+                // Finish the SDK queue handoff even if the MCP caller loses its HTTP connection.
+                tokio::spawn(async move {
+                    let source = copilot
+                        .working_directory(&id)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    copilot
+                        .prepare_isolation(&id)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    let result = lifecycle
+                        .isolate_current_task(
+                            source.into(),
+                            id.clone(),
+                            title,
+                            args.branch_name,
+                            args.base_ref,
+                            args.include_changes,
+                        )
+                        .await;
+                    let destination = result.as_ref().ok().map(|result| match result {
+                        IsolateOutcome::AlreadyReady { worktree, .. }
+                        | IsolateOutcome::Isolated { worktree, .. } => {
+                            worktree.worktree_path.clone()
+                        }
+                    });
+                    copilot
+                        .finish_isolation(&id, destination)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    result
+                        .map(|outcome| isolated_answer(outcome, args.include_changes))
+                        .map_err(|e| e.to_string())
+                })
+                .await
+                .map_err(|e| e.to_string())?
             }
         }
     }
@@ -1342,6 +1454,11 @@ impl TaskRuntime {
                 .working_directory(&managed.thread_id)
                 .await
                 .map_err(|error| error.to_string()),
+            RunBy::Copilot { .. } => self
+                .copilot
+                .working_directory(&managed.thread_id)
+                .await
+                .map_err(|e| e.to_string()),
             RunBy::Antigravity { .. } => self
                 .antigravity
                 .working_directory(&managed.thread_id)
@@ -1426,6 +1543,63 @@ impl TaskRuntime {
         });
     }
 
+    pub(super) async fn end_copilot_approval(
+        &self,
+        thread_id: &str,
+        id: &str,
+        outcome: ApprovalOutcome,
+    ) {
+        let mut approvals = self.approvals.lock().await;
+        let Some(pending) = approvals.get_mut(id) else {
+            return;
+        };
+        if pending.thread_id != thread_id || !matches!(pending.asked_by, AskedBy::Copilot) {
+            return;
+        }
+        // The SDK can announce our answer before returning its receipt. Preserve that
+        // evidence if the receipt is lost, and give a confirmed local reply its provenance.
+        if outcome != ApprovalOutcome::Expired {
+            match pending.phase {
+                ApprovalPhase::Replying => {
+                    pending.phase = ApprovalPhase::EndedDuringReply;
+                    return;
+                }
+                ApprovalPhase::EndedDuringReply => return,
+                _ => {}
+            }
+        }
+        self.retire_without_asking(pending, outcome);
+        approvals.remove(id);
+    }
+
+    pub(super) async fn restore_copilot_approvals(
+        &self,
+        thread_id: &str,
+        requests: Vec<ApprovalRequest>,
+    ) {
+        let remaining: HashSet<_> = requests.iter().map(|request| &request.id).collect();
+        let missing = self
+            .approvals
+            .lock()
+            .await
+            .iter()
+            .filter(|(id, pending)| {
+                pending.thread_id == thread_id
+                    && matches!(pending.asked_by, AskedBy::Copilot)
+                    && !remaining.contains(*id)
+            })
+            .map(|(id, _)| id.clone())
+            .collect::<Vec<_>>();
+        for id in missing {
+            self.end_copilot_approval(thread_id, &id, ApprovalOutcome::Unavailable)
+                .await;
+        }
+        for request in requests {
+            self.record_pending_approval(thread_id, request, now_ms(), AskedBy::Copilot)
+                .await;
+        }
+    }
+
     pub(super) async fn withdraw_codex_approvals(&self, generation: u64) {
         let mut approvals = self.approvals.lock().await;
         approvals.retain(|_, pending| {
@@ -1452,7 +1626,8 @@ fn withdrawn_approval_outcome(
     pending: &PendingApproval,
     event: &SessionEvent,
 ) -> Option<ApprovalOutcome> {
-    if pending.thread_id != event.thread_id {
+    if pending.thread_id != event.thread_id || pending.phase == ApprovalPhase::EndedDuringReply {
+        // A completed permission is awaiting its receipt. Subsequent turn status cannot expire it.
         return None;
     }
     let expired = Some(ApprovalOutcome::Expired);
@@ -1680,7 +1855,7 @@ mod tests {
 
     fn test_runtime_with_store(events: TaskEvents, store: TaskStore) -> TaskRuntime {
         let (shutdown, _) = broadcast::channel(1);
-        TaskRuntime::new(
+        TaskRuntime::for_tests(
             agent::claude::ClaudeClient::mock().0,
             agent::grok::GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
@@ -2129,8 +2304,9 @@ mod tests {
         (received, cwd)
     }
 
-    fn grok_request(id: &str) -> ApprovalRequest {
+    fn command_request(id: &str) -> ApprovalRequest {
         ApprovalRequest {
+            requires_human: false,
             id: id.to_string(),
             turn_id: Some("turn_1".to_string()),
             item_id: None,
@@ -2145,6 +2321,169 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn copilot_keeps_the_same_approval_after_an_unconfirmed_jev_or_human_reply() {
+        let root = tempfile::tempdir().unwrap();
+        let (base, asked) = jev_answering(1.0).await;
+        let store = TaskStore::memory().unwrap();
+        let task = uuid::Uuid::new_v4().to_string();
+        let mut managed = ManagedThread::new(
+            &task,
+            RunBy::Copilot { cwd: "/tmp".into() },
+            None,
+            None,
+            None,
+        );
+        managed.permission_mode = Some(REVIEWED_PERMISSION_MODE.into());
+        store.claim(managed, 1).unwrap();
+        let events = TaskEvents::default();
+        let runtime = test_runtime_with_store(events.clone(), store).with_permission_reviewer(
+            jev::test_reviewer(root.path(), base, "ts-test-key", "Allow all."),
+        );
+        let id = format!("copilot:{task}:permission-1");
+        let request = command_request(&id);
+        let instance = {
+            let mut approvals = runtime.approvals.lock().await;
+            runtime.stage_approval(
+                &mut approvals,
+                &task,
+                request.clone(),
+                1234,
+                AskedBy::Copilot,
+            )
+        };
+        // This Task has no SDK connection. Even an affirmative judgement cannot confirm delivery.
+        runtime.settle_approval(&id, &instance).await;
+        assert_eq!(asked.lock().unwrap().len(), 1);
+        let card = events.for_thread(&task);
+        assert_eq!(card.len(), 1);
+        assert_eq!(card[0].event_type, "approval_requested");
+        assert_eq!(card[0].payload.as_ref().unwrap()["approvalId"], id);
+        let agent = runtime.task_agent(&task).await.unwrap();
+        assert!(matches!(
+            runtime
+                .resolve_approval(&agent, &task, &id, ApprovalDecision::Allow)
+                .await,
+            Err(ApprovalResolveError::Unconfirmed(
+                agent::AgentError::ConversationGone(_)
+            ))
+        ));
+        runtime
+            .restore_copilot_approvals(&task, vec![request])
+            .await;
+        {
+            let approvals = runtime.approvals.lock().await;
+            assert!(Arc::ptr_eq(&approvals[&id].instance, &instance));
+            assert_eq!(approvals[&id].phase, ApprovalPhase::Pending);
+        }
+        assert_eq!(events.for_thread(&task).len(), 1);
+        assert_eq!(asked.lock().unwrap().len(), 1);
+
+        runtime.restore_copilot_approvals(&task, vec![]).await;
+        assert!(!runtime.approvals.lock().await.contains_key(&id));
+        let recorded = events.for_thread(&task);
+        assert_eq!(recorded.len(), 2);
+        assert_eq!(recorded[1].event_type, "approval_resolved");
+        assert_eq!(
+            recorded[1].payload.as_ref().unwrap()["outcome"],
+            "unavailable"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_native_completion_during_an_unconfirmed_copilot_reply_retires_the_card_once() {
+        let runtime = test_runtime(TaskStore::memory().unwrap());
+        let task = uuid::Uuid::new_v4().to_string();
+        let id = format!("copilot:{task}:permission-2");
+        let mut approvals = runtime.approvals.lock().await;
+        let instance = runtime.stage_approval(
+            &mut approvals,
+            &task,
+            command_request(&id),
+            1234,
+            AskedBy::Copilot,
+        );
+        drop(approvals);
+        runtime.show_staged_approval(&id, &instance, None).await;
+        let pending = {
+            let mut approvals = runtime.approvals.lock().await;
+            let pending = approvals.get_mut(&id).unwrap();
+            pending.phase = ApprovalPhase::Replying;
+            pending.clone()
+        };
+        runtime
+            .end_copilot_approval(&task, &id, ApprovalOutcome::AnsweredElsewhere)
+            .await;
+        runtime.restore_copilot_approvals(&task, vec![]).await;
+        runtime
+            .withdraw_unanswerable_approvals(&SessionEvent {
+                thread_id: task.clone(),
+                kind: SessionEventKind::StatusChanged {
+                    status: ThreadStatus::Idle,
+                },
+            })
+            .await;
+        assert_eq!(
+            runtime.approvals.lock().await[&id].phase,
+            ApprovalPhase::EndedDuringReply
+        );
+        let agent = TaskAgent::Copilot {
+            driver: runtime.copilot.driver(),
+        };
+        assert!(matches!(
+            runtime
+                .reply_to_approval(agent, pending, ApprovalDecision::Allow)
+                .await,
+            Err(ApprovalResolveError::Withdrawn)
+        ));
+        assert!(runtime.approvals.lock().await.is_empty());
+        let events = runtime.events.for_thread(&task);
+        assert_eq!(events.len(), 2);
+        assert_eq!(
+            events[1].payload.as_ref().unwrap()["outcome"],
+            "unavailable"
+        );
+    }
+
+    #[tokio::test]
+    async fn copilot_human_required_approval_keeps_its_id_and_never_reaches_jev_on_replay() {
+        let root = tempfile::tempdir().unwrap();
+        let (base, asked) = jev_answering(1.0).await;
+        let store = TaskStore::memory().unwrap();
+        let task = "copilot-task";
+        let id = "copilot:copilot-task:native-request";
+        let mut managed = ManagedThread::new(
+            task,
+            RunBy::Copilot { cwd: "/tmp".into() },
+            None,
+            None,
+            None,
+        );
+        managed.permission_mode = Some(REVIEWED_PERMISSION_MODE.into());
+        store.claim(managed, 1).unwrap();
+        for _ in 0..2 {
+            let events = TaskEvents::default();
+            let runtime =
+                test_runtime_with_store(events.clone(), store.clone()).with_permission_reviewer(
+                    jev::test_reviewer(root.path(), base.clone(), "ts-test-key", "Allow all."),
+                );
+            let mut request = command_request(id);
+            request.requires_human = true;
+            for _ in 0..2 {
+                runtime
+                    .record_pending_approval(task, request.clone(), now_ms(), AskedBy::Copilot)
+                    .await;
+            }
+            settled(&runtime).await;
+            let cards = events.for_thread(task);
+            assert_eq!(cards.len(), 1);
+            assert_eq!(cards[0].event_type, "approval_requested");
+            assert_eq!(cards[0].payload.as_ref().unwrap()["approvalId"], id);
+            assert!(runtime.approvals.lock().await[id].request.requires_human);
+        }
+        assert!(asked.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn a_question_nobody_saw_leaves_nothing_behind_when_it_is_withdrawn() {
         let events = TaskEvents::default();
         let runtime = runtime_with_events(events.clone());
@@ -2153,7 +2492,7 @@ mod tests {
             runtime.stage_approval(
                 &mut approvals,
                 "thread_1",
-                grok_request("unseen"),
+                command_request("unseen"),
                 now_ms(),
                 AskedBy::Grok,
             )
@@ -2177,7 +2516,7 @@ mod tests {
             runtime.stage_approval(
                 &mut approvals,
                 "thread_1",
-                grok_request("seen"),
+                command_request("seen"),
                 now_ms(),
                 AskedBy::Grok,
             )
@@ -3324,10 +3663,11 @@ mod tests {
             claude.clone(),
             agent::grok::GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
+            crate::agent::copilot::CopilotClient::uninstalled(),
             TaskTerminals::for_tests(),
         );
         let (shutdown, _) = broadcast::channel(1);
-        let runtime = TaskRuntime::new(
+        let runtime = TaskRuntime::for_tests(
             claude,
             agent::grok::GrokClient::unreachable(),
             AntigravityClient::uninstalled(),

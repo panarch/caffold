@@ -116,6 +116,67 @@ export async function getGrokStatus() {
   return requestJson<GrokStatus>("/api/grok/status");
 }
 
+export interface RunnerStatus {
+  restarting: boolean;
+  running: boolean | null;
+  pid: number | null;
+  version: string | null;
+  sessions: number | null;
+  idleTimeoutSecs: number | null;
+  error: string | null;
+}
+
+export interface CopilotQuota {
+  key: string;
+  unit: "aiCredits" | "requests" | "tokens" | null;
+  unlimited: boolean;
+  used: number;
+  entitlement: number;
+  remainingPercentage: number;
+  resetsAt: string | null;
+  resetEstimated: boolean;
+}
+
+export interface CopilotStatus {
+  runtime: RunnerStatus;
+  installation: {
+    state: "ready" | "unavailable" | "notInstalled";
+    version?: string;
+  };
+  cliPath: string | null;
+  protocolVersion: number | null;
+  authenticated: boolean | null;
+  login: string | null;
+  usage: {
+    plan: string | null;
+    quotas: CopilotQuota[];
+    errors: string[];
+  } | null;
+  models: Array<{ model: string; displayName: string }>;
+  modelsError: string | null;
+  error: string | null;
+}
+
+export function getCopilotStatus(signal?: AbortSignal) {
+  return requestJson<CopilotStatus>(
+    "/api/copilot/status",
+    {},
+    { signal, timeoutMs: 120_000 },
+  );
+}
+
+export function getCopilotRuntime(signal: AbortSignal) {
+  return requestJson<RunnerStatus>("/api/copilot/runtime", {}, { signal });
+}
+
+export function restartCopilotRuntime() {
+  return requestJson<CopilotStatus>(
+    "/api/copilot/restart",
+    {},
+    { method: "POST", timeoutMs: 180_000 },
+  );
+}
+
 export function getAntigravityStatus({
   signal,
 }: {
@@ -142,15 +203,7 @@ export function restartAntigravityRuntime() {
   );
 }
 export interface AntigravityStatus {
-  runtime: {
-    restarting: boolean;
-    running: boolean | null;
-    pid: number | null;
-    version: string | null;
-    sessions: number | null;
-    idleTimeoutSecs: number | null;
-    error: string | null;
-  };
+  runtime: RunnerStatus;
   installation: {
     ready: boolean;
     version: string | null;

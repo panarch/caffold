@@ -1679,6 +1679,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   claude: "Claude",
   grok: "Grok",
   antigravity: "Antigravity",
+  copilot: "GitHub Copilot",
 };
 
 // A mode is named by the agent that offers it, and the agent sends a label

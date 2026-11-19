@@ -71,8 +71,8 @@ prepare_bundle() {
   cp "${REPO_DIR}/target/release/caffold" "${RESOURCES_DIR}/caffold"
   chmod 755 "${RESOURCES_DIR}/caffold"
 
-  # The shared transport locates this helper beside the backend. Claude and
-  # Antigravity use separate instances across backend replacement.
+  # The shared transport locates this helper beside the backend. Claude,
+  # Antigravity and Copilot run dedicated instances across backend replacement.
   cp "${REPO_DIR}/target/release/caffold-runner" \
     "${RESOURCES_DIR}/caffold-runner"
   chmod 755 "${RESOURCES_DIR}/caffold-runner"

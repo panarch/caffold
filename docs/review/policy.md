@@ -97,6 +97,8 @@ Caffold should present state without pretending to own state it does not own.
   display identities and replaces them on reconstruction. Driver checkpoints
   retain request control and the same child's latest account/context
   observations, never a second conversation ledger.
+- GitHub Copilot CLI owns its native history, pending approvals and account policy.
+  Its SDK adapter owns live delivery and retains the CLI across backend replacement.
 - Caffold storage is for Caffold-owned metadata, indexes, recovery data,
   UI-facing summaries, and the Notes agents keep through Caffold's Notes tools.
 - The browser UI is a view and control surface, not durable state.

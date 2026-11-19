@@ -1,7 +1,8 @@
 //! Route normalized ACP control and native-record observations into Task owners.
 use super::{ANTIGRAVITY_GENERATION, TaskRuntime, TaskRuntimeSignal, server_requests::AskedBy};
 use crate::{
-    agent::antigravity::AntigravityRuntimeEvent, app::tasks::events::now_ms, task_store::RunBy,
+    agent::antigravity::AntigravityRuntimeEvent, app::tasks::events::now_ms,
+    task_store::TaskProvider,
 };
 use tokio::sync::broadcast;
 
@@ -109,48 +110,9 @@ impl TaskRuntime {
         let runtime = self.clone();
         tokio::spawn(async move {
             let live = runtime.antigravity.live_conversations().await;
-            let store = runtime.task_store.clone();
-            let managed = tokio::task::spawn_blocking(move || {
-                live.into_iter()
-                    .map(|id| store.get(&id))
-                    .collect::<Result<Vec<_>, _>>()
-            })
-            .await;
-            let managed = match managed {
-                Ok(Ok(managed)) => managed,
-                Ok(Err(error)) => {
-                    eprintln!("could not read surviving ACP Tasks: {error}");
-                    return;
-                }
-                Err(error) => {
-                    eprintln!("ACP recovery worker failed: {error}");
-                    return;
-                }
-            };
-            for managed in managed
-                .into_iter()
-                .flatten()
-                .filter(|managed| matches!(managed.run_by, RunBy::Antigravity { .. }))
-            {
-                let thread_id = managed.thread_id;
-                let _request = runtime.sessions.reserve_request(&thread_id).await;
-                let driver = runtime.antigravity.driver();
-                match runtime
-                    .sessions
-                    .ensure_subscribed(&driver, ANTIGRAVITY_GENERATION, &thread_id)
-                    .await
-                {
-                    Ok(snapshot) => {
-                        let _ = runtime.signals.send(TaskRuntimeSignal::SessionChanged {
-                            thread_id,
-                            snapshot: Box::new(snapshot),
-                        });
-                    }
-                    Err(error) => {
-                        eprintln!("could not restore surviving ACP Task {thread_id}: {error}")
-                    }
-                }
-            }
+            runtime
+                .resubscribe_surviving_tasks(TaskProvider::Antigravity, live)
+                .await;
         });
     }
 
