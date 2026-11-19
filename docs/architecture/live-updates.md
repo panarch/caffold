@@ -267,12 +267,12 @@ Hiding the document or entering the App Shell's definite offline suspension
 closes the physical SSE. Watch subscriptions stay in the desired snapshot,
 while Task List and Task Detail release theirs and keep only their context.
 Returning to visible or starting foreground recovery opens a new connection
-and republishes the snapshot. The App Shell foreground-recovery owner checks
-Task-store readiness and then subscribes Task List and the selected Task
-Detail again, once each, so a return receives each of their snapshots once;
-the gateway adds no second recovery UI. A physical error is
-reported to every logical consumer, while a `channel-error` affects only its
-named subscription.
+and republishes the snapshot. After the Task-store check, foreground recovery
+resubscribes Task List. It also resubscribes Task Detail when its route is still
+current. Opening another Task during the check establishes that Task's own
+subscription through navigation. The App Shell owns the shared recovery
+notice. A physical error is reported to every logical consumer, while a
+`channel-error` affects only its named subscription.
 
 Integrated Review uses filesystem invalidation for Files and Source, and
 `gitStatusChanged` and `gitRefsChanged` for both Working Tree and Branch, since

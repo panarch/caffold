@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
+import { taskDetailFixture } from "../support/task-api-fixture.js";
 import {
   installBrowserDefaults,
   mockCodexStatus,
@@ -2047,6 +2048,78 @@ test("a return subscribes the Task list and Detail once each", { tag: "@server-c
   await expect(page.locator("caffold-tasks-page")).toContainText(
     "Conversation stays fixed while transport notices change.",
   );
+});
+
+test("switching Tasks during a foreground store check still recovers the Task list", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const tasks = ["a", "b", "c"].map((name) => ({
+    ...transportOverlayTask(`thread_return_${name}`),
+    title: `Task ${name.toUpperCase()}`,
+  }));
+  const [a, b, c] = tasks;
+  const details = new Map([a, b].map((task) => [
+    task.threadId,
+    { ...taskDetailFixture(), threadId: task.threadId, task },
+  ]));
+  await installEventSourceMock(page, {
+    autoOpen: true,
+    bootstrapFunctionKey: "__returnWhileSwitchingBootstrap",
+  });
+  const bootstraps = [];
+  await page.exposeFunction("__returnWhileSwitchingBootstrap", (id) => {
+    bootstraps.push(id);
+    return details.get(id);
+  });
+  await mockAgentModels(page);
+  for (const [id, detail] of details) {
+    await page.route(`**/api/tasks/${id}`, (route) => route.fulfill({ json: detail }));
+  }
+  let listReads = 0;
+  await page.route("**/api/tasks", (route) => {
+    listReads += 1;
+    return route.fulfill({ json: activeTaskProjection(tasks) });
+  });
+  const listSubscriptions = () => page.evaluate(() =>
+    window.__caffoldMockEventSources.filter((source) => source.channel === "task-list").length,
+  );
+  const row = (task) => page.locator(
+    `caffold-active-task-list .task-row[data-thread-id="${task.threadId}"]`,
+  );
+  const heading = page.locator("caffold-task-detail-summary h2");
+  await page.goto(`/tasks/${a.threadId}`);
+  await expect(heading).toHaveText(a.title);
+  await expect.poll(listSubscriptions).toBe(1);
+  await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
+  const before = { reads: listReads, subscriptions: await listSubscriptions() };
+
+  const storeCheck = Promise.withResolvers();
+  await page.route("**/api/task-store/status", (route) => storeCheck.resolve(route), { times: 1 });
+  const setVisibility = (state) => page.evaluate((value) => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => value });
+    document.dispatchEvent(new Event("visibilitychange"));
+  }, state);
+  await setVisibility("hidden");
+  await setVisibility("visible");
+  const held = await storeCheck.promise;
+  await row(b).click();
+  await expect(page).toHaveURL(new RegExp(`/tasks/${b.threadId}(?:\\?|$)`));
+  await held.fulfill({ json: mockTaskStoreStatus() });
+  await expect(heading).toHaveText(b.title);
+  await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
+  await expect.poll(async () => ({
+    reads: listReads - before.reads,
+    subscriptions: await listSubscriptions() - before.subscriptions,
+  })).toEqual({ reads: 1, subscriptions: 1 });
+
+  await expect(row(c)).toHaveAttribute("data-task-status", "idle");
+  await page.evaluate(
+    (running) => window.__taskListSource.emit("task-updated", running),
+    activeListTask({ ...c, ...canonicalTaskState("active") }),
+  );
+  await expect(row(c)).toHaveAttribute("data-task-status", "running");
+  await expect(heading).toHaveText(b.title);
+  expect(bootstraps).toEqual([a.threadId, b.threadId]);
 });
 
 test("a return outside Tasks resumes the Task list for when Tasks shows again", { tag: "@server-changes" }, async ({

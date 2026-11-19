@@ -10,6 +10,35 @@ await import("./layout.js");
 const tasksPage = registry.element("caffold-tasks-page").prototype;
 after(() => registry.restore());
 
+test("retries foreground failures from the shared list and the current detail", async () => {
+  const listError = new Error("list unavailable");
+  const detailError = new Error("detail unavailable");
+  for (const scenario of [
+    { navigate: false, failList: false, expected: { retry: true, error: detailError } },
+    { navigate: true, failList: false, expected: { retry: false } },
+    { navigate: true, failList: true, expected: { retry: true, error: listError } },
+  ]) {
+    const list = Promise.withResolvers();
+    const detail = Promise.withResolvers();
+    let current = true;
+    const recovery = tasksPage.recoverForeground.call({
+      view: "detail",
+      taskStoreOperationsBlocked: () => false,
+      taskNavigator: () => ({ recoverForeground: () => list.promise }),
+      taskDetail: () => ({ recoverForeground: () => detail.promise }),
+    }, { isDetailCurrent: () => current });
+
+    current = !scenario.navigate;
+    detail.reject(detailError);
+    if (scenario.failList) {
+      list.reject(listError);
+    } else {
+      list.resolve();
+    }
+    assert.deepEqual(await recovery, scenario.expected);
+  }
+});
+
 test("combines Navigator with only the active direct-child surface", () => {
   const navigatorTarget = { id: "navigator" };
   const newTarget = { id: "new" };
