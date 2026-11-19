@@ -279,8 +279,11 @@ transports. Hiding suspends the navigator's Task list in every mode, so outside
 Tasks recovery resumes that list alone. The selected detail's transports are
 the Task stream and, while the terminal is shown, the terminal socket.
 Parents call public child methods; the app shell does not inspect Task
-transport internals. Async completions must still match both the foreground
-generation and the active route.
+transport internals. The foreground generation owns list recovery across route
+changes. If another Task opens during the store check, its route opens its
+detail and the pending return still reconciles the list. A detail recovery
+failure belongs to the route that started it. A list failure follows the
+foreground retry policy even if the route changed.
 
 Task List and Task Detail each keep one Task stream through shared
 `tasks/stream.ts`. Its private graph separates inactive, suspended,

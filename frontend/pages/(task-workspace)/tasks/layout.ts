@@ -336,46 +336,46 @@ export class CaffoldTasksPage extends CaffoldElement {
   async recoverForeground({
     initialActivation = false,
     isCurrent = () => true,
+    isDetailCurrent = () => true,
     progress,
   }: {
     initialActivation?: boolean;
     isCurrent?: () => boolean;
+    isDetailCurrent?: () => boolean;
     progress?: ForegroundProgress;
   } = {}) {
     if (initialActivation || !isCurrent()) {
       return { retry: false };
     }
-    const recoveries = new Map<string, unknown>();
     const listRecovery = this.taskNavigator()?.recoverForeground();
-    if (listRecovery) {
-      recoveries.set("list", listRecovery);
-    }
-    if (!this.taskStoreOperationsBlocked() && this.view === "detail") {
-      const detailRecovery = this.taskDetail()?.recoverForeground();
-      if (detailRecovery) {
-        recoveries.set("detail", detailRecovery);
-      }
-    }
-    reportForegroundValidationStage(progress, recoveries.keys());
-    const results = await Promise.allSettled(
-      [...recoveries].map(([target, recovery]) =>
-        Promise.resolve(recovery).then((result) => {
-          recoveries.delete(target);
-          if (isCurrent()) {
-            reportForegroundValidationStage(progress, recoveries.keys());
-          }
-          return result;
-        }),
-      ),
-    );
-    if (!isCurrent()) {
-      return { stale: true, retry: false };
-    }
-    const failure = results.find((result) => result.status === "rejected");
-    return {
-      retry: Boolean(failure),
-      error: failure?.reason ?? null,
+    const detailRecovery =
+      isDetailCurrent() &&
+      this.view === "detail" &&
+      !this.taskStoreOperationsBlocked()
+        ? this.taskDetail()?.recoverForeground()
+        : null;
+    const pending = {
+      list: Boolean(listRecovery),
+      detail: Boolean(detailRecovery),
     };
+    progress?.validatingTransports(pending);
+    const settled = (target: keyof typeof pending) => {
+      pending[target] = false;
+      if (isCurrent()) {
+        progress?.validatingTransports(pending);
+      }
+    };
+    const [list, detail] = await Promise.allSettled([
+      listRecovery?.finally(() => settled("list")),
+      detailRecovery?.finally(() => settled("detail")),
+    ]);
+    if (list.status === "rejected") {
+      return { retry: true, error: list.reason };
+    }
+    if (detail.status === "rejected" && isDetailCurrent()) {
+      return { retry: true, error: detail.reason };
+    }
+    return { retry: false };
   }
 
   prepareRoute(route: TasksRoute, options: RouteOptions = {}) {
@@ -1065,17 +1065,6 @@ export class CaffoldTasksPage extends CaffoldElement {
     );
     this.publishTransportState();
   }
-}
-
-function reportForegroundValidationStage(
-  progress: ForegroundProgress | undefined,
-  targets: Iterable<string>,
-) {
-  const pending = new Set(targets);
-  progress?.validatingTransports({
-    detail: pending.has("detail"),
-    list: pending.has("list"),
-  });
 }
 
 function taskRoutePresentation(route: TasksRoute) {

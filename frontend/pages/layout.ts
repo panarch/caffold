@@ -819,16 +819,15 @@ export class CaffoldAppShell extends CaffoldElement {
       return { stale: true };
     }
     const recoveryRoute = parseRoute(window.location.href) ?? this.currentRoute;
-    const recoveryRouteKey = recoveryRoute ? routeUrl(recoveryRoute) : "";
+    const isCurrentRoute = () => {
+      const current = parseRoute(window.location.href) ?? this.currentRoute;
+      return Boolean(
+        current && recoveryRoute && routeEquals(current, recoveryRoute),
+      );
+    };
     const recovery = await this.taskWorkspace.recoverForeground({
-      isCurrent: () => {
-        const current = parseRoute(window.location.href) ?? this.currentRoute;
-        return (
-          isCurrent() &&
-          Boolean(current) &&
-          routeUrl(current as ParsedRoute) === recoveryRouteKey
-        );
-      },
+      isCurrent,
+      isCurrentRoute,
       initialActivation,
       progress,
     });
@@ -839,6 +838,7 @@ export class CaffoldAppShell extends CaffoldElement {
       !initialActivation &&
       !recovery?.stale &&
       !recovery?.retry &&
+      isCurrentRoute() &&
       !(recoveryRoute?.kind === "settings" && recoveryRoute.section === "about")
     ) {
       // About already requested its status when Settings reactivated it.

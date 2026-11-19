@@ -399,10 +399,12 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
   async recoverForeground({
     initialActivation = false,
     isCurrent = () => true,
+    isCurrentRoute = () => true,
     progress,
   }: {
     initialActivation?: boolean;
     isCurrent?: () => boolean;
+    isCurrentRoute?: () => boolean;
     progress?: ForegroundProgress;
   } = {}) {
     this.taskStoreStatusLifecycle.resume();
@@ -426,27 +428,30 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
     if (!storeError) {
       this.settingsWorkspace.resumeForeground();
     }
-    if (this.mode === "notes" && !initialActivation) {
+    if (this.mode === "notes" && !initialActivation && isCurrentRoute()) {
       this.notesWorkspace.reload();
     }
-    const tasksRecovery =
-      this.mode === "tasks"
-        ? this.tasksPage.recoverForeground({
-            initialActivation,
-            isCurrent,
-            progress,
-          })
-        : this.recoverTaskList({ initialActivation });
+    // Hiding suspends the shared list in every mode. Navigation can replace
+    // the detail while the store check is pending; its new route opens it.
+    const tasksRecovery = this.tasksPage.recoverForeground({
+      initialActivation,
+      isCurrent,
+      isDetailCurrent: () => this.mode === "tasks" && isCurrentRoute(),
+      progress,
+    });
     this.liveUpdates.resume();
     this.liveUpdates.retry();
-    const tasks: { retry?: boolean; error?: unknown } = await tasksRecovery;
+    const tasks = await tasksRecovery;
+    if (!isCurrent()) {
+      return { stale: true, retry: false };
+    }
     return {
       retry: Boolean(
         storeError ||
           (!initialActivation && this.tasksPage.taskStoreOperationsBlocked()) ||
-          tasks?.retry,
+          tasks.retry,
       ),
-      error: storeError ?? tasks?.error ?? null,
+      error: storeError ?? tasks.error ?? null,
     };
   }
 
@@ -1048,25 +1053,6 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
     );
     intent.accepted = Boolean(completion);
     intent.completion = completion;
-  }
-
-  // Hiding suspends the Task list whichever mode is shown, and a suspended list
-  // holds no subscription, so recovery resumes it outside Tasks as well. No
-  // other Task surface is open there.
-  private async recoverTaskList({
-    initialActivation,
-  }: {
-    initialActivation: boolean;
-  }) {
-    if (initialActivation) {
-      return { retry: false };
-    }
-    try {
-      await this.taskNavigator.recoverForeground();
-      return { retry: false };
-    } catch (error) {
-      return { retry: true, error };
-    }
   }
 
   private setClaudeRestartState(state: { state: string; message: string }) {
