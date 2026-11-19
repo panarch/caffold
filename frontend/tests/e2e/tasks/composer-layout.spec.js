@@ -138,6 +138,56 @@ for (const themeMode of ["light", "dark"]) {
   });
 }
 
+for (const [shape, reason] of [
+  ["one-line", "The managed worktree is removing."],
+  [
+    "wrapping",
+    `The managed worktree is unavailable at ${"nested-directory/".repeat(24)}checkout: No such file or directory (os error 2)`,
+  ],
+]) {
+  test(`lines a ${shape} workspace notice up with the follow-up prompt text`, { tag: "@all-viewports" }, async ({
+    page,
+  }, testInfo) => {
+    if (!testInfo.project.use.hasTouch) {
+      // Wide enough that the 980px Composer leaves space on both sides.
+      await page.setViewportSize({ width: 1680, height: 800 });
+    }
+    const detail = await installScrollableTask(page);
+    detail.workspaceAccess = { mode: "unavailable", reason };
+    await page.goto("/tasks/thread-1?cwd=src");
+    await emitTaskDetailBootstrap(page, detail);
+
+    const notice = page.getByRole("status").filter({ hasText: reason });
+    await expect(notice).toBeVisible();
+    const prompt = page.getByRole("textbox", { name: "Follow-up prompt" });
+    const layout = await notice.evaluate((element, promptField) => {
+      const contentBox = (node) => {
+        const box = node.getBoundingClientRect();
+        const style = getComputedStyle(node);
+        return {
+          left: box.left + Number.parseFloat(style.borderLeftWidth) + Number.parseFloat(style.paddingLeft),
+          right: box.right - Number.parseFloat(style.borderRightWidth) - Number.parseFloat(style.paddingRight),
+        };
+      };
+      const text = document.createRange();
+      text.selectNodeContents(element);
+      return {
+        notice: contentBox(element),
+        prompt: contentBox(promptField),
+        lines: new Set([...text.getClientRects()].map((line) => Math.round(line.top))).size,
+      };
+    }, await prompt.elementHandle());
+    expect(Math.abs(layout.notice.left - layout.prompt.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(layout.notice.right - layout.prompt.right)).toBeLessThanOrEqual(1);
+    if (shape === "one-line") {
+      expect(layout.lines).toBe(1);
+    } else {
+      expect(layout.lines).toBeGreaterThan(1);
+    }
+    await captureReviewScreenshot(page, testInfo, `tasks-workspace-notice-${shape}`);
+  });
+}
+
 async function installScrollableTask(page, { themeMode, trailingText = "" } = {}) {
   await installTaskApiFixture(page);
   await page.addInitScript((mode) => {
