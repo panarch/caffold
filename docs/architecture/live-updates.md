@@ -126,9 +126,13 @@ either publication.
 
 All drivers implement steering; Task state has no separate steering capability.
 Prompt HTTP responses carry
-`threadId`, `turnId`, `userMessageId` and the steer result. The browser uses
-that exact accepted identity to hand its optimistic message to the ordinary
-conversation projection.
+`threadId`, `turnId`, `userMessageId`, the steer result, and the session
+`revision` that recorded the prompt, null when the agent's connection changed
+first. The browser uses that exact accepted identity to hand its optimistic
+message to the ordinary conversation projection, and the revision to tell when
+Task state includes the composer settings a started turn recorded. A prompt
+that starts a turn also publishes a `task-state` at that revision, so viewers
+receive it even when no agent report follows, as when the turn ended first.
 
 When a driver discards its display conversation, the backend clears the
 projection and publishes its replacement with `eventResetRevision` and

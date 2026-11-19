@@ -295,6 +295,12 @@ async fn task_prompt_owned(
                     "failed to persist composer settings for started turn on thread {thread_id}: {error:?}"
                 );
             }
+            // The revision the response names reaches viewers even when no
+            // agent report follows it, as when the turn ended before it was
+            // recorded.
+            if revision.is_some() {
+                state.task_runtime.announce_task_state(&thread_id, snapshot);
+            }
         }
         revision
     } else {
@@ -313,6 +319,7 @@ async fn task_prompt_owned(
         turn_id,
         user_message_id: user_message.id,
         steered,
+        revision: session_revision,
     }))
 }
 
@@ -762,10 +769,12 @@ mod tests {
         MockCodexResponse, decode_server_request,
     };
     use crate::app::tasks::active_list::ActiveTaskComposerSettings;
+    use crate::app::tasks::runtime::TaskRuntimeSignal;
     use crate::git;
     use crate::task_store::{self, TaskProvider};
     use axum::body::Body;
     use serde_json::{Value as JsonValue, json};
+    use tokio::sync::broadcast;
     use tower::ServiceExt;
 
     /// Decode a fixture the way the adapter decodes a real answer.
@@ -2039,6 +2048,7 @@ mod tests {
         .await
         .unwrap();
         let (_, mut list_updates) = state.task_list_events.subscribe();
+        let mut signals = state.task_runtime.subscribe();
 
         let response = task_prompt(
             State(state.clone()),
@@ -2058,6 +2068,15 @@ mod tests {
         .expect("follow-up prompt succeeds");
 
         assert!(!response.0.steered);
+        let session = state.task_sessions.snapshot(thread_id).await.unwrap();
+        assert_eq!(response.0.revision, Some(session.revision));
+        assert_eq!(session.model.as_deref(), Some("gpt-5.6-sol"));
+        assert_eq!(session.reasoning_effort.as_deref(), Some("xhigh"));
+        assert_eq!(session.speed, "priority");
+        let announced = announced_task_state(&mut signals, thread_id)
+            .expect("the recorded settings reach viewers as Task state");
+        assert_eq!(Some(announced.revision), response.0.revision);
+        assert_eq!(announced.model.as_deref(), Some("gpt-5.6-sol"));
         let stored = task_store_get(&state, thread_id).await.unwrap().unwrap();
         assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
@@ -2111,6 +2130,88 @@ mod tests {
         assert_eq!(requests[2].1["model"], "gpt-5.6-sol");
         assert_eq!(requests[2].1["effort"], "xhigh");
         assert_eq!(requests[2].1["serviceTier"], "priority");
+    }
+
+    #[tokio::test]
+    async fn task_prompt_announces_the_recorded_settings_when_the_turn_ended_first() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-turn-ended-first";
+        // The agent's report that the turn ended was taken before the prompt
+        // recorded the turn's start, so recording it publishes nothing itself.
+        let mut resumed = resumed_task(thread_id, root.path());
+        resumed["thread"]["turns"] = json!([{
+            "id": "turn-ended-first",
+            "items": [],
+            "status": "completed"
+        }]);
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok("thread/resume", resumed),
+            MockCodexResponse::ok("model/list", current_model_list_response()),
+            MockCodexResponse::ok(
+                "turn/start",
+                json!({
+                    "turn": {
+                        "id": "turn-ended-first",
+                        "items": [],
+                        "status": "inProgress"
+                    }
+                }),
+            ),
+        ]);
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        claim_cached_active(
+            &state,
+            thread_id,
+            "Turn ended first",
+            1,
+            "section-turn-ended-first",
+            "",
+        );
+        let mut signals = state.task_runtime.subscribe();
+
+        let response = task_prompt(
+            State(state.clone()),
+            AxumPath(thread_id.to_string()),
+            Query(TasksQuery { cursor: None }),
+            Json(TaskPromptRequest {
+                prompt: "Continue".to_string(),
+                image_paths: Vec::new(),
+                model: Some("gpt-5.6-sol".to_string()),
+                effort: None,
+                speed: NORMAL_SPEED.to_string(),
+                permission_mode: None,
+                active_turn_id: None,
+            }),
+        )
+        .await
+        .expect("follow-up prompt succeeds");
+
+        let session = state.task_sessions.snapshot(thread_id).await.unwrap();
+        assert_eq!(session.active_turn_id, None);
+        assert_eq!(response.0.revision, Some(session.revision));
+        let announced = announced_task_state(&mut signals, thread_id)
+            .expect("the recorded settings reach viewers as Task state");
+        assert_eq!(Some(announced.revision), response.0.revision);
+        assert_eq!(announced.model.as_deref(), Some("gpt-5.6-sol"));
+    }
+
+    /// The Task state viewers were told about for one Task, of what the
+    /// runtime has signalled so far.
+    fn announced_task_state(
+        signals: &mut broadcast::Receiver<TaskRuntimeSignal>,
+        thread_id: &str,
+    ) -> Option<Box<SessionSnapshot>> {
+        while let Ok(signal) = signals.try_recv() {
+            if let TaskRuntimeSignal::TaskStateChanged {
+                thread_id: signalled,
+                snapshot,
+            } = signal
+                && signalled == thread_id
+            {
+                return Some(snapshot);
+            }
+        }
+        None
     }
 
     #[tokio::test]

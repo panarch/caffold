@@ -696,8 +696,9 @@ export async function getTask(
   );
 }
 
-// A prompt for a Task's agent. The answer names the user message it became
-// and says whether it steered the running turn instead of starting one.
+// A prompt for a Task's agent. The answer names the user message it became,
+// says whether it steered the running turn instead of starting one, and gives
+// the session revision that recorded it, null when none did.
 export async function sendTaskPrompt(
   threadId: string,
   prompt: string,
@@ -708,6 +709,7 @@ export async function sendTaskPrompt(
     threadId: string;
     userMessageId: string;
     steered: boolean;
+    revision: number | null;
   }>(
     `/api/tasks/${encodeURIComponent(threadId)}/prompts`,
     {},

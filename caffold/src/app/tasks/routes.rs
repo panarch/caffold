@@ -159,6 +159,9 @@ struct TaskPromptResponse {
     turn_id: String,
     user_message_id: String,
     steered: bool,
+    /// The session revision that recorded this prompt, none when the agent's
+    /// connection changed first.
+    revision: Option<u64>,
 }
 
 struct TaskPromptOutcome {
