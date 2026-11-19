@@ -31,16 +31,18 @@ pub(crate) enum TaskProvider {
     Claude,
     Grok,
     Antigravity,
+    Copilot,
 }
 
 impl TaskProvider {
     /// The agent a stored name says, or none for a name no agent here has.
-    pub(super) fn from_name(name: &str) -> Option<Self> {
+    pub(crate) fn from_name(name: &str) -> Option<Self> {
         match name {
             "codex" => Some(Self::Codex),
             "claude" => Some(Self::Claude),
             "grok" => Some(Self::Grok),
             "antigravity" => Some(Self::Antigravity),
+            "copilot" => Some(Self::Copilot),
             _ => None,
         }
     }
@@ -51,6 +53,7 @@ impl TaskProvider {
             Self::Claude => "claude",
             Self::Grok => "grok",
             Self::Antigravity => "antigravity",
+            Self::Copilot => "copilot",
         }
     }
 }
@@ -85,6 +88,9 @@ pub(crate) enum RunBy {
     Antigravity {
         cwd: String,
     },
+    Copilot {
+        cwd: String,
+    },
 }
 
 impl RunBy {
@@ -94,6 +100,7 @@ impl RunBy {
             Self::Claude { .. } => TaskProvider::Claude,
             Self::Grok { .. } => TaskProvider::Grok,
             Self::Antigravity { .. } => TaskProvider::Antigravity,
+            Self::Copilot { .. } => TaskProvider::Copilot,
         }
     }
 
@@ -101,7 +108,10 @@ impl RunBy {
     pub(crate) fn cwd(&self) -> Option<&str> {
         match self {
             Self::Codex => None,
-            Self::Claude { cwd, .. } | Self::Grok { cwd } | Self::Antigravity { cwd } => Some(cwd),
+            Self::Claude { cwd, .. }
+            | Self::Grok { cwd }
+            | Self::Antigravity { cwd }
+            | Self::Copilot { cwd } => Some(cwd),
         }
     }
 
@@ -110,7 +120,9 @@ impl RunBy {
     pub(crate) fn claude_config_dir(&self) -> Option<&str> {
         match self {
             Self::Claude { config_dir, .. } => config_dir.as_deref(),
-            Self::Codex | Self::Grok { .. } | Self::Antigravity { .. } => None,
+            Self::Codex | Self::Grok { .. } | Self::Antigravity { .. } | Self::Copilot { .. } => {
+                None
+            }
         }
     }
 
@@ -135,6 +147,10 @@ impl RunBy {
             "grok" => cwd
                 .filter(|cwd| !cwd.trim().is_empty())
                 .map(|cwd| Self::Grok { cwd })
+                .ok_or(TaskStoreError::InvalidRow("cwd")),
+            "copilot" => cwd
+                .filter(|cwd| !cwd.trim().is_empty())
+                .map(|cwd| Self::Copilot { cwd })
                 .ok_or(TaskStoreError::InvalidRow("cwd")),
             "antigravity" => cwd
                 .filter(|cwd| !cwd.trim().is_empty())
@@ -644,6 +660,25 @@ where
     S: GStore + GStoreMut + Planner,
 {
     Ok(list(glue, None, usize::MAX)?.0)
+}
+
+/// Active and archived Tasks retain ownership of their provider's native sessions.
+pub(super) fn list_for_provider<S>(
+    glue: &mut Glue<S>,
+    provider: TaskProvider,
+) -> Result<Vec<ManagedThread>>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    table(TABLE_NAME)
+        .select()
+        .filter(col("provider").eq(text(provider.as_str())))
+        .project(columns())
+        .execute(glue)
+        .rows_as::<ManagedThreadRow>()?
+        .into_iter()
+        .map(ManagedThread::try_from)
+        .collect()
 }
 
 pub(super) fn claim_at_top<S>(
@@ -1694,6 +1729,27 @@ mod tests {
         thread
             .section_id()
             .and_then(|section_id| Order::Section(section_id.to_string()).position_of(&thread))
+    }
+
+    #[test]
+    fn listing_a_providers_tasks_includes_active_and_archived_owners() {
+        let mut glue = memory();
+        for id in ["active", "archived"] {
+            let mut task = thread(id, Some(1));
+            task.run_by = RunBy::Copilot {
+                cwd: "/repo".into(),
+            };
+            claim(&mut glue, task, 1).unwrap();
+        }
+        archive(&mut glue, "archived", 2).unwrap();
+        claim(&mut glue, thread("another-provider", Some(1)), 1).unwrap();
+        let mut owners = list_for_provider(&mut glue, TaskProvider::Copilot).unwrap();
+        owners.sort_by(|a, b| a.thread_id.cmp(&b.thread_id));
+        assert_eq!(owners.len(), 2);
+        assert_eq!(owners[0].thread_id, "active");
+        assert!(owners[0].archived_at_ms.is_none());
+        assert_eq!(owners[1].thread_id, "archived");
+        assert_eq!(owners[1].archived_at_ms, Some(2));
     }
 
     #[test]

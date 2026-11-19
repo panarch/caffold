@@ -1,4 +1,4 @@
-//! Setup and transport for the live Claude cases.
+//! Setup and HTTP transport for the live agent cases.
 //!
 //! This module starts backends and carries requests. It decides nothing about
 //! whether Caffold behaved correctly — every such judgement belongs to the case
@@ -96,16 +96,13 @@ impl Backend {
         .await
     }
 
-    async fn start_with_environment(environment: &[(&str, &str)]) -> Self {
+    pub async fn start_with_environment(environment: &[(&str, &str)]) -> Self {
         // Short on purpose. The runner's socket lives inside the data
         // directory, and a unix socket path must stay short of 104 bytes on
         // macOS — which the usual temporary directory very nearly spends by
         // itself.
-        let root = PathBuf::from(format!(
-            "/tmp/cf-{}-{}",
-            std::process::id(),
-            COUNTER.fetch_add(1, Ordering::Relaxed)
-        ));
+        let instance = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let root = PathBuf::from(format!("/tmp/cf-{}-{instance}", std::process::id()));
         std::fs::create_dir_all(root.join("notes")).expect("a root to work in");
         for (name, body) in [
             ("one.txt", "the first note"),
@@ -114,8 +111,7 @@ impl Backend {
         ] {
             std::fs::write(root.join("notes").join(name), body).expect("a file to read");
         }
-        let port =
-            5300 + (std::process::id() as u16 % 200) + COUNTER.load(Ordering::Relaxed) as u16;
+        let port = 5301 + (std::process::id() as u16 % 200) + instance as u16;
         let mut backend = Self {
             root,
             at: Http { port },
@@ -388,6 +384,15 @@ impl Drop for Backend {
             .stderr(Stdio::null())
             .status()
             .ok();
+        let copilot = self.root.join("data/copilot/runner.sock");
+        if copilot.exists() {
+            let _ = Command::new(self.runner_binary())
+                .args(["daemon", "stop", "--socket"])
+                .arg(copilot)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
         let _ = std::fs::remove_dir_all(&self.root);
     }
 }

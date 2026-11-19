@@ -6,7 +6,7 @@
 
 use axum::extract::Path as AxumPath;
 
-use crate::agent::{ItemKind, ThreadStatus, TurnPage};
+use crate::agent::{AgentError, ItemKind, ThreadStatus, TurnPage};
 use crate::app::error::ApiError;
 use crate::app::tasks::TaskState;
 use crate::app::tasks::lifecycle::{ForkTask, ForkTaskSource};
@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use super::CreatedTaskResponse;
 use super::commands::new_task_agent;
 use super::membership::task_store_join_error;
-use super::store::{task_store_api_error, task_store_get};
+use super::store::task_store_api_error;
 use crate::app::tasks::presence::moved_refusal;
 use crate::app::tasks::projection;
 
@@ -45,7 +45,7 @@ struct CreateTaskForkRequest {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TaskForkSourcePreview {
-    provider: &'static str,
+    provider: String,
     source_id: String,
     display_name: String,
     summary: Option<String>,
@@ -100,7 +100,7 @@ async fn fork_task_owned(
         .to_string();
     let agent = fork_agent(
         &state,
-        provider_name(source.run_by.provider()),
+        source.run_by.provider().as_str(),
         Some(&source),
         &cwd,
     )
@@ -133,25 +133,15 @@ async fn preview_task_fork_source(
     Json(request): Json<TaskForkSourceRequest>,
 ) -> Result<Json<TaskForkSourcePreview>, ApiError> {
     let source_id = task_fork_source_id(&request.provider, &request.source_id)?;
-    ensure_task_fork_source_provider(&state, &source_id, &request.provider).await?;
-    let owner = task_store_get(&state, &source_id).await?;
-    let agent = fork_agent(&state, request.provider.trim(), owner.as_ref(), "").await?;
-    let source = agent
-        .driver()
-        .read_fork_source(&source_id, true, true)
-        .await
-        .map_err(task_fork_source_read_error)?;
-    if source.conversation.id != source_id {
-        return Err(ApiError::BadRequest {
-            code: "task_fork_source_mismatch",
-            message: "The agent returned a different source conversation".into(),
-        });
-    }
+    let provider = request.provider.trim();
+    let source = external_fork_source(&state, provider, &source_id).await?;
+    let agent = fork_agent(&state, provider, source.owner(), "").await?;
+    let source = source.read(&agent.driver(), true).await?;
     let conversation = source.conversation;
     let history = source.turns_page.unwrap_or_default();
 
     Ok(Json(TaskForkSourcePreview {
-        provider: provider_name(agent.run_by("").provider()),
+        provider: provider.to_owned(),
         source_id,
         display_name: projection::conversation_display_name(&conversation),
         summary: non_empty_fork_metadata(&conversation.preview),
@@ -180,39 +170,9 @@ async fn create_task_fork_owned(
 ) -> Result<Json<CreatedTaskResponse>, ApiError> {
     let source_id = task_fork_source_id(&request.provider, &request.source_id)?;
     let (section, cwd) = task_fork_target_context(&state, &request.section_id).await?;
-    ensure_task_fork_source_provider(&state, &source_id, &request.provider).await?;
-    let mut owner = task_store_get(&state, &source_id).await?;
-    if request.provider.trim() == "grok" {
-        // A Task may have moved onto a different native ID. Lock its deletion
-        // owner even when this request names an older session it owns.
-        let store = state.task_store.clone();
-        let managed = tokio::task::spawn_blocking(move || {
-            store.read(|tables| tables.active_managed_threads())
-        })
-        .await
-        .map_err(task_store_join_error)?
-        .map_err(task_store_api_error)?;
-        for task in managed
-            .into_iter()
-            .filter(|task| task.run_by.provider() == TaskProvider::Grok)
-        {
-            if state
-                .task_runtime
-                .grok()
-                .owns_fork_source(&task.thread_id, &source_id)
-                .await
-                .map_err(crate::agent::AgentError::from)?
-            {
-                owner = Some(task);
-                break;
-            }
-        }
-    }
-    let agent = fork_agent(&state, request.provider.trim(), owner.as_ref(), &cwd).await?;
-    let source = ForkTaskSource::External {
-        thread_id: source_id,
-        owner: owner.map(Box::new),
-    };
+    let provider = request.provider.trim();
+    let source = external_fork_source(&state, provider, &source_id).await?;
+    let agent = fork_agent(&state, provider, source.owner(), &cwd).await?;
     let created = state
         .lifecycle
         .fork_task(
@@ -266,7 +226,7 @@ fn fork_created_but_unreadable(thread_id: &str, error: ApiError) -> ApiError {
 
 fn task_fork_source_id(provider: &str, source_id: &str) -> Result<String, ApiError> {
     match provider.trim() {
-        "codex" | "claude" | "grok" => {}
+        "codex" | "claude" | "grok" | "copilot" => {}
         "antigravity" | "agy" => {
             return Err(ApiError::BadRequest {
                 code: "task_fork_unsupported_provider",
@@ -276,7 +236,7 @@ fn task_fork_source_id(provider: &str, source_id: &str) -> Result<String, ApiErr
         _ => {
             return Err(ApiError::BadRequest {
                 code: "task_fork_provider_invalid",
-                message: "provider must be codex, claude or grok".into(),
+                message: "provider must be codex, claude, grok or copilot".into(),
             });
         }
     }
@@ -305,18 +265,57 @@ fn task_fork_source_id(provider: &str, source_id: &str) -> Result<String, ApiErr
     Ok(source_id.to_string())
 }
 
-async fn ensure_task_fork_source_provider(
+/// Find the Task that owns deletion and mutation of the supplied native session.
+async fn external_fork_source(
     state: &TaskState,
-    source_id: &str,
     provider: &str,
-) -> Result<(), ApiError> {
-    if task_store_get(state, source_id)
-        .await?
-        .is_some_and(|source| provider_name(source.run_by.provider()) != provider.trim())
+    source_id: &str,
+) -> Result<ForkTaskSource, ApiError> {
+    let store = state.task_store.clone();
+    let id = source_id.to_owned();
+    let mut owner = tokio::task::spawn_blocking(move || store.find(&id))
+        .await
+        .map_err(task_store_join_error)?
+        .map_err(task_store_api_error)?;
+    if let Some(task) = &owner {
+        if task.run_by.provider().as_str() != provider {
+            return Err(task_fork_source_provider_mismatch());
+        }
+    } else if let Some(provider @ (TaskProvider::Grok | TaskProvider::Copilot)) =
+        TaskProvider::from_name(provider)
     {
-        return Err(task_fork_source_provider_mismatch());
+        let store = state.task_store.clone();
+        let tasks = tokio::task::spawn_blocking(move || {
+            store.read(|tables| tables.managed_threads_for_provider(provider))
+        })
+        .await
+        .map_err(task_store_join_error)?
+        .map_err(task_store_api_error)?;
+        for task in tasks {
+            let owns = if provider == TaskProvider::Grok {
+                state
+                    .task_runtime
+                    .grok()
+                    .owns_fork_source(&task.thread_id, source_id)
+                    .await
+                    .map_err(AgentError::from)?
+            } else {
+                state
+                    .task_runtime
+                    .copilot()
+                    .owns_fork_source(&task.thread_id, source_id)
+                    .await?
+            };
+            if owns {
+                owner = Some(task);
+                break;
+            }
+        }
     }
-    Ok(())
+    Ok(ForkTaskSource::External {
+        thread_id: source_id.to_owned(),
+        owner: owner.map(Box::new),
+    })
 }
 
 async fn task_fork_target_context(
@@ -393,25 +392,6 @@ fn task_fork_preview_history(page: &TurnPage) -> Vec<TaskForkPreviewMessage> {
 
 fn non_empty_fork_metadata(value: &str) -> Option<String> {
     (!value.trim().is_empty()).then(|| value.to_string())
-}
-
-fn task_fork_source_read_error(error: crate::agent::AgentError) -> ApiError {
-    match error {
-        crate::agent::AgentError::ConversationGone(message) => ApiError::NotFound {
-            code: "task_fork_source_unresolved",
-            message,
-        },
-        error => error.into(),
-    }
-}
-
-fn provider_name(provider: TaskProvider) -> &'static str {
-    match provider {
-        TaskProvider::Codex => "codex",
-        TaskProvider::Claude => "claude",
-        TaskProvider::Grok => "grok",
-        TaskProvider::Antigravity => "antigravity",
-    }
 }
 
 fn task_fork_source_provider_mismatch() -> ApiError {

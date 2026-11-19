@@ -93,18 +93,17 @@ Task naming, reading the Task's recorded agent settings, managed-worktree
 preparation, and Notes are Caffold-owned operations, not general agent
 permissions. Caffold declares that closed tool set
 through each agent's native extension point and allows those calls without
-adding another Caffold approval card. Antigravity may ask before an MCP call
-through its own permission flow. Each tool still enforces its own checks, such as
+adding another Caffold approval card. Antigravity and GitHub Copilot can request native permission before an MCP call. Each tool still enforces its own checks, such as
 the Task and Git lifecycle for the Task tools and a Note's content version for
 the Notes tools. An unknown tool or an unmanaged conversation is refused.
 Caffold keeps no Note history, so a Notes tool that replaces or deletes content
 cannot be undone.
 
-Codex, Grok, and Antigravity reach this surface through HTTP MCP addresses on the Caffold
-server at `/api/codex/mcp`, `/api/grok/mcp`, and `/api/antigravity/mcp`. Each address has its own handler
+Codex, Grok, Antigravity, and GitHub Copilot reach this surface through HTTP MCP addresses on the Caffold
+server at `/api/codex/mcp`, `/api/grok/mcp`, `/api/antigravity/mcp`, and `/api/copilot/mcp`. Each address has its own handler
 and its own bindings, and the bound Task's recorded agent decides which driver
 carries a call out. Each request-scoped Codex app-server config carries a
-private opaque binding header, and Grok/Antigravity session declarations carry one as
+private opaque binding header, and Grok, Antigravity, and Copilot session declarations carry one as
 an HTTP header.
 A Task-scoped call is authorized only by that header together with its signed
 MCP session. The session authenticates the provider thread ID and a digest of
@@ -153,7 +152,7 @@ an agent or select a Task, and an unavailable key or a request without an
 install-issued capability fails closed without preventing a Caffold service
 that lacks one of the agents from starting.
 
-All four supported agents expose the same MCP base names: the Task-owned
+All five supported agents expose the same MCP base names: the Task-owned
 `rename_current_task`, `isolate_current_task`, `read_current_task_name`, and
 `read_current_task_agent_settings`, plus the Notes tools listed in
 [Agent Runtimes](agent-runtimes.md#caffold-served-tools-and-worktrees).
@@ -440,6 +439,10 @@ Current rules:
 - a request left unanswered when the bridge goes away is retired as
   unavailable; the leader asks again when the session is next loaded, under the
   same tool call identity and a new request.
+
+## GitHub Copilot execution approvals
+
+The CLI retains pending requests by native ID. The SDK supplies the required decision source and the grants offered for that request. Caffold sends organization-mandated human approvals directly to the person, including in **Ask Jev first** mode. A person's answer carries `human_response`. An eligible one-time allowance from Jev carries `host_policy`. The Copilot driver verifies the native request before sending a decision. If the receipt is lost, it queries the SDK once. A pending request or a failed query keeps the original card answerable. Reconnection reconciles the cards with the SDK’s pending list. See [Agent runtimes](agent-runtimes.md#github-copilot-lifecycle) for session ownership.
 
 ## Antigravity Execution Approvals
 

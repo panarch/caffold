@@ -8,7 +8,7 @@ Caffold supports three entry paths into the same repeated development loop:
 
 ```text
 Global New
-        -> choose a cwd and a Codex, Claude, Grok, or Antigravity model
+        -> choose a cwd and a Codex, Claude, Grok, Antigravity, or GitHub Copilot model
         -> start a Task with that agent
         -> optionally prepare the same Task in an isolated worktree
 
@@ -40,7 +40,7 @@ implemented outer lifecycle.
 2. For Global New, confirm or choose the cwd. Section New uses its managed
    logical path.
 3. Choose a model. Each offered model identifies its agent, so this choice also
-   binds the new Task to Codex, Claude, Grok, or Antigravity. Choose the available effort, speed,
+   binds the new Task to Codex, Claude, Grok, Antigravity, or GitHub Copilot. Choose the available effort, speed,
    and permission mode, then send a prompt. Grok keeps that permission mode for
    the rest of the Task.
 4. Caffold starts the chosen agent's empty conversation in that cwd, durably
@@ -62,7 +62,7 @@ implemented outer lifecycle.
    native MCP integration. This remains model-followed behavior rather than a
    completion gate.
 8. Repository and worktree context is derived from the Task's current cwd.
-9. Every prompt uses the same agent. All four agents support steering.
+9. Every prompt uses the same agent. All five agents support steering.
    Antigravity requires a pending permission to be answered or the turn stopped first.
    The Task cannot switch agents in place.
 10. Approvals, completion, interruption, and failures remain visible in the
@@ -72,7 +72,7 @@ implemented outer lifecycle.
 
 Both entry points use the same native conversation-fork lifecycle:
 
-1. From an idle managed Codex, Claude, or Grok Task, choose **Fork task**. Its provider and
+1. From an idle managed Codex, Claude, Grok, or GitHub Copilot Task, choose **Fork task**. Its provider and
    conversation ID are already known.
 2. From a managed Section, choose **Fork conversation**, choose the source agent, enter an ID,
    and explicitly request a preview. Caffold uses read-only provider APIs or native transcripts for
@@ -97,6 +97,8 @@ worktrees are not copied or created; the child can later use the ordinary
 explicit worktree-isolation operation. A failure before the managed claim
 creates no Task. Caffold attempts to delete a native child if validation or
 claim fails; cleanup failures retain the child ID in diagnostics.
+
+In a Copilot Task, the CLI can require a person to answer a particular permission request. That request goes directly to the user even with **Ask Jev first**. The approval card offers the scopes the CLI can apply to that request.
 
 ### Continue with another agent
 
@@ -204,7 +206,7 @@ ordinary files in Files.
    part of the message: the agent reads it, and the conversation shows it as
    written.
 4. A PNG, JPEG, GIF, WebP, or AVIF picture of up to 10 MB also reaches the agent
-   as an image. Codex opens the uploaded file itself; Claude, Grok, and Antigravity receive its
+   as an image. Codex opens the uploaded file itself; Claude, Grok, Antigravity, and GitHub Copilot receive its
    bytes inside the prompt. Every other file, including a larger picture or one
    in another format, reaches the agent only through its path.
 5. Caffold deletes a send's folder only when the agent certainly did not
@@ -264,7 +266,7 @@ stops after worktree preparation.
 
 For an Issue:
 
-1. Choose a base ref and a Codex, Claude, Grok, or Antigravity model.
+1. Choose a base ref and a Codex, Claude, Grok, Antigravity, or GitHub Copilot model.
 2. Caffold creates a Task at the repository root.
 3. The setup prompt treats the Issue body and URL as untrusted context, renames
    the Task, creates a concise branch from the selected base with
@@ -369,7 +371,7 @@ independent objects:
 | --- | --- |
 | Origin | Global New, managed Section, explicit GitHub Issue/PR Start Task, a native fork of an existing supported conversation, or continuation from another Task. |
 | Task | Caffold-owned membership, display identity, selected agent, and review entry point. |
-| Agent conversation | Codex app-server thread, Claude session/transcript, Grok leader-held session, or Antigravity native trajectory that owns prompts, turns, and agent activity. |
+| Agent conversation | Codex app-server thread, Claude session/transcript, Grok leader-held session, Antigravity native trajectory, or Copilot SDK session that owns prompts, turns, and agent activity. |
 | Note | Caffold-owned Markdown record shared by every Task, changed only through agents' Notes tools. |
 | Repository | Git repository in which the job is evaluated. |
 | Worktree | Git-owned execution and inspection environment. |

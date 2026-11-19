@@ -1763,7 +1763,9 @@ export class CaffoldTaskDetail extends CaffoldElement {
       this.forkStateValue.loading ||
       (this.forkStateValue.error as TaskResponseError | null)?.createdTaskId ||
       this.archiveStateValue.loading ||
-      !["codex", "claude", "grok"].includes(this.taskDetail?.provider ?? "") ||
+      !["codex", "claude", "grok", "copilot"].includes(
+        this.taskDetail?.provider ?? "",
+      ) ||
       taskThreadStatusType(task) !== "idle" ||
       isTaskTransportStale(this.detailSession.state)
     ) {

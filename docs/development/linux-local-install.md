@@ -41,7 +41,8 @@ limactl shell caffold-dev -- bash -lc '
     -v /Users:/Users:ro \
     quay.io/pypa/manylinux_2_28_aarch64 bash -c "
       set -e
-      dnf install -y -q git clang-devel
+      dnf install -y -q git clang-devel openssl3-devel
+      export OPENSSL_INCLUDE_DIR=/usr/include/openssl3 OPENSSL_LIB_DIR=/usr/lib64/openssl3
       git config --global --add safe.directory \"*\"
       [ -x /root/.cargo/bin/cargo ] || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.96.0
       . /root/.cargo/env

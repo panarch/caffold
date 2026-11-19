@@ -8,7 +8,7 @@ use super::{
 };
 use crate::agent::{
     AgentError, Conversation, ItemKind, ThreadStatus, TurnOptions,
-    fork::{ForkRevision, ForkSource, ForkedConversation},
+    fork::{ForkRevision, ForkSource, ForkSourceId, ForkedConversation},
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -55,13 +55,12 @@ impl GrokClient {
 
     pub(crate) async fn read_fork_source(
         &self,
-        id: &str,
-        external: bool,
+        source: ForkSourceId<'_>,
     ) -> Result<ForkSource, AgentError> {
-        let native = if external {
-            None
-        } else {
-            Some(self.native_of(id).await?)
+        let id = source.id();
+        let native = match source {
+            ForkSourceId::Task(task) => Some(self.native_of(task).await?),
+            ForkSourceId::Native { .. } => None,
         };
         let native_id = native
             .as_ref()
@@ -158,10 +157,10 @@ impl GrokClient {
             updates.total_count.saturating_sub(updates.updates.len()),
             None,
         );
-        let owner = if external {
-            self.inner.natives.lock().await.get(native_id).cloned()
-        } else {
-            Some(id.to_string())
+        // Only the current native address can supply live status for this history.
+        let owner = match source {
+            ForkSourceId::Task(task) => Some(task.to_string()),
+            ForkSourceId::Native { .. } => self.inner.natives.lock().await.get(native_id).cloned(),
         };
         let watched = match &owner {
             Some(owner) => self.watched_conversation(owner).await,
@@ -192,7 +191,7 @@ impl GrokClient {
             .saturating_mul(1000);
         Ok(ForkSource {
             conversation: Conversation {
-                id: native_id.to_string(),
+                id: id.to_string(),
                 title: watched
                     .as_ref()
                     .and_then(|live| live.title.clone())
@@ -349,8 +348,17 @@ mod tests {
             .unwrap()
             .updates
             .insert(parent.id.clone(), history);
-        let before = client.read_fork_source(&parent.id, false).await.unwrap();
-        let external = client.read_fork_source(&parent.id, true).await.unwrap();
+        let before = client
+            .read_fork_source(ForkSourceId::Task(&parent.id))
+            .await
+            .unwrap();
+        let external = client
+            .read_fork_source(ForkSourceId::Native {
+                id: &parent.id,
+                owner: None,
+            })
+            .await
+            .unwrap();
         assert!(before.same_revision(&external));
         let child = client
             .create_fork(&before, "/target", "Fork of source")
@@ -377,7 +385,14 @@ mod tests {
                 .all(|request| request["sessionId"] == child.conversation.id)
         );
         assert!(leader.requests("session/close").is_empty());
-        assert!(before.same_revision(&client.read_fork_source(&parent.id, false).await.unwrap()));
+        assert!(
+            before.same_revision(
+                &client
+                    .read_fork_source(ForkSourceId::Task(&parent.id))
+                    .await
+                    .unwrap()
+            )
+        );
         client.erase(&child.conversation.id).await.unwrap();
         assert!(memory.lock().unwrap().cwds.contains_key(&parent.id));
         assert!(
@@ -413,12 +428,37 @@ mod tests {
             .await
             .unwrap();
         wait_for_move(&client, &parent.id).await;
-        let source = client.read_fork_source(&parent.id, false).await.unwrap();
-        assert_ne!(source.conversation.id, parent.id);
+        let source = client
+            .read_fork_source(ForkSourceId::Task(&parent.id))
+            .await
+            .unwrap();
+        let ForkRevision::Grok {
+            session_id: parent_native,
+            ..
+        } = &source.revision
+        else {
+            panic!("expected a Grok native revision")
+        };
+        assert_eq!(source.conversation.id, parent.id);
+        assert_ne!(parent_native, &parent.id);
         assert_eq!(source.conversation.cwd, "/parent-worktree");
+        let historical = client
+            .driver()
+            .read_fork_source(
+                ForkSourceId::Native {
+                    id: &parent.id,
+                    owner: Some(&parent.id),
+                },
+                true,
+            )
+            .await
+            .unwrap();
+        assert_eq!(historical.conversation.id, parent.id);
+        assert_eq!(historical.conversation.cwd, "/source");
+        assert!(!source.same_revision(&historical));
         assert!(
             client
-                .owns_fork_source(&parent.id, &source.conversation.id)
+                .owns_fork_source(&parent.id, parent_native)
                 .await
                 .unwrap()
         );
@@ -438,16 +478,23 @@ mod tests {
             .unwrap();
         wait_for_move(&client, &child.conversation.id).await;
         let moved = client
-            .read_fork_source(&child.conversation.id, false)
+            .read_fork_source(ForkSourceId::Task(&child.conversation.id))
             .await
             .unwrap();
         assert_eq!(moved.conversation.cwd, "/child-worktree");
         client.erase(&child.conversation.id).await.unwrap();
         let records = memory.lock().unwrap();
         assert!(records.cwds.contains_key(&parent.id));
-        assert!(records.cwds.contains_key(&source.conversation.id));
+        assert!(records.cwds.contains_key(parent_native));
         assert!(!records.cwds.contains_key(&child.conversation.id));
-        assert!(!records.cwds.contains_key(&moved.conversation.id));
+        let ForkRevision::Grok {
+            session_id: child_native,
+            ..
+        } = &moved.revision
+        else {
+            panic!("expected a Grok native revision")
+        };
+        assert!(!records.cwds.contains_key(child_native));
     }
 
     async fn wait_for_move(client: &GrokClient, id: &str) {
@@ -475,7 +522,10 @@ mod tests {
             .start_conversation("/source", &GrokTurnOptions::default())
             .await
             .unwrap();
-        let source = client.read_fork_source(&parent.id, false).await.unwrap();
+        let source = client
+            .read_fork_source(ForkSourceId::Task(&parent.id))
+            .await
+            .unwrap();
         assert!(
             client
                 .create_fork(&source, "/target", "Fork")
@@ -504,7 +554,7 @@ mod tests {
             })
         });
         assert!(
-            matches!(client.read_fork_source(&Uuid::now_v7().to_string(), true).await,
+            matches!(client.read_fork_source(ForkSourceId::Native { id: &Uuid::now_v7().to_string(), owner: None }).await,
             Err(AgentError::Failed(message)) if message.contains("complete session list"))
         );
         assert!(leader.requests("session/load").is_empty());
@@ -519,7 +569,13 @@ mod tests {
         let (leader, _) = scripted_leader_with(bridges, move |method, _| {
             (method == "session/list").then(|| MockAnswer::Result(json!({"sessions":[{"sessionId":wanted,"cwd":"/external","title":"External session","updatedAt":"2026-11-02T00:00:00Z"}]})))
         });
-        let source = client.read_fork_source(&id, true).await.unwrap();
+        let source = client
+            .read_fork_source(ForkSourceId::Native {
+                id: &id,
+                owner: None,
+            })
+            .await
+            .unwrap();
         assert_eq!(source.conversation.cwd, "/external");
         assert_eq!(source.conversation.status, ThreadStatus::NotLoaded);
         assert!(client.inner.bindings.read(&id).await.unwrap().is_none());

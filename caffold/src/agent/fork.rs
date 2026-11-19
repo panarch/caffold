@@ -6,6 +6,22 @@ use std::path::PathBuf;
 use super::codex::codex_mode_id;
 use super::{AgentError, Conversation, Driver, TurnOptions, TurnPage};
 
+/// A managed fork follows the Task's current session. A native fork keeps the supplied
+/// session ID, including one left behind by a worktree switch.
+#[derive(Clone, Copy)]
+pub(crate) enum ForkSourceId<'a> {
+    Task(&'a str),
+    Native { id: &'a str, owner: Option<&'a str> },
+}
+
+impl<'a> ForkSourceId<'a> {
+    pub(crate) fn id(self) -> &'a str {
+        match self {
+            Self::Task(id) | Self::Native { id, .. } => id,
+        }
+    }
+}
+
 pub(crate) struct ForkSource {
     pub(crate) conversation: Conversation,
     pub(crate) turns_page: Option<TurnPage>,
@@ -16,6 +32,10 @@ pub(crate) struct ForkSource {
 #[derive(Debug, PartialEq)]
 pub(super) enum ForkRevision {
     Codex(f64),
+    Copilot {
+        native_id: String,
+        last_event: Option<String>,
+    },
     Claude {
         path: PathBuf,
         fingerprint: u64,
@@ -44,14 +64,12 @@ pub(crate) struct ForkedConversation {
 }
 
 impl Driver {
-    /// `external` means a native ID, not a Caffold Task ID. In particular a
-    /// Grok Task can have moved onto a different native session.
     pub(crate) async fn read_fork_source(
         &self,
-        id: &str,
-        external: bool,
+        source: ForkSourceId<'_>,
         with_turns: bool,
     ) -> Result<ForkSource, AgentError> {
+        let id = source.id();
         match self {
             Self::Codex(client) => {
                 let thread = client.read_thread(id).await?;
@@ -75,7 +93,8 @@ impl Driver {
                     .read_fork_source(id, claude.config_dir.as_deref())
                     .await
             }
-            Self::Grok(client) => client.read_fork_source(id, external).await,
+            Self::Copilot(client) => client.read_fork_source(source, with_turns).await,
+            Self::Grok(client) => client.read_fork_source(source).await,
             Self::Antigravity(_) => Err(AgentError::Failed(
                 "Antigravity conversation fork is not supported".into(),
             )),
@@ -111,6 +130,7 @@ impl Driver {
                     .create_fork(source, cwd, claude.config_dir.as_deref(), title, options)
                     .await
             }
+            Self::Copilot(client) => client.create_fork(source, cwd, title, options).await,
             Self::Grok(client) => client.create_fork(source, cwd, title).await,
             Self::Antigravity(_) => Err(AgentError::Failed(
                 "Antigravity conversation fork is not supported".into(),
@@ -138,7 +158,7 @@ impl Driver {
                 child.conversation.title = Some(title.to_string());
                 Ok(())
             }
-            Self::Claude(_) | Self::Grok(_) => Ok(()),
+            Self::Claude(_) | Self::Grok(_) | Self::Copilot(_) => Ok(()),
             Self::Antigravity(_) => Err(AgentError::Failed(
                 "Antigravity conversation fork is not supported".into(),
             )),

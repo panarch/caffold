@@ -309,6 +309,23 @@ Name a scenario and its image after the surface they show, so that a search
 for the surface finds both. Keep the sample content short and representative;
 edge cases and layout stress data belong in the owning behavioral fixtures.
 
+## GitHub Copilot CLI integration
+
+Run `cargo test -p caffold copilot` for SDK message identity, usage, approval scopes and task-bound MCP discovery. The Copilot Settings browser test checks the account, model list and refresh through the normal Settings route.
+
+For a live smoke test, point a development server at an empty Git checkout and a separate data directory. Open **Settings → GitHub Copilot**, create a Task with an available model, and send a short prompt. Record the returned user message ID. Restart the backend using the same port and data directory, then reopen the Task and check the original input and response. A synthetic model can hold a second Task at a tool approval to check that the original request remains answerable through the same runner.
+
+With the installed Copilot CLI and its existing GitHub login, run the HTTP
+integration tests below. They use temporary native storage. One test replaces
+the backend and archives, restores and deletes the same named Task. The fork
+test previews a native session, creates an independent child and checks that
+the parent can stay archived while serving as a fork source. Both use empty
+conversations and run without inference.
+
+```sh
+cargo test -p caffold --test copilot_live -- --ignored
+```
+
 ## Codex compatibility and live tests
 
 To verify status against an already running daemon without starting, restarting,

@@ -376,6 +376,7 @@ pub(super) async fn task_provider_driver(
         }
         RunBy::Grok { .. } => Ok(Ok(state.task_runtime.grok().driver())),
         RunBy::Antigravity { .. } => Ok(Ok(state.task_runtime.antigravity().driver())),
+        RunBy::Copilot { .. } => Ok(Ok(state.task_runtime.copilot().driver())),
     }
 }
 
@@ -385,7 +386,9 @@ async fn archive_provider(driver: Option<&Driver>, thread_id: &str) -> Result<bo
     };
     match driver.archive_conversation(thread_id).await {
         Ok(()) => Ok(true),
-        Err(error) if matches!(driver, Driver::Antigravity(_)) => Err(error.into()),
+        Err(error) if matches!(driver, Driver::Antigravity(_) | Driver::Copilot(_)) => {
+            Err(error.into())
+        }
         Err(error) => {
             eprintln!(
                 "failed to archive the provider conversation for Task {thread_id}; continuing with Caffold archive: {error}"

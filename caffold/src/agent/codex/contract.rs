@@ -518,6 +518,7 @@ pub(crate) fn approval_request(
     let mut permissions = permission_rows(params.get("permissions"));
     permissions.extend(permission_rows(params.get("additionalPermissions")));
     ApprovalRequest {
+        requires_human: false,
         id: approval_id,
         turn_id: text_field(params, "turnId"),
         item_id: text_field(params, "itemId"),

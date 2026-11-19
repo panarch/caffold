@@ -26,6 +26,7 @@ pub(crate) mod approval;
 pub(crate) mod claude;
 pub(crate) mod codex;
 pub(crate) mod conversation;
+pub(crate) mod copilot;
 pub(crate) mod driver;
 pub(crate) mod fork;
 pub(crate) mod grok;

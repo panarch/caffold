@@ -16,24 +16,24 @@ use super::{
 };
 use crate::agent::AgentError;
 use crate::{
-    agent::antigravity::AntigravityClient,
     agent::claude::ClaudeClient,
     agent::codex::{
-        CodexClient, CodexConnection, CodexDaemonInfo, CodexMcpBindings, CodexReadiness,
-        CodexStatusResponse, CodexThreadClient, CodexThreadError, CodexUpdateOutcome,
-        CodexUpdateReport,
+        CodexClient, CodexConnection, CodexDaemonInfo, CodexReadiness, CodexStatusResponse,
+        CodexThreadClient, CodexThreadError, CodexUpdateOutcome, CodexUpdateReport,
     },
     agent::grok::GrokClient,
     agent::{Driver, TokenUsage},
+    agent::{antigravity::AntigravityClient, copilot::CopilotClient},
     app::jev::PermissionReviewer,
     app::tasks::sessions::{SessionSnapshot, TaskSessions},
     fs::RootedFs,
-    task_store::{ManagedThread, RunBy, TaskStore},
+    task_store::{ManagedThread, RunBy, TaskProvider, TaskStore},
 };
 
 mod antigravity_bridge;
 mod bridge;
 mod claude_bridge;
+mod copilot_bridge;
 mod grok_bridge;
 mod server_requests;
 
@@ -55,8 +55,7 @@ fn permission_instruction_entry(recorded_ms: u64, prompt: &str) -> String {
 
 /// Everything a Task is run through, whichever agent runs it.
 ///
-/// It is not one agent's: it holds the Codex, Claude, and Grok clients side by
-/// side and hands out whichever a Task belongs to. How each agent's process is
+/// It holds the native clients and selects the one that owns the Task. How each agent's process is
 /// reached stays inside that agent's client; this side decides what a session
 /// hears when a connection comes or goes.
 #[derive(Clone)]
@@ -65,6 +64,7 @@ pub(in crate::app::tasks) struct TaskRuntime {
     claude: ClaudeClient,
     grok: GrokClient,
     antigravity: AntigravityClient,
+    copilot: CopilotClient,
     sessions: TaskSessions,
     events: TaskEvents,
     task_store: TaskStore,
@@ -107,6 +107,7 @@ pub(in crate::app::tasks) enum TaskAgent {
     Claude { driver: Driver },
     Grok { driver: Driver },
     Antigravity { driver: Driver },
+    Copilot { driver: Driver },
 }
 
 /// Which connection a Claude answer came from.
@@ -124,14 +125,16 @@ const CLAUDE_GENERATION: u64 = 1;
 /// the application has nothing to count here either.
 const GROK_GENERATION: u64 = 1;
 const ANTIGRAVITY_GENERATION: u64 = 1;
+const COPILOT_GENERATION: u64 = 1;
 
 impl TaskAgent {
     pub(in crate::app::tasks) fn driver(&self) -> Driver {
         match self {
             Self::Codex(connection) => connection.driver(),
-            Self::Claude { driver } | Self::Grok { driver } | Self::Antigravity { driver } => {
-                driver.clone()
-            }
+            Self::Claude { driver }
+            | Self::Grok { driver }
+            | Self::Copilot { driver }
+            | Self::Antigravity { driver } => driver.clone(),
         }
     }
 
@@ -141,6 +144,7 @@ impl TaskAgent {
             Self::Claude { .. } => CLAUDE_GENERATION,
             Self::Grok { .. } => GROK_GENERATION,
             Self::Antigravity { .. } => ANTIGRAVITY_GENERATION,
+            Self::Copilot { .. } => COPILOT_GENERATION,
         }
     }
 
@@ -159,6 +163,7 @@ impl TaskAgent {
                 cwd: cwd.to_string(),
             },
             Self::Antigravity { .. } => RunBy::Antigravity { cwd: cwd.into() },
+            Self::Copilot { .. } => RunBy::Copilot { cwd: cwd.into() },
         }
     }
 
@@ -170,7 +175,10 @@ impl TaskAgent {
     pub(in crate::app::tasks) fn codex(&self) -> Option<&CodexConnection> {
         match self {
             Self::Codex(connection) => Some(connection),
-            Self::Claude { .. } | Self::Grok { .. } | Self::Antigravity { .. } => None,
+            Self::Claude { .. }
+            | Self::Grok { .. }
+            | Self::Copilot { .. }
+            | Self::Antigravity { .. } => None,
         }
     }
 }
@@ -203,6 +211,10 @@ pub(in crate::app::tasks) enum TaskRuntimeSignal {
 #[derive(Debug)]
 pub(in crate::app::tasks) enum ApprovalResolveError {
     NotFound,
+    /// The provider confirmed that the original request is no longer pending.
+    Withdrawn,
+    /// Delivery failed and the request may still be answerable.
+    Unconfirmed(AgentError),
     ThreadMismatch,
     ResolutionMismatch,
     Agent(AgentError),
@@ -259,6 +271,7 @@ impl TaskRuntime {
                         .working_directory(&managed.thread_id)
                         .await?
                 }
+                RunBy::Copilot { .. } => self.copilot.working_directory(&managed.thread_id).await?,
             },
         };
         Ok(cwd)
@@ -307,21 +320,24 @@ impl TaskRuntime {
     }
 
     pub(in crate::app::tasks) fn new(
-        claude: ClaudeClient,
-        grok: GrokClient,
-        antigravity: AntigravityClient,
+        agents: super::AgentRuntimeDependencies,
         sessions: TaskSessions,
         events: TaskEvents,
         task_store: TaskStore,
         shutdown: broadcast::Sender<()>,
     ) -> Self {
         let (signals, _) = broadcast::channel(64);
+        let codex = match agents.codex_mcp {
+            Some(bindings) => CodexClient::default().with_mcp(bindings),
+            None => CodexClient::default(),
+        };
         Self {
-            codex: CodexClient::default(),
+            codex,
             permission_reviewer: None,
-            claude,
-            grok,
-            antigravity,
+            claude: agents.claude,
+            grok: agents.grok,
+            antigravity: agents.antigravity,
+            copilot: agents.copilot,
             sessions,
             events,
             task_store,
@@ -336,7 +352,36 @@ impl TaskRuntime {
         }
     }
 
-    pub(super) fn with_codex_mcp(mut self, bindings: CodexMcpBindings) -> Self {
+    #[cfg(test)]
+    pub(super) fn for_tests(
+        claude: ClaudeClient,
+        grok: GrokClient,
+        antigravity: AntigravityClient,
+        sessions: TaskSessions,
+        events: TaskEvents,
+        task_store: TaskStore,
+        shutdown: broadcast::Sender<()>,
+    ) -> Self {
+        Self::new(
+            super::AgentRuntimeDependencies {
+                claude,
+                grok,
+                antigravity,
+                copilot: CopilotClient::uninstalled(),
+                codex_mcp: None,
+            },
+            sessions,
+            events,
+            task_store,
+            shutdown,
+        )
+    }
+
+    #[cfg(test)]
+    pub(super) fn with_codex_mcp(
+        mut self,
+        bindings: crate::agent::codex::CodexMcpBindings,
+    ) -> Self {
         self.codex = self.codex.with_mcp(bindings);
         self
     }
@@ -350,7 +395,9 @@ impl TaskRuntime {
         self.watch_claude();
         self.watch_grok();
         self.spawn_antigravity_bridge(self.shutdown.subscribe());
+        self.spawn_copilot_bridge(self.shutdown.subscribe());
         self.take_up_antigravity();
+        self.take_up_copilot();
         let runtime = self.clone();
         tokio::spawn(async move {
             let status = runtime.status().await;
@@ -452,6 +499,7 @@ impl TaskRuntime {
 
     pub(in crate::app::tasks) async fn shutdown(&self) {
         self.antigravity.stop().await;
+        self.copilot.stop().await;
         self.codex.shutdown().await;
         // The bridge goes down with the backend; Grok's leader stays up.
         self.grok.stop().await;
@@ -512,6 +560,61 @@ impl TaskRuntime {
         self.codex
             .hold_process_lock_for_test(entered, duration)
             .await;
+    }
+
+    /// Reattach surviving conversations only if the active Task still belongs to this provider.
+    async fn resubscribe_surviving_tasks(&self, provider: TaskProvider, live: Vec<String>) {
+        if live.is_empty() {
+            return;
+        }
+        let store = self.task_store.clone();
+        let managed = tokio::task::spawn_blocking(move || {
+            live.into_iter()
+                .map(|id| store.get(&id))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .await;
+        let managed = match managed {
+            Ok(Ok(managed)) => managed,
+            Ok(Err(error)) => {
+                eprintln!(
+                    "could not read surviving {} Tasks: {error}",
+                    provider.as_str()
+                );
+                return;
+            }
+            Err(error) => {
+                eprintln!("{} Task recovery worker failed: {error}", provider.as_str());
+                return;
+            }
+        };
+        for task in managed
+            .into_iter()
+            .flatten()
+            .filter(|task| task.run_by.provider() == provider)
+        {
+            let _request = self.sessions.reserve_request(&task.thread_id).await;
+            let snapshot = async {
+                let agent = self.agent_for(&task).await?;
+                self.sessions
+                    .ensure_subscribed(&agent.driver(), agent.generation(), &task.thread_id)
+                    .await
+            }
+            .await;
+            let thread_id = task.thread_id;
+            match snapshot {
+                Ok(snapshot) => {
+                    let _ = self.signals.send(TaskRuntimeSignal::SessionChanged {
+                        thread_id,
+                        snapshot: Box::new(snapshot),
+                    });
+                }
+                Err(error) => eprintln!(
+                    "could not restore surviving {} Task {thread_id}: {error}",
+                    provider.as_str()
+                ),
+            }
+        }
     }
 
     /// Begin carrying what Claude sessions say into the Task application.
@@ -629,6 +732,9 @@ impl TaskRuntime {
     pub(in crate::app::tasks) fn antigravity(&self) -> &AntigravityClient {
         &self.antigravity
     }
+    pub(in crate::app::tasks) fn copilot(&self) -> &CopilotClient {
+        &self.copilot
+    }
     /// The agent that owns this Task.
     ///
     /// The Task says which one, so a Claude Task is never held up by Codex
@@ -697,6 +803,9 @@ impl TaskRuntime {
             RunBy::Antigravity { .. } => Ok(TaskAgent::Antigravity {
                 driver: self.antigravity.driver(),
             }),
+            RunBy::Copilot { .. } => Ok(TaskAgent::Copilot {
+                driver: self.copilot.driver(),
+            }),
         }
     }
 
@@ -756,7 +865,7 @@ mod tests {
 
     fn test_runtime(store: TaskStore) -> TaskRuntime {
         let (shutdown, _) = broadcast::channel(1);
-        TaskRuntime::new(
+        TaskRuntime::for_tests(
             agent::claude::ClaudeClient::mock().0,
             agent::grok::GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
@@ -911,7 +1020,7 @@ mod tests {
         let events = TaskEvents::default();
         let store = TaskStore::memory().expect("in-memory task store");
         let (shutdown, _) = broadcast::channel(1);
-        let runtime = TaskRuntime::new(
+        let runtime = TaskRuntime::for_tests(
             agent::claude::ClaudeClient::mock().0,
             agent::grok::GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
@@ -1022,7 +1131,7 @@ mod tests {
     async fn daemon_update_marks_subscribed_sessions_unavailable() {
         let sessions = TaskSessions::default();
         let (shutdown, _) = broadcast::channel(1);
-        let runtime = TaskRuntime::new(
+        let runtime = TaskRuntime::for_tests(
             agent::claude::ClaudeClient::mock().0,
             agent::grok::GrokClient::unreachable(),
             AntigravityClient::uninstalled(),

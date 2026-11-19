@@ -28,7 +28,7 @@
 use std::collections::BTreeMap;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::antigravity::AntigravityClient;
@@ -95,6 +95,7 @@ pub(crate) enum Driver {
     /// the whole of the driver.
     Grok(GrokClient),
     Antigravity(AntigravityClient),
+    Copilot(super::copilot::CopilotClient),
 }
 
 /// Claude, and where the Task being asked about works.
@@ -283,7 +284,8 @@ pub(crate) enum AgentInstallation {
 /// Every field is Caffold's word for something, and what each one means to an
 /// agent is the agent's to work out — which model answers to that name, what
 /// that speed is, what that permission mode does.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct TurnOptions {
     pub(crate) model: Option<String>,
     pub(crate) effort: Option<String>,
@@ -343,6 +345,7 @@ enum AgreedTurnOptions {
     Claude(ClaudeTurnOptions),
     Grok(GrokTurnOptions),
     Antigravity(TurnOptions),
+    Copilot(TurnOptions),
 }
 
 impl AcceptedTurnOptions {
@@ -351,6 +354,7 @@ impl AcceptedTurnOptions {
             AgreedTurnOptions::Codex(codex) => Ok(codex),
             AgreedTurnOptions::Claude(_)
             | AgreedTurnOptions::Grok(_)
+            | AgreedTurnOptions::Copilot(_)
             | AgreedTurnOptions::Antigravity(_) => Err(mismatched_agent()),
         }
     }
@@ -360,6 +364,7 @@ impl AcceptedTurnOptions {
             AgreedTurnOptions::Claude(claude) => Ok(claude),
             AgreedTurnOptions::Codex(_)
             | AgreedTurnOptions::Grok(_)
+            | AgreedTurnOptions::Copilot(_)
             | AgreedTurnOptions::Antigravity(_) => Err(mismatched_agent()),
         }
     }
@@ -369,12 +374,20 @@ impl AcceptedTurnOptions {
             AgreedTurnOptions::Grok(grok) => Ok(grok),
             AgreedTurnOptions::Codex(_)
             | AgreedTurnOptions::Claude(_)
+            | AgreedTurnOptions::Copilot(_)
             | AgreedTurnOptions::Antigravity(_) => Err(mismatched_agent()),
+        }
+    }
+    fn copilot(&self) -> Result<&TurnOptions, AgentError> {
+        match &self.agreed {
+            AgreedTurnOptions::Copilot(options) => Ok(options),
+            _ => Err(mismatched_agent()),
         }
     }
     fn antigravity(&self) -> Result<&TurnOptions, AgentError> {
         match &self.agreed {
             AgreedTurnOptions::Antigravity(options) => Ok(options),
+            AgreedTurnOptions::Copilot(_) => Err(mismatched_agent()),
             AgreedTurnOptions::Codex(_)
             | AgreedTurnOptions::Claude(_)
             | AgreedTurnOptions::Grok(_) => Err(mismatched_agent()),
@@ -400,7 +413,11 @@ fn mismatched_agent() -> AgentError {
 /// on every projection of the user message. Constructing the shared item here
 /// keeps the application from inventing another placeholder identity or
 /// matching later by presentation text.
-fn submitted_user_message(id: &str, text: &str, image_paths: &[String]) -> ConversationItem {
+pub(super) fn submitted_user_message(
+    id: &str,
+    text: &str,
+    image_paths: &[String],
+) -> ConversationItem {
     let content = (!text.is_empty())
         .then(|| MessageContent::Text {
             text: text.to_string(),
@@ -508,7 +525,7 @@ impl Driver {
     pub(crate) fn claude_config_dir(&self) -> Option<&str> {
         match self {
             Self::Claude(claude) => claude.config_dir.as_deref(),
-            Self::Codex(_) | Self::Grok(_) | Self::Antigravity(_) => None,
+            Self::Codex(_) | Self::Grok(_) | Self::Antigravity(_) | Self::Copilot(_) => None,
         }
     }
 
@@ -517,6 +534,13 @@ impl Driver {
         options: &TurnOptions,
     ) -> Result<AcceptedTurnOptions, TurnRejected> {
         match self {
+            Self::Copilot(client) => {
+                let accepted = client.accept_options(options).await?;
+                Ok(AcceptedTurnOptions {
+                    applied: accepted.clone(),
+                    agreed: AgreedTurnOptions::Copilot(accepted),
+                })
+            }
             Self::Antigravity(client) => {
                 let accepted = client.accept_options(options).await?;
                 Ok(AcceptedTurnOptions {
@@ -580,7 +604,7 @@ impl Driver {
     /// composer shows come back.
     pub(crate) fn read_settings(&self, settings: &BTreeMap<String, Value>) -> TurnOptions {
         match self {
-            Self::Antigravity(_) => TurnOptions {
+            Self::Antigravity(_) | Self::Copilot(_) => TurnOptions {
                 model: settings
                     .get("model")
                     .and_then(Value::as_str)
@@ -648,6 +672,7 @@ impl Driver {
     /// The models this agent offers, in the order to show them.
     pub(crate) async fn models(&self) -> Result<Vec<ModelOption>, AgentError> {
         match self {
+            Self::Copilot(client) => client.models().await,
             Self::Antigravity(client) => Ok(client.models().await?),
             Self::Codex(client) => Ok(codex_models(client).await?),
             Self::Claude(claude) => Ok(claude.client.models().await?),
@@ -662,6 +687,7 @@ impl Driver {
         options: &AcceptedTurnOptions,
     ) -> Result<StartedConversation, AgentError> {
         match self {
+            Self::Copilot(client) => client.start_conversation(cwd, options.copilot()?).await,
             Self::Antigravity(client) => Ok(client
                 .start_conversation(cwd, options.antigravity()?)
                 .await?),
@@ -721,6 +747,11 @@ impl Driver {
         options: &AcceptedTurnOptions,
     ) -> Result<StartedTurn, AgentError> {
         match self {
+            Self::Copilot(client) => {
+                client
+                    .start_turn(conversation_id, cwd, prompt, images, options.copilot()?)
+                    .await
+            }
             Self::Antigravity(client) => Ok(client
                 .start_turn(conversation_id, cwd, prompt, images, options.antigravity()?)
                 .await?),
@@ -798,6 +829,11 @@ impl Driver {
         images: &[PromptImage],
     ) -> Result<ConversationItem, AgentError> {
         match self {
+            Self::Copilot(client) => {
+                client
+                    .steer_turn(conversation_id, turn_id, prompt, images)
+                    .await
+            }
             Self::Antigravity(client) => Ok(client
                 .steer_turn(conversation_id, turn_id, prompt, images)
                 .await?),
@@ -843,6 +879,7 @@ impl Driver {
         turn_id: Option<&str>,
     ) -> Result<Vec<CancelledPrompt>, AgentError> {
         match self {
+            Self::Copilot(client) => client.interrupt(conversation_id).await,
             Self::Antigravity(client) => {
                 client.interrupt(conversation_id).await?;
                 Ok(Vec::new())
@@ -879,6 +916,7 @@ impl Driver {
         model: Option<&str>,
     ) -> Result<PermissionModes, AgentError> {
         match self {
+            Self::Copilot(client) => client.permission_modes(cwd).await,
             Self::Antigravity(client) => Ok(client.permission_modes().await?),
             Self::Codex(client) => {
                 let (default_mode, options) = codex_permission_modes(client, cwd).await?;
@@ -915,7 +953,7 @@ impl Driver {
                     )
                     .await?,
             )),
-            Self::Codex(_) | Self::Grok(_) | Self::Antigravity(_) => {
+            Self::Codex(_) | Self::Grok(_) | Self::Antigravity(_) | Self::Copilot(_) => {
                 self.describe(conversation_id).await
             }
         }
@@ -928,6 +966,7 @@ impl Driver {
         speed: &str,
     ) -> Result<Conversation, AgentError> {
         match self {
+            Self::Copilot(client) => client.move_directory(conversation_id, destination).await,
             Self::Antigravity(client) => {
                 Ok(client.move_directory(conversation_id, destination).await?)
             }
@@ -1008,7 +1047,7 @@ impl Driver {
                 self.archive_conversation(conversation_id).await?;
                 Ok(conversation)
             }
-            Self::Grok(_) | Self::Antigravity(_) => {
+            Self::Grok(_) | Self::Antigravity(_) | Self::Copilot(_) => {
                 let conversation = self
                     .move_working_directory(conversation_id, destination, speed)
                     .await?;
@@ -1035,6 +1074,7 @@ impl Driver {
         speed: &str,
     ) -> Result<OpenedConversation, AgentError> {
         match self {
+            Self::Copilot(client) => client.open_conversation(conversation_id, with_turns).await,
             Self::Antigravity(client) => Ok(client
                 .open_conversation(conversation_id, with_turns)
                 .await?),
@@ -1117,6 +1157,7 @@ impl Driver {
         limit: usize,
     ) -> Result<TurnPage, AgentError> {
         match self {
+            Self::Copilot(client) => client.read_turns(conversation_id, cursor, limit).await,
             Self::Antigravity(client) => {
                 Ok(client.read_turns(conversation_id, cursor, limit).await?)
             }
@@ -1151,7 +1192,7 @@ impl Driver {
     ) -> Result<(), AgentError> {
         match self {
             Self::Codex(client) => Ok(client.ensure_thread_archived(conversation_id).await?),
-            Self::Claude(_) | Self::Grok(_) | Self::Antigravity(_) => {
+            Self::Claude(_) | Self::Grok(_) | Self::Antigravity(_) | Self::Copilot(_) => {
                 self.archive_conversation(conversation_id).await
             }
         }
@@ -1169,6 +1210,7 @@ impl Driver {
         conversation_id: &str,
     ) -> Result<(), AgentError> {
         match self {
+            Self::Copilot(client) => client.close_conversation(conversation_id).await,
             Self::Antigravity(client) => Ok(client.close_conversation(conversation_id).await?),
             Self::Codex(client) => Ok(client.archive_thread(conversation_id).await?),
             Self::Claude(claude) => Ok(claude.client.close_conversation(conversation_id).await?),
@@ -1190,6 +1232,15 @@ impl Driver {
         conversation_id: &str,
     ) -> Result<Option<Conversation>, AgentError> {
         match self {
+            Self::Copilot(client) => {
+                if client.conversation_exists(conversation_id).await? {
+                    Ok(None)
+                } else {
+                    Err(AgentError::ConversationGone(
+                        "Copilot session is missing.".into(),
+                    ))
+                }
+            }
             Self::Antigravity(client) => {
                 if client.conversation_exists(conversation_id).await? {
                     Ok(None)
@@ -1240,6 +1291,7 @@ impl Driver {
         conversation_id: &str,
     ) -> Result<(), AgentError> {
         match self {
+            Self::Copilot(client) => client.erase(conversation_id).await,
             Self::Antigravity(client) => Ok(client.erase(conversation_id).await?),
             Self::Codex(client) => Ok(client.delete_thread(conversation_id).await?),
             Self::Claude(claude) => Ok(claude
@@ -1257,6 +1309,7 @@ impl Driver {
         conversation_id: &str,
     ) -> Result<(), AgentError> {
         match self {
+            Self::Copilot(client) => client.erase_contents(conversation_id).await,
             Self::Antigravity(client) => Ok(client.erase_contents(conversation_id).await?),
             Self::Codex(client) => match client
                 .delete_thread(conversation_id)
@@ -1279,6 +1332,7 @@ impl Driver {
         conversation_id: &str,
     ) -> Result<(), AgentError> {
         match self {
+            Self::Copilot(client) => client.forget_erased_binding(conversation_id).await,
             Self::Antigravity(client) => Ok(client.forget_erased_binding(conversation_id).await?),
             Self::Codex(_) | Self::Claude(_) => Ok(()),
             Self::Grok(client) => Ok(client.forget_erased_binding(conversation_id).await?),
@@ -1296,6 +1350,7 @@ impl Driver {
         conversation_id: &str,
     ) -> Result<bool, AgentError> {
         Ok(match self {
+            Self::Copilot(client) => client.conversation_exists(conversation_id).await?,
             Self::Antigravity(client) => client.conversation_exists(conversation_id).await?,
             Self::Codex(client) => client.read_thread(conversation_id).await.is_ok(),
             Self::Claude(claude) => {
@@ -1327,6 +1382,7 @@ impl Driver {
         conversation_id: &str,
     ) -> Result<Option<Conversation>, AgentError> {
         match self {
+            Self::Copilot(client) => client.describe(conversation_id).await,
             Self::Antigravity(client) => Ok(client.describe(conversation_id).await?),
             Self::Codex(client) => Ok(client
                 .read_thread(conversation_id)
@@ -1357,6 +1413,7 @@ impl Driver {
             }
         } else {
             let unobserved = match self {
+                Self::Copilot(client) => client.has_unobserved_writer(task).await?,
                 Self::Codex(_) | Self::Grok(_) => true,
                 Self::Claude(claude) => claude.client.has_unobserved_writer(task).await?,
                 Self::Antigravity(client) => client.has_unobserved_writer(task).await?,
@@ -1371,7 +1428,7 @@ impl Driver {
     /// Stop watching a conversation. It carries on without an audience.
     pub(crate) async fn stop_watching(&self, conversation_id: &str) -> Result<(), AgentError> {
         match self {
-            Self::Antigravity(_) => Ok(()),
+            Self::Antigravity(_) | Self::Copilot(_) => Ok(()),
             Self::Codex(client) => {
                 client.unsubscribe_thread(conversation_id).await?;
                 Ok(())

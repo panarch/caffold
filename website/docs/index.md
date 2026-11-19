@@ -1,7 +1,7 @@
 ---
 template: home.html
 title: One workspace for your coding agents, on every screen.
-description: Run Codex, Claude Code, Grok, and Antigravity on your own Mac or Linux machine. Start Tasks, follow their work, and keep going from a desktop, foldable, tablet, or phone.
+description: Run Codex, Claude Code, Grok, Antigravity, and GitHub Copilot on your own Mac or Linux machine. Start Tasks, follow their work, and keep going from a desktop, foldable, tablet, or phone.
 hide:
   - navigation
   - toc
@@ -17,7 +17,7 @@ hide:
 
 # One workspace for your coding agents, on every screen.
 
-<p class="cf-lede">Run Codex, Claude Code, Grok, and Antigravity on your own Mac or Linux machine.
+<p class="cf-lede">Run Codex, Claude Code, Grok, Antigravity, and GitHub Copilot on your own Mac or Linux machine.
 Start Tasks, follow their work, and send the next instruction from a desktop,
 foldable, tablet, or phone.</p>
 

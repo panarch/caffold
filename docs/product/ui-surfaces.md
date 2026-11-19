@@ -241,7 +241,7 @@ while its migration blocks operations, with its own retry lifecycle.
 
 Each offered model identifies its agent. Task creation starts a conversation
 with that agent in the selected cwd and binds the Task to it; later turns can
-choose only models from the same agent. Codex, Claude, and Antigravity follow-up composers
+choose only models from the same agent. Codex, Claude, Antigravity, and GitHub Copilot follow-up composers
 can still change permission mode between turns. Every agent's list also offers
 **Ask Jev first**, which runs that agent under whichever of its own modes asks
 about the most and has Jev hold back only what an automatic mode would stop for,
@@ -337,7 +337,7 @@ on keeps the button busy
 until every server is ready; [Integrated Review](#integrated-review) then lets
 names be pressed.
 
-An idle Codex, Claude, or Grok Task exposes **Fork task** in Task actions. It performs the same
+An idle Codex, Claude, Grok, or GitHub Copilot Task exposes **Fork task** in Task actions. It performs the same
 native fork without an ID lookup, places the child at the source Task's Section
 project root, and opens the distinct managed child. Active Tasks and Antigravity Tasks keep the action disabled with an explicit reason. When
 the child is made but its details cannot be read, Task actions show that error

@@ -21,7 +21,12 @@ import { formatDate } from "#tasks/task-format.js";
 
 import styles from "./fork-dialog.css.js";
 
-const PROVIDERS = { codex: "Codex", claude: "Claude", grok: "Grok" } as const;
+const PROVIDERS = {
+  codex: "Codex",
+  claude: "Claude",
+  grok: "Grok",
+  copilot: "GitHub Copilot",
+} as const;
 type ForkProvider = keyof typeof PROVIDERS;
 type ForkNode = "closed" | "editing" | "previewing" | "ready" | "forking";
 type ForkEvent =

@@ -1349,6 +1349,7 @@ mod tests {
     fn an_approval_seen_before_a_turns_first_read_stays_with_its_tool_call_and_before_its_answer() {
         let cache = TurnEventCache::default();
         let request = ApprovalRequest {
+            requires_human: false,
             id: "approval-1".into(),
             turn_id: Some("restarted".into()),
             item_id: Some("tool".into()),

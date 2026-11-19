@@ -44,10 +44,9 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      # Git names the build's commit; libclang lets bindgen generate Whisper's
-      # bindings.
-      - name: Install Git and libclang
-        run: dnf install -y git clang-devel
+      # The Copilot SDK build script uses OpenSSL 3 on the Linux build host.
+      - name: Install native build dependencies
+        run: dnf install -y git clang-devel openssl3-devel
 
       - name: Check out the release source
         uses: actions/checkout@v7
@@ -97,6 +96,9 @@ jobs:
         run: distribution/linux/package metadata >>"${GITHUB_OUTPUT}"
 
       - name: Build and verify the Linux artifact
+        env:
+          OPENSSL_INCLUDE_DIR: /usr/include/openssl3
+          OPENSSL_LIB_DIR: /usr/lib64/openssl3
         run: distribution/linux/package archive
 
       - name: Upload the verified Linux artifact

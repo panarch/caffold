@@ -366,7 +366,7 @@ mod tests {
     fn runtime_with_events_and_store(events: TaskEvents, store: TaskStore) -> TaskRuntime {
         let (shutdown, _) = broadcast::channel(1);
         let (claude, _runner) = agent::claude::ClaudeClient::mock();
-        TaskRuntime::new(
+        TaskRuntime::for_tests(
             claude,
             agent::grok::GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
@@ -398,11 +398,12 @@ mod tests {
             claude.clone(),
             agent::grok::GrokClient::unreachable(),
             AntigravityClient::uninstalled(),
+            crate::agent::copilot::CopilotClient::uninstalled(),
             TaskTerminals::for_tests(),
         );
         let (shutdown, _) = broadcast::channel(1);
         (
-            TaskRuntime::new(
+            TaskRuntime::for_tests(
                 claude,
                 agent::grok::GrokClient::unreachable(),
                 AntigravityClient::uninstalled(),

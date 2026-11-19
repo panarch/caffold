@@ -23,6 +23,8 @@ use serde::{Deserialize, Serialize};
 pub(crate) struct ApprovalRequest {
     pub(crate) id: String,
     pub(crate) turn_id: Option<String>,
+    /// Whether the provider requires a person to make this particular decision.
+    pub(crate) requires_human: bool,
     /// The item this interrupts, when the agent scopes the request to one.
     pub(crate) item_id: Option<String>,
     /// What is being asked, in one line, written by the driver.
@@ -111,6 +113,14 @@ pub(crate) enum ApprovalDecision {
     Cancel,
     /// No, and stop the turn.
     DenyAndStop,
+}
+
+/// Who made a decision sent to the provider. Only the server chooses this.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum ApprovalSource {
+    Human,
+    HostPolicy,
 }
 
 /// How an approval stopped being pending.

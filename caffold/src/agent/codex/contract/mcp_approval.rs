@@ -12,6 +12,7 @@ use crate::agent::{
 pub(super) fn request(id: String, params: &Value) -> ApprovalRequest {
     let meta = &params["_meta"];
     ApprovalRequest {
+        requires_human: false,
         id,
         turn_id: text_field(params, "turnId"),
         item_id: None,

@@ -79,7 +79,8 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let mcp_signer = McpSessionSigner::persistent(data_dir.join("codex-mcp"));
     let codex_mcp = tasks::CodexMcpHost::new(&origin, mcp_signer.clone());
     let grok_mcp = tasks::HttpMcpHost::grok(&origin, mcp_signer.clone());
-    let antigravity_mcp = tasks::HttpMcpHost::antigravity(&origin, mcp_signer);
+    let antigravity_mcp = tasks::HttpMcpHost::antigravity(&origin, mcp_signer.clone());
+    let copilot_mcp = tasks::HttpMcpHost::copilot(&origin, mcp_signer);
     let tailscale_router = tailscale::router(addr.port());
     let updates = update::UpdateRoutes::new(
         fs.clone(),
@@ -106,6 +107,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         codex_mcp.clone(),
         grok_mcp.clone(),
         antigravity_mcp.clone(),
+        copilot_mcp.clone(),
         watch_hub,
         permission_reviewer,
         terminals.for_tasks(),
@@ -120,7 +122,10 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         tailscale_router,
         updates.router(),
         codex_mcp.router(),
-        grok_mcp.router().merge(antigravity_mcp.router()),
+        grok_mcp
+            .router()
+            .merge(antigravity_mcp.router())
+            .merge(copilot_mcp.router()),
         language_servers::router(language_servers.clone()),
     ));
     let stall_monitor =
@@ -201,7 +206,8 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     let mcp_signer = McpSessionSigner::memory();
     let codex_mcp = tasks::CodexMcpHost::new(&origin, mcp_signer.clone());
     let grok_mcp = tasks::HttpMcpHost::grok(&origin, mcp_signer.clone());
-    let antigravity_mcp = tasks::HttpMcpHost::antigravity(&origin, mcp_signer);
+    let antigravity_mcp = tasks::HttpMcpHost::antigravity(&origin, mcp_signer.clone());
+    let copilot_mcp = tasks::HttpMcpHost::copilot(&origin, mcp_signer);
     let worktree_root = fs.root().join(".caffold-test/worktrees");
     let tasks = tasks::TasksApp::memory(
         fs,
@@ -211,6 +217,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         codex_mcp.clone(),
         grok_mcp.clone(),
         antigravity_mcp.clone(),
+        copilot_mcp.clone(),
         watch_hub,
         permission_reviewer,
         terminals.for_tasks(),
@@ -224,7 +231,10 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         tailscale_router,
         update_router,
         codex_mcp.router(),
-        grok_mcp.router().merge(antigravity_mcp.router()),
+        grok_mcp
+            .router()
+            .merge(antigravity_mcp.router())
+            .merge(copilot_mcp.router()),
         language_servers::router(language_servers),
     ))
 }

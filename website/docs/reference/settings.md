@@ -120,6 +120,13 @@ the sign-in remain; open a Task to resume its conversation.
 ![Antigravity runtime status and restart control](../assets/screenshots/settings-antigravity-runtime-light-desktop.png#only-light)
 ![Antigravity runtime status and restart control](../assets/screenshots/settings-antigravity-runtime-dark-desktop.png#only-dark)
 
+## GitHub Copilot
+
+The page shows the installed Copilot CLI version, SDK protocol, GitHub account, and models available to that account. Use **Refresh** to check again after signing in on the host.
+
+![GitHub Copilot CLI version, account and available models](../assets/screenshots/settings-copilot-light-desktop.png#only-light)
+![GitHub Copilot CLI version, account and available models](../assets/screenshots/settings-copilot-dark-desktop.png#only-dark)
+
 ## About Caffold
 
 **Updates** shows the version of Caffold, the newest release, and how the last

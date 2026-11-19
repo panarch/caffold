@@ -248,6 +248,17 @@ const MANUAL_AGENT_CATALOG = {
       speeds: [],
       supportsAutoMode: false,
     },
+    {
+      provider: "copilot",
+      model: "mai-code-2-flash",
+      displayName: "MAI Code 2 Flash",
+      description: null,
+      isDefault: false,
+      defaultEffort: null,
+      efforts: [],
+      speeds: [],
+      supportsAutoMode: false,
+    },
   ],
   unavailable: [],
 };

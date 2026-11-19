@@ -331,6 +331,7 @@ fn normalize(
         })
         .map(str::to_string);
     Ok(ApprovalRequest {
+        requires_human: false,
         id: approval_id(incarnation, key),
         turn_id: None,
         item_id: None,

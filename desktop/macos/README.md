@@ -73,7 +73,8 @@ documents backup, shutdown, health verification, and rollback behavior.
   - the Grok CLI `1.0.30` or newer, available as `grok` on that `PATH` or at
     `~/.grok/bin/grok` or `~/.local/bin/grok`; or
   - Antigravity CLI `1.5.1` or newer, available as `agy` on that `PATH` or at
-    `~/.local/bin/agy`, with sign-in completed in the CLI
+    `~/.local/bin/agy`, with sign-in completed in the CLI; or
+  - GitHub Copilot CLI, available as `copilot` on that `PATH` or at `~/.local/bin/copilot`, signed in with `copilot login`
 - Git
 - GitHub CLI for GitHub views
 - Tailscale for private remote access

@@ -311,6 +311,7 @@ pub(super) fn router(state: TaskState) -> Router {
             get(claude_settings).patch(update_claude_settings),
         )
         .route("/api/grok/status", get(grok_status))
+        .route("/api/copilot/status", get(agent::copilot_status))
         .route("/api/antigravity/status", get(antigravity::status))
         .route("/api/antigravity/restart", post(antigravity::restart))
         .route("/api/antigravity/refresh", post(antigravity::refresh))

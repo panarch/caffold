@@ -13,7 +13,7 @@ for (const managed of [true, false]) {
     await installEventSourceMock(page, { autoOpen: true });
     await mockAgentModels(page);
     await page.route(/\/api\/agent\/models(?:\?|$)/, route => route.fulfill({json: {
-      models: [AGENT_MODELS_FIXTURE.models[0], ...["claude", "grok", "antigravity"].map(provider => ({
+      models: [AGENT_MODELS_FIXTURE.models[0], ...["claude", "grok", "antigravity", "copilot"].map(provider => ({
         provider, model: `${provider}-model`, displayName: `${provider} model`, isDefault: true, efforts: [], speeds: [],
       }))], unavailable: [],
     }}));
@@ -68,7 +68,7 @@ for (const managed of [true, false]) {
     const modelLabel = await modelButton.innerText();
     await modelButton.click();
     const menu = composer.locator(".task-model-popover");
-    await expect(menu.locator(".task-provider-option")).toHaveText(["Codex", "Claude", "Grok", "Antigravity"]);
+    await expect(menu.locator(".task-provider-option")).toHaveText(["Codex", "Claude", "Grok", "Antigravity", "GitHub Copilot"]);
     await menu.getByRole("button", { name: "Antigravity", exact: true }).click();
     await expect(menu.getByRole("button", { name: "Continue with Antigravity", exact: true })).toBeVisible();
     await expect(menu.locator('[data-turn-options-action="select-model"]')).toHaveCount(0);

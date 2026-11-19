@@ -328,15 +328,15 @@ test("offers GitHub work shortcuts from repository Task creation", { tag: "@all-
   await expect(detail.locator("caffold-github-issues-list-page")).toBeVisible();
 });
 
-for (const provider of ["codex", "claude", "grok"]) {
+for (const provider of ["codex", "claude", "grok", "copilot"]) {
 test(`previews a ${provider} conversation ID and forks it into the selected Section`, { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page);
   await mockAgentModels(page);
   const rootPath = "frontend/tests/e2e/fixtures/home";
-  const sourceThreadId = "external-codex-source";
-  const childThreadId = "external-codex-child";
+  const sourceThreadId = "601d3a74-f141-4273-ac04-7d5661b2edcb";
+  const childThreadId = "fb4c5cdb-762b-4142-be08-06c4475b4456";
   const sourceTask = {
     id: "section-fork-anchor",
     threadId: "section-fork-anchor",
@@ -354,7 +354,7 @@ test(`previews a ${provider} conversation ID and forks it into the selected Sect
     ...sourceTask,
     id: childThreadId,
     threadId: childThreadId,
-    title: "Fork of Long-running Codex work",
+    title: "Fork of Long-running work",
     preview: "Continue the established implementation direction.",
     createdMs: 30,
     updatedMs: 30,
@@ -393,7 +393,7 @@ test(`previews a ${provider} conversation ID and forks it into the selected Sect
       json: {
         provider,
         sourceId: sourceThreadId,
-        displayName: "Long-running Codex work",
+        displayName: "Long-running work",
         summary: "Continue the established implementation direction.",
         status: { type: "notLoaded" },
         cwd: "/Users/example/Workspace/other-project",
@@ -535,7 +535,7 @@ test(`previews a ${provider} conversation ID and forks it into the selected Sect
   await threadIdInput.press("Enter");
 
   await expect(dialog.locator("[data-fork-preview='name']")).toHaveText(
-    "Long-running Codex work",
+    "Long-running work",
   );
   await expect(dialog.locator("[data-fork-preview='status']")).toHaveText(
     "Live status unavailable",
@@ -659,10 +659,10 @@ test(`previews a ${provider} conversation ID and forks it into the selected Sect
 
   await expect(page).toHaveURL(new RegExp(`/tasks/${childThreadId}$`));
   await expect(page.locator("caffold-task-detail-summary h2")).toHaveText(
-    "Fork of Long-running Codex work",
+    "Fork of Long-running work",
   );
   await expect(page.locator("caffold-task-navigator .task-row-title")).toHaveText([
-    "Fork of Long-running Codex work",
+    "Fork of Long-running work",
     "Section fork anchor",
   ]);
   expect(forkRequests).toBe(1);
@@ -813,7 +813,7 @@ test("the fork chooser remains available when Codex is missing", { tag: "@server
   await expect(shortcuts).toBeVisible();
   await shortcuts.getByRole("button", {name:"Fork conversation"}).click();
   const chooser = page.getByRole("dialog", {name:"Fork a conversation"});
-  await expect(chooser.getByLabel("Agent").locator("option")).toHaveText(["Codex","Claude","Grok"]);
+  await expect(chooser.getByLabel("Agent").locator("option")).toHaveText(["Codex","Claude","Grok","GitHub Copilot"]);
   await chooser.getByLabel("Agent").selectOption("claude");
   await expect(chooser.getByLabel("Session ID")).toBeEnabled();
 });

@@ -75,4 +75,10 @@ Caffold shares the CLI's saved sign-in. Manage that sign-in in the CLI.
 ![Antigravity CLI and observed Google account plan](../assets/screenshots/settings-antigravity-light-desktop.png#only-light)
 ![Antigravity CLI and observed Google account plan](../assets/screenshots/settings-antigravity-dark-desktop.png#only-dark)
 
+## GitHub Copilot
+
+Install GitHub Copilot CLI on the host and run `copilot login` to sign in with GitHub. Caffold finds `copilot` on its `PATH` or in `~/.local/bin`. The Caffold binary includes the official Rust SDK. [GitHub Copilot CLI installation](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli)
+
+Open **Settings → GitHub Copilot** to see the CLI version, signed-in account and models your account can use. Choose one of those models in **New Task**. **Manual** shows Copilot's approval requests. With **Ask Jev first**, requests marked for human confirmation go directly to you.
+
 Next, [run your first Task](first-task.md).

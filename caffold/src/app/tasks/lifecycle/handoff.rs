@@ -119,6 +119,19 @@ impl TaskLifecycle {
                     .await
                     .map_err(AgentError::from)?;
             }
+            Driver::Copilot(client) => {
+                source.driver.archive_conversation(id).await?;
+                client
+                    .retain_closed_directory(
+                        id,
+                        &source
+                            .worktree
+                            .as_ref()
+                            .expect("managed handoff")
+                            .worktree_path,
+                    )
+                    .await?;
+            }
             Driver::Claude(_) => source.driver.archive_conversation(id).await?,
         }
         self.sessions.end_observation(id).await;

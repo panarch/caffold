@@ -1322,6 +1322,7 @@ mod tests {
             root.path().join("worktrees"),
             push_runtime.service(),
             AgentRuntimeDependencies {
+                copilot: crate::agent::copilot::CopilotClient::uninstalled(),
                 antigravity: AntigravityClient::uninstalled(),
                 claude: agent::claude::ClaudeClient::mock().0,
                 grok: agent::grok::GrokClient::unreachable(),

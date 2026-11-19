@@ -538,6 +538,7 @@ pub(super) fn approval_request(
         });
     }
     ApprovalRequest {
+        requires_human: false,
         id: call.tool_call_id.clone(),
         turn_id: turn_id.map(str::to_string),
         item_id: Some(call.tool_call_id.clone()),

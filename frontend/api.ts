@@ -116,6 +116,26 @@ export async function getGrokStatus() {
   return requestJson<GrokStatus>("/api/grok/status");
 }
 
+export interface CopilotStatus {
+  installation: {
+    state: "ready" | "unavailable" | "notInstalled";
+    version?: string;
+  };
+  protocolVersion: number | null;
+  authenticated: boolean | null;
+  login: string | null;
+  models: Array<{ model: string; displayName: string }>;
+  error: string | null;
+}
+
+export function getCopilotStatus(signal?: AbortSignal) {
+  return requestJson<CopilotStatus>(
+    "/api/copilot/status",
+    {},
+    { signal, timeoutMs: 65_000 },
+  );
+}
+
 export function getAntigravityStatus({
   signal,
 }: {

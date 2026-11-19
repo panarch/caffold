@@ -337,6 +337,17 @@ const ROUTE_DEFINITIONS = [
     parent: () => settingsRoute(),
   }),
   routeDefinition({
+    id: "settings-copilot",
+    kind: "settings",
+    pattern: "/settings/copilot",
+    surface: "task-workspace",
+    target: "copilot",
+    toRoute: () => settingsRoute("copilot"),
+    matchesRoute: (route) =>
+      route?.kind === "settings" && route.section === "copilot",
+    parent: () => settingsRoute(),
+  }),
+  routeDefinition({
     id: "settings-about",
     kind: "settings",
     pattern: "/settings/about",
@@ -1170,6 +1181,7 @@ function settingsRoute(section = ""): ParsedRoute {
       "claude",
       "grok",
       "antigravity",
+      "copilot",
       "about",
     ].includes(section)
       ? section

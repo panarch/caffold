@@ -44,6 +44,7 @@ const ITEMS: readonly SettingsNavigatorEntry[] = [
     label: "Antigravity",
     brand: "antigravity-icon.svg",
   },
+  { section: "copilot", label: "GitHub Copilot", brand: "copilot.svg" },
   { section: "about", label: "About Caffold", icon: "Info" },
 ];
 

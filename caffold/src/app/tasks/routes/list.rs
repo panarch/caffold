@@ -184,12 +184,15 @@ mod tests {
             serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
                 .unwrap();
         let row = &body["tasks"][0];
+        let mut fields: Vec<_> = row
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        fields.sort_unstable();
         assert_eq!(
-            row.as_object()
-                .unwrap()
-                .keys()
-                .map(String::as_str)
-                .collect::<Vec<_>>(),
+            fields,
             [
                 "conversationAvailable",
                 "createdMs",

@@ -33,6 +33,8 @@ that name each project.
   `https://antigravity.google/assets/image/brand/antigravity-icon__one-color.svg`
   on 2026-11-01. It uses the same theme filter as the other single-color marks.
 
+- `copilot.svg` is GitHub’s single-color Copilot icon. [Primer Octicons source](https://github.com/primer/octicons/blob/main/icons/copilot-16.svg) · [MIT license](octicons-LICENSE)
+
 Use each mark as its owner published it. A mark published as one file per
 background switches between those files when the theme changes. A template mark
 is published in a single color to be tinted, so it follows the theme through

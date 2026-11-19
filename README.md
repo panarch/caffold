@@ -1,7 +1,7 @@
 # Caffold
 
 Caffold is a self-hosted workspace for running and reviewing coding-agent work
-from any screen. Keep Codex, Claude Code, Grok, or Antigravity working on a Mac
+from any screen. Keep Codex, Claude Code, Grok, Antigravity, or GitHub Copilot working on a Mac
 or Linux machine you control, then follow the conversation, answer approvals, inspect commands and tests, and read
 the actual files and diff from a desktop, foldable, tablet, or phone.
 
@@ -39,16 +39,18 @@ it. Caffold currently supports:
   CLI process attached while the backend is replaced;
 - **Grok**, through the Grok CLI's leader process and stdio agent protocol,
   with a leader Caffold starts for itself that holds sessions across backend
-  replacement; and
+  replacement;
 - **Antigravity**, through its official ACP agent, with a dedicated Caffold
-  runner and the native conversation store.
+  runner and the native conversation store; and
+- **GitHub Copilot**, through the official SDK and the signed-in Copilot CLI.
+  A dedicated runner keeps each active Task connected during backend replacement.
 
 A Task remains bound to that agent for its lifetime. Its model, reasoning or
 effort choices, permission modes, tools, session behavior, and transcript come
 from the selected agent rather than from a Caffold reimplementation.
 
 This is deliberate. A coding agent is the model together with the harness its
-authors built around it. Caffold gives Codex, Claude, Grok, and Antigravity separate native
+authors built around it. Caffold gives Codex, Claude, Grok, Antigravity, and GitHub Copilot separate native
 drivers so it can preserve those harnesses instead of forcing them through a
 lowest common denominator. It normalizes only the product concepts the workspace must
 present consistently: conversations, turns, activity, approvals, and the
@@ -74,12 +76,8 @@ browser interface to the selected agent and the files on the host.
                                 |
                     Caffold server on the host
                                 |
-        +---------------+-------+-------+---------------+
-        |               |               |               |
-   Codex proxy    Claude runner    Grok bridge     ACP runner
-  -> app-server   -> claude CLI     -> leader    -> Antigravity
-        |               |               |               |
-        +---------------+-------+-------+---------------+
+        Codex proxy · Claude runner · Grok bridge
+            Antigravity runner · Copilot runner
                                 |
                    Git checkouts and worktrees
 ```
@@ -173,10 +171,10 @@ does not provide authentication for a public deployment or multi-user
 authorization.
 
 Agent support is built in rather than loaded as a runtime plugin. Caffold
-drives the four built-in agents, and each Task keeps its agent.
+drives the five built-in agents, and each Task keeps its agent.
 [Continue with another agent](docs/product/workflows.md#continue-with-another-agent)
 opens a separate Task at the same files.
-All four agents support steering while a turn runs.
+All five agents support steering while a turn runs.
 
 Its Git and GitHub views are deliberately review-oriented. Caffold does not
 provide a full editor, and it does not expose stage, commit, checkout, merge,

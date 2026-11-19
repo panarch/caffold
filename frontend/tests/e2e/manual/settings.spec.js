@@ -110,6 +110,20 @@ for (const theme of ["light", "dark"]) {
       await captureReviewScreenshot(page, testInfo, `settings-notifications-${theme}`);
     });
 
+    test("Copilot Settings lists the signed-in GitHub account and its models", { tag: "@desktop" }, async ({page}, testInfo) => {
+      await page.route("**/api/copilot/status", route => route.fulfill({json:{
+        installation:{state:"ready", version:"1.0.114"}, protocolVersion:4,
+        authenticated:true, login:"avery", error:null,
+        models:[{model:"mai-code-2",displayName:"MAI Code 2"},{model:"mai-code-2-flash",displayName:"MAI Code 2 Flash"}],
+      }}));
+      await page.goto("/settings/copilot");
+      const settings = page.locator("caffold-settings-copilot-page");
+      await expect(settings).toContainText("avery");
+      await expect(settings).toContainText("MAI Code 2 Flash");
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await captureReviewScreenshot(page, testInfo, `settings-copilot-${theme}`);
+    });
+
     test("Antigravity Settings shows the installed CLI and shared account",{tag:"@desktop"},async({page},testInfo)=>{
       await installManualAntigravity(page);
       await page.goto("/settings/antigravity");

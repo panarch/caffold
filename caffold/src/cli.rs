@@ -30,6 +30,12 @@ enum Command {
     /// Update the installed Caffold to the newest release, and put the
     /// current version back if the new one does not start.
     Update(UpdateArgs),
+    /// Own one Copilot SDK connection on behalf of caffold-runner.
+    #[command(hide = true)]
+    CopilotAdapter {
+        #[arg(long)]
+        program: PathBuf,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -103,6 +109,17 @@ struct UpdateArgs {
 const DEFAULT_LOG_FILTER: &str = "caffold=info,axum::serve=error";
 
 pub async fn run() -> anyhow::Result<ExitCode> {
+    let cli = Cli::parse();
+    if let Command::CopilotAdapter { program } = &cli.command {
+        // The runner reads protocol frames from stdout. SDK diagnostics belong on stderr.
+        tracing_subscriber::fmt()
+            .with_writer(io::stderr)
+            .with_ansi(false)
+            .with_env_filter(EnvFilter::from_default_env())
+            .init();
+        crate::agent::copilot::run(program).await?;
+        return Ok(ExitCode::SUCCESS);
+    }
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
@@ -113,9 +130,8 @@ pub async fn run() -> anyhow::Result<ExitCode> {
         .with_ansi(io::stdout().is_terminal())
         .init();
 
-    let cli = Cli::parse();
-
     match cli.command {
+        Command::CopilotAdapter { .. } => unreachable!("adapter served above"),
         Command::Serve(args) => {
             app::serve(ServeConfig {
                 host: args.host,
