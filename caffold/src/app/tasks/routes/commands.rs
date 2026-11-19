@@ -4196,6 +4196,7 @@ mod claude_tests {
     use crate::agent::{SessionEventKind, ThreadStatus};
     use crate::app::tasks::TaskState;
     use crate::app::tasks::routes::router;
+    use crate::app::tasks::runtime::TaskRuntimeSignal;
     use crate::app::tasks::sessions::{SessionLifecycle, SessionSnapshot};
     use crate::app::tasks::test_support::task_state_with_agents;
     use crate::fs::RootedFs;
@@ -5082,28 +5083,41 @@ mod claude_tests {
         );
     }
 
-    /// A watched Claude Task the stand-in runner speaks for.
-    ///
-    /// Watching begins once the runner holds the session, and the Task is
-    /// handed over after that take-up has subscribed it: a take-up still on
-    /// its way would subscribe it again behind whatever the test does next.
-    /// Tests using it start on a paused clock, so that wait runs out only when
-    /// the take-up can go no further, never because the machine is slow.
+    /// A Claude Task whose session startup has recovered from the stand-in runner.
     async fn claude_task(root: &Path) -> (TaskState, MockRunnerHandle) {
         claude_task_under(root, None).await
     }
 
-    /// A watched Claude Task created under `config_dir`.
+    /// Recover the stand-in runner's session for a Task created under `config_dir`.
     async fn claude_task_under(
         root: &Path,
         config_dir: Option<&str>,
     ) -> (TaskState, MockRunnerHandle) {
         let (state, runner) = open_claude_task(root, config_dir).await;
+        // For this idle runner, startup recovery publishes SessionChanged.
+        // A later context report can release the subscription before setup returns.
+        let mut signals = state.task_runtime.subscribe();
         state.task_runtime.watch_claude();
-        until(&state, "watching takes up the Task", |snapshot| {
-            snapshot.lifecycle == SessionLifecycle::Subscribed
+        let recovered = timeout(WAIT, async {
+            loop {
+                let signal = signals.recv().await.expect("receive a Task runtime signal");
+                if let TaskRuntimeSignal::SessionChanged {
+                    thread_id,
+                    snapshot,
+                } = signal
+                    && thread_id == SESSION
+                {
+                    break snapshot;
+                }
+            }
         })
-        .await;
+        .await
+        .expect("startup publishes the recovered Claude Task");
+        assert_eq!(
+            recovered.lifecycle,
+            SessionLifecycle::Subscribed,
+            "{recovered:?}"
+        );
         (state, runner)
     }
 
