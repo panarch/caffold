@@ -4101,7 +4101,7 @@ mod claude_tests {
     const SESSION: &str = "claude-thread-1";
     const WAIT: Duration = Duration::from_secs(5);
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn an_uploaded_picture_reaches_claude_inside_the_prompt_that_names_it() {
         let root = tempfile::tempdir().unwrap();
         let (state, runner) = claude_task(root.path()).await;
@@ -4151,7 +4151,7 @@ mod claude_tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_prompt_that_names_a_file_as_a_picture_it_is_not_reaches_no_agent() {
         let root = tempfile::tempdir().unwrap();
         let (state, runner) = claude_task(root.path()).await;
@@ -4193,7 +4193,7 @@ mod claude_tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_prompt_while_a_backgrounded_subagent_keeps_claude_working_starts_a_new_turn() {
         let root = tempfile::tempdir().unwrap();
         let (state, runner) = claude_task(root.path()).await;
@@ -4223,7 +4223,7 @@ mod claude_tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_prompt_during_the_turn_claude_starts_for_a_subagents_report_joins_that_turn() {
         let root = tempfile::tempdir().unwrap();
         let cwd = root.path().display().to_string();
@@ -4262,7 +4262,7 @@ mod claude_tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_prompt_sent_while_claude_files_its_report_waits_and_joins_that_turn() {
         let root = tempfile::tempdir().unwrap();
         let cwd = root.path().display().to_string();
@@ -4285,9 +4285,20 @@ mod claude_tests {
             let app = app.clone();
             async move { call(&app, prompt("Also list the files.")).await }
         });
+        // On the paused clock this runs out only once the request can go no
+        // further, so a request that has not yet started cannot pass for one
+        // that is waiting.
         timeout(Duration::from_millis(50), &mut prompting)
             .await
             .expect_err("held while the report is not on disk");
+        assert!(
+            !runner
+                .heard(SESSION)
+                .await
+                .iter()
+                .any(|frame| frame["message"]["content"][0]["text"] == "Also list the files."),
+            "nothing reaches Claude while the report is not on disk"
+        );
         state.task_runtime.claude().write_test_transcript(
             &cwd,
             SESSION,
@@ -4308,7 +4319,7 @@ mod claude_tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_prompt_during_the_turn_claude_starts_for_a_subagents_hand_back_joins_that_turn() {
         let root = tempfile::tempdir().unwrap();
         let cwd = root.path().display().to_string();
@@ -4357,7 +4368,7 @@ mod claude_tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_prompt_during_a_turn_claude_began_with_nothing_to_name_it_is_refused() {
         let root = tempfile::tempdir().unwrap();
         let (state, runner) = claude_task(root.path()).await;
@@ -4399,7 +4410,7 @@ mod claude_tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_prompt_while_claude_answers_a_message_that_missed_its_turn_joins_that_turn() {
         let root = tempfile::tempdir().unwrap();
         let cwd = root.path().display().to_string();
@@ -4429,7 +4440,7 @@ mod claude_tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn stopping_while_claude_answers_a_message_that_missed_its_turn_stops_that_turn() {
         let root = tempfile::tempdir().unwrap();
         let cwd = root.path().display().to_string();
@@ -4449,7 +4460,7 @@ mod claude_tests {
         assert_eq!(status, StatusCode::OK, "{stopped}");
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_stop_while_only_a_backgrounded_subagent_works_reaches_claude() {
         // As Claude Code 2.1.274 takes it: with no turn open, a stop ends the
         // subagent it sent to the background, and Claude goes idle.
@@ -4472,7 +4483,7 @@ mod claude_tests {
         assert_eq!(stopped["cancelledPrompts"], json!([]));
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_stop_while_claude_is_idle_is_refused_without_reaching_it() {
         let root = tempfile::tempdir().unwrap();
         let (state, runner) = claude_task(root.path()).await;
@@ -4513,7 +4524,7 @@ mod claude_tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_stop_answers_with_the_messages_it_cancelled_and_draws_them_no_more() {
         // As Claude Code 2.1.274 answers a stop that cancels what waits behind
         // the turn: by the uuids the cancelled messages went out with. The
@@ -4600,7 +4611,7 @@ mod claude_tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_prompt_during_the_turn_a_report_opens_after_the_hand_back_turn_joins_it() {
         // As Claude Code 2.1.274 does it: the report comes while the turn
         // taking the subagent's hand-back is working and not yet named, and
@@ -4677,7 +4688,7 @@ mod claude_tests {
         assert_eq!(prompted["turnId"], "report-1");
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_message_that_missed_its_turn_shows_as_the_start_of_the_turn_that_answers_it() {
         let root = tempfile::tempdir().unwrap();
         let cwd = root.path().display().to_string();
@@ -4735,7 +4746,7 @@ mod claude_tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_claude_task_keeps_the_config_dir_it_was_created_under() {
         let root = tempfile::tempdir().unwrap();
         let config_dirs = tempfile::tempdir().unwrap();
@@ -4783,7 +4794,7 @@ mod claude_tests {
         assert_eq!(read["task"]["claudeConfigDir"], work.as_str());
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_prompt_after_the_claude_runtime_restarted_resumes_the_task() {
         let root = tempfile::tempdir().unwrap();
         let (state, runner) = claude_task(root.path()).await;
@@ -4823,7 +4834,7 @@ mod claude_tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_prompt_after_the_task_was_archived_and_restored_resumes_it() {
         let root = tempfile::tempdir().unwrap();
         let (state, runner) = claude_task(root.path()).await;
@@ -4891,6 +4902,8 @@ mod claude_tests {
     /// Watching begins once the runner holds the session, and the Task is
     /// handed over after that take-up has subscribed it: a take-up still on
     /// its way would subscribe it again behind whatever the test does next.
+    /// Tests using it start on a paused clock, so that wait runs out only when
+    /// the take-up can go no further, never because the machine is slow.
     async fn claude_task(root: &Path) -> (TaskState, MockRunnerHandle) {
         claude_task_under(root, None).await
     }
