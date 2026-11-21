@@ -30,6 +30,7 @@ const shadowRootStyles = new Map([
   ["components/pagination.css", "caffold-pagination"],
   ["components/pagination/components/button.css", "caffold-pagination-button"],
   ["components/pane-resizer.css", "caffold-pane-resizer"],
+  ["components/hwp-viewer.css", "caffold-hwp-viewer"],
   ["components/pdf-viewer.css", "caffold-pdf-viewer"],
   ["components/pptx-viewer.css", "caffold-pptx-viewer"],
   ["components/pptx-viewer/components/document.css", "caffold-pptx-document"],

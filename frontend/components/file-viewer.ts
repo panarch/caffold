@@ -28,6 +28,7 @@ import {
   ScrollSurfaces,
 } from "../scroll-scope.js";
 import "./docx-viewer.js";
+import "./hwp-viewer.js";
 import {
   type DocumentPreviewFile,
   type DocumentPreviewKind,
@@ -135,6 +136,12 @@ const DOCUMENT_VIEWERS: Record<
       .file=${file}
       .position=${pageAnchorIn(position)}
     ></caffold-docx-viewer>`,
+  hwp: (file, position, viewer) =>
+    html`<caffold-hwp-viewer
+      ${drawn(viewer)}
+      .file=${file}
+      .position=${pageAnchorIn(position)}
+    ></caffold-hwp-viewer>`,
   pptx: (file, position, viewer) =>
     html`<caffold-pptx-viewer
       ${drawn(viewer)}

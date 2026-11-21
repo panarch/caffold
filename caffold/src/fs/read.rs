@@ -441,6 +441,8 @@ fn display_name(resolved: &ResolvedPath) -> String {
 fn document_content_type(path: &Path) -> Option<&'static str> {
     let extension = path.extension()?.to_string_lossy().to_lowercase();
     match extension.as_str() {
+        "hwp" => Some("application/x-hwp"),
+        "hwpx" => Some("application/x-hwpx"),
         "pdf" => Some("application/pdf"),
         "docx" => Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
         "pptx" => Some("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
@@ -693,6 +695,8 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let documents = [
             ("manual.pdf", "application/pdf"),
+            ("report.HWP", "application/x-hwp"),
+            ("form.hwpx", "application/x-hwpx"),
             (
                 "Minutes.DOCX",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -777,7 +781,7 @@ mod tests {
     fn reads_a_document_of_100_mib_and_refuses_a_larger_one_of_every_kind() {
         let temp = tempfile::tempdir().unwrap();
         sparse_file(&temp.path().join("limit.xlsx"), 100 * 1024 * 1024);
-        for extension in ["pdf", "docx", "pptx", "xlsx", "xlsm"] {
+        for extension in ["pdf", "docx", "pptx", "xlsx", "xlsm", "hwp", "hwpx"] {
             sparse_file(
                 &temp.path().join(format!("large.{extension}")),
                 100 * 1024 * 1024 + 1,
@@ -795,7 +799,7 @@ mod tests {
                 .len(),
             100 * 1024 * 1024
         );
-        for extension in ["pdf", "docx", "pptx", "xlsx", "xlsm"] {
+        for extension in ["pdf", "docx", "pptx", "xlsx", "xlsm", "hwp", "hwpx"] {
             assert!(
                 matches!(
                     rooted

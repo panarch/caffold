@@ -2451,6 +2451,14 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/components/markdown-preview.js"
         )))),
+        "components/hwp-viewer.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/hwp-viewer.css.js"
+        )))),
+        "components/hwp-viewer.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/hwp-viewer.js"
+        )))),
         "components/pdf-viewer.css.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/components/pdf-viewer.css.js"
@@ -2818,6 +2826,7 @@ mod tests {
             "components/file-viewer/components/visual-diff.css",
             "components/git-compare-browser.css",
             "components/git-compare-tree.css",
+            "components/hwp-viewer.css",
             "components/loading-text.css",
             "components/markdown-preview.css",
             "components/pane-resizer.css",

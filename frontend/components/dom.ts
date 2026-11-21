@@ -8,7 +8,7 @@ const IMAGE_TYPES: Readonly<Record<string, string>> = {
   webp: "WebP image",
 };
 
-export type DocumentPreviewKind = "docx" | "pdf" | "pptx" | "xlsx";
+export type DocumentPreviewKind = "docx" | "hwp" | "pdf" | "pptx" | "xlsx";
 
 // The file a document viewer opens: the fetched file, or the promise of one
 // that fails when the fetch does. A newer copy replaces the file shown.
@@ -20,6 +20,8 @@ export interface DocumentPreviewFile {
 // The documents a library-backed viewer draws, by file extension.
 const DOCUMENT_KINDS = new Map<string, DocumentPreviewKind>([
   ["docx", "docx"],
+  ["hwp", "hwp"],
+  ["hwpx", "hwp"],
   ["pdf", "pdf"],
   ["pptx", "pptx"],
   ["xlsm", "xlsx"],
