@@ -180,7 +180,7 @@ impl Backend {
             .unwrap()
             .iter()
             .find(|model| {
-                model["provider"] == "antigravity" && model["model"] == "gemini-3.8-flash"
+                model["provider"] == "antigravity" && model["model"] == "gemini-4-hydrogen"
             })
             .unwrap();
         let created=self.post("/api/tasks",json!({"provider":"antigravity","cwd":cwd,"titleSource":"ACP live check","model":model["model"],"effort":"low","permissionMode":"default"})).await;
@@ -212,7 +212,7 @@ impl Backend {
         self.post(
             &format!("/api/tasks/{task}/prompts"),
             json!({
-                "prompt":text, "model":"gemini-3.8-flash", "effort":"low", "permissionMode":mode
+                "prompt":text, "model":"gemini-4-hydrogen", "effort":"low", "permissionMode":mode
             }),
         )
         .await

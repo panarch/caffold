@@ -12,7 +12,7 @@ export const LIVE_MODEL_POLICY = Object.freeze({
   models: Object.freeze({
     task: "gpt-6-luna",
     naming: "gpt-6-luna",
-    plan: "gpt-6.1-sol",
+    plan: "gpt-6.2-sol",
     fast: "gpt-6-luna",
     multimodal: "gpt-6-luna",
   }),
