@@ -244,7 +244,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     window.addEventListener(
-      "caffold:jev-settings-changed",
+      "caffold:decision-model-settings-changed",
       this.reviewerChanged,
     );
     void warmIcons();
@@ -258,7 +258,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     this.hidePopovers();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     window.removeEventListener(
-      "caffold:jev-settings-changed",
+      "caffold:decision-model-settings-changed",
       this.reviewerChanged,
     );
     // A list still on its way is asked for again when the control returns.

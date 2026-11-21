@@ -1,23 +1,37 @@
 import {
-  getJevSettings,
-  removeJevKey,
-  saveJevCriteria,
-  storeJevKey,
+  getDecisionModelSettings,
+  removeDecisionModelKey,
+  saveDecisionModelCriteria,
+  selectDecisionModelProvider,
+  storeDecisionModelKey,
 } from "#app/api.js";
 
-export interface JevSettings {
-  model: string;
-  keyConfigured: boolean;
-  criteria: string;
-  lastCheck: {
-    ok: boolean;
-    message: string | null;
-    model: string | null;
-  } | null;
+export const DECISION_MODEL_PROVIDERS = Object.freeze([
+  "jev",
+  "openai",
+] as const);
+
+export type DecisionModelProvider = (typeof DECISION_MODEL_PROVIDERS)[number];
+
+export interface DecisionModelKeyCheck {
+  ok: boolean;
+  message: string | null;
 }
 
-export interface JevSettingsSnapshot {
-  settings: JevSettings | null;
+export interface DecisionModelProviderSettings {
+  keyConfigured: boolean;
+  lastCheck: DecisionModelKeyCheck | null;
+}
+
+export interface DecisionModelSettings {
+  selected: DecisionModelProvider;
+  criteria: string;
+  jev: DecisionModelProviderSettings;
+  openai: DecisionModelProviderSettings;
+}
+
+export interface DecisionModelSettingsSnapshot {
+  settings: DecisionModelSettings | null;
   fresh: boolean;
   busy: boolean;
   retry: boolean;
@@ -39,40 +53,43 @@ const PHASE_EDGES = new Map<Phase, Set<Phase>>([
 ]);
 
 /**
- * Sequences Settings → Jev Permissions reads and changes. The server owns the
- * rules, the key, and what the last check of that key said; this owner only
- * decides which request is the current one.
+ * Sequences Settings → Decision Model reads and changes. The server owns the
+ * choice, the keys, the rules, and what the last check of each key said; this
+ * owner only decides which request is the current one.
  */
-export class JevSettingsLifecycle {
+export class DecisionModelSettingsLifecycle {
   private readonly requests: {
     load: () => Promise<unknown>;
+    selectProvider: (provider: string) => Promise<unknown>;
     saveCriteria: (criteria: string) => Promise<unknown>;
-    storeKey: (key: string) => Promise<unknown>;
-    removeKey: () => Promise<unknown>;
+    storeKey: (provider: string, key: string) => Promise<unknown>;
+    removeKey: (provider: string) => Promise<unknown>;
   };
-  private readonly onChange: (snapshot: JevSettingsSnapshot) => void;
+  private readonly onChange: (snapshot: DecisionModelSettingsSnapshot) => void;
   private active = false;
   private operation = 0;
   phase: Phase = PHASES.INACTIVE;
-  private settings: JevSettings | null = null;
+  private settings: DecisionModelSettings | null = null;
   private fresh = false;
   private message = "";
-  snapshot: JevSettingsSnapshot;
+  snapshot: DecisionModelSettingsSnapshot;
 
   constructor({
-    load = getJevSettings,
-    saveCriteria = saveJevCriteria,
-    storeKey = storeJevKey,
-    removeKey = removeJevKey,
+    load = getDecisionModelSettings,
+    selectProvider = selectDecisionModelProvider,
+    saveCriteria = saveDecisionModelCriteria,
+    storeKey = storeDecisionModelKey,
+    removeKey = removeDecisionModelKey,
     onChange = () => {},
   }: {
     load?: () => Promise<unknown>;
+    selectProvider?: (provider: string) => Promise<unknown>;
     saveCriteria?: (criteria: string) => Promise<unknown>;
-    storeKey?: (key: string) => Promise<unknown>;
-    removeKey?: () => Promise<unknown>;
-    onChange?: (snapshot: JevSettingsSnapshot) => void;
+    storeKey?: (provider: string, key: string) => Promise<unknown>;
+    removeKey?: (provider: string) => Promise<unknown>;
+    onChange?: (snapshot: DecisionModelSettingsSnapshot) => void;
   } = {}) {
-    this.requests = { load, saveCriteria, storeKey, removeKey };
+    this.requests = { load, selectProvider, saveCriteria, storeKey, removeKey };
     this.onChange = onChange;
     this.snapshot = this.currentSnapshot();
   }
@@ -101,7 +118,9 @@ export class JevSettingsLifecycle {
     this.message = "";
     this.publish();
     try {
-      const settings = normalizeJevSettings(await this.requests.load());
+      const settings = normalizeDecisionModelSettings(
+        await this.requests.load(),
+      );
       if (!this.isCurrent(operation, PHASES.LOADING)) return;
       this.accept(settings);
       this.transition(PHASES.IDLE);
@@ -110,10 +129,19 @@ export class JevSettingsLifecycle {
       if (!this.isCurrent(operation, PHASES.LOADING)) return;
       this.fresh = false;
       this.message =
-        (error as Error | null)?.message ?? "Jev settings could not be loaded.";
+        (error as Error | null)?.message ??
+        "Decision model settings could not be loaded.";
       this.transition(PHASES.IDLE);
       this.publish();
     }
+  }
+
+  selectProvider(provider: string) {
+    if (provider === this.settings?.selected) return Promise.resolve(false);
+    return this.mutate(
+      () => this.requests.selectProvider(provider),
+      "The decision model could not be chosen.",
+    );
   }
 
   saveCriteria(criteria: string) {
@@ -123,16 +151,16 @@ export class JevSettingsLifecycle {
     );
   }
 
-  storeKey(key: string) {
+  storeKey(provider: string, key: string) {
     return this.mutate(
-      () => this.requests.storeKey(key),
+      () => this.requests.storeKey(provider, key),
       "The API key could not be saved.",
     );
   }
 
-  removeKey() {
+  removeKey(provider: string) {
     return this.mutate(
-      () => this.requests.removeKey(),
+      () => this.requests.removeKey(provider),
       "The API key could not be removed.",
     );
   }
@@ -148,7 +176,7 @@ export class JevSettingsLifecycle {
     this.message = "";
     this.publish();
     try {
-      const settings = normalizeJevSettings(await request());
+      const settings = normalizeDecisionModelSettings(await request());
       if (!this.isCurrent(operation, PHASES.MUTATING)) return false;
       this.accept(settings);
       this.transition(PHASES.IDLE);
@@ -168,7 +196,7 @@ export class JevSettingsLifecycle {
     }
   }
 
-  private accept(settings: JevSettings) {
+  private accept(settings: DecisionModelSettings) {
     this.settings = settings;
     this.fresh = true;
     this.message = "";
@@ -178,13 +206,13 @@ export class JevSettingsLifecycle {
     if (next === this.phase) return;
     if (!PHASE_EDGES.get(this.phase)?.has(next)) {
       throw new Error(
-        `Invalid Jev settings lifecycle transition: ${this.phase} -> ${next}`,
+        `Invalid decision model settings lifecycle transition: ${this.phase} -> ${next}`,
       );
     }
     this.phase = next;
   }
 
-  private currentSnapshot(): JevSettingsSnapshot {
+  private currentSnapshot(): DecisionModelSettingsSnapshot {
     return {
       settings: this.settings,
       fresh: this.fresh,
@@ -204,38 +232,51 @@ export class JevSettingsLifecycle {
   }
 }
 
-function normalizeJevSettings(payload: unknown): JevSettings {
+function normalizeDecisionModelSettings(
+  payload: unknown,
+): DecisionModelSettings {
   const value = payload as Record<string, unknown> | null;
-  const check = (value?.lastCheck ?? null) as Record<string, unknown> | null;
+  const jev = normalizeProviderSettings(value?.jev);
+  const openai = normalizeProviderSettings(value?.openai);
+  const selected = value?.selected;
+  const valid =
+    value &&
+    typeof value === "object" &&
+    DECISION_MODEL_PROVIDERS.includes(selected as DecisionModelProvider) &&
+    typeof value.criteria === "string" &&
+    jev &&
+    openai;
+  if (!valid) {
+    throw new Error("Caffold returned invalid decision model settings.");
+  }
+  return {
+    selected: selected as DecisionModelProvider,
+    criteria: value.criteria as string,
+    jev,
+    openai,
+  };
+}
+
+function normalizeProviderSettings(
+  payload: unknown,
+): DecisionModelProviderSettings | null {
+  const value = payload as Record<string, unknown> | null;
+  if (!value || typeof value !== "object") return null;
+  const check = (value.lastCheck ?? null) as Record<string, unknown> | null;
   const validCheck =
     check === null ||
     (typeof check === "object" &&
       typeof check.ok === "boolean" &&
       (check.message === null ||
         check.message === undefined ||
-        typeof check.message === "string") &&
-      (check.model === null ||
-        check.model === undefined ||
-        typeof check.model === "string"));
-  const valid =
-    value &&
-    typeof value === "object" &&
-    typeof value.model === "string" &&
-    typeof value.keyConfigured === "boolean" &&
-    typeof value.criteria === "string" &&
-    validCheck;
-  if (!valid) {
-    throw new Error("Caffold returned invalid Jev settings.");
-  }
+        typeof check.message === "string"));
+  if (typeof value.keyConfigured !== "boolean" || !validCheck) return null;
   return {
-    model: value.model as string,
-    keyConfigured: value.keyConfigured as boolean,
-    criteria: value.criteria as string,
+    keyConfigured: value.keyConfigured,
     lastCheck: check
       ? {
           ok: check.ok as boolean,
           message: (check.message as string | null | undefined) ?? null,
-          model: (check.model as string | null | undefined) ?? null,
         }
       : null,
   };

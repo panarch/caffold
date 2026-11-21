@@ -53,10 +53,11 @@ host. Choose a color, or **Default** for the gray icon.
   other devices.
 - [Voice Input](../voice-input.md): how dictation becomes text.
 
-## Jev Permissions
+## Decision Model
 
-The TypeSafe API key and extra rules for **Ask Jev first**. See
-[Ask Jev first](../tasks/ask-jev-first.md#set-it-up).
+The decision model **Caffold decides** asks, Jev or OpenAI, an API key for each,
+and the extra rules. See
+[Caffold decides](../tasks/caffold-decides.md#set-it-up).
 
 ## Codex, Claude, and Grok
 

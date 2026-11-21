@@ -24,7 +24,7 @@ use crate::{
     agent::grok::GrokClient,
     agent::{Driver, TokenUsage},
     agent::{antigravity::AntigravityClient, copilot::CopilotClient},
-    app::jev::PermissionReviewer,
+    app::decision_model::{PermissionReviewer, ReviewerOffer},
     app::tasks::sessions::{SessionSnapshot, TaskSessions},
     fs::RootedFs,
     task_store::{ManagedThread, RunBy, TaskProvider, TaskStore},
@@ -661,14 +661,12 @@ impl TaskRuntime {
         self
     }
 
-    /// Whether choosing the reviewed mode would do anything here.
-    ///
-    /// A key is the whole requirement, so without one the mode is offered but
-    /// withheld. Rules are added on top of a judgement that stands without them.
-    pub(in crate::app::tasks) fn reviewer_available(&self) -> bool {
+    /// How the reviewed mode is offered here: under the chosen decision
+    /// model's name, and withheld until that model has a key.
+    pub(in crate::app::tasks) fn reviewer_offer(&self) -> ReviewerOffer {
         self.permission_reviewer
             .as_ref()
-            .is_some_and(PermissionReviewer::available)
+            .map_or_else(ReviewerOffer::unconfigured, PermissionReviewer::offer)
     }
 
     /// Keep what a person's own prompt permitted for this Task.

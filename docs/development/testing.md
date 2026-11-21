@@ -80,6 +80,7 @@ one records where it runs from and what it needs:
 | `cargo test -p caffold --lib -- agent::grok` | repository root | Rust test toolchain | the Grok driver against a scripted leader that answers as `grok 1.0.30` did: creation, turns, approvals, history, worktree moves, reconnection, and the Settings report, without an installed Grok |
 | `cargo test -p caffold --test antigravity_live cli_ -- --ignored --test-threads=1` | repository root | installed Antigravity CLI 1.5.1 or newer with saved sign-in | CLI discovery, shared authentication, native history, steering, permissions and backend replacement; prompt scenarios consume model usage |
 | `cargo test -p caffold --lib voice -- --ignored --list` | repository root | Rust test toolchain | discover the voice live checks; a transcription check needs a Whisper model file or a provider API key and a speech recording, and the Grok key check needs only internet access |
+| `cargo test -p caffold --lib decision_model::tests::live_ -- --ignored --test-threads=1` | repository root | TypeSafe and OpenAI API keys | the decision models' thresholds against the calibration cases, with provider usage; see [Decision model checks](#decision-model-checks) |
 | `node --test docs/tests/*.test.mjs` | repository root | Node | documentation index, links, entrypoints, and this command index |
 | `node --test scripts/tests/*.test.mjs` | repository root | Node | release version tooling |
 | `desktop/macos/test-contracts` | repository root | Node | macOS packaging, release, and installer contracts, from `desktop/macos/tests/` |
@@ -511,6 +512,36 @@ exist and confirms that Caffold reads the answer as a rejected key:
 ```sh
 cargo test -p caffold --lib live_grok_rejects_an_incorrect_key -- --ignored
 ```
+
+## Decision model checks
+
+The decision model suite answers TypeSafe and OpenAI requests from local
+stand-in servers, so it needs no API key. Its ignored live checks ask a real
+model the calibration cases, one check for each provider and question, and fail
+when the provider's threshold for that question would let through a case a
+person must see: a request answered `yes` in
+[`ask.md`](../../caffold/src/app/decision_model/fixtures/calibration/ask.md)
+that is allowed, or a message answered `no` in
+[`keep.md`](../../caffold/src/app/decision_model/fixtures/calibration/keep.md)
+that is kept. Each case is asked once. Run them when a provider or a model is
+added, when a model version changes, and when a question's wording changes:
+
+```sh
+CAFFOLD_TYPESAFE_API_KEY=... CAFFOLD_OPENAI_API_KEY=... \
+  CAFFOLD_CALIBRATION_REPORTS=/path/to/reports \
+  cargo test -p caffold --lib decision_model::tests::live_ -- --ignored --test-threads=1
+```
+
+Each check asks every case of its question and spends that provider's usage.
+`CAFFOLD_CALIBRATION_REPORTS` is optional; when it names a directory, each
+check writes `<provider>-<question>.md` there. A report lists the cases that
+fail the check, then the cases that cost the person a question, then every
+case in the case file's groups, with the reading and the verdict. A single
+check runs by its name, such as `live_openai_holds_its_ask_threshold`.
+
+Each case file starts with its question and the baseline its answers follow.
+A case lists only what differs from that baseline, its expected answer under
+the question's name, and why; keep only cases whose answer is not in doubt.
 
 ## macOS application tests
 

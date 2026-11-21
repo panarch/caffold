@@ -1244,7 +1244,7 @@ mod tests {
             .claim(
                 ManagedThread {
                     speed: "ultrafast".to_string(),
-                    permission_mode: Some("caffold:ask-jev-first".to_string()),
+                    permission_mode: Some("caffold:decides".to_string()),
                     ..ManagedThread::new(
                         "thread_1",
                         RunBy::Codex,
@@ -1293,7 +1293,7 @@ mod tests {
             assert_eq!(read["result"]["isError"], false, "{read}");
             assert_eq!(
                 read["result"]["content"][0]["text"],
-                r#"{"agent":"codex","model":"gpt-6-astra","reasoningEffort":"max","speed":"ultrafast","permissionMode":"caffold:ask-jev-first"}"#
+                r#"{"agent":"codex","model":"gpt-6-astra","reasoningEffort":"max","speed":"ultrafast","permissionMode":"caffold:decides"}"#
             );
         }
 

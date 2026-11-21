@@ -33,15 +33,16 @@ test("tool details escape external text and preserve exact JSON argument values"
   assert.doesNotMatch(html, /<script>/);
 });
 
-test("a card names how sure the reviewer was, because only a short answer leaves one", () => {
+test("a card names the model that answered and how sure it was, because only a short answer leaves one", () => {
   const html = cardHtml({
     approvalId: "reviewed", command: "rm -f ./scratch.txt",
-    reviewed: { model: "jev-1.13.0", concern: 0.62, allows: false },
+    reviewed: { provider: "OpenAI", concern: 0.62, allows: false },
   });
 
   assert.match(html, /Reviewer answer/);
+  assert.match(html, /<dt>OpenAI<\/dt>/);
   assert.match(html, /62% sure this needs you/);
-  assert.match(html, /jev-1\.13\.0/);
+  assert.doesNotMatch(html, /Model/);
 });
 
 test("a card the reviewer never answered says nothing about a reviewer", () => {
@@ -50,7 +51,7 @@ test("a card the reviewer never answered says nothing about a reviewer", () => {
   });
 
   assert.doesNotMatch(html, /Reviewer answer/);
-  assert.doesNotMatch(html, /Jev/);
+  assert.doesNotMatch(html, /sure this needs you/);
 });
 
 test("command, network, permissions, and context share the normalized card", () => {

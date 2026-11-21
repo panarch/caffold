@@ -123,7 +123,7 @@ ordinary one rather than refusing the turn. Grok and Antigravity offer no other
 speed. Shared code stores and returns a speed without reading it; only the
 drivers translate it.
 
-One mode in every list is Caffold's own, **Ask Jev first**, and it is the only
+One mode in every list is Caffold's own, **Caffold decides**, and it is the only
 value the composer sends that a driver reads rather than passes on. Each driver
 maps it to its own most-confirming mode before anything reaches its agent, so
 the agent still only ever sees a mode it named itself. No agent can answer for
@@ -457,7 +457,7 @@ the driver names the exclusive `session/new` flags it accepts — neither,
 `autoMode`, or `yoloMode` — and the permission mode is fixed when the session
 is created. The permission catalog carries that fact so the follow-up composer
 can show the current mode as uneditable; a later turn that asks for another
-mode is still refused. Choosing **Ask Jev first** on a session already created
+mode is still refused. Choosing **Caffold decides** on a session already created
 with neither flag asks Grok for nothing new, because that is the flagless
 session it is already running. The Task's composer settings keep the mode a
 person chose, because the leader does not report autoMode again after load. The
@@ -552,7 +552,7 @@ catalog version is invalidated; legacy mode and effort values are not translated
 The explicit dangerous `bypassPermissions` choice launches the CLI with
 `--dangerously-skip-permissions`. Entering or leaving bypass closes an idle child
 and loads the same native UUID with the new argv. Ordinary modes use native
-config; **Ask Jev first** uses `default` without the bypass flag. The actual
+config; **Caffold decides** uses `default` without the bypass flag. The actual
 launch flag stays in the same child's control checkpoint because native mode
 still reports `default` under bypass.
 A Settings entry or explicit Refresh opens one muted temporary session, reads
@@ -884,7 +884,7 @@ is the Task's recorded agent, and the rest are the Task's composer settings in
 Caffold Redb, as its latest successfully started non-steering turn committed them
 ([Active Navigator Projection](codex-app-server.md#active-navigator-projection-and-archived-pagination)).
 Each value is the choice as recorded, under the agent's own name for it except
-Caffold's own `caffold:ask-jev-first` permission mode and `default` speed, so a
+Caffold's own `caffold:decides` permission mode and `default` speed, so a
 Claude model can be an alias such as `opus`; `null` means Caffold holds no
 record of that setting. No agent is consulted, so a setting changed after the turn started is
 not reflected and an unreachable agent does not change the answer. The pre-MCP

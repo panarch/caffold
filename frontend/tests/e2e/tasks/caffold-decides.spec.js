@@ -12,15 +12,14 @@ import {
 } from "../support/task-api-fixture.js";
 import { emitTaskDetailBootstrap } from "../support/task-fixtures.js";
 
-const REVIEWED_MODE = "caffold:ask-jev-first";
-const WITHHELD_REASON = "Add a Jev API key in Settings → Jev Permissions.";
+const REVIEWED_MODE = "caffold:decides";
+const WITHHELD_REASON = "Add a key in Settings → Decision Model.";
 
-function reviewedOption(allowed) {
+function reviewedOption(allowed, reviewer) {
   return {
     mode: REVIEWED_MODE,
-    label: "Ask Jev first",
-    description:
-      "Asks about everything. Jev holds back only what an automatic mode would stop for, plus whatever your extra rules name.",
+    label: "Caffold decides",
+    description: `Asks about everything. ${reviewer} allows the routine ones.`,
     allowed,
     ...(allowed ? {} : { unavailableReason: WITHHELD_REASON }),
     dangerous: false,
@@ -28,10 +27,10 @@ function reviewedOption(allowed) {
 }
 
 /** The list Codex answers, with Caffold's own mode among the safe ones. */
-function permissionsOffering(allowed) {
+function permissionsOffering(allowed, reviewer = "Jev") {
   const options = [...TASK_PERMISSION_FIXTURE.options];
   const dangerous = options.findIndex((option) => option.dangerous);
-  options.splice(dangerous, 0, reviewedOption(allowed));
+  options.splice(dangerous, 0, reviewedOption(allowed, reviewer));
   return { ...TASK_PERMISSION_FIXTURE, options };
 }
 
@@ -44,7 +43,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("the reviewed mode is offered and withheld with its reason until Jev is set up", { tag: "@server-steady" }, async ({
+test("the reviewed mode is offered and withheld with its reason until the chosen model has a key", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page, { permissions: permissionsOffering(false) });
@@ -58,7 +57,8 @@ test("the reviewed mode is offered and withheld with its reason until Jev is set
 
   await expect(option).toBeVisible();
   await expect(option).toBeDisabled();
-  await expect(option).toContainText("Ask Jev first");
+  await expect(option).toContainText("Caffold decides");
+  await expect(option).toContainText("Jev allows the routine ones.");
   await expect(option).toContainText(WITHHELD_REASON);
   // It keeps the modes that give up a protection last.
   await expect(
@@ -66,7 +66,7 @@ test("the reviewed mode is offered and withheld with its reason until Jev is set
   ).toHaveAttribute("data-permission-mode", "fullAccess");
 });
 
-test("the reviewed mode can be chosen once Jev is set up", { tag: "@server-steady" }, async ({
+test("the reviewed mode can be chosen once the chosen model has a key", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page, { permissions: permissionsOffering(true) });
@@ -83,38 +83,36 @@ test("the reviewed mode can be chosen once Jev is set up", { tag: "@server-stead
 
   await option.click();
 
-  await expect(picker).toContainText("Ask Jev first");
+  await expect(picker).toContainText("Caffold decides");
 });
 
-test("saving Jev settings offers the mode without reloading the page", { tag: "@server-steady" }, async ({
+test("choosing a model and saving its key in Settings offers the mode under that model without reloading the page", { tag: "@server-steady" }, async ({
   page,
 }) => {
-  let available = false;
+  const state = {
+    selected: "jev",
+    criteria: "",
+    jev: { keyConfigured: false, lastCheck: null },
+    openai: { keyConfigured: false, lastCheck: null },
+  };
+  const reviewer = () => (state.selected === "openai" ? "OpenAI" : "Jev");
   await installTaskApiFixture(page);
   await page.unroute("**/api/agent/permissions*");
   await page.route("**/api/agent/permissions*", (route) =>
-    route.fulfill({ json: permissionsOffering(available) }),
-  );
-  await page.route("**/api/jev/settings", (route) =>
     route.fulfill({
-      json: {
-        model: "jev-1.13.0",
-        keyConfigured: available,
-        criteria: "",
-        lastCheck: null,
-      },
+      json: permissionsOffering(state[state.selected].keyConfigured, reviewer()),
     }),
   );
-  await page.route("**/api/jev/key", (route) => {
-    available = true;
-    return route.fulfill({
-      json: {
-        model: "jev-1.13.0",
-        keyConfigured: true,
-        criteria: "Allow reads.",
-        lastCheck: { ok: true, message: null, model: "jev-1.13.0" },
-      },
-    });
+  await page.route("**/api/decision-model/settings", (route) =>
+    route.fulfill({ json: structuredClone(state) }),
+  );
+  await page.route("**/api/decision-model/provider", (route) => {
+    state.selected = route.request().postDataJSON().provider;
+    return route.fulfill({ json: structuredClone(state) });
+  });
+  await page.route("**/api/decision-model/keys/openai", (route) => {
+    state.openai = { keyConfigured: true, lastCheck: { ok: true, message: null } };
+    return route.fulfill({ json: structuredClone(state) });
   });
 
   await page.goto("/tasks/new?cwd=src");
@@ -125,24 +123,30 @@ test("saving Jev settings offers the mode without reloading the page", { tag: "@
   );
   await picker.click();
   await expect(option).toBeDisabled();
+  await expect(option).toContainText("Jev allows the routine ones.");
   await page.keyboard.press("Escape");
 
   // The composer stays mounted while Settings is open, so nothing reloads it.
   await page.locator('button[data-workspace-mode="settings"]').click();
   await page
-    .locator('caffold-settings-navigator button[data-settings-section="jev"]')
+    .locator('caffold-settings-navigator button[data-settings-section="decision-model"]')
     .click();
-  const jevPage = page.locator("caffold-settings-jev-page");
-  await jevPage.getByLabel("API key", { exact: true }).fill("ts-e2e-secret");
-  await jevPage.getByRole("button", { name: "Save key" }).click();
-  await expect(jevPage.getByRole("button", { name: "Remove key" })).toBeVisible();
+  const decisionModel = page.locator("caffold-settings-decision-model-page");
+  await expect(decisionModel.getByRole("radio", { name: /Jev/ })).toBeChecked();
+  await decisionModel.getByRole("radio", { name: /OpenAI/ }).click();
+  await expect(decisionModel.getByRole("radio", { name: /OpenAI/ })).toBeChecked();
+  const openai = decisionModel.locator('section[data-provider="openai"]');
+  await openai.getByLabel("API key", { exact: true }).fill("sk-e2e-secret");
+  await openai.getByRole("button", { name: "Save key" }).click();
+  await expect(openai.getByRole("button", { name: "Remove key" })).toBeVisible();
 
   await page.locator('button[data-workspace-mode="tasks"]').click();
 
   await picker.click();
   await expect(option).toBeEnabled();
+  await expect(option).toContainText("OpenAI allows the routine ones.");
   await option.click();
-  await expect(picker).toContainText("Ask Jev first");
+  await expect(picker).toContainText("Caffold decides");
 });
 
 test("a Task's kept permission instructions are read and forgotten from its details", { tag: "@server-steady" }, async ({
@@ -221,7 +225,7 @@ test("offers what the prompts settled to Action Hints as the details open", { ta
     page
       .locator("caffold-task-composer")
       .getByRole("button", { name: "Choose approval mode" }),
-  ).toContainText("Ask Jev first");
+  ).toContainText("Caffold decides");
 
   await activateActionHintIntoPopover(page, /Task details, idle$/);
 
@@ -255,6 +259,6 @@ test("a Task under another approval mode offers nothing to read", { tag: "@serve
 
   await expect(summary.locator(".task-detail-popover")).toBeVisible();
   await expect(
-    summary.locator("[data-task-info-permission-instructions]"),
-  ).toBeHidden();
+    summary.locator('[data-task-info-action="permission-instructions"]'),
+  ).toHaveCount(0);
 });

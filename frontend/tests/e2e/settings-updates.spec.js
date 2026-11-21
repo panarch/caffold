@@ -235,7 +235,7 @@ test("About offers its update action and the Settings list names the entry with 
     ["name-and-icon", "Open Name & Icon settings"],
     ["remote-access", "Open Remote Access settings"],
     ["voice", "Open Voice Input settings"],
-    ["jev", "Open Jev Permissions settings"],
+    ["decision-model", "Open Decision Model settings"],
     ["codex", "Open Codex settings"],
     ["claude", "Open Claude settings"],
     ["grok", "Open Grok settings"],

@@ -141,14 +141,14 @@ for (const theme of ["light", "dark"]) {
       await captureReviewScreenshot(page, testInfo, `approval-card-${theme}`);
     });
 
-    test("the approval-mode list includes Ask Jev first", { tag: "@desktop" }, async ({ page }, testInfo) => {
+    test("the approval-mode list includes Caffold decides", { tag: "@desktop" }, async ({ page }, testInfo) => {
       await page.goto(`/tasks/${MANUAL_TASKS.darkTheme.threadId}`);
 
       const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
       await form.getByRole("button", { name: "Choose approval mode" }).click();
       const menu = form.getByRole("menu", { name: "Approval modes" });
       await expect(menu.locator(".task-permission-option")).toHaveCount(4);
-      await expect(menu).toContainText("Ask Jev first");
+      await expect(menu).toContainText("Caffold decides");
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await captureReviewScreenshot(page, testInfo, `approval-modes-${theme}`);
     });

@@ -1,114 +1,99 @@
-use std::{collections::BTreeMap, error::Error as _, fmt, time::Duration};
+use std::collections::BTreeMap;
 
 use reqwest::{Client, StatusCode, header::HeaderMap};
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde::Deserialize;
+use serde_json::{Map, Value, json};
 
-use super::keys::ApiKey;
+use super::{
+    DecisionFailure, NoJudgement, Question, REQUEST_TIMEOUT, Reading, Thresholds, keys::ApiKey,
+};
 
 pub(super) const API_BASE: &str = "https://api.typesafe.ai";
 
 /// The model version every request names.
 ///
-/// Jev's answers are read against a fixed threshold, and TypeSafe's guidance is
-/// that a later version shifts where that threshold sits. Naming the version
-/// keeps a release from quietly becoming a different policy.
+/// Jev's answers are read against fixed thresholds, and TypeSafe's guidance is
+/// that a later version shifts where they sit. Naming the version keeps a
+/// release from quietly becoming a different policy.
 pub(super) const MODEL: &str = "jev-1.13.0";
 
-/// How long a judgement may take before the request becomes the person's.
+/// Where Jev 1.13's answers become decisions.
 ///
-/// TypeSafe answers in 70-500ms. The turn is already blocked while Caffold
-/// waits, but the person must not be, so the wait is bounded well above the
-/// expected answer and far below a person's patience.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+/// Live testing put the line here: work inside a Task's worktree scored 14–32%
+/// and a commit carrying a forbidden attribution 72–87%. The calibration cases
+/// hold both questions to it.
+pub(super) const THRESHOLDS: Thresholds = Thresholds {
+    ask: 0.7,
+    keep: 0.7,
+};
 
 /// The header TypeSafe's own refusals carry and Cloudflare's, in front of it,
 /// do not.
 const REQUEST_ID: &str = "x-typesafe-request-id";
 
-/// One state and the yes-or-no questions asked against it.
+/// The headers worth keeping from an answer that was not a judgement.
+const TRACED_HEADERS: &[&str] = &[
+    REQUEST_ID,
+    "cf-ray",
+    "x-envoy-upstream-service-time",
+    "retry-after",
+];
+
+/// Asks Jev one question through `POST /v1/systemone` and reads back its
+/// probability, refusing anything outside 0..=1.
 ///
-/// Every question is a `noul`, which answers with the probability that its
+/// The question is a `noul`, which answers with the probability that its
 /// sentence is true of the state. Jev also offers a labelled choice and an
 /// ordered score; Caffold asks neither, because each of its questions is
 /// already a sentence that is either true or not.
-pub(super) struct Query {
-    state: Value,
-    questions: BTreeMap<&'static str, String>,
-}
-
-impl Query {
-    pub(super) fn new(state: Value) -> Self {
-        Self {
-            state,
-            questions: BTreeMap::new(),
-        }
-    }
-
-    pub(super) fn asking(mut self, name: &'static str, instructions: impl Into<String>) -> Self {
-        self.questions.insert(name, instructions.into());
-        self
-    }
-
-    fn body(&self) -> Value {
-        let questions: BTreeMap<&str, Value> = self
-            .questions
-            .iter()
-            .map(|(name, instructions)| {
-                (
-                    *name,
-                    json!({ "type": "noul", "instructions": instructions }),
-                )
-            })
-            .collect();
-        json!({
-            "model": MODEL,
-            "state": self.state,
-            "questions": questions,
-        })
-    }
-}
-
-/// The probability Jev gave one question, and which model version gave it.
-#[derive(Debug)]
-pub(super) struct Reading {
-    pub(super) model: String,
-    pub(super) noul: f64,
-}
-
-/// Why Jev returned no judgement.
 ///
-/// Every one of these ends the same way for a person — the request stays
-/// theirs to answer — but they are kept apart so Settings and the log can say
-/// which one it was.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum JevFailure {
-    /// Cloudflare, in front of TypeSafe, refused the request before TypeSafe
-    /// read it. It judges the wording, so the same request is refused again.
-    Blocked,
-    KeyRejected,
-    RateLimited,
-    Rejected,
-    Unavailable,
-    UnexpectedResponse,
-}
-
-impl JevFailure {
-    pub(super) fn message(self) -> String {
-        match self {
-            Self::Blocked => {
-                "Cloudflare, in front of TypeSafe, blocked the request before TypeSafe read it."
-                    .to_string()
-            }
-            Self::KeyRejected => "TypeSafe rejected the API key.".to_string(),
-            Self::RateLimited => "TypeSafe's rate limit or quota was reached.".to_string(),
-            Self::Rejected => "TypeSafe could not answer this request.".to_string(),
-            Self::Unavailable => "Caffold could not reach TypeSafe.".to_string(),
-            Self::UnexpectedResponse => {
-                "TypeSafe returned a response Caffold could not read.".to_string()
-            }
-        }
+/// A failed call is not made again: the refusals that recur are Cloudflare's,
+/// and it refuses the same request every time. The response body is read only
+/// when the request succeeded, because TypeSafe's body for a rejected key can
+/// repeat part of that key.
+pub(super) async fn read(
+    client: &Client,
+    api_base: &str,
+    key: &ApiKey,
+    state: &Value,
+    question: Question,
+) -> Result<Reading, NoJudgement> {
+    let mut questions = Map::new();
+    questions.insert(
+        question.name.to_string(),
+        json!({ "type": "noul", "instructions": question.instructions }),
+    );
+    let body = json!({ "model": MODEL, "state": state, "questions": questions });
+    let response = client
+        .post(format!("{api_base}/v1/systemone"))
+        .bearer_auth(key.expose())
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(serde_json::to_vec(&body).expect("a JSON value serializes"))
+        .timeout(REQUEST_TIMEOUT)
+        .send()
+        .await
+        .map_err(NoJudgement::NoAnswer)?;
+    let status = response.status();
+    let headers = response.headers().clone();
+    if !status.is_success() {
+        return Err(no_judgement(status, headers));
     }
+    let body = response.bytes().await.map_err(NoJudgement::NoAnswer)?;
+    serde_json::from_slice::<SystemOneResponse>(&body)
+        .ok()
+        .and_then(|response| {
+            let noul = response.answers.get(question.name)?.noul;
+            (0.0..=1.0).contains(&noul).then_some(Reading {
+                model: response.model,
+                probability: noul,
+            })
+        })
+        .ok_or(NoJudgement::Answered {
+            failure: DecisionFailure::UnexpectedResponse,
+            status,
+            headers,
+            traced: TRACED_HEADERS,
+        })
 }
 
 #[derive(Debug, Deserialize)]
@@ -117,116 +102,26 @@ struct SystemOneResponse {
     answers: BTreeMap<String, Answer>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 struct Answer {
     noul: f64,
 }
 
-/// Asks Jev through `POST /v1/systemone` and reads back one question's
-/// probability, refusing anything outside 0..=1.
-///
-/// A failed call is not made again: the refusals that recur are Cloudflare's,
-/// and it refuses the same request every time.
-///
-/// The response body is read only when the request succeeded. TypeSafe's error
-/// bodies are not read at all, because the one for a rejected key can repeat
-/// part of that key.
-pub(super) async fn read(
-    client: &Client,
-    api_base: &str,
-    key: &ApiKey,
-    query: &Query,
-    question: &str,
-) -> Result<Reading, NoJudgement> {
-    let body = serde_json::to_vec(&query.body()).expect("a JSON value serializes");
-    let response = client
-        .post(format!("{api_base}/v1/systemone"))
-        .bearer_auth(key.expose())
-        .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .body(body)
-        .timeout(REQUEST_TIMEOUT)
-        .send()
-        .await
-        .map_err(NoJudgement::NoAnswer)?;
-    let status = response.status();
-    let headers = response.headers().clone();
-    if !status.is_success() {
-        return Err(NoJudgement::Answered { status, headers });
-    }
-    let body = response.bytes().await.map_err(NoJudgement::NoAnswer)?;
-    serde_json::from_slice::<SystemOneResponse>(&body)
-        .ok()
-        .and_then(|response| {
-            let noul = response.answers.get(question)?.noul;
-            (0.0..=1.0).contains(&noul).then_some(Reading {
-                model: response.model,
-                noul,
-            })
-        })
-        .ok_or(NoJudgement::Answered { status, headers })
-}
-
-/// A call to Jev that brought back no judgement, and what came back instead.
-#[derive(Debug)]
-pub(super) enum NoJudgement {
-    /// An answer that was not a judgement, from TypeSafe or from Cloudflare in
-    /// front of it.
-    Answered {
-        status: StatusCode,
-        headers: HeaderMap,
-    },
-    /// No whole answer arrived: the connection failed, broke off, or ran out
-    /// of time.
-    NoAnswer(reqwest::Error),
-}
-
-impl NoJudgement {
-    pub(super) fn failure(&self) -> JevFailure {
-        let Self::Answered { status, headers } = self else {
-            return JevFailure::Unavailable;
-        };
-        match *status {
-            StatusCode::FORBIDDEN if !headers.contains_key(REQUEST_ID) => JevFailure::Blocked,
-            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => JevFailure::KeyRejected,
-            StatusCode::TOO_MANY_REQUESTS => JevFailure::RateLimited,
-            StatusCode::REQUEST_TIMEOUT => JevFailure::Unavailable,
-            status if status.is_server_error() => JevFailure::Unavailable,
-            status if status.is_client_error() => JevFailure::Rejected,
-            _ => JevFailure::UnexpectedResponse,
-        }
-    }
-}
-
-/// The headers worth keeping from an answer that was not a judgement.
-const TRACED_HEADERS: [&str; 4] = [
-    REQUEST_ID,
-    "cf-ray",
-    "x-envoy-upstream-service-time",
-    "retry-after",
-];
-
-impl fmt::Display for NoJudgement {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Answered { status, headers } => {
-                write!(f, "HTTP {status}")?;
-                for name in TRACED_HEADERS {
-                    if let Some(value) = headers.get(name).and_then(|value| value.to_str().ok()) {
-                        write!(f, ", {name}: {value}")?;
-                    }
-                }
-                Ok(())
-            }
-            Self::NoAnswer(error) => {
-                write!(f, "{error}")?;
-                let mut cause = error.source();
-                while let Some(error) = cause {
-                    write!(f, ": {error}")?;
-                    cause = error.source();
-                }
-                Ok(())
-            }
-        }
+fn no_judgement(status: StatusCode, headers: HeaderMap) -> NoJudgement {
+    let failure = match status {
+        StatusCode::FORBIDDEN if !headers.contains_key(REQUEST_ID) => DecisionFailure::Blocked,
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => DecisionFailure::KeyRejected,
+        StatusCode::TOO_MANY_REQUESTS => DecisionFailure::RateLimited,
+        StatusCode::REQUEST_TIMEOUT => DecisionFailure::Unavailable,
+        status if status.is_server_error() => DecisionFailure::Unavailable,
+        status if status.is_client_error() => DecisionFailure::Rejected,
+        _ => DecisionFailure::UnexpectedResponse,
+    };
+    NoJudgement::Answered {
+        failure,
+        status,
+        headers,
+        traced: TRACED_HEADERS,
     }
 }
 
@@ -237,18 +132,18 @@ mod tests {
         atomic::{AtomicUsize, Ordering},
     };
 
-    use axum::{
-        Router,
-        body::Bytes,
-        http::{HeaderMap, Uri},
-    };
+    use axum::{Router, body::Bytes, http::Uri};
     use tempfile::TempDir;
 
     use super::*;
-    use crate::app::jev::keys::ApiKeyStore;
+    use crate::app::decision_model::{DecisionModelProvider, keys::ApiKeyStore};
 
     const SECRET: &str = "ts-test-0123456789abcdef";
     const JUDGEMENT: &str = r#"{"model":"jev-1.13.0","answers":{"ask":{"noul":0.12}}}"#;
+    const ASK: Question = Question {
+        name: "ask",
+        instructions: "the request needs a person",
+    };
 
     #[derive(Default)]
     struct CapturedRequest {
@@ -258,9 +153,9 @@ mod tests {
     }
 
     fn api_key(temp: &TempDir) -> ApiKey {
-        let store = ApiKeyStore::open(temp.path().join("jev"));
-        store.store(SECRET).unwrap();
-        store.key().unwrap().unwrap()
+        let store = ApiKeyStore::open(temp.path().join("decision-model"));
+        store.store(DecisionModelProvider::Jev, SECRET).unwrap();
+        store.key(DecisionModelProvider::Jev).unwrap().unwrap()
     }
 
     /// A stand-in for TypeSafe's own service, which marks every answer with a
@@ -337,7 +232,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sends_the_pinned_model_with_every_question_as_a_noul() {
+    async fn sends_the_pinned_model_with_the_question_as_a_noul() {
         let temp = TempDir::new().unwrap();
         let captured = Arc::new(Mutex::new(CapturedRequest::default()));
         let base = jev_server(
@@ -346,15 +241,19 @@ mod tests {
             captured.clone(),
         )
         .await;
-        let query =
-            Query::new(json!({ "command": "ls" })).asking("ask", "the request is clearly ask");
 
-        let reading = read(&Client::new(), &base, &api_key(&temp), &query, "ask")
-            .await
-            .unwrap();
+        let reading = read(
+            &Client::new(),
+            &base,
+            &api_key(&temp),
+            &json!({ "command": "ls" }),
+            ASK,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(reading.model, "jev-1.13.0");
-        assert_eq!(reading.noul, 0.91);
+        assert_eq!(reading.probability, 0.91);
         let request = captured.lock().unwrap();
         assert_eq!(request.path, "/v1/systemone");
         assert_eq!(
@@ -367,7 +266,7 @@ mod tests {
         assert_eq!(body["questions"]["ask"]["type"], "noul");
         assert_eq!(
             body["questions"]["ask"]["instructions"],
-            "the request is clearly ask"
+            "the request needs a person"
         );
     }
 
@@ -380,13 +279,12 @@ mod tests {
             Arc::new(Mutex::new(CapturedRequest::default())),
         )
         .await;
-        let query = Query::new(json!({})).asking("ask", "ask");
 
-        let failed = read(&Client::new(), &base, &api_key(&temp), &query, "ask")
+        let failed = read(&Client::new(), &base, &api_key(&temp), &json!({}), ASK)
             .await
             .unwrap_err();
 
-        assert_eq!(failed.failure(), JevFailure::UnexpectedResponse);
+        assert_eq!(failed.failure(), DecisionFailure::UnexpectedResponse);
     }
 
     #[tokio::test]
@@ -398,13 +296,12 @@ mod tests {
             Arc::new(Mutex::new(CapturedRequest::default())),
         )
         .await;
-        let query = Query::new(json!({})).asking("ask", "ask");
 
-        let failed = read(&Client::new(), &base, &api_key(&temp), &query, "ask")
+        let failed = read(&Client::new(), &base, &api_key(&temp), &json!({}), ASK)
             .await
             .unwrap_err();
 
-        assert_eq!(failed.failure(), JevFailure::UnexpectedResponse);
+        assert_eq!(failed.failure(), DecisionFailure::UnexpectedResponse);
     }
 
     #[tokio::test]
@@ -412,12 +309,12 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let key = api_key(&temp);
         let cases = [
-            (StatusCode::UNAUTHORIZED, JevFailure::KeyRejected),
-            (StatusCode::FORBIDDEN, JevFailure::KeyRejected),
-            (StatusCode::TOO_MANY_REQUESTS, JevFailure::RateLimited),
-            (StatusCode::REQUEST_TIMEOUT, JevFailure::Unavailable),
-            (StatusCode::BAD_GATEWAY, JevFailure::Unavailable),
-            (StatusCode::BAD_REQUEST, JevFailure::Rejected),
+            (StatusCode::UNAUTHORIZED, DecisionFailure::KeyRejected),
+            (StatusCode::FORBIDDEN, DecisionFailure::KeyRejected),
+            (StatusCode::TOO_MANY_REQUESTS, DecisionFailure::RateLimited),
+            (StatusCode::REQUEST_TIMEOUT, DecisionFailure::Unavailable),
+            (StatusCode::BAD_GATEWAY, DecisionFailure::Unavailable),
+            (StatusCode::BAD_REQUEST, DecisionFailure::Rejected),
         ];
 
         for (status, expected) in cases {
@@ -427,14 +324,14 @@ mod tests {
                 Arc::new(Mutex::new(CapturedRequest::default())),
             )
             .await;
-            let query = Query::new(json!({})).asking("ask", "ask");
 
-            let failed = read(&Client::new(), &base, &key, &query, "ask")
+            let failed = read(&Client::new(), &base, &key, &json!({}), ASK)
                 .await
                 .unwrap_err();
 
             assert_eq!(failed.failure(), expected, "{status}");
-            assert!(!failed.failure().message().contains(SECRET));
+            let message = failed.failure().message(DecisionModelProvider::Jev);
+            assert!(!message.contains(SECRET));
             assert!(!failed.to_string().contains(SECRET));
         }
     }
@@ -442,20 +339,22 @@ mod tests {
     #[tokio::test]
     async fn a_refusal_from_cloudflare_is_told_apart_from_typesafe_s_own() {
         let temp = TempDir::new().unwrap();
-        let query = Query::new(json!({})).asking("ask", "ask");
 
         let failed = read(
             &Client::new(),
             &cloudflare_refusing().await,
             &api_key(&temp),
-            &query,
-            "ask",
+            &json!({}),
+            ASK,
         )
         .await
         .unwrap_err();
 
-        assert_eq!(failed.failure(), JevFailure::Blocked);
-        assert!(failed.failure().message().starts_with("Cloudflare"));
+        assert_eq!(failed.failure(), DecisionFailure::Blocked);
+        assert_eq!(
+            failed.failure().message(DecisionModelProvider::Jev),
+            "Cloudflare, in front of TypeSafe, blocked the request before TypeSafe read it."
+        );
         assert_eq!(
             failed.to_string(),
             "HTTP 403 Forbidden, cf-ray: a3fa5986cbbdf7d1-LAX"
@@ -476,9 +375,8 @@ mod tests {
             let (base, calls) =
                 jev_server_answering_in_turn(vec![(status, "{}"), (StatusCode::OK, JUDGEMENT)])
                     .await;
-            let query = Query::new(json!({})).asking("ask", "ask");
 
-            read(&Client::new(), &base, &key, &query, "ask")
+            read(&Client::new(), &base, &key, &json!({}), ASK)
                 .await
                 .unwrap_err();
 
@@ -495,31 +393,29 @@ mod tests {
             Arc::new(Mutex::new(CapturedRequest::default())),
         )
         .await;
-        let query = Query::new(json!({})).asking("ask", "ask");
 
-        let failed = read(&Client::new(), &base, &api_key(&temp), &query, "ask")
+        let failed = read(&Client::new(), &base, &api_key(&temp), &json!({}), ASK)
             .await
             .unwrap_err();
 
-        assert_eq!(failed.failure(), JevFailure::UnexpectedResponse);
+        assert_eq!(failed.failure(), DecisionFailure::UnexpectedResponse);
     }
 
     #[tokio::test]
     async fn an_unreachable_host_is_unavailable() {
         let temp = TempDir::new().unwrap();
-        let query = Query::new(json!({})).asking("ask", "ask");
 
         let failed = read(
             &Client::new(),
             "http://127.0.0.1:1",
             &api_key(&temp),
-            &query,
-            "ask",
+            &json!({}),
+            ASK,
         )
         .await
         .unwrap_err();
 
-        assert_eq!(failed.failure(), JevFailure::Unavailable);
+        assert_eq!(failed.failure(), DecisionFailure::Unavailable);
     }
 
     #[test]
@@ -535,10 +431,8 @@ mod tests {
         ] {
             headers.insert(name, value.parse().unwrap());
         }
-        let failed = NoJudgement::Answered {
-            status: StatusCode::UNAUTHORIZED,
-            headers,
-        };
+
+        let failed = no_judgement(StatusCode::UNAUTHORIZED, headers);
 
         assert_eq!(
             failed.to_string(),
@@ -550,13 +444,12 @@ mod tests {
     #[tokio::test]
     async fn a_call_that_got_no_answer_is_logged_with_what_caused_it() {
         let temp = TempDir::new().unwrap();
-        let query = Query::new(json!({})).asking("ask", "ask");
         let Err(NoJudgement::NoAnswer(error)) = read(
             &Client::new(),
             "http://127.0.0.1:1",
             &api_key(&temp),
-            &query,
-            "ask",
+            &json!({}),
+            ASK,
         )
         .await
         else {

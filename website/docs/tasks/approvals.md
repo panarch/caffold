@@ -56,10 +56,10 @@ such a mode.
 - In a Codex, Claude Code, Antigravity, or GitHub Copilot Task you can change the mode between turns.
 - Antigravity's **Bypass permissions** skips native permission prompts.
   Entering or leaving it restarts the idle CLI session and resumes the same conversation.
-- GitHub Copilot offers the modes your organization allows. A request your organization requires you to approve goes directly to you, including under **Ask Jev first**.
+- GitHub Copilot offers the modes your organization allows. A request your organization requires you to approve goes directly to you, including under **Caffold decides**.
 - A Grok Task fixes its mode when its conversation starts. Its Composer shows
   the mode but cannot change it; start a new Task to use another mode.
 
-Every agent's menu also offers **Ask Jev first**, a mode of Caffold's own in
-which Jev answers the routine requests and leaves the rest to you. See
-[Ask Jev first](ask-jev-first.md).
+Every agent's menu also offers **Caffold decides**, a mode of Caffold's own in
+which a decision model answers the routine requests and leaves the rest to you.
+See [Caffold decides](caffold-decides.md).

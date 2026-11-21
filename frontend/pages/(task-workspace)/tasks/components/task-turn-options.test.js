@@ -328,8 +328,8 @@ test("a pick for Caffold's own mode survives the list being asked again", async 
     options: [
       ...CODEX_MODES.options,
       {
-        mode: "caffold:ask-jev-first",
-        label: "Ask Jev first",
+        mode: "caffold:decides",
+        label: "Caffold decides",
         description: "Asks about everything.",
         allowed: true,
         dangerous: false,
@@ -338,17 +338,17 @@ test("a pick for Caffold's own mode survives the list being asked again", async 
   };
   answer(server.permissions().at(-1), offering);
   await drain();
-  element.selectPermission("caffold:ask-jev-first");
-  assert.equal(element.snapshot().permissionMode, "caffold:ask-jev-first");
+  element.selectPermission("caffold:decides");
+  assert.equal(element.snapshot().permissionMode, "caffold:decides");
 
-  // Saving Jev settings asks for the list again; a person's pick is theirs
+  // Saving decision model settings asks for the list again; a person's pick is theirs
   // across that, not something the new answer replaces.
   element.forgetPermissionList();
   await drain();
   answer(server.permissions().at(-1), offering);
   await drain();
 
-  assert.equal(element.snapshot().permissionMode, "caffold:ask-jev-first");
+  assert.equal(element.snapshot().permissionMode, "caffold:decides");
   assert.equal(element.snapshot().permissionExplicit, true);
 });
 

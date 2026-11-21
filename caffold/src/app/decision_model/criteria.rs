@@ -12,16 +12,17 @@ const REPLACEMENT_FILE_NAME: &str = "criteria.json.tmp";
 
 /// How long the rules may be.
 ///
-/// Jev reads the rules, the request, and the Task's record in one 64k-token
-/// state, and its own guidance warns that padding a state with material the
-/// question does not need costs accuracy. This bound keeps the rules a page of
-/// judgement rather than a document.
+/// A decision model reads the rules, the request, and the Task's record in one
+/// state, and padding that state with material the question does not need
+/// costs accuracy. This bound keeps the rules a page of judgement rather than a
+/// document.
 pub(super) const MAX_CRITERIA_BYTES: usize = 16 * 1024;
 
 /// The rules a person wrote for deciding permission requests on this host.
 ///
 /// Empty is a meaningful value and the one a fresh installation has: these are
-/// extra rules, and with none written Jev judges by the standard alone.
+/// extra rules, and with none written the decision model judges by the standard
+/// alone.
 pub(super) struct CriteriaStore {
     directory: PathBuf,
     criteria: RwLock<Result<String, String>>,
@@ -103,40 +104,45 @@ mod tests {
     #[test]
     fn a_fresh_installation_has_no_rules_and_writes_no_file() {
         let temp = TempDir::new().unwrap();
-        let store = CriteriaStore::open(temp.path().join("jev"));
+        let store = CriteriaStore::open(temp.path().join("decision-model"));
 
         assert_eq!(store.criteria().unwrap(), "");
-        assert!(!temp.path().join("jev").exists());
+        assert!(!temp.path().join("decision-model").exists());
     }
 
     #[test]
     fn saved_rules_survive_reopening_verbatim() {
         let temp = TempDir::new().unwrap();
-        let store = CriteriaStore::open(temp.path().join("jev"));
+        let store = CriteriaStore::open(temp.path().join("decision-model"));
         let rules = "워크트리 안의 파일을 읽는 건 허용.\n밖으로 나가는 건 허용하지 않음.\n";
 
         store.save(rules).unwrap();
 
         assert_eq!(
-            CriteriaStore::open(temp.path().join("jev"))
+            CriteriaStore::open(temp.path().join("decision-model"))
                 .criteria()
                 .unwrap(),
             rules
         );
-        assert!(!temp.path().join("jev/criteria.json.tmp").exists());
+        assert!(
+            !temp
+                .path()
+                .join("decision-model/criteria.json.tmp")
+                .exists()
+        );
     }
 
     #[test]
     fn rules_can_be_cleared_back_to_empty() {
         let temp = TempDir::new().unwrap();
-        let store = CriteriaStore::open(temp.path().join("jev"));
+        let store = CriteriaStore::open(temp.path().join("decision-model"));
         store.save("allow reads").unwrap();
 
         store.save("").unwrap();
 
         assert_eq!(store.criteria().unwrap(), "");
         assert_eq!(
-            CriteriaStore::open(temp.path().join("jev"))
+            CriteriaStore::open(temp.path().join("decision-model"))
                 .criteria()
                 .unwrap(),
             ""
@@ -146,7 +152,7 @@ mod tests {
     #[test]
     fn rules_longer_than_the_bound_are_refused_and_change_nothing() {
         let temp = TempDir::new().unwrap();
-        let store = CriteriaStore::open(temp.path().join("jev"));
+        let store = CriteriaStore::open(temp.path().join("decision-model"));
         store.save("allow reads").unwrap();
 
         let result = store.save(&"r".repeat(MAX_CRITERIA_BYTES + 1));
@@ -158,7 +164,7 @@ mod tests {
     #[test]
     fn unreadable_rules_stay_an_error_until_they_are_saved_again() {
         let temp = TempDir::new().unwrap();
-        let directory = temp.path().join("jev");
+        let directory = temp.path().join("decision-model");
         fs::create_dir_all(&directory).unwrap();
         fs::write(directory.join("criteria.json"), "{ not json").unwrap();
         let store = CriteriaStore::open(directory);

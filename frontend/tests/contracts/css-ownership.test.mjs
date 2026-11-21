@@ -71,7 +71,7 @@ const shadowRootStyles = new Map([
   ["pages/(task-workspace)/settings/grok/page.css", "caffold-settings-grok-page"],
   ["pages/(task-workspace)/settings/antigravity/page.css", "caffold-settings-antigravity-page"],
   ["pages/(task-workspace)/settings/copilot/page.css", "caffold-settings-copilot-page"],
-  ["pages/(task-workspace)/settings/jev/page.css", "caffold-settings-jev-page"],
+  ["pages/(task-workspace)/settings/decision-model/page.css", "caffold-settings-decision-model-page"],
   ["pages/(task-workspace)/settings/keyboard/page.css", "caffold-settings-keyboard-page"],
   ["pages/(task-workspace)/settings/language-servers/page.css", "caffold-settings-language-servers-page"],
   ["pages/(task-workspace)/settings/layout.css", "caffold-settings-workspace"],

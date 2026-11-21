@@ -301,8 +301,8 @@ export async function getVoiceStatus() {
   return requestJson<VoiceStatus>("/api/voice/status");
 }
 
-// The Tailscale, Voice, and Jev answers are checked by the lifecycle that
-// asked for them.
+// The Tailscale, Voice, and decision model answers are checked by the
+// lifecycle that asked for them.
 export async function getTailscaleStatus() {
   return requestJson("/api/tailscale/status");
 }
@@ -392,13 +392,24 @@ export async function removeVoiceKey(provider: string) {
   );
 }
 
-export async function getJevSettings() {
-  return requestJson("/api/jev/settings");
+export async function getDecisionModelSettings() {
+  return requestJson("/api/decision-model/settings");
 }
 
-export async function saveJevCriteria(criteria: string) {
+export async function selectDecisionModelProvider(provider: string) {
   return requestJson(
-    "/api/jev/criteria",
+    "/api/decision-model/provider",
+    {},
+    {
+      method: "PUT",
+      body: { provider },
+    },
+  );
+}
+
+export async function saveDecisionModelCriteria(criteria: string) {
+  return requestJson(
+    "/api/decision-model/criteria",
     {},
     {
       method: "PUT",
@@ -407,9 +418,9 @@ export async function saveJevCriteria(criteria: string) {
   );
 }
 
-export async function storeJevKey(key: string) {
+export async function storeDecisionModelKey(provider: string, key: string) {
   return requestJson(
-    "/api/jev/key",
+    `/api/decision-model/keys/${encodeURIComponent(provider)}`,
     {},
     {
       method: "PUT",
@@ -418,8 +429,12 @@ export async function storeJevKey(key: string) {
   );
 }
 
-export async function removeJevKey() {
-  return requestJson("/api/jev/key", {}, { method: "DELETE" });
+export async function removeDecisionModelKey(provider: string) {
+  return requestJson(
+    `/api/decision-model/keys/${encodeURIComponent(provider)}`,
+    {},
+    { method: "DELETE" },
+  );
 }
 
 // What a Task's own prompts settled about what it may do, as one text.
@@ -2187,7 +2202,7 @@ export interface TaskEventPayload {
     verbatim?: boolean;
   } | null>;
   tool?: ApprovalTool | null;
-  reviewed?: { concern?: number; model?: string } | null;
+  reviewed?: { concern?: number; provider?: string } | null;
   // A tool call's MCP server, when the agent reports one apart from its name,
   // what it was given, and what came back.
   server?: string | null;

@@ -261,13 +261,13 @@ test("publishes the approval mode the follow-up Composer would send", () => {
     archiveStateValue: { loading: false, error: null },
     forkStateValue: { loading: false, error: null },
     followUpComposer: () => ({
-      selectedPermissionMode: () => "caffold:ask-jev-first",
+      selectedPermissionMode: () => "caffold:decides",
     }),
   };
 
   assert.equal(
     taskDetail.detailSnapshot.call(owner).permissionMode,
-    "caffold:ask-jev-first",
+    "caffold:decides",
   );
 
   owner.followUpComposer = () => null;
