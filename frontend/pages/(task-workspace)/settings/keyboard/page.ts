@@ -9,6 +9,7 @@ import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#app/keyboard-navigation/components/shortcut-list.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import type { SettingsChangeDetail } from "#app/settings.js";
 import {
   getSettings,
@@ -16,6 +17,7 @@ import {
   setActionHintsEnabled,
 } from "#app/settings.js";
 
+import switchStyle from "#app/component-styles/switch.css.js";
 import styles from "./page.css.js";
 
 @customElement("caffold-settings-keyboard-page")
@@ -23,7 +25,10 @@ export class CaffoldSettingsKeyboardPage extends CaffoldElement {
   @state()
   private accessor settings: Settings = getSettings();
 
-  static override styles = styles;
+  static override styles = [
+    scopedStyle(switchStyle, ".settings-keyboard-switch"),
+    styles,
+  ];
 
   private readonly settingsChanged = (
     event: CustomEvent<SettingsChangeDetail>,
@@ -85,13 +90,13 @@ export class CaffoldSettingsKeyboardPage extends CaffoldElement {
               })}
               type="checkbox"
               role="switch"
+              class="settings-keyboard-switch"
               data-action-hints-enabled
               aria-labelledby="settings-action-hints-label"
               aria-describedby="settings-action-hints-description"
               .checked=${this.settings.actionHintsEnabled !== false}
               @change=${this.toggle}
             >
-            <span class="settings-keyboard-state" aria-hidden="true"></span>
           </label>
           <section
             class="settings-keyboard-shortcuts"

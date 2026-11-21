@@ -351,7 +351,7 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
   await page.reload();
   await emitTaskDetailBootstrap(page, detail);
   await expect(
-    tasksPage.locator('[data-task-info-field="worktree-ref"]'),
+    tasksPage.locator('[data-task-info-field="location"] .task-detail-location-branch'),
   ).toHaveText("main");
   await expect(
     tasksPage.locator("caffold-task-detail-git, caffold-task-detail-github"),

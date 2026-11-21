@@ -141,6 +141,7 @@ const shadowRootStyles = new Map([
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css", "caffold-task-detail-summary"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css", "caffold-task-detail-info"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css", "caffold-task-detail-info-actions"],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/copy-value.css", "caffold-task-detail-info-copy-value"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/layout.css", "caffold-task-detail"],
   ["pages/(task-workspace)/tasks/(detail)/components/git-menu.css", "caffold-task-detail-git"],
   ["pages/(task-workspace)/tasks/(detail)/components/github-menu.css", "caffold-task-detail-github"],
@@ -308,7 +309,7 @@ test("shared styles target only their scope root and pseudo surface", () => {
     const selectors = effectiveSelectors(css);
     assert.ok(selectors.length > 0, path);
     for (const selector of selectors) {
-      assert.match(selector, /^:scope(?::(?:disabled|hover|focus-visible))?(?:::before)?$/, path);
+      assert.match(selector, /^:scope(?::(?:disabled|hover|focus-visible|checked))?(?:::before)?$/, path);
     }
     // A source may name the keyframes it defines, but never a consumer.
     const ownKeyframes = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map(([, name]) => name);

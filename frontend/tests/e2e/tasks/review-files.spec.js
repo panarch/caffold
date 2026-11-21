@@ -369,14 +369,13 @@ test("colors Source with the syntax the server names in File details", { tag: "@
   }
 });
 
-test("File details Download measures the same as the Task details actions", { tag: "@all-viewports" }, async ({
+test("File details Download measures the same as the Task details follow-up buttons", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const actionGeometry = (section, control) => section.evaluate((element, controlSelector) => {
     const action = element.querySelector(controlSelector);
     const style = getComputedStyle(action);
     const frame = getComputedStyle(action, "::before");
-    const sectionStyle = getComputedStyle(element);
     return {
       height: action.getBoundingClientRect().height,
       fontFamily: style.fontFamily,
@@ -384,16 +383,35 @@ test("File details Download measures the same as the Task details actions", { ta
       lineHeight: style.lineHeight,
       paddingInline: [style.paddingLeft, style.paddingRight],
       frame: [frame.top, frame.bottom, frame.borderTopWidth, frame.borderTopLeftRadius],
-      section: [sectionStyle.marginTop, sectionStyle.paddingTop, sectionStyle.borderTopWidth],
     };
   }, control);
 
   await mockAgentModels(page);
   const { taskScenario, taskReview } = await openCompletedTaskForReview(page);
+  // An Archive refused over the worktree's changes hangs Discard changes and
+  // archive under Archive.
+  await page.route(`**/api/tasks/${taskScenario.threadId}/archive`, (route) =>
+    route.fulfill({
+      status: 409,
+      json: {
+        error: {
+          code: "managed_worktree_dirty",
+          message: "managed worktree has uncommitted changes: /tmp/worktree",
+          allowedActions: ["forceArchive"],
+          worktreeId: "worktree-follow-up",
+        },
+      },
+    }),
+  );
   await page.locator("caffold-task-detail-info .task-detail-info-button").click();
-  const taskSection = page.locator(".task-detail-popover .task-detail-fork-action");
-  await expect(taskSection).toBeVisible();
-  const task = await actionGeometry(taskSection, ':scope > button[data-task-info-action="fork"]');
+  await page.locator('.task-detail-popover [data-task-info-action="archive"]').click();
+  const taskSection = page.locator(
+    '.task-detail-popover [data-task-info-action="archive"] + .task-detail-action-under',
+  );
+  await expect(
+    taskSection.getByRole("button", { name: "Discard changes and archive" }),
+  ).toBeVisible();
+  const task = await actionGeometry(taskSection, ":scope > .task-secondary-button");
 
   await page.goto(`/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=alpha.rs`);
   const viewer = taskReview.locator("caffold-review-file-viewer:not([hidden])");

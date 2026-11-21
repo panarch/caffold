@@ -253,7 +253,7 @@ test("updates handoff availability while Archive is pending and after it fails",
     await expect(picker.getByRole("button", { name: "Claude", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: /^Task details/ }).click();
-    await page.getByRole("button", { name: "Archive task", exact: true }).click();
+    await page.locator('[data-task-info-action="archive"]').click();
     await expect.poll(() => requested).toBe(true);
     await trigger.click();
     await expect(picker.locator(".task-provider-option")).toHaveText(["Codex"]);

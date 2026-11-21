@@ -1,5 +1,6 @@
 import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { live } from "lit/directives/live.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -28,23 +29,16 @@ import {
 } from "./actions/language-servers.js";
 
 import secondaryButton from "#app/component-styles/secondary-button.css.js";
+import switchStyle from "#app/component-styles/switch.css.js";
 import busySpin from "#app/pages/component-styles/busy-spin.css.js";
 import styles from "./actions.css.js";
 
 /** The approval mode Caffold answers under, which is the one Jev judges for. */
 const REVIEWED_PERMISSION_MODE = "caffold:ask-jev-first";
-const PERMISSION_INSTRUCTIONS_ABOUT =
-  "This Task keeps what your own prompts say it may and may not do, for Jev to read when it answers a permission request here.";
-const PIN_ABOUT =
-  "Pinned Tasks stay at the top of the Task list and the Task Switcher.";
-const UNPIN_ABOUT =
-  "This Task is pinned. Unpinning returns it to the top of its Section.";
-const LANGUAGE_SERVERS_ABOUT =
-  "Language servers answer Go to definition and Find references in this repository's code.";
-const FORK_ABOUT =
-  "Create a new Task at the project root with this conversation's history. Files and worktrees are not copied.";
-const ARCHIVE_ABOUT =
-  "Archive removes this task from the active list. If Caffold prepared its worktree, the worktree is removed and its branch is kept. Its open terminal is closed.";
+/** The agents whose conversations Caffold can fork. */
+const FORKING_PROVIDERS = ["codex", "claude", "grok", "copilot"];
+const IDLE_ONLY = "Available when the Task is idle.";
+const ANOTHER_ACTION = "Another Task action is in progress.";
 
 // A request the Task screen runs for the Task: whether it runs, and why the
 // last one failed.
@@ -55,8 +49,9 @@ export interface TaskActionState {
 
 // What the actions show: the Task, whether its details have been read, its
 // live connection, its agent and approval mode, whether it is pinned (null
-// while the list has not placed it in a Section), and its Archive, Fork, and
-// pin requests. Archive waits while the agent is working on the Task.
+// while the list has not placed it in a Section), whether Caffold prepared the
+// worktree it runs in, and its Archive, Fork, and pin requests. Archive waits
+// while the agent is working on the Task.
 export interface TaskInfoActionsSnapshot {
   task: ListedTask | null;
   canonicalTaskAvailable: boolean;
@@ -68,6 +63,7 @@ export interface TaskInfoActionsSnapshot {
   forkState: TaskActionState;
   pinned: boolean | null;
   pinState: TaskActionState;
+  worktreePrepared: boolean;
 }
 
 type TaskInfoAction =
@@ -92,9 +88,12 @@ export interface LanguageServerInstallIntent {
 }
 
 /**
- * What can be done with the Task from its details popover: read what its
- * prompts settled, pin or unpin it, turn its repository's language servers on
- * or off, fork it, and archive it, each with why it cannot be done now.
+ * What can be done with the Task from its details popover, as a list of rows:
+ * read what its prompts settled, pin or unpin it, turn its repository's
+ * language servers on or off, fork it, and archive it. Each row says what it
+ * does, or why it cannot be done now; what a row reports, such as each
+ * server's state or why the last request failed, and what can be done about
+ * it, sits under the row.
  *
  * The language servers are read once before the popover opens and then
  * while it is open.
@@ -109,6 +108,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
   static override styles = [
     scopedStyle(busySpin, ".task-detail-action-icon.is-busy"),
     scopedStyle(secondaryButton, ".task-secondary-button"),
+    scopedStyle(switchStyle, ".task-detail-language-servers-switch"),
     styles,
   ];
 
@@ -167,17 +167,28 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
     if (!snapshot?.task) {
       return nothing;
     }
-    const forking = snapshot.forkState.loading;
-    const forkUnavailable = forkDisabledReason(snapshot);
-    const forkError = actionErrorMessage(snapshot.forkState.error);
-    const createdTaskId = (snapshot.forkState.error as TaskResponseError | null)
-      ?.createdTaskId;
+    const threadId = taskThreadId(snapshot.task);
     const pinned = snapshot.pinned;
     const pinning = snapshot.pinState.loading;
     const pinError = actionErrorMessage(snapshot.pinState.error);
     const pinLabel = pinned ? "Unpin task" : "Pin task";
-    const pinIcon = pinned ? "PinOff" : "Pin";
+    const forking = snapshot.forkState.loading;
+    // Until the Task's details name its agent, Fork waits dimmed for them.
+    const forkOffered = snapshot.provider
+      ? FORKING_PROVIDERS.includes(snapshot.provider)
+      : !snapshot.canonicalTaskAvailable;
+    const forkUnavailable = forkDisabledReason(snapshot);
+    const forkError = actionErrorMessage(snapshot.forkState.error);
+    const createdTaskId = (snapshot.forkState.error as TaskResponseError | null)
+      ?.createdTaskId;
     const archiving = snapshot.archiveState.loading;
+    const archiveUnavailable = archiving
+      ? ""
+      : snapshot.forkState.loading
+        ? ANOTHER_ACTION
+        : snapshot.archiveBlockedByActive
+          ? IDLE_ONLY
+          : "";
     const archiveError = actionErrorMessage(snapshot.archiveState.error);
     const archiveFailure = snapshot.archiveState
       .error as TaskResponseError | null;
@@ -185,7 +196,6 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
       archiveFailure?.allowedActions?.includes("forceArchive") &&
         archiveFailure.worktreeId,
     );
-    const threadId = taskThreadId(snapshot.task);
     const languageServers = this.languageServers;
     const repository = languageServers.repository;
     const servers = repository?.servers ?? [];
@@ -198,14 +208,12 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
       (serversKnown &&
         serversOn &&
         servers.some((server) => server.state === "starting"));
-    const serversLabel =
+    const serversDescription =
       turning === "off"
         ? "Turning off language servers..."
         : serversBusy
           ? "Starting language servers..."
-          : serversOn
-            ? "Turn off language servers"
-            : "Turn on language servers";
+          : "Go to definition and Find references.";
     const missingServers =
       serversKnown && serversOn ? notInstalled(servers) : [];
     const installLabel =
@@ -213,132 +221,162 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
         ? `Ask an agent to install ${missingServers[0].serverName}`
         : `Ask an agent to install ${missingServers.length} servers`;
     const serversError = actionErrorMessage(languageServers.error);
+    // Each language's line shows only while the servers are on.
+    const serverLines = serversKnown && serversOn;
     return html`
-      <div
-        class="task-detail-task-action
-          task-detail-permission-instructions-action"
-        data-task-info-permission-instructions
-        ?hidden=${!this.keepsPermissionInstructions()}
-      >
-        <p>${PERMISSION_INSTRUCTIONS_ABOUT}</p>
-        <button
-          ${this.hints.button({
-            id: `${threadId}:permission-instructions`,
-            label: "What your prompts settled",
-            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-            when: this.keepsPermissionInstructions(),
-            badgeAtEnd: true,
-          })}
-          type="button"
-          class="task-secondary-button"
-          data-task-info-action="permission-instructions"
-          @click=${this.requestAction}
-        >${actionContent("ShieldCheck", "What your prompts settled")}</button>
-      </div>
-      <div
-        class="task-detail-task-action task-detail-pin-action"
-        ?hidden=${pinned === null}
-      >
-        <p>${pinned ? UNPIN_ABOUT : PIN_ABOUT}</p>
-        <button
-          ${this.hints.button({
-            id: `${threadId}:pin`,
-            label: pinLabel,
-            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-            when: pinned !== null,
-            badgeAtEnd: true,
-          })}
-          type="button"
-          class="task-secondary-button"
-          data-task-info-action=${pinned ? "unpin" : "pin"}
-          ?disabled=${pinning}
-          @click=${this.requestAction}
-        >${actionContent(
-          pinIcon,
-          pinning ? (pinned ? "Unpinning..." : "Pinning...") : pinLabel,
-          pinning,
-        )}</button>
-        <p
-          class="task-detail-action-error task-detail-pin-error"
-          role="alert"
-          ?hidden=${!pinError}
-        >${pinError}</p>
-      </div>
-      <div
-        class="task-detail-task-action task-detail-language-servers-action"
-        ?hidden=${servers.length === 0}
-      >
-        <p>${LANGUAGE_SERVERS_ABOUT}</p>
-        ${
-          serversKnown && serversOn
-            ? servers.map((server) => {
-                const status = languageServerStatus(server);
-                const said = languageServerSaid(server);
-                return status
-                  ? html`<p data-language-server=${server.language}>${status}</p>${
-                      said
-                        ? html`<p
-                            class="task-detail-language-server-said"
-                            data-language-server-said=${server.language}
-                          >${said}</p>`
-                        : nothing
-                    }`
-                  : nothing;
-              })
-            : nothing
-        }
-        <div class="task-detail-action-row">
-          ${
-            missingServers.length > 0
-              ? html`<button
-                  ${this.hints.button({
-                    id: `${threadId}:language-server-install`,
-                    label: installLabel,
-                    action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-                    badgeAtEnd: true,
+      <hr class="task-detail-actions-divider">
+      ${
+        this.keepsPermissionInstructions()
+          ? html`<button
+              ${this.hints.button({
+                id: `${threadId}:permission-instructions`,
+                label: "What your prompts settled",
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                badgeAtEnd: true,
+              })}
+              type="button"
+              class="task-detail-action"
+              data-task-info-action="permission-instructions"
+              @click=${this.requestAction}
+            >
+              ${actionIcon("ShieldCheck")}
+              <span class="task-detail-action-label">What your prompts settled</span>
+              <span class="task-detail-action-description"
+                >What Jev reads before it answers a permission request here.</span
+              >
+            </button>`
+          : nothing
+      }
+      ${
+        pinned === null
+          ? nothing
+          : html`<button
+                ${this.hints.button({
+                  id: `${threadId}:pin`,
+                  label: pinLabel,
+                  action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                  badgeAtEnd: true,
+                })}
+                type="button"
+                class="task-detail-action"
+                data-task-info-action=${pinned ? "unpin" : "pin"}
+                ?disabled=${pinning}
+                @click=${this.requestAction}
+              >
+                ${actionIcon(pinned ? "PinOff" : "Pin", pinning)}
+                <span class="task-detail-action-label">${
+                  pinning ? (pinned ? "Unpinning..." : "Pinning...") : pinLabel
+                }</span>
+                <span class="task-detail-action-description">${
+                  pinned
+                    ? "Return it to its Section."
+                    : "Keep it at the top of the Task list."
+                }</span>
+              </button>
+              ${
+                pinError
+                  ? html`<div class="task-detail-action-under">
+                      <p
+                        class="task-detail-action-error task-detail-pin-error"
+                        role="alert"
+                      >${pinError}</p>
+                    </div>`
+                  : nothing
+              }`
+      }
+      ${
+        servers.length === 0
+          ? nothing
+          : html`<label
+                class="task-detail-action task-detail-language-servers-action"
+              >
+                ${actionIcon("CodeXml", serversBusy)}
+                <span
+                  class="task-detail-action-label"
+                  id=${`${threadId}-language-servers-label`}
+                >Language servers</span>
+                <span
+                  class="task-detail-action-description"
+                  id=${`${threadId}-language-servers-description`}
+                >${serversDescription}</span>
+                <input
+                  ${this.hints.switch({
+                    id: `${threadId}:language-servers`,
+                    label: serversOn
+                      ? "Turn off language servers"
+                      : "Turn on language servers",
+                    action: ACTION_HINT_ACTION.CONTROL_SWITCH_TOGGLE,
                   })}
-                  type="button"
-                  class="task-secondary-button"
-                  data-task-info-action="install-language-servers"
-                  @click=${this.requestLanguageServerInstall}
-                >${actionContent("Bot", installLabel)}</button>`
-              : nothing
-          }
-          <button
-            ${this.hints.button({
-              id: `${threadId}:language-servers`,
-              label: serversLabel,
-              action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-              when: servers.length > 0,
-              badgeAtEnd: true,
-            })}
-            type="button"
-            class="task-secondary-button"
-            data-task-info-action=${
-              serversOn
-                ? "turn-off-language-servers"
-                : "turn-on-language-servers"
-            }
-            ?disabled=${!serversKnown || serversBusy}
-            @click=${this.turnLanguageServers}
-          >${actionContent("CodeXml", serversLabel, serversBusy)}</button>
-        </div>
-        <p
-          class="task-detail-action-error task-detail-language-servers-error"
-          role="alert"
-          ?hidden=${!serversError}
-        >${serversError}</p>
-      </div>
-      <div class="task-detail-task-action task-detail-fork-action">
-        <p>${FORK_ABOUT}</p>
-        <p
-          class="task-detail-fork-availability"
-          ?hidden=${forking || Boolean(createdTaskId) || !forkUnavailable}
-        >${forking ? "" : forkUnavailable}</p>
-        ${
-          createdTaskId
-            ? nothing
-            : html`<button
+                  type="checkbox"
+                  role="switch"
+                  class="task-detail-language-servers-switch"
+                  data-task-info-action=${
+                    serversOn
+                      ? "turn-off-language-servers"
+                      : "turn-on-language-servers"
+                  }
+                  aria-labelledby=${`${threadId}-language-servers-label`}
+                  aria-describedby=${`${threadId}-language-servers-description`}
+                  .checked=${live(turning ? turning === "on" : serversOn)}
+                  ?disabled=${!serversKnown || serversBusy}
+                  @change=${this.turnLanguageServers}
+                >
+              </label>
+              ${
+                serverLines || serversError || missingServers.length > 0
+                  ? html`<div class="task-detail-action-under">
+                      ${
+                        serverLines
+                          ? servers.map((server) => {
+                              const status = languageServerStatus(server);
+                              const said = languageServerSaid(server);
+                              return status
+                                ? html`<p
+                                      class="task-detail-action-note"
+                                      data-language-server=${server.language}
+                                    >${status}</p>${
+                                      said
+                                        ? html`<p
+                                            class="task-detail-action-note task-detail-language-server-said"
+                                            data-language-server-said=${server.language}
+                                          >${said}</p>`
+                                        : nothing
+                                    }`
+                                : nothing;
+                            })
+                          : nothing
+                      }
+                      ${
+                        serversError
+                          ? html`<p
+                              class="task-detail-action-error task-detail-language-servers-error"
+                              role="alert"
+                            >${serversError}</p>`
+                          : nothing
+                      }
+                      ${
+                        missingServers.length > 0
+                          ? html`<button
+                              ${this.hints.button({
+                                id: `${threadId}:language-server-install`,
+                                label: installLabel,
+                                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                                badgeAtEnd: true,
+                              })}
+                              type="button"
+                              class="task-secondary-button task-detail-follow-up"
+                              data-task-info-action="install-language-servers"
+                              @click=${this.requestLanguageServerInstall}
+                            >${actionContent("Bot", installLabel)}</button>`
+                          : nothing
+                      }
+                    </div>`
+                  : nothing
+              }`
+      }
+      ${
+        forkOffered
+          ? html`<button
                 ${this.hints.button({
                   id: `${threadId}:fork`,
                   label: "Fork task",
@@ -346,84 +384,106 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
                   badgeAtEnd: true,
                 })}
                 type="button"
-                class="task-secondary-button"
+                class="task-detail-action"
                 data-task-info-action="fork"
-                title=${forking || !forkUnavailable ? nothing : forkUnavailable}
-                ?disabled=${forking || Boolean(forkUnavailable)}
+                ?disabled=${forking || Boolean(forkUnavailable) || Boolean(createdTaskId)}
                 @click=${this.requestAction}
-              >${actionContent("Split", forking ? "Forking..." : "Fork task", forking)}</button>`
-        }
-        <p
-          class="task-detail-action-error task-detail-fork-error"
-          role="alert"
-          ?hidden=${!forkError}
-        >${forkError}</p>
-        ${
-          createdTaskId
-            ? html`<a
-                ${this.hints.link({
-                  id: `${threadId}:open-fork`,
-                  label: "Open forked task",
-                  action: ACTION_HINT_ACTION.LINK_OPEN,
-                })}
-                class="task-secondary-button"
-                href=${`/tasks/${encodeURIComponent(createdTaskId)}`}
-              >${actionContent("ArrowRight", "Open forked task")}</a>`
-            : nothing
-        }
-      </div>
-      <div class="task-detail-task-action task-detail-archive-action">
-        <p>${ARCHIVE_ABOUT}</p>
-        <button
-          ${this.hints.button({
-            id: `${threadId}:archive`,
-            label: "Archive task",
-            action: ACTION_HINT_ACTION.TASK_ARCHIVE,
-            badgeAtEnd: true,
-          })}
-          type="button"
-          class="task-secondary-button"
-          data-task-info-action="archive"
-          ?disabled=${
-            archiving ||
-            snapshot.forkState.loading ||
-            snapshot.archiveBlockedByActive
-          }
-          @click=${this.requestAction}
-        >${actionContent(
-          "Archive",
-          archiving ? "Archiving..." : "Archive task",
-          archiving,
-        )}</button>
-        <p
-          class="task-detail-action-error task-detail-archive-error"
-          role="alert"
-          ?hidden=${!archiveError}
-        >${archiveError}</p>
-        ${
-          canForceArchive
-            ? html`
-                <button
-                  ${this.hints.button({
-                    id: `${threadId}:force-archive`,
-                    label: "Discard changes and archive",
-                    action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-                    badgeAtEnd: true,
-                  })}
-                  type="button"
-                  class="task-secondary-button"
-                  data-task-info-action="force-archive"
-                  ?disabled=${
-                    archiving ||
-                    snapshot.forkState.loading ||
-                    snapshot.archiveBlockedByActive
-                  }
-                  @click=${this.requestAction}
-                >${actionContent("ArchiveX", "Discard changes and archive")}</button>
-              `
-            : nothing
-        }
-      </div>
+              >
+                ${actionIcon("Split", forking)}
+                <span class="task-detail-action-label">${
+                  forking ? "Forking..." : "Fork task"
+                }</span>
+                <span class="task-detail-action-description">${
+                  forking || createdTaskId || !forkUnavailable
+                    ? "Copies the conversation, not the files, into a new Task."
+                    : forkUnavailable
+                }</span>
+              </button>
+              ${
+                forkError || createdTaskId
+                  ? html`<div class="task-detail-action-under">
+                      ${
+                        forkError
+                          ? html`<p
+                              class="task-detail-action-error task-detail-fork-error"
+                              role="alert"
+                            >${forkError}</p>`
+                          : nothing
+                      }
+                      ${
+                        createdTaskId
+                          ? html`<a
+                              ${this.hints.link({
+                                id: `${threadId}:open-fork`,
+                                label: "Open forked task",
+                                action: ACTION_HINT_ACTION.LINK_OPEN,
+                              })}
+                              class="task-secondary-button task-detail-follow-up"
+                              href=${`/tasks/${encodeURIComponent(createdTaskId)}`}
+                            >${actionContent("ArrowRight", "Open forked task")}</a>`
+                          : nothing
+                      }
+                    </div>`
+                  : nothing
+              }`
+          : nothing
+      }
+      <hr class="task-detail-actions-divider">
+      <button
+        ${this.hints.button({
+          id: `${threadId}:archive`,
+          label: "Archive task",
+          action: ACTION_HINT_ACTION.TASK_ARCHIVE,
+          badgeAtEnd: true,
+        })}
+        type="button"
+        class="task-detail-action"
+        data-task-info-action="archive"
+        ?disabled=${archiving || Boolean(archiveUnavailable)}
+        @click=${this.requestAction}
+      >
+        ${actionIcon("Archive", archiving)}
+        <span class="task-detail-action-label">${
+          archiving ? "Archiving..." : "Archive task"
+        }</span>
+        <span class="task-detail-action-description">${
+          archiveUnavailable ||
+          (snapshot.worktreePrepared
+            ? "Removes its worktree and keeps the branch."
+            : "Removes it from the active list.")
+        }</span>
+      </button>
+      ${
+        archiveError || canForceArchive
+          ? html`<div class="task-detail-action-under">
+              ${
+                archiveError
+                  ? html`<p
+                      class="task-detail-action-error task-detail-archive-error"
+                      role="alert"
+                    >${archiveError}</p>`
+                  : nothing
+              }
+              ${
+                canForceArchive
+                  ? html`<button
+                      ${this.hints.button({
+                        id: `${threadId}:force-archive`,
+                        label: "Discard changes and archive",
+                        action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                        badgeAtEnd: true,
+                      })}
+                      type="button"
+                      class="task-secondary-button task-detail-follow-up"
+                      data-task-info-action="force-archive"
+                      ?disabled=${archiving || Boolean(archiveUnavailable)}
+                      @click=${this.requestAction}
+                    >${actionContent("ArchiveX", "Discard changes and archive")}</button>`
+                  : nothing
+              }
+            </div>`
+          : nothing
+      }
     `;
   }
 
@@ -498,14 +558,18 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
   }
 }
 
-// An action's icon before its label. While the action runs, the busy icon
-// turns in the icon's place.
-function actionContent(icon: string, label: string, busy = false) {
+// A row's or a button's icon. While the action runs, the busy icon turns in
+// the icon's place.
+function actionIcon(icon: string, busy = false) {
   return html`<span
-      class=${busy ? "task-detail-action-icon is-busy" : "task-detail-action-icon"}
-      aria-hidden="true"
-    >${inlineIcon(busy ? "LoaderCircle" : icon, "", "task-detail-action-svg")}</span>
-    <span>${label}</span>`;
+    class=${busy ? "task-detail-action-icon is-busy" : "task-detail-action-icon"}
+    aria-hidden="true"
+  >${inlineIcon(busy ? "LoaderCircle" : icon, "", "task-detail-action-svg")}</span>`;
+}
+
+// A follow-up button's icon before its label.
+function actionContent(icon: string, label: string) {
+  return html`${actionIcon(icon)}<span>${label}</span>`;
 }
 
 function actionErrorMessage(error: Error | null) {
@@ -576,23 +640,19 @@ function languageServerSaid({ state, failure }: LanguageServerStatus) {
     : "";
 }
 
+// Why an agent that forks cannot fork the Task now, or nothing.
 function forkDisabledReason(snapshot: TaskInfoActionsSnapshot) {
   if (!snapshot.canonicalTaskAvailable) {
-    return "Fork is unavailable until Task details load.";
-  }
-  if (
-    !["codex", "claude", "grok", "copilot"].includes(snapshot.provider ?? "")
-  ) {
-    return "Fork is available for Codex, Claude and Grok Tasks.";
+    return "Available once Task details load.";
   }
   if (isTaskTransportStale(snapshot.transportState)) {
-    return "Fork is unavailable while the Task connection is interrupted.";
+    return "Unavailable while the Task connection is interrupted.";
   }
   if (snapshot.archiveState.loading) {
-    return "Another Task action is in progress.";
+    return ANOTHER_ACTION;
   }
   if (taskThreadStatusType(snapshot.task) !== "idle") {
-    return "Fork is available when the Task is idle.";
+    return IDLE_ONLY;
   }
   return "";
 }

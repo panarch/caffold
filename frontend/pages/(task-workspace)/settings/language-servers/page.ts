@@ -12,8 +12,9 @@ import type {
   LanguageServerStatus,
 } from "#app/api.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import { scopedStyle } from "#app/scoped-style.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
-import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/loading-text.js";
 import { languageServerMemory } from "../../language-servers.js";
 import {
@@ -23,6 +24,7 @@ import {
   type RunningServersSnapshot,
 } from "./lifecycle.js";
 
+import switchStyle from "#app/component-styles/switch.css.js";
 import styles from "./page.css.js";
 
 const INTRO =
@@ -39,7 +41,10 @@ export class CaffoldSettingsLanguageServersPage extends CaffoldElement {
   @state()
   private accessor running: RunningServersSnapshot;
 
-  static override styles = styles;
+  static override styles = [
+    scopedStyle(switchStyle, ".settings-language-server-switch"),
+    styles,
+  ];
 
   private readonly languagesLifecycle = new LanguageSettingsLifecycle({
     onChange: (snapshot) => {
@@ -56,7 +61,6 @@ export class CaffoldSettingsLanguageServersPage extends CaffoldElement {
   });
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
-  private readonly switchStates = new DrawnRefs<HTMLElement>(this);
 
   constructor() {
     super();
@@ -162,10 +166,10 @@ export class CaffoldSettingsLanguageServersPage extends CaffoldElement {
                         id: `language:${id}`,
                         label: enabled ? `Turn ${name} off` : `Turn ${name} on`,
                         action: ACTION_HINT_ACTION.CONTROL_SWITCH_TOGGLE,
-                        anchor: () => this.switchStates.get(id),
                       })}
                       type="checkbox"
                       role="switch"
+                      class="settings-language-server-switch"
                       aria-labelledby=${`settings-language-server-${id}-name`}
                       aria-describedby=${`settings-language-server-${id}-server`}
                       data-language=${id}
@@ -173,11 +177,6 @@ export class CaffoldSettingsLanguageServersPage extends CaffoldElement {
                       ?disabled=${!languages.ready}
                       @change=${this.toggleLanguage}
                     >
-                    <span
-                      ${drawn(this.switchStates.of(id))}
-                      class="settings-language-server-state"
-                      aria-hidden="true"
-                    ></span>
                   </label>
                 </li>`;
                 },

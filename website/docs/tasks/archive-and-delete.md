@@ -22,8 +22,7 @@ Open the Task, choose **Task details** at its top right, and choose
   the exception: Caffold archives it only once Antigravity has confirmed it
   stopped writing to the conversation, so if Antigravity cannot be reached,
   archive it again once it is available.
-- The Task's [terminal](terminal.md) closes. **Task details** says so above
-  **Archive task**.
+- The Task's [terminal](terminal.md) closes.
 
 ## Discard changes and archive
 

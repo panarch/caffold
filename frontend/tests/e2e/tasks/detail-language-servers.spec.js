@@ -19,8 +19,7 @@ import {
 const CODE_XML_ICON = 'svg path[d="m14.5 4-5 16"]';
 const BOT_ICON = 'svg path[d="M12 8V4H8"]';
 const BUSY_ICON = '.task-detail-action-icon.is-busy svg path[d="M21 12a9 9 0 1 1-6.2-8.6"]';
-const ABOUT =
-  "Language servers answer Go to definition and Find references in this repository's code.";
+const DESCRIPTION = "Go to definition and Find references.";
 const GIB = 1024 ** 3;
 const HOME = "Users/me";
 const RUST_TOOLCHAIN = "1.94-aarch64-apple-darwin";
@@ -183,6 +182,12 @@ async function openTask(page, repository, { servers, enabled = false }) {
     detailsButton: summary.getByRole("button", { name: /Task details/ }),
     popover: summary.locator(".task-detail-popover"),
     section: summary.locator(".task-detail-language-servers-action"),
+    toggle: summary.getByRole("switch", { name: "Language servers" }),
+    // What hangs under the row: each language's line, an error, and the
+    // install button.
+    under: summary.locator(
+      ".task-detail-language-servers-action + .task-detail-action-under",
+    ),
   };
 }
 
@@ -199,49 +204,52 @@ test("asks for the Task's worktree and leaves the section out when it lists no s
   await expect(popover).toBeVisible();
   await expect.poll(() => requests.lookedAgain).toEqual(["repo-plain"]);
   expect(requests.reads).toEqual(["repo-plain"]);
-  await expect(popover.locator(".task-detail-pin-action")).toBeVisible();
-  await expect(section).toBeHidden();
+  await expect(popover.locator('[data-task-info-action="pin"]')).toBeVisible();
+  await expect(section).toHaveCount(0);
 });
 
 test("turns language servers on, shows each language getting ready, and reads again only while open", { tag: "@server-changes" }, async ({ page }) => {
   await page.clock.install();
-  const { state, requests, sectionReads, detailsButton, popover, section } =
+  const { state, requests, sectionReads, detailsButton, popover, section, toggle, under } =
     await openTask(page, "repo-rust", { servers: [rust("off")] });
   state.afterTurn = (on) =>
     on ? [rust("starting", { progress: "Indexing 12/407 (caffold)" })] : [rust("off")];
 
   await detailsButton.click();
   await expect(section).toBeVisible();
-  // The section follows Pin task.
+  // The row follows Pin task.
   await expect(
-    popover.locator(".task-detail-pin-action + .task-detail-language-servers-action"),
+    popover.locator('[data-task-info-action="pin"] + .task-detail-language-servers-action'),
   ).toHaveCount(1);
-  await expect(section.locator("> p:not(.task-detail-action-error)")).toHaveText([ABOUT]);
-  const toggle = section.locator('[data-task-info-action$="-language-servers"]');
-  await expect(toggle).toHaveText("Turn on language servers");
-  await expect(toggle.locator(CODE_XML_ICON)).toHaveCount(1);
+  const description = section.locator(".task-detail-action-description");
+  await expect(description).toHaveText(DESCRIPTION);
+  await expect(under).toHaveCount(0);
+  await expect(toggle).not.toBeChecked();
+  await expect(toggle).toBeEnabled();
+  await expect(section.locator(CODE_XML_ICON)).toHaveCount(1);
 
-  await toggle.click();
+  // The whole row turns the switch.
+  await section.locator(".task-detail-action-label").click();
   await expect.poll(() => requests.turns).toEqual([
     { path: "repo-rust", enabled: true },
   ]);
-  await expect(section.locator("> p:not(.task-detail-action-error)")).toHaveText([
-    ABOUT,
+  await expect(under.locator("> p:not(.task-detail-action-error)")).toHaveText([
     "Rust: getting ready · Indexing 12/407 (caffold)",
   ]);
-  await expect(toggle).toHaveText("Starting language servers...");
+  await expect(description).toHaveText("Starting language servers...");
+  await expect(toggle).toBeChecked();
   await expect(toggle).toBeDisabled();
-  await expect(toggle.locator(BUSY_ICON)).toHaveCount(1);
+  await expect(section.locator(BUSY_ICON)).toHaveCount(1);
 
   const reads = await sectionReads();
   state.servers = [rust("ready", { repositoryPath: "repo-rust", memoryBytes: 2.8 * GIB })];
   await page.clock.runFor(1_000);
   await expect.poll(sectionReads).toBeGreaterThan(reads);
-  await expect(section.locator("> p:not(.task-detail-action-error)")).toHaveText([
-    ABOUT,
+  await expect(under.locator("> p:not(.task-detail-action-error)")).toHaveText([
     "Rust: ready · rust-analyzer · 2.8 GB",
   ]);
-  await expect(toggle).toHaveText("Turn off language servers");
+  await expect(description).toHaveText(DESCRIPTION);
+  await expect(toggle).toBeChecked();
   await expect(toggle).toBeEnabled();
   const ready = await sectionReads();
   await page.clock.runFor(5_000);
@@ -252,8 +260,8 @@ test("turns language servers on, shows each language getting ready, and reads ag
     { path: "repo-rust", enabled: true },
     { path: "repo-rust", enabled: false },
   ]);
-  await expect(toggle).toHaveText("Turn on language servers");
-  await expect(section.locator("> p:not(.task-detail-action-error)")).toHaveText([ABOUT]);
+  await expect(toggle).not.toBeChecked();
+  await expect(under).toHaveCount(0);
 
   // Closed while a server gets ready, the popover reads nothing more.
   state.enabled = true;
@@ -261,7 +269,7 @@ test("turns language servers on, shows each language getting ready, and reads ag
   await detailsButton.click();
   await expect(popover).toBeHidden();
   await detailsButton.click();
-  await expect(toggle).toHaveText("Starting language servers...");
+  await expect(description).toHaveText("Starting language servers...");
   await detailsButton.click();
   await expect(popover).toBeHidden();
   const closed = await sectionReads();
@@ -271,7 +279,7 @@ test("turns language servers on, shows each language getting ready, and reads ag
 
 test("opening the details looks again, so a server installed since it failed gets ready", { tag: "@server-steady" }, async ({ page }) => {
   await page.clock.install();
-  const { state, requests, detailsButton, popover, section } = await openTask(
+  const { state, requests, detailsButton, popover, under } = await openTask(
     page,
     "repo-installed",
     {
@@ -283,17 +291,15 @@ test("opening the details looks again, so a server installed since it failed get
   state.afterLookingAgain = () => [rust("starting", { progress: "Indexing 3/407" })];
 
   await detailsButton.click();
-  await expect(section.locator("> p:not(.task-detail-action-error)")).toHaveText([
-    ABOUT,
+  await expect(under.locator("> p:not(.task-detail-action-error)")).toHaveText([
     "Rust: getting ready · Indexing 3/407",
   ]);
   expect(requests.lookedAgain).toEqual(["repo-installed"]);
-  await expect(section.getByRole("button", { name: /Ask an agent to install/ })).toHaveCount(0);
+  await expect(under.getByRole("button", { name: /Ask an agent to install/ })).toHaveCount(0);
 
   state.servers = [rust("ready", { repositoryPath: "repo-installed", memoryBytes: GIB })];
   await page.clock.runFor(1_000);
-  await expect(section.locator("> p:not(.task-detail-action-error)")).toHaveText([
-    ABOUT,
+  await expect(under.locator("> p:not(.task-detail-action-error)")).toHaveText([
     "Rust: ready · rust-analyzer · 1.0 GB",
   ]);
   // Reads while it got ready only read.
@@ -306,14 +312,13 @@ test("opening the details looks again, so a server installed since it failed get
   await expect(popover).toBeHidden();
   await detailsButton.click();
   await expect.poll(() => requests.lookedAgain.length).toBe(2);
-  await expect(section.locator("> p:not(.task-detail-action-error)")).toHaveText([
-    ABOUT,
+  await expect(under.locator("> p:not(.task-detail-action-error)")).toHaveText([
     `Rust: rust-analyzer is not installed for the ${RUST_TOOLCHAIN} toolchain.`,
   ]);
 });
 
-test("reports why turning on failed beside the section's button", { tag: "@server-steady" }, async ({ page }) => {
-  const { detailsButton, section } = await openTask(page, "repo-refused", {
+test("reports why turning on failed under the row and turns the switch back", { tag: "@server-steady" }, async ({ page }) => {
+  const { detailsButton, toggle, under } = await openTask(page, "repo-refused", {
     servers: [rust("off")],
   });
   await page.route(/\/api\/language-servers\/repository$/, (route) =>
@@ -325,16 +330,15 @@ test("reports why turning on failed beside the section's button", { tag: "@serve
       : route.fallback(),
   );
   await detailsButton.click();
-  const toggle = section.locator('[data-task-info-action$="-language-servers"]');
   await toggle.click();
-  await expect(section.getByRole("alert")).toHaveText(
+  await expect(under.getByRole("alert")).toHaveText(
     "Requests must come from this page.",
   );
-  await expect(toggle).toHaveText("Turn on language servers");
+  await expect(toggle).not.toBeChecked();
   await expect(toggle).toBeEnabled();
 });
 
-test("reaches the section's button from the keyboard inside Task details", { tag: "@server-steady" }, async ({ page }) => {
+test("reaches the Language servers switch from the keyboard inside Task details", { tag: "@server-steady" }, async ({ page }) => {
   const { requests, popover, section } = await openTask(page, "repo-keys", {
     servers: [rust("off")],
   });
@@ -353,8 +357,8 @@ test("reaches the section's button from the keyboard inside Task details", { tag
   ]);
 });
 
-test("says which check failed for each language and offers one install beside the off button, wrapping on narrow screens", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
-  const { detailsButton, popover, section } = await openTask(page, "repo-missing", {
+test("says which check failed for each language and offers one install under the row, keeping every line inside narrow screens", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
+  const { detailsButton, popover, section, toggle, under } = await openTask(page, "repo-missing", {
     enabled: true,
     servers: [
       rust("failed", { failure: RUST_NOT_INSTALLED }),
@@ -368,46 +372,45 @@ test("says which check failed for each language and offers one install beside th
     ],
   });
   await detailsButton.click();
-  await expect(section.locator("> p:not(.task-detail-action-error)")).toHaveText([
-    ABOUT,
+  await expect(under.locator("> p:not(.task-detail-action-error)")).toHaveText([
     `Rust: rust-analyzer is not installed for the ${RUST_TOOLCHAIN} toolchain.`,
     "TypeScript/JavaScript: typescript-language-server could not start.",
     "env: node: No such file or directory; typescript-language-server needs Node.js on the search path Caffold started with.",
   ]);
-  const buttons = section.locator(".task-detail-action-row > button");
-  await expect(buttons).toHaveText([
-    "Ask an agent to install rust-analyzer",
-    "Turn off language servers",
-  ]);
+  await expect(toggle).toBeChecked();
+  const buttons = under.locator(":scope > button");
+  await expect(buttons).toHaveText(["Ask an agent to install rust-analyzer"]);
   await expect(buttons.nth(0).locator(BOT_ICON)).toHaveCount(1);
-  await expect(buttons.nth(1).locator(CODE_XML_ICON)).toHaveCount(1);
+  await expect(section.locator(CODE_XML_ICON)).toHaveCount(1);
 
-  const layout = await section.evaluate((element) => {
-    const box = element.getBoundingClientRect();
+  // What hangs under the row starts where the row's words start, and every
+  // line and the button stay inside the popover.
+  const layout = await under.evaluate((element) => {
     const popover = element.getRootNode().host
       .getRootNode()
       .querySelector(".task-detail-popover");
+    const content = popover.getBoundingClientRect();
+    const words = element.previousElementSibling
+      .querySelector(".task-detail-action-label")
+      .getBoundingClientRect();
     const inside = (rect) =>
-      rect.left >= box.left - 0.5 && rect.right <= box.right + 0.5;
-    const buttons = [...element.querySelectorAll(".task-detail-action-row > button")]
-      .map((button) => button.getBoundingClientRect());
+      rect.left >= words.left - 0.5 && rect.right <= content.right + 0.5;
+    const parts = [...element.children].map((part) => part.getBoundingClientRect());
     return {
       popoverScrolls: popover.scrollWidth > popover.clientWidth,
-      buttonsInside: buttons.every(inside),
-      linesInside: [...element.querySelectorAll(":scope > p")]
-        .filter((line) => line.checkVisibility())
-        .every((line) =>
-          inside(line.getBoundingClientRect()) &&
-          line.scrollWidth <= line.clientWidth + 1),
-      rows: new Set(buttons.map((button) => Math.round(button.top))).size,
+      startsWithWords: parts.every((rect) => Math.abs(rect.left - words.left) <= 0.5),
+      inside: parts.every(inside),
+      linesWhole: [...element.querySelectorAll(":scope > p")].every(
+        (line) => line.scrollWidth <= line.clientWidth + 1,
+      ),
     };
   });
-  expect(layout.popoverScrolls).toBe(false);
-  expect(layout.buttonsInside).toBe(true);
-  expect(layout.linesInside).toBe(true);
-  if (testInfo.project.name === "phone") {
-    expect(layout.rows).toBeGreaterThan(1);
-  }
+  expect(layout).toEqual({
+    popoverScrolls: false,
+    startsWithWords: true,
+    inside: true,
+    linesWhole: true,
+  });
   await captureReviewScreenshot(page, testInfo, "task-details-language-servers-missing");
   await expect(popover).toBeVisible();
 });
@@ -420,7 +423,7 @@ test("asks an agent to install every missing server on the host from the home fo
       json: { ...(await response.json()), homePath: HOME },
     });
   });
-  const { detailsButton, section } = await openTask(page, "repo-install", {
+  const { detailsButton, under } = await openTask(page, "repo-install", {
     enabled: true,
     servers: [
       rust("failed", { failure: RUST_NOT_INSTALLED }),
@@ -456,12 +459,11 @@ test("asks an agent to install every missing server on the host from the home fo
   );
 
   await detailsButton.click();
-  await expect(section.locator("> p:not(.task-detail-action-error)")).toHaveText([
-    ABOUT,
+  await expect(under.locator("> p:not(.task-detail-action-error)")).toHaveText([
     `Rust: rust-analyzer is not installed for the ${RUST_TOOLCHAIN} toolchain.`,
     "TypeScript/JavaScript: typescript-language-server is not installed.",
   ]);
-  const install = section.getByRole("button", {
+  const install = under.getByRole("button", {
     name: "Ask an agent to install 2 servers",
   });
   await install.click();

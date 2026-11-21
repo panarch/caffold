@@ -168,9 +168,11 @@ test("a Task's kept permission instructions are read and forgotten from its deta
 
   const summary = page.locator("caffold-task-detail-summary");
   await summary.getByRole("button", { name: /Task details/ }).click();
-  const action = summary.locator("[data-task-info-permission-instructions]");
-  await expect(action).toBeVisible();
-  const settled = action.getByRole("button", { name: "What your prompts settled" });
+  const settled = summary.locator('[data-task-info-action="permission-instructions"]');
+  await expect(settled).toBeVisible();
+  await expect(settled.locator(".task-detail-action-label")).toHaveText(
+    "What your prompts settled",
+  );
   // What the Lucide stub in browser-defaults draws for ShieldCheck.
   await expect(settled.locator('svg path[d="m9 12 2 2 4-4"]')).toHaveCount(1);
 

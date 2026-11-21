@@ -605,13 +605,10 @@ test("creates a task with responsive composer controls and canonical approval st
     tasksPage.locator('[data-task-info-field="thread"]'),
   ).toHaveText(threadId);
   await expect(
-    tasksPage.locator('[data-task-info-field="worktree-ref"]'),
+    tasksPage.locator('[data-task-info-field="location"] .task-detail-location-branch'),
   ).toHaveText("main");
   await expect(
-    tasksPage.locator('[data-task-info-field="worktree-path"]'),
-  ).toHaveText(contextPath);
-  await expect(
-    tasksPage.locator('[data-task-info-field="working-directory"]'),
+    tasksPage.locator('[data-task-info-path="path"] .task-detail-path-value'),
   ).toHaveText(contextPath);
   await expect(tasksPage.locator(".task-conversation")).toBeVisible();
   await expect(tasksPage.locator(".task-detail-summary h2")).toHaveCSS(

@@ -1019,14 +1019,21 @@ test("Task Info actions visibly distinguish their disabled state", () => {
     "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css",
   );
 
+  // A row that cannot be used now dims its words and keeps the plain cursor.
+  cssBlockMatching(actions, ".task-detail-action:disabled {", [
+    /cursor: default/,
+  ]);
+  cssBlockMatching(actions, ".task-detail-action:disabled > * {", [
+    /color: var\(--disabled-text\)/,
+  ]);
   cssBlockMatching(
     actions,
-    ".task-detail-task-action .task-secondary-button:not\(:disabled\):hover::before",
+    ".task-detail-follow-up:not\(:disabled\):hover::before",
     [/border-color: var\(--border-strong\)/],
   );
   cssBlockMatching(
     actions,
-    ".task-detail-task-action .task-secondary-button:disabled",
+    ".task-detail-follow-up:disabled {",
     [
       /color: var\(--disabled-text\)/,
       /cursor: not-allowed/,
@@ -1035,7 +1042,7 @@ test("Task Info actions visibly distinguish their disabled state", () => {
   );
   cssBlockMatching(
     actions,
-    ".task-detail-task-action .task-secondary-button:disabled::before",
+    ".task-detail-follow-up:disabled::before",
     [
       /border-color: var\(--border\)/,
       /background: var\(--surface-muted\)/,
@@ -1103,7 +1110,7 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
     ["pages/(task-workspace)/settings/codex/page.css", ".settings-runtime-control button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/settings/codex/page.css", ".settings-codex-updates button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/settings/about/page.css", ".settings-about-actions button::before", "--interface-control-hit-outset"],
-    ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css", ".task-detail-task-action .task-secondary-button::before", "--interface-compact-hit-outset"],
+    ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css", ".task-detail-follow-up::before", "--interface-compact-hit-outset"],
   ];
 
   for (const [path, selector, token] of controls) {
@@ -1360,7 +1367,8 @@ test("text actions use the shared Interface metadata scale instead of root body 
       "pages/(task-workspace)/tasks/(detail)/components/github-menu.css",
       ".task-github-popover > button[data-github-button-action]",
     ],
-    ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css", ".task-detail-popover dd"],
+    ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css", ".task-detail-meta {"],
+    ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css", ".task-detail-action {"],
     ["pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css", ".github-pull-commit a"],
   ];
 

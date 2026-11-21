@@ -111,54 +111,9 @@
   padding: var(--interface-space-6);
 }
 
-.settings-keyboard-toggle input {
-  position: absolute;
-  z-index: 1;
-  top: 50%;
-  right: var(--interface-space-6);
-  width: 2.5rem;
-  height: 1.5rem;
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-  transform: translateY(-50%);
-}
-
-.settings-keyboard-state {
-  position: relative;
-  display: block;
-  width: 2.5rem;
-  height: 1.5rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
-  background: var(--surface-muted);
-}
-
-.settings-keyboard-state::after {
-  position: absolute;
-  inset: 0.1875rem auto auto 0.1875rem;
-  width: 1rem;
-  height: 1rem;
-  border-radius: 50%;
-  background: var(--muted);
-  content: "";
-  transition: transform 120ms ease;
-}
-
-input:checked + .settings-keyboard-state {
-  border-color: var(--primary-control-bg);
-  background: var(--primary-control-bg);
-}
-
-input:checked + .settings-keyboard-state::after {
-  background: var(--text-inverse);
-  transform: translateX(1rem);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .settings-keyboard-state::after {
-    transition: none;
-  }
+/* The whole card shows the switch's focus. */
+.settings-keyboard-switch:focus-visible {
+  outline: none;
 }
 
 :host([hidden]) {

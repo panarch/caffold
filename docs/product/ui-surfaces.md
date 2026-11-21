@@ -303,13 +303,26 @@ Task Detail presents the selected conversation, command requests,
 follow-up Composer, and Task actions. Integrated Review, Git, and GitHub remain
 shared repository surfaces.
 
-Task details names a Claude Task's **Config directory** when the Task was
+Task details opens from the Task details control. It heads with the Task's
+title and status, then reads where the Task works as one line: the repository,
+or the folder outside Git, with the folder inside the repository the Task works
+in; the branch, or the commit a detached checkout sits on; and **worktree** when
+the checkout is a worktree of its own. Pressing the line unfolds the full paths,
+each with Copy: **Path** for a Task at the top of its checkout or outside Git;
+otherwise **Repository**, then **Worktree** for a worktree of its own, and
+**Working directory** for a folder inside the checkout. A path reads as the New
+Task folder field reads it. The paths fold again when the popover
+closes. The Task's Thread ID follows, with Copy, and its **Claude config**
+directory, with Copy, when the Task was
 created under one other than Claude's default; a Task keeps that directory for
 its life.
 
-Task actions open from the Task details control. Each shows an icon before its
-label. While a button reports progress, such as **Forking...**, a turning
-progress icon takes the icon's place. A Task whose next turn runs under Ask Jev
+Task actions follow as one list. Each row shows an icon, its name, and below
+the name what it does, or why it cannot be done now, such as **Available when
+the Task is idle.** While a row's request runs, such as **Forking...**, a
+turning progress icon takes the icon's place. What a row reports, such as each
+language server's state or why its last request failed, sits under the row,
+with the button that answers it. A Task whose next turn runs under Ask Jev
 first also offers **What your prompts settled** there, which
 opens a dialog holding those messages oldest first, each under the time it was
 sent in the reader's own time zone, and a **Forget these** action. The record
@@ -321,8 +334,8 @@ Task list has placed the Task in a Section. The button shows its progress until
 the Task list has read the change back.
 
 When **Settings → Language Servers** has a language on and the Task's
-repository holds a project of it, Task actions offer **Turn on language
-servers** for that repository, or **Turn off language servers**. While on, a
+repository holds a project of it, Task actions offer a **Language servers**
+switch for that repository. While on, a
 line for each language says whether its server is getting ready, with the
 server's progress, ready, with its memory, sleeping, or that it is not
 installed, for Rust in the repository's toolchain, could not start, with what
@@ -333,18 +346,20 @@ each server, its toolchain, and its install command, and starts a Task in the
 home folder that installs them on the host. Opening the details, or showing
 the repository in Review, looks again for a server that failed, so one
 installed since then gets ready without turning servers off and on. Turning
-on keeps the button busy
+on holds the switch
 until every server is ready; [Integrated Review](#integrated-review) then lets
 names be pressed.
 
 An idle Codex, Claude, Grok, or GitHub Copilot Task exposes **Fork task** in Task actions. It performs the same
 native fork without an ID lookup, places the child at the source Task's Section
-project root, and opens the distinct managed child. Active Tasks and Antigravity Tasks keep the action disabled with an explicit reason. When
-the child is made but its details cannot be read, Task actions show that error
-and **Open forked task**, which opens the child, in place of **Fork task**.
+project root, and opens the distinct managed child. An active Task keeps the action disabled with an explicit reason; an Antigravity Task's actions have no Fork. When
+the child is made but its details cannot be read, **Fork task** stays disabled
+with that error and **Open forked task**, which opens the child, under it.
 Forking remains separate from worktree isolation.
 
-Task details offers **Discard changes and archive** after an eligible ordinary
+**Archive task** says it removes the worktree and keeps its branch when Caffold
+prepared the Task's worktree. Task details offers **Discard changes and archive**
+under it after an eligible ordinary
 Archive refusal. The action opens a native confirmation dialog naming the Task
 and its worktree folder, explaining file loss and conversation/branch retention.
 Cancel has initial focus; only confirmation sends the destructive request.

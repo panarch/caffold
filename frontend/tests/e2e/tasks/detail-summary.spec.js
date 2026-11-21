@@ -205,20 +205,21 @@ test("keeps long Task titles clipped in the header and readable in Info", { tag:
 
   await summary.getByRole("button", { name: /Task details/ }).click();
   const popover = summary.locator(".task-detail-popover");
-  const taskValue = popover.locator('[data-task-info-field="task"]');
+  const taskValue = popover.locator('[data-task-info-field="title"]');
   await expect(popover).toBeVisible();
   await expect(taskValue).toHaveText(title);
+  await expect(popover.locator('[data-task-info-field="status"]')).toHaveText("idle");
   await expect(popover.locator('[data-task-info-field="thread"]')).toHaveText(
     threadId,
   );
-  await expect(
-    popover.locator('[data-task-info-field="working-directory"]'),
-  ).toHaveText("repo-long-title");
-  const worktreeRows = popover.locator("[data-task-info-worktree]");
-  await expect(worktreeRows).toHaveCount(2);
-  await expect(worktreeRows.first()).toBeHidden();
-  await expect(worktreeRows.last()).toBeHidden();
-  await expect(popover.locator("[data-task-info-claude-config-dir]")).toBeHidden();
+  // A folder outside Git reads as its name alone, with no branch.
+  const location = popover.locator('[data-task-info-field="location"]');
+  await expect(location.locator(".task-detail-location-repository")).toHaveText(
+    "repo-long-title",
+  );
+  await expect(location.locator(".task-detail-location-branch")).toHaveCount(0);
+  await expect(location.locator(".task-detail-location-worktree")).toHaveCount(0);
+  await expect(popover.locator('[data-task-info-field="claude-config-dir"]')).toHaveCount(0);
   await expect
     .poll(() =>
       taskValue.evaluate((element) => {
@@ -322,18 +323,222 @@ test("shows the config directory a Claude Task runs under in Task details", { ta
   const summary = page.locator("caffold-task-detail-summary");
   await summary.getByRole("button", { name: /Task details/ }).click();
   const popover = summary.locator(".task-detail-popover");
-  const row = popover.locator("[data-task-info-claude-config-dir]");
   const value = popover.locator('[data-task-info-field="claude-config-dir"]');
+  const row = popover.locator(
+    '.task-detail-meta-line:has([data-task-info-field="claude-config-dir"])',
+  );
 
   await expect(row).toBeVisible();
-  await expect(row.locator("dt")).toHaveText("Config directory");
+  await expect(row.locator(".task-detail-meta-name")).toHaveText("Claude config");
   await expect(value).toHaveText(configDir);
+  await expect(row.locator("caffold-task-detail-info-copy-value")).toHaveCount(1);
   await expect
     .poll(() =>
       value.evaluate((element) => element.scrollWidth <= element.clientWidth),
     )
     .toBe(true);
   await captureReviewScreenshot(page, testInfo, "tasks-summary-claude-config-dir-info");
+});
+
+// A Task in a worktree Caffold made, working in a folder inside it, on a
+// branch whose name is longer than the popover is wide, served from the
+// filesystem root so its paths read from `/` and `~`.
+const WORKTREE_ROOT =
+  "Users/me/Library/Application Support/Caffold/data/worktrees/1737fabc-38e0-4dee-8d60-d875e0cc5f31";
+const LONG_BRANCH = "try-ai-text-detectors-on-every-review-surface-before-release";
+
+function worktreeTask(threadId) {
+  return {
+    ...summaryTask(threadId, "Try the AI text detectors", WORKTREE_ROOT, 100),
+    cwd: `/${WORKTREE_ROOT}/frontend`,
+    cwdPath: `${WORKTREE_ROOT}/frontend`,
+    relativeCwd: "frontend",
+    worktree: {
+      rootPath: WORKTREE_ROOT,
+      repositoryRootPath: "Users/me/Workspace/rust/codger",
+      branch: LONG_BRANCH,
+      headSha: "1290ff05aa0011",
+      relativeCwd: "frontend",
+      linked: true,
+    },
+  };
+}
+
+async function serveFromFilesystemRoot(page) {
+  await page.route(/\/api\/health(?:\?|$)/, async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      json: { ...(await response.json()), root: "/", homePath: "Users/me" },
+    });
+  });
+}
+
+test("keeps Task details one width, wrapping a long branch and long paths inside it", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const task = worktreeTask("thread_summary_location_layout");
+  await serveFromFilesystemRoot(page);
+  await installSummaryFixture(page, [task]);
+
+  await page.goto(`/tasks/${task.threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(task));
+  const summary = page.locator("caffold-task-detail-summary");
+  await summary.getByRole("button", { name: /Task details/ }).click();
+  const popover = summary.locator(".task-detail-popover");
+  const location = popover.locator('[data-task-info-field="location"]');
+  await expect(location.locator(".task-detail-location-repository")).toHaveText(
+    "codger/frontend",
+  );
+  await expect(location.locator(".task-detail-location-branch")).toHaveText(LONG_BRANCH);
+  await expect(location.locator(".task-detail-location-worktree")).toHaveText("worktree");
+  await location.click();
+  await expect(popover.locator(".task-detail-path-value")).toHaveText([
+    "~/Workspace/rust/codger",
+    `~/${WORKTREE_ROOT.slice("Users/me/".length)}`,
+    `~/${WORKTREE_ROOT.slice("Users/me/".length)}/frontend`,
+  ]);
+
+  const layout = await popover.evaluate((element) => {
+    const rootFontSize = Number.parseFloat(
+      getComputedStyle(document.documentElement).fontSize,
+    );
+    const box = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const content = {
+      left: box.left + Number.parseFloat(style.paddingLeft),
+      right: box.right - Number.parseFloat(style.paddingRight),
+    };
+    const lines = (node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return new Set(
+        [...range.getClientRects()]
+          .filter(({ width, height }) => width > 0 && height > 0)
+          .map(({ top }) => Math.round(top)),
+      ).size;
+    };
+    const location = element.querySelector(".task-detail-location");
+    const chevron = location
+      .querySelector(".task-detail-location-chevron")
+      .getBoundingClientRect();
+    const words = [
+      ...element.querySelectorAll(
+        ".task-detail-location-parts > span, .task-detail-path-value, .task-detail-meta-line > span",
+      ),
+    ];
+    const copies = [...element.querySelectorAll(".task-detail-path caffold-task-detail-info-copy-value")]
+      .map((copy) => copy.getBoundingClientRect());
+    return {
+      rootFontSize,
+      viewportWidth: document.documentElement.clientWidth,
+      left: box.left,
+      width: box.width,
+      scrollsSideways: element.scrollWidth > element.clientWidth,
+      wordsInside: words.every((word) => {
+        const rect = word.getBoundingClientRect();
+        return rect.left >= content.left - 0.5 && rect.right <= content.right + 0.5 &&
+          word.scrollWidth <= word.clientWidth + 1;
+      }),
+      chevronAtEnd: Math.abs(chevron.right - location.getBoundingClientRect().right) <=
+        Number.parseFloat(getComputedStyle(location).paddingRight) + 0.5,
+      copiesAtEnd: copies.every((copy) => copy.right <= content.right + 0.5),
+      branchLines: lines(element.querySelector(".task-detail-location-branch")),
+      worktreeLines: lines(
+        element.querySelector('[data-task-info-path="worktree"] .task-detail-path-value'),
+      ),
+    };
+  });
+  if (testInfo.project.name === "phone") {
+    // As Note details does: from the left inset, no wider than the viewport
+    // less 1.5rem.
+    expect(Math.abs(layout.left - 0.5 * layout.rootFontSize)).toBeLessThan(1);
+    expect(
+      Math.abs(layout.width - (layout.viewportWidth - 1.5 * layout.rootFontSize)),
+    ).toBeLessThan(1);
+  } else {
+    expect(Math.abs(layout.width - 28 * layout.rootFontSize)).toBeLessThan(1);
+  }
+  expect(layout.scrollsSideways).toBe(false);
+  expect(layout.wordsInside).toBe(true);
+  expect(layout.chevronAtEnd).toBe(true);
+  expect(layout.copiesAtEnd).toBe(true);
+  expect(layout.worktreeLines).toBeGreaterThan(1);
+  if (testInfo.project.name === "phone") {
+    expect(layout.branchLines).toBeGreaterThan(1);
+  }
+  await captureReviewScreenshot(page, testInfo, "tasks-summary-location-paths");
+});
+
+test("unfolds the paths from the location line and copies each value, folding again once the popover closes", { tag: "@server-steady" }, async ({
+  context,
+  page,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const task = worktreeTask("thread_summary_location_copy");
+  await serveFromFilesystemRoot(page);
+  await installSummaryFixture(page, [task]);
+
+  await page.goto(`/tasks/${task.threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(task));
+  const summary = page.locator("caffold-task-detail-summary");
+  const detailsButton = summary.getByRole("button", { name: /Task details/ });
+  await detailsButton.click();
+  const popover = summary.locator(".task-detail-popover");
+  const location = popover.locator('[data-task-info-field="location"]');
+  const paths = popover.locator(".task-detail-paths");
+  await expect(location).toHaveAttribute("aria-expanded", "false");
+  await expect(paths).toBeHidden();
+
+  await location.click();
+  await expect(location).toHaveAttribute("aria-expanded", "true");
+  await expect(paths).toBeVisible();
+  const worktree = popover.locator('[data-task-info-path="worktree"]');
+  const copyWorktree = worktree.getByRole("button", { name: "Copy worktree path" });
+  await copyWorktree.click();
+  await expect(worktree.locator('.task-detail-copy[data-copy-state="copied"]')).toHaveCount(1);
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(
+    `~/${WORKTREE_ROOT.slice("Users/me/".length)}`,
+  );
+
+  await popover.getByRole("button", { name: "Copy Thread ID" }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(
+    task.threadId,
+  );
+
+  await page.keyboard.press("Escape");
+  await expect(popover).toBeHidden();
+  await detailsButton.click();
+  await expect(location).toHaveAttribute("aria-expanded", "false");
+  await expect(paths).toBeHidden();
+});
+
+test("reaches the location line and each Copy from the keyboard inside Task details", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const task = worktreeTask("thread_summary_location_keys");
+  await installSummaryFixture(page, [task]);
+
+  await page.goto(`/tasks/${task.threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(task));
+  await activateActionHintIntoPopover(page, /Task details, idle$/);
+  const popover = page.locator("caffold-task-detail-summary .task-detail-popover");
+  const hint = popoverActionHintDialog(page);
+  await expect(hint.getByRole("button", { name: / — Copy Thread ID$/ })).toBeVisible();
+  const showPaths = hint.getByRole("button", { name: / — Show paths$/ });
+  const code = await showPaths.getAttribute("data-action-hint-code");
+  await page.keyboard.type(code.toLowerCase());
+  await expect(popover.locator(".task-detail-paths")).toBeVisible();
+
+  await popover.locator('[data-task-info-field="location"]').focus();
+  await page.keyboard.press("f");
+  await expect(hint).toBeVisible();
+  for (const name of ["Repository path", "Worktree path", "Working directory path"]) {
+    await expect(
+      hint.getByRole("button", { name: new RegExp(` — Copy ${name.toLowerCase()}$`) }),
+    ).toBeVisible();
+  }
+  await expect(hint.getByRole("button", { name: / — Hide paths$/ })).toBeVisible();
 });
 
 test("keeps the task info leaf and popover stable across canonical sync", { tag: "@all-viewports" }, async ({
@@ -362,7 +567,7 @@ test("keeps the task info leaf and popover stable across canonical sync", { tag:
   await taskDetailsButton.click();
   await expect(taskDetailsPopover).toBeVisible();
   await expect(
-    taskDetailsPopover.locator('[data-task-info-field="task"]'),
+    taskDetailsPopover.locator('[data-task-info-field="title"]'),
   ).toHaveText("Stable summary");
   await expect(
     taskDetailsPopover.locator('[data-task-info-action="fork"]'),
@@ -393,7 +598,7 @@ test("keeps the task info leaf and popover stable across canonical sync", { tag:
   );
   await expect(summary.locator("h2")).toHaveText("Canonical summary update");
   await expect(
-    taskDetailsPopover.locator('[data-task-info-field="task"]'),
+    taskDetailsPopover.locator('[data-task-info-field="title"]'),
   ).toHaveText("Canonical summary update");
   await expect(taskDetailsButton).toHaveAttribute("title", "Status: active");
   await expect(
@@ -407,13 +612,18 @@ test("keeps the task info leaf and popover stable across canonical sync", { tag:
   ).toBeDisabled();
   await expect(
     taskDetailsPopover.locator('[data-task-info-action="fork"]'),
-  ).toHaveCSS("cursor", "not-allowed");
+  ).toHaveCSS("cursor", "default");
+  // A row that cannot be used now says why where it says what it does.
   await expect(
-    taskDetailsPopover.locator('[data-task-info-action="fork"]'),
-  ).toHaveCSS("opacity", "0.58");
+    taskDetailsPopover.locator(
+      '[data-task-info-action="fork"] .task-detail-action-description',
+    ),
+  ).toHaveText("Available when the Task is idle.");
   await expect(
-    taskDetailsPopover.locator(".task-detail-fork-availability"),
-  ).toHaveText("Fork is available when the Task is idle.");
+    taskDetailsPopover.locator(
+      '[data-task-info-action="archive"] .task-detail-action-description',
+    ),
+  ).toHaveText("Available when the Task is idle.");
   await expect
     .poll(() => summaryNodeState(page))
     .toEqual({ ...stableSummaryNodes, infoOpen: true });
@@ -590,7 +800,7 @@ test(`forks an idle ${provider} Task and opens the distinct child`, { tag: "@ser
   await page.keyboard.type(forkCode.toLowerCase());
   await forkObserved;
   await expect(forkButton).toBeDisabled();
-  await expect(forkButton).toHaveText("Forking...");
+  await expect(forkButton.locator(".task-detail-action-label")).toHaveText("Forking...");
   await expect(forkButton.locator(BUSY_ICON)).toHaveCount(1);
   await expect(forkButton.locator(".task-detail-action-icon")).toHaveCSS(
     "animation-name",
@@ -668,11 +878,14 @@ test("pins and unpins the open Task, holding the button until the list reads it 
   const summary = page.locator("caffold-task-detail-summary");
   await summary.getByRole("button", { name: /Task details/ }).click();
   const popover = summary.locator(".task-detail-popover");
-  const pin = popover.locator(".task-detail-pin-action button");
-  await expect(popover.locator(".task-detail-pin-action > p").first()).toHaveText(
-    "Pinned Tasks stay at the top of the Task list and the Task Switcher.",
+  const pin = popover.locator(
+    '[data-task-info-action="pin"], [data-task-info-action="unpin"]',
   );
-  await expect(pin).toHaveText("Pin task");
+  const pinLabel = pin.locator(".task-detail-action-label");
+  await expect(pin.locator(".task-detail-action-description")).toHaveText(
+    "Keep it at the top of the Task list.",
+  );
+  await expect(pinLabel).toHaveText("Pin task");
   await expect(pin.locator(PIN_ICON)).toHaveCount(1);
 
   let releaseList;
@@ -681,20 +894,20 @@ test("pins and unpins the open Task, holding the button until the list reads it 
   });
   await pin.click();
   await expect.poll(() => requests).toEqual(["pin"]);
-  await expect(pin).toHaveText("Pinning...");
+  await expect(pinLabel).toHaveText("Pinning...");
   await expect(pin).toBeDisabled();
   await expect(pin.locator(BUSY_ICON)).toHaveCount(1);
   const listRead = page.waitForRequest(/\/api\/tasks(?:\?|$)/);
   releasePin();
   await listRead;
-  await expect(pin).toHaveText("Pinning...");
+  await expect(pinLabel).toHaveText("Pinning...");
   releaseList();
 
-  await expect(pin).toHaveText("Unpin task");
+  await expect(pinLabel).toHaveText("Unpin task");
   await expect(pin).toBeEnabled();
   await expect(pin.locator(PIN_OFF_ICON)).toHaveCount(1);
-  await expect(popover.locator(".task-detail-pin-action > p").first()).toHaveText(
-    "This Task is pinned. Unpinning returns it to the top of its Section.",
+  await expect(pin.locator(".task-detail-action-description")).toHaveText(
+    "Return it to its Section.",
   );
   const list = page.locator("caffold-active-task-list");
   const pinnedGroup = list.locator(".task-repository-group[data-task-pinned]");
@@ -705,7 +918,7 @@ test("pins and unpins the open Task, holding the button until the list reads it 
   await expect(section.locator(".task-row-title")).toHaveText(["Other task"]);
 
   await pin.click();
-  await expect(pin).toHaveText("Pin task");
+  await expect(pinLabel).toHaveText("Pin task");
   await expect(pin.locator(PIN_ICON)).toHaveCount(1);
   await expect(pinnedGroup).toHaveCount(0);
   await expect(section.locator(".task-row-title")).toHaveText([
@@ -715,7 +928,7 @@ test("pins and unpins the open Task, holding the button until the list reads it 
   expect(requests).toEqual(["pin", "unpin"]);
 });
 
-test("keeps fork disabled for Antigravity Tasks and reports why", { tag: "@server-steady" }, async ({ page }) => {
+test("leaves Fork out of an Antigravity Task's details", { tag: "@server-steady" }, async ({ page }) => {
   const threadId = "thread_summary_antigravity_fork";
   const task = {
     ...summaryTask(threadId, "Antigravity source", "repo-antigravity", 100),
@@ -728,19 +941,12 @@ test("keeps fork disabled for Antigravity Tasks and reports why", { tag: "@serve
   const summary = page.locator("caffold-task-detail-summary");
   await summary.getByRole("button", { name: /Task details/ }).click();
   const popover = summary.locator(".task-detail-popover");
-  const forkButton = popover.locator('[data-task-info-action="fork"]');
 
-  await expect(forkButton).toBeDisabled();
-  await expect(forkButton).toHaveAttribute(
-    "title",
-    "Fork is available for Codex, Claude and Grok Tasks.",
-  );
-  await expect(popover.locator(".task-detail-fork-availability")).toHaveText(
-    "Fork is available for Codex, Claude and Grok Tasks.",
-  );
+  await expect(popover.locator('[data-task-info-action="archive"]')).toBeEnabled();
+  await expect(popover.locator('[data-task-info-action="fork"]')).toHaveCount(0);
 });
 
-test("offers Open forked task in place of Fork when the creation response reports unavailable details, and opens the claimed fork", { tag: "@server-steady" }, async ({ page }) => {
+test("offers Open forked task under a dimmed Fork when the creation response reports unavailable details, and opens the claimed fork", { tag: "@server-steady" }, async ({ page }) => {
   const task = summaryTask("fork_response_source", "Source", "repo", 100);
   const child = summaryTask("fork_response_child", "Fork of Source", "repo", 101);
   await installSummaryFixture(page, [task]);
@@ -757,33 +963,29 @@ test("offers Open forked task in place of Fork when the creation response report
   const popover = summary.locator(".task-detail-popover");
   const fork = popover.locator('[data-task-info-action="fork"]');
   await fork.click();
-  const forkAction = popover.locator(".task-detail-fork-action");
-  const open = forkAction.getByRole("link", { name: "Open forked task" });
+  const under = popover.locator('[data-task-info-action="fork"] + .task-detail-action-under');
+  const open = under.getByRole("link", { name: "Open forked task" });
   await expect(open).toHaveAttribute("href", `/tasks/${child.threadId}`);
   await expect(open.locator(ARROW_RIGHT_ICON)).toHaveCount(1);
-  await expect(fork).toHaveCount(0);
-  await expect(forkAction.locator(".task-detail-fork-availability")).toBeHidden();
-  const error = forkAction.locator(".task-detail-fork-error");
+  // Fork stays in its place, dimmed, so the list does not move.
+  await expect(fork).toBeDisabled();
+  await expect(fork.locator(".task-detail-action-label")).toHaveText("Fork task");
+  const error = under.locator(".task-detail-fork-error");
   await expect(error).toHaveText("The fork was created; details are temporarily unavailable.");
   expect(await error.evaluate(
     (element, link) => Boolean(element.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING),
     await open.elementHandle(),
   )).toBe(true);
-  // The link is drawn as the Task actions are.
-  const look = (control) => control.evaluate((element) => {
+  // The link is the small bordered button, not underlined.
+  const look = await open.evaluate((element) => {
     const style = getComputedStyle(element);
     const frame = getComputedStyle(element, "::before");
     return {
-      height: element.getBoundingClientRect().height,
-      fontSize: style.fontSize,
-      lineHeight: style.lineHeight,
-      color: style.color,
       textDecorationLine: style.textDecorationLine,
-      paddingInline: [style.paddingLeft, style.paddingRight],
-      frame: [frame.top, frame.bottom, frame.borderTopWidth, frame.borderTopLeftRadius, frame.backgroundColor],
+      frame: [frame.borderTopWidth, frame.borderTopLeftRadius],
     };
   });
-  expect(await look(open)).toEqual(await look(popover.locator('[data-task-info-action="archive"]')));
+  expect(look).toEqual({ textDecorationLine: "none", frame: ["1px", "5px"] });
   await open.click();
   await expect(page).toHaveURL(new RegExp(`/tasks/${child.threadId}$`));
   expect(requests).toBe(1);
@@ -840,7 +1042,7 @@ test("opens the fork it made when the screen could not open it, without forking 
   await expect(popover.locator(".task-detail-fork-error")).toHaveText(
     "The forked Task was created but could not be opened. Retry to open the same Task.",
   );
-  await expect(fork).toHaveText("Fork task");
+  await expect(fork.locator(".task-detail-action-label")).toHaveText("Fork task");
   await expect(fork.locator(SPLIT_ICON)).toHaveCount(1);
   await expect(fork).toBeEnabled();
 
@@ -852,7 +1054,7 @@ test("opens the fork it made when the screen could not open it, without forking 
   expect(requests).toBe(1);
 });
 
-test("Task details actions place their icons as File details places Download's", { tag: "@all-viewports" }, async ({
+test("Task details follow-up buttons place their icons as File details places Download's", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   // The icon sits before the label on one line, and the frame leaves the same
@@ -872,12 +1074,27 @@ test("Task details actions place their icons as File details places Download's",
 
   await mockAgentModels(page);
   const { taskScenario, taskReview } = await openCompletedTaskForReview(page);
-  await page.locator("caffold-task-detail-info .task-detail-info-button").click();
-  const actions = page.locator(
-    ".task-detail-popover .task-detail-task-action:not([hidden]) > button",
+  // An Archive refused over the worktree's changes hangs Discard changes and
+  // archive under Archive.
+  await page.route(`**/api/tasks/${taskScenario.threadId}/archive`, (route) =>
+    route.fulfill({
+      status: 409,
+      json: {
+        error: {
+          code: "managed_worktree_dirty",
+          message: "managed worktree has uncommitted changes: /tmp/worktree",
+          allowedActions: ["forceArchive"],
+          worktreeId: "worktree-follow-up",
+        },
+      },
+    }),
   );
-  await expect(actions.filter({ hasText: "Fork task" })).toBeVisible();
-  await expect(actions.filter({ hasText: "Archive task" })).toBeVisible();
+  await page.locator("caffold-task-detail-info .task-detail-info-button").click();
+  await page.locator('.task-detail-popover [data-task-info-action="archive"]').click();
+  const actions = page.locator(
+    ".task-detail-popover .task-detail-action-under > .task-secondary-button",
+  );
+  await expect(actions.filter({ hasText: "Discard changes and archive" })).toBeVisible();
   const placements = [];
   for (const action of await actions.all()) {
     await expect(action.locator("svg")).toBeVisible();

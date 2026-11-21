@@ -158,6 +158,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/component-styles/compact-icon-button.css.js"
         )))),
+        "component-styles/switch.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/component-styles/switch.css.js"
+        )))),
         "origin-reachability.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/origin-reachability.js"
@@ -1519,6 +1523,18 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions/language-servers.js"
             ))))
         }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/copy-value.css.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/copy-value.css.js"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/copy-value.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/copy-value.js"
+            ))))
+        }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
@@ -2633,6 +2649,7 @@ mod tests {
             "scoped-style.js",
             "component-styles/compact-icon-button.css.js",
             "component-styles/secondary-button.css.js",
+            "component-styles/switch.css.js",
             "pages/component-styles/busy-spin.css.js",
             "pages/(task-workspace)/tasks/component-styles/action-icon.css.js",
         ] {
@@ -3662,6 +3679,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.js",
                 b"caffold-task-detail-info-actions".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/copy-value.js",
+                b"caffold-task-detail-info-copy-value".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(review)/layout.js",

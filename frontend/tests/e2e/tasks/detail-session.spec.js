@@ -909,8 +909,8 @@ test("keeps the managed header and Archive escape hatch when canonical Detail di
   ).toHaveCount(0);
   await page.getByRole("button", { name: "Task details" }).click();
   await expect(
-    page.locator(".task-detail-popover [data-task-info-provider-context]"),
-  ).toBeHidden();
+    page.locator('.task-detail-popover [data-task-info-field="location"]'),
+  ).toHaveCount(0);
   const archiveButton = page.getByRole("button", { name: "Archive task" });
   await expect(archiveButton).toBeEnabled();
   await expect(page.getByRole("button", { name: "Fork task" })).toBeDisabled();
