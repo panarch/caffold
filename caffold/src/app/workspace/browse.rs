@@ -781,11 +781,15 @@ mod tests {
             "deck.pptx",
             "budget.xlsx",
             "macros.xlsm",
+            "report.hwp",
+            "form.HWPX",
         ] {
             std::fs::write(root.path().join(name), name.as_bytes()).unwrap();
         }
 
         for (name, content_type) in [
+            ("report.hwp", "application/x-hwp"),
+            ("form.HWPX", "application/x-hwpx"),
             ("manual.pdf", "application/pdf"),
             (
                 "report.docx",

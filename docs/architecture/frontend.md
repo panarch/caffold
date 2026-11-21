@@ -905,15 +905,14 @@ Conversation, Integrated Review, Git, or GitHub domain. Integrated Review, Git
 Compare and Commit, and GitHub Pull Files merge the tree and viewer leaves
 their split view says the person can reach: both side by side, the tree alone
 while its drawer covers the file, and otherwise whichever pane is shown. File
-tree, source, diff, Markdown preview, image stage,
-PDF, Word, PowerPoint, and Excel previews, and scrollable notice owners publish
-their actual retained leaf rather than having a screen parent reach into their
-DOM. File tree, source, diff, Markdown preview hosts, GitHub Issue Markdown
+tree, source, diff, Markdown preview, image stage, PDF, Word, PowerPoint, Excel,
+and Hangul previews, and scrollable notice owners publish their retained scroll
+leaves. File tree, source, diff, Markdown preview hosts, GitHub Issue Markdown
 hosts, image stages, and the Excel sheet declare both axes; one element that
 overflows in both directions remains one surface with one selection code. PDF,
-Word, and PowerPoint previews fit each page or slide to the width they have, so
-they declare only their vertical axis. The Excel sheet tabs, shown when a
-workbook has more than one visible sheet, declare their horizontal axis.
+Word, PowerPoint, and Hangul previews fit each page or slide to the available
+width, so they declare only their vertical axis. The Excel sheet tabs, shown
+when a workbook has more than one visible sheet, declare their horizontal axis.
 
 Git Log, GitHub Issue and Pull lists, GitHub Issue Markdown or raw body, and
 Pull Request detail publish their exact vertical scrollports. Markdown owners
@@ -1527,13 +1526,13 @@ changes they ask for.
 A view's place is kept in the terms of the leaf that drew it: for source or a
 diff, whose wrapped rows change height with the viewer's width, the row at the
 top and how far into it, with the sideways scroll; the scroll of Markdown; for
-a PDF, Word document, PowerPoint deck, or Visual, whose pages and pictures
-follow the viewer's width, the page at the top and how far into it; and for a
-workbook, its last sheet and where each sheet was scrolled. A viewer taken off
-the page reads 0, so each leaf records its place as it is scrolled while it is
-drawn. Source and a diff also hold a place they are handed off the page until
-they are shown again, and return to their row whenever their width or
-wrapping changes. The selected file takes the
+a PDF, Word document, PowerPoint deck, Hangul document, or Visual, whose pages
+and pictures follow the viewer's width, the page at the top and how far into
+it; and for a workbook, its last sheet and where each sheet was scrolled. A
+viewer taken off the page reads 0, so each leaf records its place as it is
+scrolled while it is drawn. Source and a diff also hold a place they are
+handed off the page until they are shown again, and return to their row
+whenever their width or wrapping changes. The selected file takes the
 place from the viewer when another view follows and right before it reads the
 shown view again, as it does when Review comes back on screen, and hands it
 back when it shows that view; the file viewer gives it only to a leaf of the
@@ -1566,14 +1565,15 @@ representation together. A change is shown as Diff, its text, or as Visual,
 the pictures on each side; a file is shown as Source, its text, or as Preview.
 Text files support Source, Markdown adds Preview,
 raster images use Preview, PDFs, Word documents (`.docx`), PowerPoint
-decks (`.pptx`), and Excel workbooks (`.xlsx`, `.xlsm`) use Preview alone, and
-SVG supports both its source text and image Preview. Every image the viewer can
-preview has Visual, and only raster images lack Diff. A representation the
-file lacks gives way to the other one of its pair, so opening a PNG from Diff
-shows Visual and opening code from Visual shows Diff. The
-file viewer owns representation chrome and image rendering, and delegates
-Markdown rendering, sanitization, fallback, and local scroll to the shared
-`caffold-markdown-preview` component also used by the current-plan dialog.
+decks (`.pptx`), Excel workbooks (`.xlsx`, `.xlsm`), and Hangul documents
+(`.hwp`, `.hwpx`) use Preview alone, and SVG supports both its source text and
+image Preview. Every image the viewer can preview has Visual, and only raster
+images lack Diff. A representation the file lacks gives way to the other one
+of its pair, so opening a PNG from Diff shows Visual and opening code from
+Visual shows Diff. The file viewer owns representation chrome and image
+rendering, and delegates Markdown rendering, sanitization, fallback, and local
+scroll to the shared `caffold-markdown-preview` component also used by the
+current-plan dialog.
 Both name the Markdown file's folder and the Task root, so the preview draws
 an image whose address names a file under the workspace root, read from that
 folder, or from the Task root when the address starts with `/`, without its
@@ -1655,17 +1655,18 @@ a fetched picture is drawn, its place in Review, the conversation, a Markdown
 preview, and the image preview shows "Loading image...", as a document viewer
 does for its document.
 
-PDFs, Word documents, PowerPoint decks, and Excel workbooks share one document
-state in the file viewer, which mounts the viewer for the document's kind and
-hands it the file fetched from `/api/document`. That route answers each kind
-with its own content type, up to 100 MiB, and refuses any other extension. The
-viewer owns rendering, document lifetime, and local scroll. It keeps the open
-document until it is handed another file or a newer copy of this one, or leaves
-the page, and opens a file at the place its owner hands with it and a newer
-copy where the one before it was read. It returns to that place once the pages
-have their sizes, which pdf.js page boxes and the PowerPoint renderer's slide
-places have before anything is drawn in them, and Word pages once they are
-fitted to the width.
+PDFs, Word documents, PowerPoint decks, Excel workbooks, and Hangul documents
+share one document state in the file viewer, which mounts the viewer for the
+document's kind and hands it the file fetched from `/api/document`. That route
+answers each kind with its own content type, up to 100 MiB, and refuses any
+other extension. The viewer owns rendering, document lifetime, and local
+scroll. It keeps the open document until it is handed another file or a newer
+copy of this one, or leaves the page, and opens a file at the place its owner
+hands with it and a newer copy where the one before it was read. It returns to
+that place once the pages have their sizes. PDF, PowerPoint, and Hangul reserve
+page or slide space before drawing, and Word pages have their sizes once fitted
+to the width.
+
 `caffold-pdf-viewer` imports its pinned pdf.js release at first use, hands it
 the fetched bytes rather than the address, and draws a page as it approaches
 the viewport.
@@ -1701,6 +1702,15 @@ without a picture becomes a notice. The renderer registers embedded fonts under
 names of its own, so they cannot replace the app's fonts. Its PDF fallback for
 SmartArt and EMF pictures is off.
 
+`caffold-hwp-viewer` imports the pinned RHWP browser module at first
+use. Its WASM is loaded from beside the module and initialized once for the
+app session. The viewer passes the fetched bytes to RHWP and reserves page
+space from the document's page geometry. It renders nearby pages with Canvas2D
+and releases their canvases when they leave that range. It preserves the
+page-relative reading position when the width changes or a newer copy
+replaces the document, and frees the RHWP document when it is replaced or
+the viewer is detached.
+
 `caffold-xlsx-viewer` imports its pinned SheetJS release at first use and
 turns the workbook into a drawing model (`xlsx-viewer/workbook.ts`): each
 sheet's track sizes, hidden rows and columns, merges, frozen panes, cell text
@@ -1730,7 +1740,7 @@ The shared file stack owns keyboard surfaces at the same boundaries. File List
 merges its Refresh button with the public file-tree selection and directory
 disclosure scope, File Navigator forwards caller semantics, and File Viewer
 publishes its current source, diff, Markdown, image, PDF, Word, PowerPoint,
-Excel, or notice leaf plus its existing Back, Details, Source/Preview, and
+Excel, Hangul, or notice leaf plus its existing Back, Details, Source/Preview, and
 conditional Refresh actions, and the File details popover context with its
 conditional Download.
 Integrated Review chooses the current navigator and viewer roles and merges
@@ -2009,7 +2019,7 @@ Reusable RootedFs capabilities remain shared:
 
 - `caffold-file-navigator` and its list leaf;
 - `caffold-review-file-viewer`;
-- source, text, diff, supported image, PDF, Word, PowerPoint, and Excel
+- source, text, diff, supported image, PDF, Word, PowerPoint, Excel, and Hangul
   presentation;
 - shared watch subscription primitives;
 - the New Task directory field;
@@ -2017,9 +2027,9 @@ Reusable RootedFs capabilities remain shared:
 - Git Compare/Log and GitHub PR Files leaves.
 
 `caffold-review-file-viewer` hosts the reusable source, diff, text, image,
-PDF, Word, PowerPoint, and Excel leaves used by review surfaces. Navigation,
-presentation, and filesystem-watch primitives stay shared while each active
-surface owns its selection and request lifetime.
+PDF, Word, PowerPoint, Excel, and Hangul leaves used by review surfaces.
+Navigation, presentation, and filesystem-watch primitives stay shared while
+each active surface owns its selection and request lifetime.
 
 A diff, source, a Visual comparison, and a notice that names its file end with
 the files its owner hands over with `setAdjacentFiles`: a Previous and a Next
@@ -2480,6 +2490,7 @@ frontend/
     |-- markdown-preview.ts
     |-- pagination.ts
     |-- pagination/components/button.ts
+    |-- hwp-viewer.ts
     |-- pdf-viewer.ts
     |-- docx-viewer.ts
     |-- docx-viewer/components/document.ts
@@ -2783,8 +2794,8 @@ of both even though they come from `frontend/node_modules`, a TypeScript
 module is listed at the `.js` path it is served at, and a stylesheet a module
 imports is listed at the `.css.js` path of its module, and at its own path too
 only when the document also loads it. pdf.js,
-docx-preview, pptx-renderer, SheetJS, Mermaid, and xterm.js with its fit addon
-are the exceptions:
+docx-preview, pptx-renderer, SheetJS, RHWP, Mermaid, and xterm.js with its fit
+addon are the exceptions:
 their owners import pinned releases at first use, and the browser suite answers
 those URLs from the same versions in `node_modules`. SheetJS comes from its own
 CDN, which publishes its current releases there rather than on npm, and the

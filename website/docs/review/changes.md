@@ -47,7 +47,8 @@ allows:
   marked beside the line numbers: a green number for an added line and a red
   line where lines were removed;
 - **Preview**, for Markdown, images, PDF files, Word documents (`.docx`),
-  PowerPoint decks (`.pptx`), and Excel workbooks (`.xlsx`, `.xlsm`).
+  PowerPoint decks (`.pptx`), Excel workbooks (`.xlsx`, `.xlsm`), and Hangul
+  documents (`.hwp`, `.hwpx`).
 
 In **Source** and **Preview**, **Show details** at the top right of the file
 has **Download**, which saves the file to your device, including a large or

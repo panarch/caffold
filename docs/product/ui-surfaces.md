@@ -538,9 +538,9 @@ view's where Review is narrow, whether or not a file is open.
 
 This is also the product path for general file/source inspection through the
 reusable file navigator, source viewer, text viewer, supported image viewer, PDF
-viewer, Word document viewer, PowerPoint viewer, and Excel viewer. In Source
-and Preview, the file's details
-offer Download, which saves the file itself, including a large or binary file
+viewer, Word document viewer, PowerPoint viewer, Excel viewer, and Hangul
+document viewer. In Source and Preview, the file's details offer Download,
+which saves the file itself, including a large or binary file
 that no viewer can show. The details of a diff or Visual offer no Download.
 In Diff and Source, Wrap in the file's header fits long lines to the viewer's
 width instead of scrolling them sideways; a wrapped line goes on from the start
