@@ -183,3 +183,56 @@ test("stops watching slides and drawing them when released", () => {
   assert.equal(owner.viewer, null);
   assert.equal(owner.container, null);
 });
+
+// A deck of 960 by 540 slides drawn into a container, in `room`.
+function zoomingDeck(zoom, room = { width: 1200, height: 400 }) {
+  return {
+    zoom,
+    room,
+    container: { style: { width: "", maxWidth: "" } },
+    slideSize: { width: 960, height: 540 },
+  };
+}
+
+test("fits the slides by the container's width, which never makes a slide larger", () => {
+  const deck = zoomingDeck({ fit: "width" });
+
+  pptxDocument.zoomSlides.call(deck);
+
+  assert.deepEqual(deck.container.style, { width: "", maxWidth: "960px" });
+});
+
+test("Fit page also keeps a slide within the room's height", () => {
+  const deck = zoomingDeck({ fit: "page" }, { width: 1200, height: 270 });
+
+  pptxDocument.zoomSlides.call(deck);
+  assert.deepEqual(deck.container.style, { width: "", maxWidth: "480px" });
+
+  deck.room = { width: 1200, height: 2000 };
+  pptxDocument.zoomSlides.call(deck);
+  assert.deepEqual(deck.container.style, { width: "", maxWidth: "960px" }, "a tall room leaves the width fit");
+});
+
+test("a percent draws the slides at that share of their size, past it too", () => {
+  const deck = zoomingDeck({ percent: 150 });
+
+  pptxDocument.zoomSlides.call(deck);
+
+  assert.deepEqual(deck.container.style, { width: "1440px", maxWidth: "none" });
+});
+
+test("zooms nothing before the deck has its slides", () => {
+  const deck = { ...zoomingDeck({ percent: 150 }), slideSize: null };
+
+  pptxDocument.zoomSlides.call(deck);
+
+  assert.deepEqual(deck.container.style, { width: "", maxWidth: "" });
+});
+
+test("names the scale the slides are drawn at once they have their place", () => {
+  const container = { getBoundingClientRect: () => ({ width: 480 }) };
+
+  assert.equal(pptxDocument.slideScale.call({ container, slideSize: { width: 960, height: 540 } }), 0.5);
+  assert.equal(pptxDocument.slideScale.call({ container, slideSize: null }), null);
+  assert.equal(pptxDocument.slideScale.call({ container: null, slideSize: { width: 960, height: 540 } }), null);
+});

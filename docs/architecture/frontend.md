@@ -908,11 +908,11 @@ while its drawer covers the file, and otherwise whichever pane is shown. File
 tree, source, diff, Markdown preview, image stage, PDF, Word, PowerPoint, Excel,
 and Hangul previews, and scrollable notice owners publish their retained scroll
 leaves. File tree, source, diff, Markdown preview hosts, GitHub Issue Markdown
-hosts, image stages, and the Excel sheet declare both axes; one element that
-overflows in both directions remains one surface with one selection code. PDF,
-Word, PowerPoint, and Hangul previews fit each page or slide to the available
-width, so they declare only their vertical axis. The Excel sheet tabs, shown
-when a workbook has more than one visible sheet, declare their horizontal axis.
+hosts, image stages, the PDF, Word, PowerPoint, and Hangul previews, whose
+pages Zoom can draw wider than the viewer, and the Excel sheet declare both
+axes; one element that overflows in both directions remains one surface with
+one selection code. The Excel sheet tabs, shown when a workbook has more than
+one visible sheet, declare their horizontal axis.
 
 Git Log, GitHub Issue and Pull lists, GitHub Issue Markdown or raw body, and
 Pull Request detail publish their exact vertical scrollports. Markdown owners
@@ -1532,11 +1532,11 @@ A view's place is kept in the terms of the leaf that drew it: for source or a
 diff, whose wrapped rows change height with the viewer's width, the row at the
 top and how far into it, with the sideways scroll; the scroll of Markdown; for
 a PDF, Word document, PowerPoint deck, Hangul document, or Visual, whose pages
-and pictures follow the viewer's width, the page at the top and how far into
-it; and for a workbook, its last sheet and where each sheet was scrolled. A
-viewer taken off the page reads 0, so each leaf records its place as it is
-scrolled while it is drawn. Source and a diff also hold a place they are
-handed off the page until they are shown again, and return to their row
+and pictures follow the viewer's width and zoom, the page at the top and how
+far into it; and for a workbook, its last sheet and where each sheet was
+scrolled. A viewer taken off the page reads 0, so each leaf records its place
+as it is scrolled while it is drawn. Source and a diff also hold a place they
+are handed off the page until they are shown again, and return to their row
 whenever their width or wrapping changes. The selected file takes the
 place from the viewer when another view follows and right before it reads the
 shown view again, as it does when Review comes back on screen, and hands it
@@ -1674,7 +1674,8 @@ to the width.
 
 `caffold-pdf-viewer` imports its pinned pdf.js release at first use, hands it
 the fetched bytes rather than the address, and draws a page as it approaches
-the viewport.
+the viewport. A page's own size is the size it prints at: its points, 72 to
+the inch, at 96 CSS pixels to the inch.
 The DOCX document component imports its pinned docx-preview release at first
 use and draws the whole document inside a shadow root of its own, so the
 document's styles and the app's stylesheet do not reach each other; embedded
@@ -1685,16 +1686,19 @@ of page size and where Word last broke a page when it saved the document, but
 not inside a table, so a table that ran across pages stays on one longer page.
 Word also marks the first line of a page that the document's own page break
 already started, which leaves an empty page between the two; a page after the
-first whose body is empty is therefore not shown. A Word page keeps the width
-its document declares, which CSS cannot scale to the space available, so the
-document component zooms each wider page down to its own width from JavaScript
-when the document is mounted and whenever the component's width changes.
+first whose body is empty is therefore not shown. A Word page is laid out at
+the size its document declares, which CSS cannot scale, so the document
+component measures each page once when the document is mounted and sets its
+CSS `zoom` from JavaScript to the scale Zoom gives it, then again whenever the
+zoom or the room the viewer hands it changes.
 
 The PPTX document component imports its pinned pptx-renderer release at first
 use, parses the deck, and then draws its slides inside a shadow root of its own,
-only those near the viewport. A slide fits the viewer's width; the renderer
-scales a slide to its container, so the container is no wider than the slide
-and a wide panel does not enlarge it. The document component's CSS owns page
+only those near the viewport. The renderer scales a slide to its container and
+refits it when the container's width changes, so the container's width is the
+slides' zoom: a fit leaves the container no wider than the slide, Fit page also
+no wider than the room's height allows, and a percent sets that share of the
+slide's width. The document component's CSS owns page
 spacing and frames; as the renderer adds list items, the component removes
 their inline bottom margin and frame shadow without changing slide contents
 or dimensions.
@@ -1712,7 +1716,7 @@ use. Its WASM is loaded from beside the module and initialized once for the
 app session. The viewer passes the fetched bytes to RHWP and reserves page
 space from the document's page geometry. It renders nearby pages with Canvas2D
 and releases their canvases when they leave that range. It preserves the
-page-relative reading position when the width changes or a newer copy
+page-relative reading position when the width or zoom changes or a newer copy
 replaces the document, and frees the RHWP document when it is replaced or
 the viewer is detached.
 
@@ -2071,6 +2075,40 @@ Integrated Review is beside its viewer axis. Each browser keeps the choice in
 it connects; the one whose Wrap is pressed stores the new choice and sends
 `caffold:file-viewer-wrap-change` on `window`, and every connected file viewer
 follows it, those Git and GitHub keep hidden included.
+
+The previews of a picture, a PDF, a Word document, a PowerPoint deck, and a
+Hangul document offer Zoom in the same place in the header; a workbook has
+none. The file viewer owns the choice as a `ViewerZoom` from
+`components/viewer-zoom.ts`: a fit, `width` or `page`, which follows the room
+the viewer has and never enlarges a page past its own size, or a percent, one
+scale for every page. A picture or document shown after another file, or
+after another view of it such as Visual, starts again fitted to the width;
+reading the same file again keeps the choice. Zoom opens
+`caffold-zoom-control` as a session-bound keyboard popover, as the file's
+details are, and the control sends `caffold:zoom-control-intent` with the
+choice and whether its slider is held. The control steps − and +, and a change
+of its slider while nothing holds it, which is a notch from the keyboard or a
+screen reader, through the percents from 10 to 400; a held slider sets any
+percent, its middle 100%. Until a new percent is reported, a second step moves
+from the one just chosen.
+
+The file viewer hands the choice to the document viewers as `zoom`, and the
+slider's hold as `zoomDragging`. Each viewer sizes its pages and says the
+percent the page at its top is drawn at with `caffold:viewer-zoom-shown`;
+the file viewer measures a picture itself. A fit is reckoned for each page by
+its own size, so a document whose pages differ in size fits each of them; a
+percent gives every page the same share of its own size. The picture's stage
+and the PDF and Hangul viewers are size containers, so CSS fits a picture or a
+page box within the room they give it; a percent arrives as a scale to
+multiply the page's own size by. The PDF and Hangul viewers draw a page at its
+box's size when a zoom settles, not while the slider is held, when the
+picture already drawn stretches to the box; a canvas is kept within
+16,777,216 pixels, more than which Safari on an iPhone does not draw, by
+drawing a page zoomed far in at fewer device pixels. A page or picture
+narrower than its viewer sits in the middle, and a wider one starts at the
+left edge. A change of zoom keeps the place read: the page at the top and how
+far into it, with the middle of what shows across, or for a picture the middle
+of what shows both ways.
 
 A code or diff leaf whose scroll area is 520px wide or less, by a container
 query on that area, lets its line numbers and the column drawn behind them

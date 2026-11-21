@@ -9,6 +9,14 @@ import {
   readPageAnchor,
   scrollToPageAnchor,
 } from "./page-anchor.js";
+import {
+  canvasPixelRatio,
+  readZoomPlace,
+  returnToZoomPlace,
+  ShownZoom,
+  type ViewerZoom,
+  type ZoomPlace,
+} from "./viewer-zoom.js";
 
 import styles from "./pdf-viewer.css.js";
 
@@ -16,10 +24,10 @@ const PDFJS_VERSION = "6.3.289";
 const PDFJS_BASE = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}`;
 const PDFJS_IMPORT = `${PDFJS_BASE}/build/pdf.min.mjs`;
 
-// A phone would otherwise allocate a canvas proportional to its full device
-// pixel ratio for every visible page.
-const MAX_RENDER_PIXEL_RATIO = 2;
 const NEARBY_PAGE_MARGIN = "200% 0px";
+// A PDF measures its pages in points, 72 to the inch; CSS pixels are 96 to
+// the inch, so a page at 100% is the size it prints at.
+const CSS_PIXELS_PER_POINT = 96 / 72;
 
 // The parts of pdf.js the viewer uses.
 interface PdfViewport {
@@ -75,6 +83,13 @@ class CaffoldPdfViewer extends CaffoldElement {
   // was read.
   @property({ attribute: false })
   accessor position: PageAnchor | null = null;
+  // The size the pages are drawn at. CSS sizes each page's box from it; while
+  // the person holds the zoom slider, a page keeps the picture it has,
+  // stretched to its box, and is drawn again once they let go.
+  @property({ attribute: false })
+  accessor zoom: ViewerZoom = { fit: "width" };
+  @property({ attribute: false })
+  accessor zoomDragging = false;
   @state()
   private accessor renderState: RenderState = "empty";
   @state()
@@ -86,18 +101,26 @@ class CaffoldPdfViewer extends CaffoldElement {
   // Where the document was last read while it was drawn. A viewer taken off
   // the page reads 0, so it is kept as the person scrolls.
   private readingAnchor: PageAnchor | null = null;
+  // Where it was read before its zoom changed, to return to at the new size.
+  private zoomPlace: ZoomPlace | null = null;
   private visiblePages: Set<PageRecord> | null = null;
   private pageObserver: IntersectionObserver | null = null;
   private widthObserver: ResizeObserver | null = null;
   private loadingTask: PdfLoadingTask | null = null;
 
   private readonly surfaces = new ScrollSurfaces(this);
+  private readonly shown = new ShownZoom(this);
 
   constructor() {
     super();
-    this.addEventListener("scroll", () => this.recordReading(), {
-      passive: true,
-    });
+    this.addEventListener(
+      "scroll",
+      () => {
+        this.recordReading();
+        this.reportShownZoom();
+      },
+      { passive: true },
+    );
   }
 
   override connectedCallback() {
@@ -124,19 +147,29 @@ class CaffoldPdfViewer extends CaffoldElement {
         : message
           ? html`<p class="pdf-viewer-message">${message}</p>`
           : nothing;
+    const zoom = this.zoom;
     return html`<div
       ${this.surfaces.surface({
         id: "scroll",
-        axes: ["vertical"],
+        axes: ["vertical", "horizontal"],
         scrollport: () => this,
         clipRoots: () => [this],
       })}
       class="pdf-viewer-body"
+      data-zoom=${"fit" in zoom ? zoom.fit : "percent"}
+      style=${"percent" in zoom ? `--pdf-zoom-scale: ${zoom.percent / 100}` : nothing}
     >${content}</div>`;
   }
 
   // A file handed over again before it is drawn replaces the one before it.
   override willUpdate(changed: PropertyValues) {
+    if (
+      changed.has("zoom") &&
+      !changed.has("file") &&
+      this.renderState === "pdf"
+    ) {
+      this.zoomPlace = readZoomPlace(this, this.pageElements());
+    }
     if (changed.has("file") && this.file) {
       if (!this.file.newerCopy) {
         this.readingAnchor = this.position;
@@ -150,6 +183,18 @@ class CaffoldPdfViewer extends CaffoldElement {
   override updated(changed: PropertyValues) {
     if (changed.has("renderState")) {
       this.dataset.renderState = this.renderState;
+    }
+    const place = this.zoomPlace;
+    if (place) {
+      this.zoomPlace = null;
+      returnToZoomPlace(this, this.pageElements(), place);
+      this.reportShownZoom();
+    }
+    if (
+      (changed.has("zoom") || changed.has("zoomDragging")) &&
+      !this.zoomDragging
+    ) {
+      this.redrawVisiblePages(this.generation);
     }
   }
 
@@ -220,7 +265,11 @@ class CaffoldPdfViewer extends CaffoldElement {
       element.dataset.pdfPage = `${index + 1}`;
       element.style.setProperty(
         "--pdf-page-width",
-        `${Math.round(viewport.width)}px`,
+        `${viewport.width * CSS_PIXELS_PER_POINT}px`,
+      );
+      element.style.setProperty(
+        "--pdf-page-aspect",
+        `${viewport.width / viewport.height}`,
       );
       element.style.aspectRatio = `${viewport.width} / ${viewport.height}`;
       return { page, viewport, element, renderedWidth: 0, task: null };
@@ -236,6 +285,7 @@ class CaffoldPdfViewer extends CaffoldElement {
     if (this.readingAnchor) {
       scrollToPageAnchor(this, this.pageElements(), this.readingAnchor);
     }
+    this.reportShownZoom();
 
     this.visiblePages = new Set();
     this.pageObserver = new IntersectionObserver(
@@ -245,9 +295,11 @@ class CaffoldPdfViewer extends CaffoldElement {
     for (const record of records) {
       this.pageObserver.observe(record.element);
     }
-    this.widthObserver = new ResizeObserver(() =>
-      this.redrawVisiblePages(generation),
-    );
+    // A fit follows the room the viewer has.
+    this.widthObserver = new ResizeObserver(() => {
+      this.redrawVisiblePages(generation);
+      this.reportShownZoom();
+    });
     this.widthObserver.observe(this);
   }
 
@@ -285,15 +337,16 @@ class CaffoldPdfViewer extends CaffoldElement {
 
   private async drawPage(generation: number, record: PageRecord) {
     const width = record.element.clientWidth;
-    if (!width || record.renderedWidth === width) {
+    if (this.zoomDragging || !width || record.renderedWidth === width) {
       return;
     }
     record.task?.cancel();
     record.renderedWidth = width;
 
-    const ratio = Math.min(
-      window.devicePixelRatio || 1,
-      MAX_RENDER_PIXEL_RATIO,
+    const ratio = canvasPixelRatio(
+      width,
+      (width * record.viewport.height) / record.viewport.width,
+      window.devicePixelRatio,
     );
     const viewport = record.page.getViewport({
       scale: (width * ratio) / record.viewport.width,
@@ -336,8 +389,22 @@ class CaffoldPdfViewer extends CaffoldElement {
     return (this.pages ?? []).map((record) => record.element);
   }
 
+  // The scale of the page at the top, of the size it prints at.
+  private reportShownZoom() {
+    if (this.renderState !== "pdf" || !this.pages?.length) {
+      return;
+    }
+    const anchor = readPageAnchor(this, this.pageElements());
+    const record = this.pages[anchor?.page ?? 0];
+    const width = record.element.getBoundingClientRect().width;
+    if (width > 0) {
+      this.shown.report(width / (record.viewport.width * CSS_PIXELS_PER_POINT));
+    }
+  }
+
   private release() {
     this.generation += 1;
+    this.shown.forget();
     this.pageObserver?.disconnect();
     this.pageObserver = null;
     this.widthObserver?.disconnect();

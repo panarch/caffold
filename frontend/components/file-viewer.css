@@ -173,7 +173,8 @@ h2 {
 }
 
 .viewer-refresh-button,
-.viewer-wrap-button {
+.viewer-wrap-button,
+.viewer-zoom-button {
   margin-block: 0;
   color: var(--control-fg);
 }
@@ -242,7 +243,8 @@ caffold-visual-diff {
 
 .viewer-info-button:focus-visible::after,
 .viewer-refresh-button:focus-visible::before,
-.viewer-wrap-button:focus-visible::before {
+.viewer-wrap-button:focus-visible::before,
+.viewer-zoom-button:focus-visible::before {
   border-color: var(--control-hover-bg);
   background: var(--control-hover-bg);
 }
@@ -250,7 +252,8 @@ caffold-visual-diff {
 @media (hover: hover) {
   .viewer-info-button:hover::after,
   .viewer-refresh-button:hover::before,
-  .viewer-wrap-button:hover::before {
+  .viewer-wrap-button:hover::before,
+  .viewer-zoom-button:hover::before {
     border-color: var(--control-hover-bg);
     background: var(--control-hover-bg);
   }
@@ -263,7 +266,8 @@ caffold-visual-diff {
 }
 
 .viewer-refresh-icon,
-.viewer-wrap-icon {
+.viewer-wrap-icon,
+.viewer-zoom-icon {
   position: relative;
   display: block;
   width: var(--interface-icon-size);
@@ -311,6 +315,16 @@ caffold-visual-diff {
 
 .viewer-meta-popover::backdrop {
   background: transparent;
+}
+
+/* Zoom opens below its button and reaches back across the header, the way
+   the button sits at the header's end. */
+.viewer-zoom-popover {
+  position: fixed;
+  inset: auto;
+  position-area: block-end span-inline-start;
+  position-try-fallbacks: flip-block, flip-inline;
+  margin: var(--interface-space-3) 0;
 }
 
 .viewer-meta-popover dl {
@@ -440,20 +454,37 @@ dd {
   color: var(--danger);
 }
 
+/* The stage is the room a picture is zoomed against. A picture smaller than
+   the stage sits in its middle; a larger one starts at its top left edge, so
+   scrolling reaches all of it. */
 .image-stage {
+  container-type: size;
   display: grid;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  place-items: center;
   padding: 1rem;
 }
 
+.image-preview,
+.image-stage > caffold-loading-text {
+  margin: auto;
+}
+
+/* Fit width, Fit page, or a percent of the picture's own width; neither fit
+   enlarges it past its own size. */
 .image-preview {
   display: block;
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+  max-width: 100cqi;
+}
+
+.image-stage[data-zoom="page"] .image-preview {
+  max-height: 100cqb;
+}
+
+.image-stage[data-zoom="percent"] .image-preview {
+  width: var(--image-zoom-width);
+  max-width: none;
 }
 
 .image-stage > caffold-loading-text {

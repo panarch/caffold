@@ -262,6 +262,72 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
   expect(Math.abs(after.viewerAxisGap - after.headerButtonGap)).toBeLessThanOrEqual(1);
 });
 
+test("puts a picture's Zoom between its details and the file view as the header's buttons stand, and opens it within the screen", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await page.goto(`/tasks/${taskScenario.threadId}/review?nav=files&view=preview&file=review-image.svg`);
+  const fileViewer = taskReview.locator("caffold-review-file-viewer");
+  const zoomButton = fileViewer.getByRole("button", { name: "Zoom", exact: true });
+  await expect(zoomButton).toBeVisible();
+
+  const header = await taskReview.evaluate((review, [git, github]) => {
+    const viewerHeader = review
+      .shadowRoot.querySelector("caffold-review-selected-file")
+      .shadowRoot.querySelector("caffold-review-file-viewer")
+      .shadowRoot.querySelector(".viewer-header");
+    const title = viewerHeader.querySelector("h2");
+    const info = viewerHeader.querySelector(".viewer-info-button");
+    const zoom = viewerHeader.querySelector(".viewer-zoom-button");
+    const axis = review.shadowRoot.querySelector(
+      '.task-review-viewer-axis caffold-segmented-control[data-review-axis="viewer"]',
+    );
+    const visualBounds = (element, pseudo) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element, pseudo);
+      return {
+        left: rect.left + Number.parseFloat(style.left),
+        right: rect.right - Number.parseFloat(style.right),
+      };
+    };
+    const infoBounds = visualBounds(info, "::after");
+    const zoomBounds = visualBounds(zoom, "::before");
+    return {
+      titleClear: title.getBoundingClientRect().right <= info.getBoundingClientRect().left,
+      infoWidth: infoBounds.right - infoBounds.left,
+      zoomWidth: zoomBounds.right - zoomBounds.left,
+      buttonGap: zoomBounds.left - infoBounds.right,
+      axisGap: axis.getBoundingClientRect().left - zoomBounds.right,
+      headerButtonGap:
+        visualBounds(github, "::before").left - visualBounds(git, "::before").right,
+    };
+  }, await elementHandles(page.locator("caffold-detail-layout"), [
+    ".task-git-button",
+    ".task-github-button",
+  ]));
+  expect(header.titleClear).toBe(true);
+  expect(header.zoomWidth).toBeCloseTo(header.infoWidth, 1);
+  expect(Math.abs(header.buttonGap - header.headerButtonGap)).toBeLessThanOrEqual(1);
+  expect(Math.abs(header.axisGap - header.headerButtonGap)).toBeLessThanOrEqual(1);
+
+  await zoomButton.click();
+  const zoom = fileViewer.locator("caffold-zoom-control");
+  await expect(zoom).toBeVisible();
+  const placement = await zoom.evaluate((popover) => {
+    const box = popover.getBoundingClientRect();
+    return {
+      inside:
+        box.left >= 0 &&
+        box.right <= window.innerWidth &&
+        box.bottom <= window.innerHeight,
+      clearOfFit: popover.shadowRoot.querySelector(".zoom-steps").getBoundingClientRect().top >=
+        popover.shadowRoot.querySelector(".zoom-fit").getBoundingClientRect().bottom,
+    };
+  });
+  expect(placement).toEqual({ inside: true, clearOfFit: true });
+});
+
 test("labels the navigator's choices by its own width and the file's by Review's, before and after a file opens", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {

@@ -74,11 +74,13 @@ test("Word document disconnect cancels pending work and reconnect renders the cu
   await expect(child.locator("section.docx")).toHaveText("pending");
   expect(await child.evaluate((element) => element === window.documentRenderer.child)).toBe(true);
   await expect.poll(() => page.evaluate(() => window.documentRenderer.started)).toEqual(["pending", "pending"]);
+  // The viewer watches the room it gives the document while it is on the
+  // page, and lets go of that watch when it leaves.
   expect(await page.evaluate(() => window.documentRenderer.observers
-    .some((record) => (record.target.localName === "caffold-docx-document") && record.active))).toBe(true);
+    .some((record) => (record.target.localName === "caffold-docx-viewer") && record.active))).toBe(true);
   await viewer.evaluate((element) => element.remove());
   expect(await page.evaluate(() => window.documentRenderer.observers
-    .filter((record) => record.target.localName === "caffold-docx-document")
+    .filter((record) => ["caffold-docx-viewer", "caffold-docx-document"].includes(record.target.localName))
     .every((record) => !record.active))).toBe(true);
 });
 

@@ -481,3 +481,74 @@ test("stays on the page it was reading when the document changes", { tag: "@serv
   await expect(viewer.getByText("Revised review")).toHaveCount(1);
   await expect.poll(() => readingPlace(viewer)).toEqual({ page: 2, fraction: 0.4 });
 });
+
+// The room the viewer gives its pages, and each page's drawn size.
+function docxLayout(viewer) {
+  return viewer.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      room: {
+        width: element.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight),
+        height: element.clientHeight - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.paddingBottom),
+      },
+      pages: [...element.shadowRoot.querySelector("caffold-docx-document").shadowRoot
+        .querySelectorAll("section.docx")].map((page) => {
+        const box = page.getBoundingClientRect();
+        return { width: box.width, height: box.height };
+      }),
+    };
+  });
+}
+
+test("Zoom fits each Word page by its own size, and draws every page at one percent of its own", { tag: "@server-steady" }, async ({
+  page,
+}, testInfo) => {
+  // A short window, so the last page, the landscape one, can reach the top.
+  await page.setViewportSize({ width: 1280, height: 520 });
+  const { taskReview } = await openDocument(page, testInfo);
+  const viewer = taskReview.locator("caffold-docx-viewer");
+  await expect(viewer).toHaveAttribute("data-render-state", "docx");
+  await expect(viewer.locator("section.docx")).toHaveCount(4);
+  const declared = [PORTRAIT_WIDTH, PORTRAIT_WIDTH, PORTRAIT_WIDTH, LANDSCAPE_WIDTH];
+  const fileViewer = taskReview.locator("caffold-review-file-viewer");
+  await fileViewer.getByRole("button", { name: "Zoom", exact: true }).click();
+  const zoom = fileViewer.locator("caffold-zoom-control");
+  const percent = zoom.getByRole("textbox", { name: "Zoom percent" });
+
+  // Fit width shows the percent of the page at the top: a portrait page at
+  // its own size, the wider landscape page fitted to the width.
+  const { room } = await docxLayout(viewer);
+  expect(room.width).toBeGreaterThan(PORTRAIT_WIDTH);
+  expect(room.width).toBeLessThan(LANDSCAPE_WIDTH);
+  await expect(percent).toHaveValue("100%");
+  await scrollToPlace(viewer, 3, 0);
+  const landscapePercent = (room.width / LANDSCAPE_WIDTH) * 100;
+  await expect(percent).toHaveValue(`${Math.round(landscapePercent)}%`);
+
+  // + moves every page to the step past it, of each page's own size.
+  await zoom.getByRole("button", { name: "Zoom in" }).click();
+  const stepped = [10, 25, 33, 50, 67, 75, 90, 100, 125, 150, 200, 300, 400]
+    .find((step) => step > landscapePercent + 0.5);
+  await expect(percent).toHaveValue(`${stepped}%`);
+  await expect.poll(async () => (await docxLayout(viewer)).pages.map((size, index) =>
+    Math.abs(size.width - (declared[index] * stepped) / 100) <= 1)).toEqual([true, true, true, true]);
+
+  // Fit page fits each whole page within the room, by its own size.
+  await zoom.getByRole("button", { name: "Fit page" }).click();
+  await expect.poll(async () => {
+    const layout = await docxLayout(viewer);
+    return layout.pages.every((size) =>
+      size.height <= layout.room.height + 1 && size.width <= layout.room.width + 1);
+  }).toBe(true);
+
+  // A typed percent keeps the page read in place.
+  await scrollToPlace(viewer, 1, 0.3);
+  await expect.poll(() => readingPlace(viewer)).toEqual({ page: 1, fraction: 0.3 });
+  await percent.fill("150");
+  await percent.press("Enter");
+  await expect.poll(async () => (await docxLayout(viewer)).pages.map((size, index) =>
+    Math.abs(size.width - declared[index] * 1.5) <= 1)).toEqual([true, true, true, true]);
+  const kept = await readingPlace(viewer);
+  expect(kept.page).toBe(1);
+  expect(Math.abs(kept.fraction - 0.3)).toBeLessThanOrEqual(0.02);
+});

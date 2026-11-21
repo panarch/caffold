@@ -1,3 +1,5 @@
+/* The viewer scrolls its pages, and its box is the room they are zoomed
+   against: a page reads the viewer's height as `100cqb`. */
 :host {
   display: block;
   min-width: 0;
@@ -6,6 +8,7 @@
   overscroll-behavior: contain;
   padding: 1rem;
   background: var(--surface-muted);
+  container-type: size;
 }
 
 :host([hidden]) {
@@ -25,8 +28,11 @@
   line-height: var(--interface-line-height);
 }
 
-/* A page never grows past the width the document declares, and never forces
-   the panel wider than the viewport. */
+/* Fit width never grows a page past the size it prints at or forces the panel
+   wider than the viewport; Fit page also keeps the whole page within the
+   viewer's height; a percent is that share of the size it prints at. A page
+   narrower than the viewer sits in the middle, and a wider one starts at the
+   left edge. */
 .pdf-viewer-page {
   width: min(100%, var(--pdf-page-width, 100%));
   margin-inline: auto;
@@ -34,6 +40,21 @@
   background: var(--surface);
 }
 
+.pdf-viewer-body[data-zoom="page"] .pdf-viewer-page {
+  width: min(
+    100%,
+    var(--pdf-page-width, 100%),
+    100cqb *
+    var(--pdf-page-aspect, 1)
+  );
+}
+
+.pdf-viewer-body[data-zoom="percent"] .pdf-viewer-page {
+  width: calc(var(--pdf-page-width) * var(--pdf-zoom-scale));
+}
+
+/* A picture drawn for another size stretches to the page until the page is
+   drawn again. */
 .pdf-viewer-canvas {
   display: block;
   width: 100%;

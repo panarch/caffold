@@ -2419,6 +2419,14 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/components/file-viewer/components/visual-diff/difference.js"
             ))))
         }
+        "components/file-viewer/components/zoom-control.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/file-viewer/components/zoom-control.css.js"
+        )))),
+        "components/file-viewer/components/zoom-control.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/file-viewer/components/zoom-control.js"
+        )))),
         "components/file-viewer/code-names.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/components/file-viewer/code-names.js"
@@ -2434,6 +2442,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "components/page-anchor.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/components/page-anchor.js"
+        )))),
+        "components/viewer-zoom.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/viewer-zoom.js"
         )))),
         "components/file-viewer.css.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
@@ -2824,6 +2836,7 @@ mod tests {
             "components/file-viewer/components/code-viewer.css",
             "components/file-viewer/components/diff-viewer.css",
             "components/file-viewer/components/visual-diff.css",
+            "components/file-viewer/components/zoom-control.css",
             "components/git-compare-browser.css",
             "components/git-compare-tree.css",
             "components/hwp-viewer.css",
@@ -3148,6 +3161,7 @@ mod tests {
             "components/file-viewer/code-names.js",
             "components/file-viewer/components/code-name-menu.js",
             "components/file-viewer/components/visual-diff/difference.js",
+            "components/file-viewer/components/zoom-control.js",
             "pages/(task-workspace)/tasks/(detail)/(review)/layout/code-names.js",
             "action-hints.js",
             "action-hints/control.js",

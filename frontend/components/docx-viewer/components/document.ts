@@ -9,6 +9,11 @@ import { customElement, property, state } from "lit/decorators.js";
 import type { DocumentPreviewFile } from "../../dom.js";
 import "../../loading-text.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import {
+  type ViewerZoom,
+  type ZoomSize,
+  zoomScale,
+} from "../../viewer-zoom.js";
 
 import styles from "./document.css.js";
 
@@ -40,9 +45,13 @@ interface DocxPreview {
   ): Promise<Node[]>;
 }
 
+// A page's own size, measured before any zoom applies, and the zoom it is
+// drawn at.
 interface PageRecord {
   element: HTMLElement;
   width: number;
+  height: number;
+  scale: number;
 }
 
 type DocumentRenderState = "empty" | "loading" | "error" | "docx";
@@ -53,6 +62,11 @@ let libraryPromise: Promise<DocxPreview> | undefined;
 class CaffoldDocxDocument extends CaffoldElement {
   @property({ attribute: false })
   accessor file: DocumentPreviewFile | null = null;
+  // The size the pages are drawn at, in the room the viewer gives them.
+  @property({ attribute: false })
+  accessor zoom: ViewerZoom = { fit: "width" };
+  @property({ attribute: false })
+  accessor room: ZoomSize | null = null;
   @state()
   private accessor renderState: DocumentRenderState = "empty";
   @state()
@@ -68,7 +82,6 @@ class CaffoldDocxDocument extends CaffoldElement {
 
   private generation = 0;
   private pageRecords: PageRecord[] | null = null;
-  private widthObserver: ResizeObserver | null = null;
 
   override connectedCallback() {
     super.connectedCallback();
@@ -109,12 +122,13 @@ class CaffoldDocxDocument extends CaffoldElement {
     }
   }
 
-  // A drawn document is fitted to the viewer's width before it says it is
-  // drawn, so its pages already have the size they are read at.
+  // A drawn document is zoomed before it says it is drawn, so its pages
+  // already have the size they are read at; it is zoomed again whenever its
+  // zoom or its room changes.
   override updated(changed: PropertyValues) {
     if (changed.has("renderState")) {
       if (this.renderState === "docx") {
-        this.fitDrawnPages();
+        this.measurePages();
       }
       this.dataset.renderState = this.renderState;
       this.dispatchEvent(
@@ -122,12 +136,19 @@ class CaffoldDocxDocument extends CaffoldElement {
           detail: this.renderState,
         }),
       );
+    } else if (changed.has("zoom") || changed.has("room")) {
+      this.zoomPages();
     }
   }
 
   // The document's pages in order, once it is drawn.
   pages() {
     return (this.pageRecords ?? []).map((page) => page.element);
+  }
+
+  // The zoom the page at `index` is drawn at, once it is drawn.
+  pageScale(index: number) {
+    return this.pageRecords?.[index]?.scale ?? null;
   }
 
   private async open(generation: number, file: Blob | Promise<Blob>) {
@@ -164,43 +185,45 @@ class CaffoldDocxDocument extends CaffoldElement {
     this.renderState = "docx";
   }
 
-  private fitDrawnPages() {
-    const generation = this.generation;
+  // Each page's own size is measured once, before any zoom applies, and the
+  // pages are zoomed at once, so the document is never shown at a size its
+  // zoom does not give it.
+  private measurePages() {
     this.pageRecords = Array.from(
       this.renderRoot.querySelectorAll<HTMLElement>("section.docx"),
-      (element) => ({ element, width: 0 }),
+      (element) => ({
+        element,
+        width: element.offsetWidth,
+        height: element.offsetHeight,
+        scale: 1,
+      }),
     );
-    // Fitted at once, so the document is never shown at a width it overflows;
-    // the observer refits it when the viewer's width changes.
-    this.fitPages(generation);
-    this.widthObserver = new ResizeObserver(() => this.fitPages(generation));
-    this.widthObserver.observe(this);
+    this.zoomPages();
   }
 
-  // A page is laid out at the width its document declares, which CSS cannot
-  // scale to the space it is given, so a narrower viewer zooms each page down
-  // by its own width. A wider viewer leaves the page at its own size.
-  private fitPages(generation: number) {
-    if (!this.isCurrent(generation)) {
-      return;
-    }
-    const available = this.clientWidth;
-    if (!available) {
+  // A page is laid out at the size its document declares, which CSS cannot
+  // scale, so each page is zoomed from here: for a fit, by its own size
+  // against the room, never past its own size; for a percent, by that share.
+  private zoomPages() {
+    const room = this.room ?? {
+      width: this.clientWidth,
+      height: Number.POSITIVE_INFINITY,
+    };
+    if (!room.width) {
       return;
     }
     for (const page of this.pageRecords ?? []) {
-      // Measured once, before any zoom applies.
-      page.width ||= page.element.offsetWidth;
-      page.element.style.zoom =
-        page.width > available ? `${available / page.width}` : "";
+      if (!page.width || !page.height) {
+        continue;
+      }
+      page.scale = zoomScale(this.zoom, page, room);
+      page.element.style.zoom = page.scale === 1 ? "" : `${page.scale}`;
     }
   }
 
   private release() {
     this.generation += 1;
     this.renderState = "empty";
-    this.widthObserver?.disconnect();
-    this.widthObserver = null;
     this.content = null;
     this.pageRecords = null;
   }

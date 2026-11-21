@@ -1781,7 +1781,7 @@ test("the file viewer offers a notice's representation button, details only for 
   });
 });
 
-test("each document preview scrolls as one vertical surface named after its file", { tag: "@server-steady" }, async ({
+test("each document preview scrolls as one surface named after its file, down and across a page zoomed wider", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await page.goto("/settings/files");
@@ -1816,7 +1816,7 @@ test("each document preview scrolls as one vertical surface named after its file
     [{
       id: `review:viewer:${kind}:scroll`,
       label: `report.${kind} preview`,
-      axes: ["vertical"],
+      axes: ["vertical", "horizontal"],
       scrollport: true,
     }],
     [],
@@ -2259,5 +2259,231 @@ test("spaces the file header's choice and buttons as the Detail header spaces it
     expect(fits).toBe(true);
     expect(Math.abs(changeToWrap - looks.header)).toBeLessThanOrEqual(1);
     expect(Math.abs(wrapToInfo - looks.header)).toBeLessThanOrEqual(1);
+  }
+});
+
+// The percents Zoom's − and + and its slider's arrow keys move between.
+const ZOOM_STEPS = [10, 25, 33, 50, 67, 75, 90, 100, 125, 150, 200, 300, 400];
+
+function stepAbove(percent) {
+  return ZOOM_STEPS.find((step) => step > percent + 0.5);
+}
+
+// A picture taller than any viewer, 1200 by 2400 pixels, under a name unique
+// to the running test.
+async function writeTallPicture(testInfo) {
+  const name = `zoom-picture-${testInfo.testId}-${testInfo.repeatEachIndex}.svg`;
+  const path = repositoryPath("frontend/tests/e2e/fixtures/home/src", name);
+  await writeFile(
+    path,
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="2400" viewBox="0 0 1200 2400">' +
+      '<rect width="1200" height="2400" fill="#36c"/><rect width="1200" height="800" fill="#e33"/></svg>',
+  );
+  return { name, path };
+}
+
+async function openPicturePreview(page, name) {
+  const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await page.goto(`/tasks/${taskScenario.threadId}/review?nav=files&view=preview&file=${name}`);
+  const viewer = taskReview.locator("caffold-review-file-viewer");
+  await expectFetchedPicture(viewer.locator("img.image-preview"));
+  return { taskScenario, taskReview, viewer };
+}
+
+// The room the image stage gives the picture, the picture's drawn size, and
+// where the stage is scrolled to.
+function pictureLayout(viewer) {
+  return viewer.locator(".image-stage").evaluate((stage) => {
+    const picture = stage.querySelector("img");
+    const style = getComputedStyle(stage);
+    const box = picture.getBoundingClientRect();
+    const stageBox = stage.getBoundingClientRect();
+    return {
+      room: {
+        width: stage.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight),
+        height: stage.clientHeight - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.paddingBottom),
+      },
+      width: box.width,
+      height: box.height,
+      leftInset: box.left - stageBox.left - Number.parseFloat(style.paddingLeft),
+      overflowsDown: stage.scrollHeight > stage.clientHeight + 1,
+      overflowsAcross: stage.scrollWidth > stage.clientWidth + 1,
+      middle: {
+        across: (stage.scrollLeft + stage.clientWidth / 2) / stage.scrollWidth,
+        down: (stage.scrollTop + stage.clientHeight / 2) / stage.scrollHeight,
+      },
+    };
+  });
+}
+
+test("Zoom fits a picture to the width or the whole page, or draws it at a percent of its own size", { tag: "@server-steady" }, async ({
+  page,
+}, testInfo) => {
+  const { name, path } = await writeTallPicture(testInfo);
+  try {
+    const { viewer } = await openPicturePreview(page, name);
+
+    // It opens fitted to the width, never past its own size.
+    const opened = await pictureLayout(viewer);
+    expect(Math.abs(opened.width - Math.min(opened.room.width, 1200))).toBeLessThanOrEqual(1);
+    expect(opened.overflowsDown).toBe(true);
+
+    await viewer.getByRole("button", { name: "Zoom", exact: true }).click();
+    const zoom = viewer.locator("caffold-zoom-control");
+    await expect(zoom).toBeVisible();
+    const percent = zoom.getByRole("textbox", { name: "Zoom percent" });
+    const fit = (value) => zoom.locator(`caffold-segmented-control button[data-segmented-value="${value}"]`);
+    await expect(fit("width")).toHaveAttribute("aria-pressed", "true");
+    await expect(percent).toHaveValue(`${Math.round((opened.width / 1200) * 100)}%`);
+
+    // Fit page shows the whole picture.
+    await zoom.getByRole("button", { name: "Fit page" }).click();
+    await expect(fit("page")).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(async () => (await pictureLayout(viewer)).overflowsDown).toBe(false);
+    const whole = await pictureLayout(viewer);
+    expect(whole.height).toBeLessThanOrEqual(whole.room.height + 1);
+    expect(whole.width).toBeCloseTo(whole.height / 2, 0);
+    const wholePercent = (whole.width / 1200) * 100;
+    await expect(percent).toHaveValue(`${Math.round(wholePercent)}%`);
+
+    // + goes to the next step, and leaves the fit.
+    await zoom.getByRole("button", { name: "Zoom in" }).click();
+    const stepped = stepAbove(wholePercent);
+    await expect(percent).toHaveValue(`${stepped}%`);
+    await expect(fit("width")).toHaveAttribute("aria-pressed", "false");
+    await expect(fit("page")).toHaveAttribute("aria-pressed", "false");
+    await expect.poll(async () => (await pictureLayout(viewer)).width).toBeCloseTo(12 * stepped, 0);
+
+    // A typed percent draws the picture at that share of its own width, and a
+    // picture wider than the stage starts at its left edge.
+    await percent.fill("150");
+    await percent.press("Enter");
+    await expect.poll(async () => (await pictureLayout(viewer)).width).toBeCloseTo(1800, 0);
+    await expect(percent).toHaveValue("150%");
+    expect((await pictureLayout(viewer)).overflowsAcross).toBe(true);
+    await viewer.locator(".image-stage").evaluate((stage) => {
+      stage.scrollLeft = 0;
+    });
+    expect(Math.abs((await pictureLayout(viewer)).leftInset)).toBeLessThanOrEqual(1);
+
+    // A change of zoom keeps the point in the middle of what shows in place.
+    await viewer.locator(".image-stage").evaluate((stage) => {
+      stage.scrollLeft = 400;
+      stage.scrollTop = 1500;
+    });
+    const before = (await pictureLayout(viewer)).middle;
+    await zoom.getByRole("button", { name: "Zoom in" }).click();
+    await expect.poll(async () => (await pictureLayout(viewer)).width).toBeCloseTo(2400, 0);
+    const after = (await pictureLayout(viewer)).middle;
+    expect(Math.abs(after.across - before.across)).toBeLessThanOrEqual(0.01);
+    expect(Math.abs(after.down - before.down)).toBeLessThanOrEqual(0.01);
+  } finally {
+    await rm(path, { force: true });
+  }
+});
+
+test("Zoom's slider sets any size while dragged, and its arrow keys and − and + move by steps", { tag: "@server-steady" }, async ({
+  page,
+}, testInfo) => {
+  const { name, path } = await writeTallPicture(testInfo);
+  try {
+    const { viewer } = await openPicturePreview(page, name);
+    await viewer.getByRole("button", { name: "Zoom", exact: true }).click();
+    const zoom = viewer.locator("caffold-zoom-control");
+    const percent = zoom.getByRole("textbox", { name: "Zoom percent" });
+    const slider = zoom.getByRole("slider", { name: "Zoom" });
+    await percent.fill("200");
+    await percent.press("Enter");
+    await expect(percent).toHaveValue("200%");
+    await expect(slider).toHaveAttribute("aria-valuetext", "200%");
+
+    // 200% sits halfway along the slider's right half. Dragged back to
+    // about 60% of its track, it stops between the steps.
+    const box = await slider.boundingBox();
+    const middle = box.y + box.height / 2;
+    await page.mouse.move(box.x + box.width * 0.75, middle);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.68, middle, { steps: 4 });
+    await page.mouse.move(box.x + box.width * 0.6, middle, { steps: 4 });
+    await page.mouse.up();
+    await expect.poll(async () => Number.parseInt(await percent.inputValue(), 10)).toBeLessThan(150);
+    const dragged = Number.parseInt(await percent.inputValue(), 10);
+    expect(dragged).toBeGreaterThan(125);
+    expect(ZOOM_STEPS).not.toContain(dragged);
+    await expect.poll(async () => Math.round((await pictureLayout(viewer)).width / 12)).toBe(dragged);
+
+    // An arrow key moves one step from wherever the slider is.
+    await slider.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(percent).toHaveValue("150%");
+    await expect(slider).toHaveAttribute("aria-valuetext", "150%");
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowLeft");
+    await expect(percent).toHaveValue("100%");
+    await page.keyboard.press("End");
+    await expect(percent).toHaveValue("400%");
+    await expect(zoom.getByRole("button", { name: "Zoom in" })).toBeDisabled();
+    await zoom.getByRole("button", { name: "Zoom out" }).click();
+    await expect(percent).toHaveValue("300%");
+
+    // Escape leaves a typed percent unentered, and Zoom with it.
+    await percent.fill("50");
+    await percent.press("Escape");
+    await expect(zoom).toBeHidden();
+    await viewer.getByRole("button", { name: "Zoom", exact: true }).click();
+    await expect(percent).toHaveValue("300%");
+    await expect.poll(async () => (await pictureLayout(viewer)).width).toBeCloseTo(3600, 0);
+  } finally {
+    await rm(path, { force: true });
+  }
+});
+
+test("Zoom serves a picture's preview from the keyboard, and another file opens fitted to the width", { tag: "@server-steady" }, async ({
+  page,
+}, testInfo) => {
+  const { name, path } = await writeTallPicture(testInfo);
+  try {
+    const { taskScenario, taskReview, viewer } = await openPicturePreview(page, name);
+    const zoom = viewer.locator("caffold-zoom-control");
+    const percent = zoom.getByRole("textbox", { name: "Zoom percent" });
+
+    // The picture's own name holds "zoom" too.
+    await activateActionHintIntoPopover(page, /^(?:\S+ — )?Zoom$/);
+    await expect(zoom).toBeVisible();
+    const fitted = Number.parseInt(await percent.inputValue(), 10);
+    const hints = popoverActionHintDialog(page);
+    const zoomIn = hints.getByLabel(/ — Zoom in$/);
+    await expect(zoomIn).toBeVisible();
+    await expect(hints.getByLabel(/ — Choose Fit page$/)).toBeVisible();
+    const code = await zoomIn.getAttribute("data-action-hint-code");
+    await page.keyboard.type(code.toLowerCase());
+    await expect(percent).toHaveValue(`${stepAbove(fitted)}%`);
+    await page.keyboard.press("Escape");
+    await expect(zoom).toBeHidden();
+
+    // Another picture, chosen in the file list, opens fitted to the width.
+    const navigator = taskReview.locator("caffold-file-navigator");
+    await navigator.locator('button[data-file-tree-path="src/review-image.svg"]').click();
+    await expect(page).toHaveURL(
+      `/tasks/${taskScenario.threadId}/review?nav=files&view=preview&file=review-image.svg`,
+    );
+    await expectFetchedPicture(viewer.locator("img.image-preview"));
+    await viewer.getByRole("button", { name: "Zoom", exact: true }).click();
+    await expect(
+      zoom.locator('caffold-segmented-control button[data-segmented-value="width"]'),
+    ).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("Escape");
+
+    // Source and a Markdown preview have no Zoom.
+    await taskReview.getByRole("button", { name: "Source", exact: true }).click();
+    await expect(viewer.getByRole("button", { name: "Wrap code lines" })).toBeVisible();
+    await expect(viewer.getByRole("button", { name: "Zoom", exact: true })).toHaveCount(0);
+    await navigator.locator('button[data-file-tree-path="src/README.md"]').click();
+    await taskReview.getByRole("button", { name: "Preview", exact: true }).click();
+    await expect(viewer.locator("caffold-markdown-preview")).toBeVisible();
+    await expect(viewer.getByRole("button", { name: "Zoom", exact: true })).toHaveCount(0);
+  } finally {
+    await rm(path, { force: true });
   }
 });

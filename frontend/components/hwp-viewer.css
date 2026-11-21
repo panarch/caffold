@@ -1,3 +1,5 @@
+/* The viewer scrolls its pages, and its box is the room they are zoomed
+   against: a page reads the viewer's height as `100cqb`. */
 :host {
   display: block;
   min-width: 0;
@@ -7,6 +9,7 @@
   overflow-anchor: none;
   padding: 1rem;
   background: var(--surface-muted);
+  container-type: size;
 }
 
 :host([hidden]) {
@@ -26,6 +29,10 @@
   line-height: var(--interface-line-height);
 }
 
+/* Fit width never grows a page past the size the document gives it; Fit page
+   also keeps the whole page within the viewer's height; a percent is that
+   share of the document's size. A page narrower than the viewer sits in the
+   middle, and a wider one starts at the left edge. */
 .hwp-viewer-page {
   position: relative;
   width: min(100%, var(--hwp-page-width, 100%));
@@ -34,6 +41,21 @@
   background: white;
 }
 
+.hwp-viewer-body[data-zoom="page"] .hwp-viewer-page {
+  width: min(
+    100%,
+    var(--hwp-page-width, 100%),
+    100cqb *
+    var(--hwp-page-aspect, 1)
+  );
+}
+
+.hwp-viewer-body[data-zoom="percent"] .hwp-viewer-page {
+  width: calc(var(--hwp-page-width) * var(--hwp-zoom-scale));
+}
+
+/* A picture drawn for another size stretches to the page until the page is
+   drawn again. */
 .hwp-viewer-canvas {
   position: absolute;
   inset: 0;

@@ -54,6 +54,10 @@ In **Source** and **Preview**, **Show details** at the top right of the file
 has **Download**, which saves the file to your device, including a large or
 binary file that Caffold cannot show.
 
+For images and PDF, Word, PowerPoint, and Hangul documents, **Zoom** at the top
+right of the file fits the preview to the width or the page, or makes it larger
+or smaller.
+
 On a phone, the file list and the file take turns on the screen; **Back**
 returns from the file to the list.
 

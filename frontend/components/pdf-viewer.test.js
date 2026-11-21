@@ -18,6 +18,7 @@ function drawingViewer() {
     owner: {
       generation: 4,
       renderState: "pdf",
+      shown: { forget() {} },
       release() {
         pdfViewer.release.call(this);
       },
@@ -101,6 +102,7 @@ test("cancels page renders and tears down the loading task when released", () =>
     pageObserver: { disconnect: () => disconnected.push("pages") },
     widthObserver: { disconnect: () => disconnected.push("width") },
     loadingTask: { destroy: () => (destroyed += 1, Promise.resolve()) },
+    shown: { forget() {} },
   };
 
   pdfViewer.release.call(owner);
@@ -119,6 +121,7 @@ test("tears down a loading task that never produced a document", () => {
   const owner = {
     generation: 1,
     loadingTask: { destroy: () => (destroyed += 1, Promise.resolve()) },
+    shown: { forget() {} },
   };
 
   pdfViewer.release.call(owner);
@@ -181,4 +184,41 @@ test("ignores page observations from a replaced generation", () => {
   ]);
 
   assert.equal(owner.visiblePages.size, 0);
+});
+
+test("draws the visible pages again for a new zoom only once the slider is let go", () => {
+  const redrawn = [];
+  const owner = {
+    generation: 3,
+    zoomDragging: true,
+    zoomPlace: null,
+    dataset: {},
+    redrawVisiblePages: (generation) => redrawn.push(generation),
+  };
+
+  pdfViewer.updated.call(owner, new Map([["zoom", { fit: "width" }]]));
+  assert.deepEqual(redrawn, [], "a held slider leaves the pictures drawn");
+
+  owner.zoomDragging = false;
+  pdfViewer.updated.call(owner, new Map([["zoomDragging", true]]));
+  assert.deepEqual(redrawn, [3]);
+
+  pdfViewer.updated.call(owner, new Map([["zoom", { percent: 150 }]]));
+  assert.deepEqual(redrawn, [3, 3], "a zoom chosen any other way is drawn at once");
+});
+
+test("draws no page that comes into view while the slider is held", async () => {
+  const record = {
+    element: { clientWidth: 900 },
+    viewport: { width: 612, height: 792 },
+    renderedWidth: 600,
+    task: null,
+    page: {
+      getViewport: () => assert.fail("a held slider must not draw a page"),
+    },
+  };
+
+  await pdfViewer.drawPage.call({ isConnected: true, generation: 1, zoomDragging: true }, 1, record);
+
+  assert.equal(record.renderedWidth, 600);
 });

@@ -553,6 +553,17 @@ width instead of scrolling them sideways; a wrapped line goes on from the start
 of the code column. Each browser remembers the choice for every file view,
 Git's and GitHub's included.
 
+In the Preview of a picture, a PDF, a Word document, a PowerPoint deck, or a
+Hangul document, Zoom in the file's header sets the size it is drawn at. Fit
+width fits each page, slide, or picture to the viewer's width, and Fit page
+fits each whole one within the viewer; neither draws it larger than its own
+size, which for a document is the size it prints at. A percent from 10% to
+400% draws every page at that share of its own size: − and + move through set
+steps, the slider's middle is 100%, and a percent can be typed. Every file
+opens at Fit width, and reading the same file again keeps the size. A change of
+size keeps the page read, or the middle of a picture, in place. A workbook has
+no Zoom.
+
 Where a file view is narrow, as on a phone, its line numbers scroll sideways
 with the code, and Diff shows one number for each line: the old file's on a
 removed line and the new file's on the others. Once Source's numbers have
@@ -661,7 +672,7 @@ reconciles current source state. Integrated Review shows a file it returns to
 where it was last read, whether Review comes back on screen or the file is
 opened again: source or a diff at the same part of the same line, and a
 document or Visual at the same part of the same page, slide, or picture, even
-at another width or with Wrap changed; Markdown at the same scroll; or a
+at another width or zoom or with Wrap changed; Markdown at the same scroll; or a
 workbook at its last sheet with each sheet where it was. A document that
 changes while it is read is drawn again at the same place. A reload starts
 every file at its top. Changing Task, Section, or repository context discards
