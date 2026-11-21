@@ -66,7 +66,8 @@ use serde::Deserialize;
 use super::config_dir;
 use super::protocol::{ContentBlock, Message, MessageContent};
 use super::translate::{
-    ToolCalls, answers_tool_calls, message_items, prompt_content, prompt_item, steer_item,
+    BlockNumbers, ToolCalls, answers_tool_calls, message_items, prompt_content, prompt_item,
+    steer_item,
 };
 use crate::agent::{
     BackgroundTask, ItemKind, MessageContent as CaffoldContent, Turn, TurnOrigin, TurnPage,
@@ -582,6 +583,9 @@ fn turns(lines: &[&str]) -> ParsedTurns {
     // started and answered somewhere later. A call never outlives the turn it
     // was made in, so a window of whole turns holds both ends of every one.
     let mut calls = ToolCalls::default();
+    // Held across the window too: a message's blocks are numbered across its
+    // rows, one block each, and a message never outlives its turn.
+    let mut block_numbers = BlockNumbers::default();
 
     for line in lines.iter().copied() {
         let Ok(row) = serde_json::from_str::<Row>(line) else {
@@ -730,7 +734,23 @@ fn turns(lines: &[&str]) -> ParsedTurns {
             .tool_use_result
             .as_ref()
             .and_then(ToolUseResult::background_task_id);
-        for mut item in message_items(message, anchor, &mut calls, row.is_api_error_message) {
+        // Named as the live reader names them: an assistant block by its
+        // message and its place there, anything else by its row.
+        let (said_by, first_block) = match message.id.as_deref().filter(|_| row.kind == "assistant")
+        {
+            Some(message_id) => (
+                message_id,
+                block_numbers.next(message_id, message, None).start,
+            ),
+            None => (anchor, 0),
+        };
+        for mut item in message_items(
+            message,
+            said_by,
+            first_block,
+            &mut calls,
+            row.is_api_error_message,
+        ) {
             item.observed_at_ms = at_ms;
             if let Some(task_id) = background_task_id
                 && let ItemKind::CommandExecution(command) = &mut item.kind

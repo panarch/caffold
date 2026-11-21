@@ -267,6 +267,22 @@ that identity, when the runner has accepted the frame. A user-role frame without
 not drawn; the transcript reader applies the same rule to user rows. Prompt
 echoes from sessions started with `--replay-user-messages` are such frames.
 
+Claude sessions start with `--include-partial-messages`, so Claude sends each
+text or thinking block in pieces before the finished frame that holds the whole
+block, one finished frame per block. A text or thinking item is named by its
+message's `id` and the block's place in that message: the pieces carry both, the
+live reader takes the place from a finished block's pieces or else counts the
+blocks of the message's finished frames, and the transcript reader counts them
+across the message's rows, so all three give one block the same name, even on a
+backend that took over partway through a message. A frame or row without a
+message `id` is named by its `uuid`. The driver reports the block as written so
+far under that name, in progress, once it holds words, and the finished frame
+completes the same item. Pieces are shown only in a turn the session has settled
+and never for a subagent, which leaves the first block of a turn taken up at
+hello, or begun by Claude on its own, to show when it is finished. A stop
+finishes a cut-off text block as a frame; a block Claude abandons gets no frame,
+so it keeps the text its pieces left, and the transcript does not hold it.
+
 Claude reports compacting its context only on the stream: a `status` frame says
 `compacting`, and a later one clears the status with the compaction's result.
 The driver draws that span as the "Compacting context" other work that

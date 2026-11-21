@@ -447,6 +447,89 @@ async fn a_prompt_is_accepted_under_the_name_the_transcript_will_use_before_clau
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn a_reply_grows_as_claude_writes_it_and_reads_back_under_the_same_name() {
+    // Claude sends an answer in pieces while it writes it. Each piece is shown
+    // under the name the transcript gives the finished answer, so the answer
+    // grows in place and a backend reading the transcript finds the same item.
+    let mut backend = Backend::start().await;
+    let task = backend
+        .start_task(
+            "Write about 200 words on how rivers form, in plain prose paragraphs. \
+             Do not use any tools.",
+            MODEL,
+        )
+        .await;
+
+    let mut grew: Vec<(String, usize)> = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(180);
+    let (answer_id, answer) = loop {
+        assert!(
+            Instant::now() < deadline,
+            "the answer never finished; the Task did {}",
+            task.what_happened().await
+        );
+        let detail = task.detail().await;
+        let working = detail["task"]["threadStatus"]["type"] == "active";
+        let answers: Vec<(String, String)> = detail["events"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|event| event["type"] == "assistant_message")
+            .map(|event| {
+                (
+                    event["payload"]["itemId"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
+                    event["payload"]["text"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
+                )
+            })
+            .collect();
+        match answers.last() {
+            Some((id, text)) if working => {
+                if grew.last() != Some(&(id.clone(), text.len())) {
+                    grew.push((id.clone(), text.len()));
+                }
+            }
+            Some(finished) if !working => break finished.clone(),
+            _ => {}
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+
+    let while_written: Vec<usize> = grew
+        .iter()
+        .filter(|(id, _)| *id == answer_id)
+        .map(|(_, length)| *length)
+        .collect();
+    assert!(
+        while_written.len() >= 2 && while_written.windows(2).all(|pair| pair[0] < pair[1]),
+        "the answer {answer_id} grew while it was written: {grew:?}"
+    );
+    assert!(
+        answer_id.starts_with("msg_"),
+        "the answer is named by its message: {answer_id}"
+    );
+
+    // A replacement backend knows nothing it watched; what it shows is what
+    // Claude wrote down, read back through Caffold's own transcript reader.
+    backend.replace().await;
+    task.wait_until_known(Duration::from_secs(30)).await;
+    let detail = task.detail().await;
+    let read_back = detail["events"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|event| event["payload"]["itemId"] == answer_id.as_str())
+        .unwrap_or_else(|| panic!("the transcript holds {answer_id}: {detail}"));
+    assert_eq!(read_back["payload"]["text"], answer.as_str());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
 async fn the_list_shows_a_working_claude_task_without_anyone_opening_it() {
     // The list is the first thing a person sees, and the place they decide
     // whether anything needs them. A working Task that reads as nothing there

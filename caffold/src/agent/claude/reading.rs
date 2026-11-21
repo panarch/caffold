@@ -12,7 +12,8 @@ use serde_json::{Value, json};
 
 use crate::agent::{CAFFOLD_CLARIFICATION_FEEDBACK, ContextUsage};
 
-use super::translate::{answers_tool_calls, message_items};
+use super::protocol::{BlockDelta, ContentBlock, StartedBlock, StreamEvent, StreamEventFrame};
+use super::translate::{answers_tool_calls, block_so_far, message_items};
 use super::{
     ActivityStatus, Answers, ApprovalDecision, ApprovalDetail, ApprovalRequest, ClaudeClient,
     ClaudeRuntimeEvent, ControlRequestFrame, ConversationItem, Introduction, ItemKind,
@@ -125,6 +126,7 @@ impl ClaudeClient {
                     let _ = waiting.send(body.into_result());
                 }
             }
+            StreamFrame::StreamEvent(piece) => self.handle_piece(session, piece).await,
             StreamFrame::Other => {}
         }
     }
@@ -422,18 +424,6 @@ impl ClaudeClient {
         }
         self.take_up_the_turn_the_file_names(session).await;
         self.name_unowned_turn(session, true).await;
-        // The frame, not the message. One assistant message is streamed as
-        // several frames — thinking in one, its answer in the next — all
-        // carrying the same message identifier and each numbering its own
-        // blocks from zero. Anchoring on the message would make the answer
-        // overwrite the thinking that preceded it. The transcript writes one
-        // row per message and identifies rows the same way, so the frame
-        // identifier is what both readers can agree on.
-        let anchor = frame
-            .uuid
-            .clone()
-            .or_else(|| frame.message.id.clone())
-            .unwrap_or_else(|| format!("{}:{}", session.id, now_ms()));
         let at_ms = frame
             .timestamp
             .as_deref()
@@ -441,7 +431,45 @@ impl ClaudeClient {
             .unwrap_or_else(now_ms);
 
         let (turn_id, items) = {
-            let mut state = session.state.lock().await;
+            let mut guard = session.state.lock().await;
+            let state = &mut *guard;
+            // One assistant message arrives as several frames — thinking in
+            // one, its answer in the next — each holding its own block. Its
+            // pieces number those blocks across the whole message, and so does
+            // the transcript, so a block is named by its message and its place
+            // there: the same name while it is written, once it is finished,
+            // and when it is read back. A frame naming no message is named by
+            // the frame.
+            let (anchor, first_block) =
+                match frame.message.id.as_deref().filter(|_| !spoken_by_user) {
+                    Some(message_id) => {
+                        // The block being written is the one this frame
+                        // finishes, and its pieces said where it stands.
+                        let written_from = state
+                            .blocks_being_written
+                            .keys()
+                            .filter(|(message, _)| message == message_id)
+                            .map(|(_, block)| *block)
+                            .min();
+                        let blocks =
+                            state
+                                .blocks_finished
+                                .next(message_id, &frame.message, written_from);
+                        for block in blocks.clone() {
+                            state
+                                .blocks_being_written
+                                .remove(&(message_id.to_string(), block));
+                        }
+                        (message_id.to_string(), blocks.start)
+                    }
+                    None => (
+                        frame
+                            .uuid
+                            .clone()
+                            .unwrap_or_else(|| format!("{}:{}", session.id, now_ms())),
+                        0,
+                    ),
+                };
             let Some(turn_id) = state.active_turn.clone() else {
                 // This frame alone does not say what opened the work. Its
                 // terminal result asks the application to reconcile Claude's
@@ -451,6 +479,7 @@ impl ClaudeClient {
             let mut items = message_items(
                 &frame.message,
                 &anchor,
+                first_block,
                 &mut state.calls,
                 frame.is_api_error_message,
             );
@@ -476,6 +505,91 @@ impl ClaudeClient {
                 self.report(&session.id, SessionEventKind::DiffChanged);
             }
         }
+    }
+
+    /// A piece of a block the agent is still writing, shown as far as it has
+    /// got under the name its finished frame will have.
+    ///
+    /// Every piece is kept, because its block number names the finished frame.
+    /// It is shown only where the finished frame would be, in a turn this
+    /// session is already sure of. A turn read at hello and a turn the agent
+    /// began on its own are settled by their first finished frame, so their
+    /// first block shows when it is finished.
+    async fn handle_piece(&self, session: &Arc<Session>, piece: StreamEventFrame) {
+        if piece.parent_tool_use_id.is_some() {
+            return;
+        }
+        let Some(message_id) = piece.api_message_id else {
+            return;
+        };
+        let (turn_id, item) = {
+            let mut state = session.state.lock().await;
+            match piece.event {
+                StreamEvent::ContentBlockStart {
+                    index,
+                    content_block,
+                } => {
+                    let block = match content_block {
+                        StartedBlock::Text => ContentBlock::Text {
+                            text: String::new(),
+                        },
+                        StartedBlock::Thinking => ContentBlock::Thinking {
+                            thinking: String::new(),
+                        },
+                        StartedBlock::Other => return,
+                    };
+                    state
+                        .blocks_being_written
+                        .insert((message_id, index), block);
+                    return;
+                }
+                StreamEvent::ContentBlockDelta { index, delta } => {
+                    let Some(block) = state
+                        .blocks_being_written
+                        .get_mut(&(message_id.clone(), index))
+                    else {
+                        return;
+                    };
+                    match (&mut *block, delta) {
+                        (ContentBlock::Text { text }, BlockDelta::TextDelta { text: more }) => {
+                            text.push_str(&more)
+                        }
+                        (
+                            ContentBlock::Thinking { thinking },
+                            BlockDelta::ThinkingDelta { thinking: more },
+                        ) => thinking.push_str(&more),
+                        _ => return,
+                    }
+                    let block = block.clone();
+                    let Some(turn_id) = state
+                        .active_turn
+                        .clone()
+                        .filter(|_| !state.turn_read_at_hello)
+                    else {
+                        return;
+                    };
+                    let Some(item) = block_so_far(format!("{message_id}:{index}"), &block) else {
+                        return;
+                    };
+                    (turn_id, item)
+                }
+                StreamEvent::Other => return,
+            }
+        };
+        let at_ms = now_ms();
+        let item = ConversationItem {
+            observed_at_ms: Some(at_ms),
+            ..item
+        };
+        self.record_item(session, &turn_id, item.clone()).await;
+        self.report(
+            &session.id,
+            SessionEventKind::ItemChanged {
+                turn_id,
+                item,
+                at_ms,
+            },
+        );
     }
 
     async fn handle_result(&self, session: &Arc<Session>, result: ResultFrame) {
@@ -3127,8 +3241,8 @@ mod tests {
     async fn one_message_split_across_frames_keeps_every_part_it_said() {
         // Measured against CLI 2.1.236: thinking arrives in one frame and the
         // answer in the next, both under one message identifier and both
-        // numbering their blocks from zero. Numbering from the message would
-        // let the answer take the place of the thinking.
+        // numbering their blocks from zero. Counting on across the message
+        // keeps the answer from taking the place of the thinking.
         let (client, runner, mut events) = watching().await;
         running_turn(&client, &mut events, "run it").await;
 
@@ -3157,6 +3271,10 @@ mod tests {
             first.id, second.id,
             "two things the agent said are two items, not one said twice"
         );
+        assert_eq!(
+            (first.id.as_str(), second.id.as_str()),
+            ("msg_1:0", "msg_1:1")
+        );
         let ItemKind::AssistantMessage { text, .. } = &first.kind else {
             panic!("the note the agent wrote on the way: {first:?}");
         };
@@ -3165,6 +3283,334 @@ mod tests {
             panic!("an assistant message");
         };
         assert_eq!(text, "ok");
+    }
+
+    #[tokio::test]
+    async fn a_claude_reply_grows_with_each_piece_it_writes() {
+        let (client, _runner, mut events) = watching().await;
+        let turn = running_turn(&client, &mut events, "explain").await;
+        let session = client.session(SESSION).await.unwrap();
+
+        for frame in [
+            piece("msg_1", block_start(0, "text")),
+            piece("msg_1", text_piece(0, "Hel")),
+            piece("msg_1", text_piece(0, "lo")),
+            assistant_frame("msg_1", json!([{ "type": "text", "text": "Hello" }])),
+        ] {
+            client.handle_line(&session, &frame.to_string()).await;
+        }
+
+        let mut shown = Vec::new();
+        for _ in 0..3 {
+            let SessionEventKind::ItemChanged { turn_id, item, .. } =
+                next_session_event(&mut events, "item").await
+            else {
+                unreachable!("asked for an item");
+            };
+            assert_eq!(turn_id, turn.id);
+            let ItemKind::AssistantMessage { text, .. } = item.kind else {
+                panic!("an answer: {item:?}");
+            };
+            shown.push((item.id, text, item.status));
+        }
+        assert_eq!(
+            shown,
+            [
+                ("msg_1:0".into(), "Hel".into(), ActivityStatus::InProgress),
+                ("msg_1:0".into(), "Hello".into(), ActivityStatus::InProgress),
+                ("msg_1:0".into(), "Hello".into(), ActivityStatus::Completed),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_progress_note_in_a_thinking_block_grows_like_an_answer() {
+        let (client, _runner, mut events) = watching().await;
+        running_turn(&client, &mut events, "fix it").await;
+        let session = client.session(SESSION).await.unwrap();
+
+        for frame in [
+            piece("msg_1", block_start(0, "thinking")),
+            piece(
+                "msg_1",
+                json!({ "type": "content_block_delta", "index": 0,
+                        "delta": { "type": "signature_delta", "signature": "abc" } }),
+            ),
+        ] {
+            client.handle_line(&session, &frame.to_string()).await;
+        }
+        assert_no_item_reported(&mut events);
+
+        for frame in [
+            piece("msg_1", thinking_piece(0, "Checking the callers")),
+            assistant_frame(
+                "msg_1",
+                json!([{ "type": "thinking", "thinking": "Checking the callers" }]),
+            ),
+        ] {
+            client.handle_line(&session, &frame.to_string()).await;
+        }
+        for status in [ActivityStatus::InProgress, ActivityStatus::Completed] {
+            let SessionEventKind::ItemChanged { item, .. } =
+                next_session_event(&mut events, "item").await
+            else {
+                unreachable!("asked for an item");
+            };
+            assert_eq!((item.id.as_str(), item.status), ("msg_1:0", status));
+            assert!(
+                matches!(&item.kind, ItemKind::AssistantMessage { text, .. } if text == "Checking the callers"),
+                "{item:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn thinking_and_the_answer_after_it_are_numbered_across_frames() {
+        let (client, _runner, mut events) = watching().await;
+        running_turn(&client, &mut events, "explain").await;
+        let session = client.session(SESSION).await.unwrap();
+
+        let mut thinking =
+            assistant_frame("msg_1", json!([{ "type": "thinking", "thinking": "" }]));
+        thinking["uuid"] = json!("frame-thinking");
+        let mut answer = assistant_frame("msg_1", json!([{ "type": "text", "text": "ok" }]));
+        answer["uuid"] = json!("frame-answer");
+        for frame in [
+            piece("msg_1", block_start(0, "thinking")),
+            thinking,
+            piece("msg_1", block_start(1, "text")),
+            piece("msg_1", text_piece(1, "ok")),
+            answer,
+        ] {
+            client.handle_line(&session, &frame.to_string()).await;
+        }
+
+        let mut shown = Vec::new();
+        for _ in 0..3 {
+            let SessionEventKind::ItemChanged { item, .. } =
+                next_session_event(&mut events, "item").await
+            else {
+                unreachable!("asked for an item");
+            };
+            shown.push((item.id, item.status));
+        }
+        assert_eq!(
+            shown,
+            [
+                ("msg_1:0".into(), ActivityStatus::Completed),
+                ("msg_1:1".into(), ActivityStatus::InProgress),
+                ("msg_1:1".into(), ActivityStatus::Completed),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_block_keeps_the_number_its_pieces_gave_it_on_a_backend_that_took_over() {
+        // A backend replaced between two blocks of one message has not seen
+        // the first. The pieces of the next still number it within the
+        // message, which is the name the transcript gives it.
+        let (client, _runner, mut events) = watching().await;
+        running_turn(&client, &mut events, "explain").await;
+        let session = client.session(SESSION).await.unwrap();
+
+        for frame in [
+            piece("msg_1", block_start(1, "text")),
+            piece("msg_1", text_piece(1, "ok")),
+            assistant_frame("msg_1", json!([{ "type": "text", "text": "ok" }])),
+            assistant_frame(
+                "msg_1",
+                json!([{ "type": "tool_use", "id": "toolu_1", "name": "Bash",
+                         "input": { "command": "true" } }]),
+            ),
+            assistant_frame("msg_1", json!([{ "type": "text", "text": "after" }])),
+        ] {
+            client.handle_line(&session, &frame.to_string()).await;
+        }
+
+        let mut ids = Vec::new();
+        for _ in 0..4 {
+            let SessionEventKind::ItemChanged { item, .. } =
+                next_session_event(&mut events, "item").await
+            else {
+                unreachable!("asked for an item");
+            };
+            ids.push(item.id);
+        }
+        assert_eq!(ids, ["msg_1:1", "msg_1:1", "toolu_1", "msg_1:3"]);
+    }
+
+    #[tokio::test]
+    async fn a_tool_call_between_answers_keeps_the_count() {
+        let (client, _runner, mut events) = watching().await;
+        running_turn(&client, &mut events, "run it").await;
+        let session = client.session(SESSION).await.unwrap();
+
+        for frame in [
+            assistant_frame("msg_1", json!([{ "type": "text", "text": "Running it." }])),
+            assistant_frame(
+                "msg_1",
+                json!([{ "type": "tool_use", "id": "toolu_1", "name": "Bash",
+                         "input": { "command": "true" } }]),
+            ),
+            piece("msg_1", block_start(2, "text")),
+            piece("msg_1", text_piece(2, "Then this.")),
+            assistant_frame("msg_1", json!([{ "type": "text", "text": "Then this." }])),
+            piece("msg_2", block_start(0, "text")),
+            piece("msg_2", text_piece(0, "Done.")),
+        ] {
+            client.handle_line(&session, &frame.to_string()).await;
+        }
+
+        let mut ids = Vec::new();
+        for _ in 0..5 {
+            let SessionEventKind::ItemChanged { item, .. } =
+                next_session_event(&mut events, "item").await
+            else {
+                unreachable!("asked for an item");
+            };
+            ids.push(item.id);
+        }
+        assert_eq!(ids, ["msg_1:0", "toolu_1", "msg_1:2", "msg_1:2", "msg_2:0"]);
+    }
+
+    #[tokio::test]
+    async fn pieces_from_a_subagent_or_outside_a_watched_turn_are_not_shown() {
+        let (client, _runner, mut events) = watching().await;
+        let session = client.session(SESSION).await.unwrap();
+        for frame in [
+            piece("msg_1", block_start(0, "text")),
+            piece("msg_1", text_piece(0, "No turn is open.")),
+        ] {
+            client.handle_line(&session, &frame.to_string()).await;
+        }
+        assert_no_item_reported(&mut events);
+
+        running_turn(&client, &mut events, "delegate").await;
+        let mut started = piece("msg_sub", block_start(0, "text"));
+        started["parent_tool_use_id"] = json!("toolu_task");
+        let mut said = piece("msg_sub", text_piece(0, "A subagent's words."));
+        said["parent_tool_use_id"] = json!("toolu_task");
+        for frame in [started, said] {
+            client.handle_line(&session, &frame.to_string()).await;
+        }
+        assert_no_item_reported(&mut events);
+    }
+
+    #[tokio::test]
+    async fn an_abandoned_block_stays_as_its_pieces_left_it() {
+        // A stop can leave a block the agent started and never finished: no
+        // finished frame comes for it, and nothing more is said about it.
+        let (client, _runner, mut events) = watching().await;
+        running_turn(&client, &mut events, "write an essay").await;
+        let session = client.session(SESSION).await.unwrap();
+        for frame in [
+            piece("msg_1", block_start(0, "thinking")),
+            piece("msg_1", thinking_piece(0, "Outlining the essay")),
+        ] {
+            client.handle_line(&session, &frame.to_string()).await;
+        }
+        let SessionEventKind::ItemChanged { item, .. } =
+            next_session_event(&mut events, "item").await
+        else {
+            unreachable!("asked for an item");
+        };
+        assert_eq!(
+            (item.id.as_str(), item.status),
+            ("msg_1:0", ActivityStatus::InProgress)
+        );
+
+        client
+            .handle_line(&session, &result_frame(Some("interrupt")).to_string())
+            .await;
+        next_session_event(&mut events, "turn end").await;
+        client
+            .handle_line(
+                &session,
+                &piece("msg_1", thinking_piece(0, " late")).to_string(),
+            )
+            .await;
+        assert_no_item_reported(&mut events);
+    }
+
+    #[tokio::test]
+    async fn a_message_reads_back_from_the_transcript_under_the_names_it_was_shown_by() {
+        // The transcript writes the frames the stream sent, one row each.
+        // Read either way, the same message has the same items.
+        let said = [
+            json!({ "type": "assistant", "uuid": "row-thinking", "timestamp": "2026-11-21T06:00:01.000Z",
+                    "message": { "id": "msg_1", "role": "assistant",
+                                 "content": [{ "type": "thinking", "thinking": "" }] } }),
+            json!({ "type": "assistant", "uuid": "row-answer", "timestamp": "2026-11-21T06:00:02.000Z",
+                    "message": { "id": "msg_1", "role": "assistant",
+                                 "content": [{ "type": "text", "text": "Running it." }] } }),
+            json!({ "type": "assistant", "uuid": "row-tool", "timestamp": "2026-11-21T06:00:03.000Z",
+                    "message": { "id": "msg_1", "role": "assistant",
+                                 "content": [{ "type": "tool_use", "id": "toolu_1", "name": "Bash",
+                                               "input": { "command": "true" } }] } }),
+            json!({ "type": "assistant", "uuid": "row-done", "timestamp": "2026-11-21T06:00:04.000Z",
+                    "message": { "id": "msg_2", "role": "assistant",
+                                 "content": [{ "type": "text", "text": "Done." }] } }),
+        ];
+
+        let (client, _runner, mut events) = watching().await;
+        running_turn(&client, &mut events, "run it").await;
+        let session = client.session(SESSION).await.unwrap();
+        for frame in &said {
+            client.handle_line(&session, &frame.to_string()).await;
+        }
+        let mut live = Vec::new();
+        for _ in 0..said.len() {
+            let SessionEventKind::ItemChanged { item, .. } =
+                next_session_event(&mut events, "item").await
+            else {
+                unreachable!("asked for an item");
+            };
+            live.push(item.id);
+        }
+
+        let projects = tempfile::tempdir().unwrap();
+        let prompt = json!({ "type": "user", "uuid": "turn-1", "timestamp": "2026-11-21T06:00:00.000Z",
+                             "promptSource": "sdk",
+                             "message": { "role": "user", "content": [{ "type": "text", "text": "run it" }] } });
+        let file = std::iter::once(&prompt)
+            .chain(said.iter())
+            .map(Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        transcript::plant(projects.path(), CWD, SESSION, &file);
+        let path = transcript::locate(projects.path(), CWD, SESSION).expect("the planted file");
+        let reading = transcript::read(&path, None, 8).expect("a readable transcript");
+        let read_back: Vec<String> = reading.page.turns[0]
+            .items
+            .iter()
+            .skip(1)
+            .map(|item| item.id.clone())
+            .collect();
+
+        assert_eq!(live, ["msg_1:0", "msg_1:1", "toolu_1", "msg_2:0"]);
+        assert_eq!(read_back, live);
+    }
+
+    fn piece(message_id: &str, event: Value) -> Value {
+        json!({
+            "type": "stream_event", "uuid": "piece", "session_id": SESSION,
+            "parent_tool_use_id": null, "api_message_id": message_id, "event": event,
+        })
+    }
+
+    fn block_start(index: usize, kind: &str) -> Value {
+        json!({ "type": "content_block_start", "index": index,
+                "content_block": { "type": kind, "text": "", "thinking": "" } })
+    }
+
+    fn text_piece(index: usize, text: &str) -> Value {
+        json!({ "type": "content_block_delta", "index": index,
+                "delta": { "type": "text_delta", "text": text } })
+    }
+
+    fn thinking_piece(index: usize, thinking: &str) -> Value {
+        json!({ "type": "content_block_delta", "index": index,
+                "delta": { "type": "thinking_delta", "thinking": thinking } })
     }
 
     #[tokio::test]
