@@ -376,7 +376,7 @@ except the browser Task-naming scenario, which uses `high`. The browser Task,
 Task-naming, Fast-mode, and multimodal scenarios use `gpt-6-luna`. Rust
 reconnect, reply streaming, and MCP replacement/restart checks also use
 `gpt-6-luna`. The browser current-plan scenario and Rust clarification and MCP
-approval checks use `gpt-6.1-sol`.
+approval checks use `gpt-6.2-sol`.
 
 Rate-limit `usedPercent` values have integer resolution, so a non-zero live run
 can legitimately report a `0pp` change. Account snapshots can also include

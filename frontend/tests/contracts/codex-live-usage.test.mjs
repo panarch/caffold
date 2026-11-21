@@ -49,7 +49,7 @@ test("enforces the authenticated live model policy", () => {
     models: {
       task: "gpt-6-luna",
       naming: "gpt-6-luna",
-      plan: "gpt-6.1-sol",
+      plan: "gpt-6.2-sol",
       fast: "gpt-6-luna",
       multimodal: "gpt-6-luna",
     },
@@ -71,7 +71,7 @@ test("enforces the authenticated live model policy", () => {
     () =>
       assertLiveModelPolicy({
         scenario: "fast",
-        model: "gpt-6.1-sol",
+        model: "gpt-6.2-sol",
         effort: "low",
       }),
     /must use gpt-6-luna/,
@@ -83,7 +83,7 @@ test("enforces the authenticated live model policy", () => {
         model: "gpt-6-luna",
         effort: "low",
       }),
-    /must use gpt-6.1-sol/,
+    /must use gpt-6.2-sol/,
   );
   assert.throws(
     () =>
