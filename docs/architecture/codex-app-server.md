@@ -94,6 +94,18 @@ A notification this Caffold has no use for — including one from a newer
 app-server — becomes no report at all rather than an unread branch in each
 consumer.
 
+Codex sends an agent message's text in pieces, `item/agentMessage/delta`,
+between the message's `item/started` and `item/completed`. The connection keeps
+each message whose start it received and reports the message again, under the
+same item ID, with every piece added, so the answer shows as it is written.
+`item/completed` carries the finished text. A piece for a message whose start
+arrived on an earlier connection is not shown, so a message never appears from
+mid-sentence; that message shows when it finishes. When a turn is interrupted,
+Codex sends no `item/completed` for the message it was writing and leaves that
+message out of the turn's history. Caffold reports nothing further for it, so
+the live view keeps it as its pieces left it, and a conversation read from
+history does not contain it.
+
 Codex reports eighteen kinds of thread item. Caffold draws seven of them with a
 surface of its own, shows MCP and dynamic tool calls as tool calls with what the
 tool was given and returned, and shows the rest as other work named after

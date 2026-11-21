@@ -129,6 +129,7 @@ struct MockCodexThreadClient {
     server_errors: AsyncMutex<Vec<Value>>,
     server_reply: AsyncMutex<Option<MockServerReply>>,
     approvals: AsyncMutex<HashMap<String, Value>>,
+    messages_being_written: AsyncMutex<HashMap<(String, String), MessageBeingWritten>>,
     events: broadcast::Sender<CodexRuntimeEvent>,
 }
 
@@ -237,6 +238,13 @@ struct CodexThreadClientInner {
     /// mirror of `pending`, which already correlates the requests this client
     /// sends.
     approvals: AsyncMutex<HashMap<String, Value>>,
+    /// The agent messages whose start arrived on this connection and whose
+    /// end has not, by thread and item.
+    ///
+    /// Codex sends a message's text in pieces while it is written. A message
+    /// that started before this connection would show from mid-sentence, so
+    /// only one listed here takes its pieces.
+    messages_being_written: AsyncMutex<HashMap<(String, String), MessageBeingWritten>>,
     next_id: AtomicU64,
     events: broadcast::Sender<CodexRuntimeEvent>,
     app_server: AsyncMutex<Option<CodexAppServerInfo>>,
@@ -246,6 +254,13 @@ struct CodexThreadClientInner {
 struct PendingRequest {
     method: &'static str,
     sender: oneshot::Sender<Result<Value, CodexThreadError>>,
+}
+
+struct MessageBeingWritten {
+    turn_id: String,
+    /// The message as its start announced it, its `text` grown by each piece
+    /// since.
+    item: Value,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -491,6 +506,7 @@ impl CodexThreadClient {
                 _child: AsyncMutex::new(child),
                 pending: AsyncMutex::new(HashMap::new()),
                 approvals: AsyncMutex::new(HashMap::new()),
+                messages_being_written: AsyncMutex::new(HashMap::new()),
                 next_id: AtomicU64::new(100),
                 events,
                 app_server: AsyncMutex::new(None),
@@ -586,6 +602,7 @@ impl CodexThreadClient {
                 server_errors: AsyncMutex::new(Vec::new()),
                 server_reply: AsyncMutex::new(None),
                 approvals: AsyncMutex::new(HashMap::new()),
+                messages_being_written: AsyncMutex::new(HashMap::new()),
                 events,
             })),
         }
@@ -1527,6 +1544,17 @@ impl CodexThreadClient {
             return mock.approvals.lock().await;
         }
         self.inner().approvals.lock().await
+    }
+
+    /// The agent messages being written that this connection saw start.
+    async fn messages_being_written(
+        &self,
+    ) -> tokio::sync::MutexGuard<'_, HashMap<(String, String), MessageBeingWritten>> {
+        #[cfg(test)]
+        if let Some(mock) = &self.mock {
+            return mock.messages_being_written.lock().await;
+        }
+        self.inner().messages_being_written.lock().await
     }
 
     pub(crate) async fn list_models(

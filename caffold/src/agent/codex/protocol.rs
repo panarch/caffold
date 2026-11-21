@@ -734,6 +734,12 @@ pub(crate) enum CodexNotification {
         item: Value,
         completed_at_ms: u64,
     },
+    AgentMessageDelta {
+        thread_id: String,
+        turn_id: String,
+        item_id: String,
+        delta: String,
+    },
     RawResponseItemCompleted {
         thread_id: String,
         turn_id: String,
@@ -978,6 +984,28 @@ pub(crate) fn decode_notification(
                     completed_at_ms: completed_at_ms.unwrap_or_default(),
                 })
             }
+        }
+        "item/agentMessage/delta" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Params {
+                thread_id: String,
+                turn_id: String,
+                item_id: String,
+                delta: String,
+            }
+            let Params {
+                thread_id,
+                turn_id,
+                item_id,
+                delta,
+            } = decode_params(method, params)?;
+            Ok(CodexNotification::AgentMessageDelta {
+                thread_id,
+                turn_id,
+                item_id,
+                delta,
+            })
         }
         "rawResponseItem/completed" => {
             #[derive(Deserialize)]
@@ -1622,6 +1650,30 @@ mod tests {
             params.as_object_mut().unwrap().remove(field);
             assert!(
                 decode_notification("error", params).is_err(),
+                "missing {field}"
+            );
+        }
+    }
+
+    #[test]
+    fn decodes_each_piece_of_an_agent_message() {
+        let params = json!({
+            "threadId": "thread_1", "turnId": "turn_1", "itemId": "msg_1", "delta": "Hel",
+        });
+        assert_eq!(
+            decode_notification("item/agentMessage/delta", params.clone()).unwrap(),
+            CodexNotification::AgentMessageDelta {
+                thread_id: "thread_1".to_string(),
+                turn_id: "turn_1".to_string(),
+                item_id: "msg_1".to_string(),
+                delta: "Hel".to_string(),
+            }
+        );
+        for field in ["threadId", "turnId", "itemId", "delta"] {
+            let mut params = params.clone();
+            params.as_object_mut().unwrap().remove(field);
+            assert!(
+                decode_notification("item/agentMessage/delta", params).is_err(),
                 "missing {field}"
             );
         }
