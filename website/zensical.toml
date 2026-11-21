@@ -22,7 +22,7 @@ nav = [
       "tasks/conversation.md",
       "tasks/steer-and-stop.md",
       "tasks/approvals.md",
-      "tasks/ask-jev-first.md",
+      "tasks/caffold-decides.md",
       "tasks/current-plan.md",
       "tasks/terminal.md",
     ] },

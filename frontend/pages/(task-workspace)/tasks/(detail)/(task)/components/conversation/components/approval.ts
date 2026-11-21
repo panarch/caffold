@@ -269,25 +269,25 @@ function requestContext(payload: TaskEventPayload) {
 }
 
 /**
- * What Caffold's reviewer said about a request it did not answer.
+ * What Caffold's decision model said about a request it did not answer.
  *
- * Only a request Jev found no reason to ask about leaves the conversation
- * without a card, so every card that names a reviewer names how much reason it
- * found. Seeing that is the only way to tell a request that nearly went through
- * from one nothing spoke for.
+ * Only a request the model found no reason to ask about leaves the
+ * conversation without a card, so every card that names a reviewer names how
+ * much reason it found, under the name of the model that answered. Seeing that
+ * is the only way to tell a request that nearly went through from one nothing
+ * spoke for.
  */
 function reviewerAnswer(reviewed: TaskEventPayload["reviewed"]) {
-  if (!reviewed || typeof reviewed.concern !== "number") {
+  if (!reviewed || typeof reviewed.concern !== "number" || !reviewed.provider) {
     return nothing;
   }
   return definitionList(
     [
       {
-        label: "Jev",
+        label: reviewed.provider,
         value: `${Math.round(reviewed.concern * 100)}% sure this needs you`,
       },
-      { label: "Model", value: `${reviewed.model ?? ""}`, code: true },
-    ].filter((row) => row.value),
+    ],
     "Reviewer answer",
   );
 }

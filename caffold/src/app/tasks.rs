@@ -34,7 +34,7 @@ use crate::{
         antigravity::AntigravityClient, claude::ClaudeClient, codex::CodexMcpBindings,
         copilot::CopilotClient, grok::GrokClient,
     },
-    app::{jev::PermissionReviewer, terminal::TaskTerminals},
+    app::{decision_model::PermissionReviewer, terminal::TaskTerminals},
     fs::RootedFs,
     task_store::TaskStore,
     watch::WatchHub,

@@ -3645,7 +3645,7 @@ mod grok_tests {
                 .collect::<Vec<_>>(),
             // Grok's own three, with Caffold's reviewed mode among the ones
             // that keep a protection.
-            ["ask", "autoMode", "caffold:ask-jev-first", "yoloMode"]
+            ["ask", "autoMode", "caffold:decides", "yoloMode"]
         );
         assert_eq!(modes["fixedWhenConversationStarts"], true);
 

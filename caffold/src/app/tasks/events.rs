@@ -15,7 +15,7 @@ use crate::agent::{
 };
 
 use super::generated_images::{GeneratedImageObservation, GeneratedImageStore};
-use crate::app::jev::Judgement;
+use crate::app::decision_model::Judgement;
 
 /// Where one event sits in the backend-owned conversation projection.
 ///
@@ -929,7 +929,7 @@ pub(in crate::app::tasks) fn approval_requested_event(
             "tool": detail.tool,
             "decisions": request.decisions,
             "reviewed": reviewed.map(|judgement| json!({
-                "model": judgement.model,
+                "provider": judgement.provider.name(),
                 "concern": judgement.concern,
                 "allows": judgement.allows,
             })),
@@ -950,11 +950,13 @@ pub(in crate::app::tasks) fn approval_resolved_event(
 ) -> TaskEventRecord {
     let summary = match (outcome, reviewed) {
         // The conversation shows this one line for how a request ended, so it
-        // is where a request Caffold answered has to say so. It carries how
-        // much reason Jev found to ask, because a request that leaves no card
+        // is where a request Caffold answered has to say so. A judgement rides
+        // here only when it allowed the request, and the line carries how much
+        // reason the model found to ask, because a request that leaves no card
         // leaves no other way to see how close it came to being one.
         (ApprovalOutcome::Decided(_), Some(judgement)) => format!(
-            "Approval answered by Jev ({:.0}% reason to ask)",
+            "Approved by {} \u{b7} {:.0}% concern",
+            judgement.provider.name(),
             judgement.concern * 100.0
         ),
         (ApprovalOutcome::Decided(_), None) => "Approval answered".to_string(),
@@ -973,7 +975,7 @@ pub(in crate::app::tasks) fn approval_resolved_event(
             "approvalId": request.id,
             "outcome": outcome.as_str(),
             "reviewed": reviewed.map(|judgement| json!({
-                "model": judgement.model,
+                "provider": judgement.provider.name(),
                 "concern": judgement.concern,
                 "allows": judgement.allows,
             })),

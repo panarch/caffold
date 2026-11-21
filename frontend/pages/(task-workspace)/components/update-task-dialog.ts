@@ -28,7 +28,7 @@ import styles from "./update-task-dialog.css.js";
 const RESTART_NOTICE =
   "Running Tasks keep going while Caffold restarts. Claude sessions stop if it takes more than 10 minutes. Open terminals close.";
 const PERMISSION_HINT =
-  "To let the agent recover Caffold even if the restore fails, choose the mode that allows everything (Full access or Allow all). Other modes can stop at the update command, and no one can answer approvals while Caffold restarts, including Ask Jev first.";
+  "To let the agent recover Caffold even if the restore fails, choose the mode that allows everything (Full access or Allow all). Other modes can stop at the update command, and no one can answer approvals while Caffold restarts, including Caffold decides.";
 
 // The update an update Task runs: the version it goes to, the directory it
 // runs in, and the command.

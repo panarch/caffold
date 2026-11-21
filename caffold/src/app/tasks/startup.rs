@@ -22,7 +22,7 @@ use crate::{
 };
 
 use super::{CodexMcpHost, HttpMcpHost};
-use crate::app::{jev::PermissionReviewer, terminal::TaskTerminals};
+use crate::app::{decision_model::PermissionReviewer, terminal::TaskTerminals};
 
 #[derive(Clone)]
 struct TaskRouterGateway {

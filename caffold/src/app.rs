@@ -9,9 +9,9 @@ use tokio::{net::TcpListener, sync::broadcast};
 use tracing::info;
 
 mod content_disposition;
+mod decision_model;
 mod error;
 mod etag;
-mod jev;
 mod language_servers;
 mod live_updates;
 mod notes;
@@ -70,7 +70,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
     let language_servers = LanguageServers::open(&data_dir, fs.clone(), watch_hub.clone());
     let voice_router = voice::router(&data_dir);
-    let (jev_router, permission_reviewer) = jev::open(&data_dir);
+    let (decision_model_router, permission_reviewer) = decision_model::open(&data_dir);
     let listener = TcpListener::bind((config.host, config.port)).await?;
     let addr = listener.local_addr()?;
     let origin = mcp_origin(addr);
@@ -118,7 +118,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         workspace_router,
         tasks.router(),
         voice_router,
-        jev_router,
+        decision_model_router,
         tailscale_router,
         updates.router(),
         codex_mcp.router(),
@@ -187,7 +187,8 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         watch_hub.clone(),
     );
     let voice_router = voice::router(&fs.root().join(".caffold-test"));
-    let (jev_router, permission_reviewer) = jev::open(&fs.root().join(".caffold-test"));
+    let (decision_model_router, permission_reviewer) =
+        decision_model::open(&fs.root().join(".caffold-test"));
     let tailscale_router = tailscale::router(5_178);
     let update_router = update::UpdateRoutes::new(
         fs.clone(),
@@ -227,7 +228,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         workspace_router,
         tasks.router(),
         voice_router,
-        jev_router,
+        decision_model_router,
         tailscale_router,
         update_router,
         codex_mcp.router(),
@@ -245,7 +246,7 @@ fn router_with_states(
     workspace_router: Router,
     tasks_router: Router,
     voice_router: Router,
-    jev_router: Router,
+    decision_model_router: Router,
     tailscale_router: Router,
     update_router: Router,
     codex_mcp_router: Router,
@@ -256,7 +257,7 @@ fn router_with_states(
         .merge(workspace_router)
         .merge(tasks_router)
         .merge(voice_router)
-        .merge(jev_router)
+        .merge(decision_model_router)
         .merge(tailscale_router)
         .merge(update_router)
         .merge(codex_mcp_router)

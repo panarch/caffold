@@ -761,18 +761,24 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/settings/voice/lifecycle.js"
         )))),
-        "pages/(task-workspace)/settings/jev/page.css.js" => Some(js(include_str!(concat!(
-            env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/jev/page.css.js"
-        )))),
-        "pages/(task-workspace)/settings/jev/page.js" => Some(js(include_str!(concat!(
-            env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/jev/page.js"
-        )))),
-        "pages/(task-workspace)/settings/jev/lifecycle.js" => Some(js(include_str!(concat!(
-            env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/jev/lifecycle.js"
-        )))),
+        "pages/(task-workspace)/settings/decision-model/page.css.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/settings/decision-model/page.css.js"
+            ))))
+        }
+        "pages/(task-workspace)/settings/decision-model/page.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/settings/decision-model/page.js"
+            ))))
+        }
+        "pages/(task-workspace)/settings/decision-model/lifecycle.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/settings/decision-model/lifecycle.js"
+            ))))
+        }
         "pages/(task-workspace)/settings/grok/page.css.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/settings/grok/page.css.js"
@@ -2858,7 +2864,7 @@ mod tests {
             "pages/(task-workspace)/settings/grok/page.css",
             "pages/(task-workspace)/settings/antigravity/page.css",
             "pages/(task-workspace)/settings/copilot/page.css",
-            "pages/(task-workspace)/settings/jev/page.css",
+            "pages/(task-workspace)/settings/decision-model/page.css",
             "pages/(task-workspace)/settings/keyboard/page.css",
             "pages/(task-workspace)/settings/layout.css",
             "pages/(task-workspace)/settings/name-and-icon/page.css",
@@ -3164,8 +3170,8 @@ mod tests {
             "pages/(task-workspace)/settings/remote-access/tailscale.js",
             "pages/(task-workspace)/settings/voice/page.js",
             "pages/(task-workspace)/settings/voice/lifecycle.js",
-            "pages/(task-workspace)/settings/jev/page.js",
-            "pages/(task-workspace)/settings/jev/lifecycle.js",
+            "pages/(task-workspace)/settings/decision-model/page.js",
+            "pages/(task-workspace)/settings/decision-model/lifecycle.js",
             "pages/(task-workspace)/settings/codex/page.js",
             "pages/(task-workspace)/codex-status/components/reset-credit-dialog.js",
             "pages/(task-workspace)/settings/claude/page.js",

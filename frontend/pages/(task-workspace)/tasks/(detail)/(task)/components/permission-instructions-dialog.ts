@@ -20,7 +20,7 @@ import secondaryButton from "#app/component-styles/secondary-button.css.js";
 import styles from "./permission-instructions-dialog.css.js";
 
 const EMPTY_MESSAGE =
-  "Nothing yet. A prompt that says what this Task may or may not do is kept here while it runs under Ask Jev first.";
+  "Nothing yet. A prompt that says what this Task may or may not do is kept here while it runs under Caffold decides.";
 const CLOSE_LABEL = "Close what this Task settled";
 
 interface RecordState {
@@ -159,9 +159,9 @@ export class CaffoldTaskPermissionInstructionsDialog extends CaffoldElement {
         </header>
         <p class="task-permission-instructions-note">
           Your own messages, oldest first. A later one overrides an earlier one
-          it contradicts. Jev reads these before your extra rules when it
-          answers a permission request for this Task, whether they allow
-          something or refuse it.
+          it contradicts. The decision model reads these before your extra
+          rules when it answers a permission request for this Task, whether
+          they allow something or refuse it.
         </p>
         <div class="task-permission-instructions-body">
           <pre
@@ -290,9 +290,9 @@ export class CaffoldTaskPermissionInstructionsDialog extends CaffoldElement {
 }
 
 /**
- * The record stamps each entry in UTC, which is what Jev reads and what the
- * store keeps. A person reads it where they are, so the stamp is rewritten for
- * the browser and nothing else about the entry is touched.
+ * The record stamps each entry in UTC, which is what the decision model reads
+ * and what the store keeps. A person reads it where they are, so the stamp is
+ * rewritten for the browser and nothing else about the entry is touched.
  */
 function inReadersTime(instructions: string) {
   return instructions.replace(

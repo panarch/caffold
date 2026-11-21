@@ -159,7 +159,7 @@ test("renders the agreed text and two buttons", () => {
   );
   assert.match(
     drawn,
-    /To let the agent recover Caffold even if the restore fails, choose the mode that allows everything \(Full access or Allow all\)\. Other modes can stop at the update command, and no one can answer approvals while Caffold restarts, including Ask Jev first\./,
+    /To let the agent recover Caffold even if the restore fails, choose the mode that allows everything \(Full access or Allow all\)\. Other modes can stop at the update command, and no one can answer approvals while Caffold restarts, including Caffold decides\./,
   );
   assert.match(drawn, /<caffold-task-turn-options @caffold:task-turn-options-change="" >/);
   assert.match(drawn, /\?disabled="false" @click="" >Cancel</);

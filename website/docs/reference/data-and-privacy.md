@@ -11,7 +11,7 @@ and `~/.caffold` on Linux.
 
 | Data | Where it is stored |
 | --- | --- |
-| **Caffold app data** — Tasks, Sections, [Notes](../notes/index.md), Task options, voice input settings and API keys, the Whisper model, Jev's key and rules, notification subscriptions, and which languages and repositories have [language servers](../review/changes.md#go-to-a-definition) on | Caffold's data folder. |
+| **Caffold app data** — Tasks, Sections, [Notes](../notes/index.md), Task options, voice input settings and API keys, the Whisper model, the decision models' keys and rules, notification subscriptions, and which languages and repositories have [language servers](../review/changes.md#go-to-a-definition) on | Caffold's data folder. |
 | **Conversation history and agent sign-ins** | Each agent's own local storage on the host. Caffold reads conversation history from the agent and does not save a second copy. |
 | **Project files and [prompt attachments](../tasks/start-a-task.md#attach-files)** | The Task's working directory. Worktrees Caffold prepares are under `worktrees/` in its data folder; attachments are under `.caffold/uploads/` in the Task's working directory. |
 | **Logs and diagnostic reports** — records used to investigate problems with Caffold | On a Mac, logs are in `~/Library/Logs/Caffold`, and reports saved when the server stops responding are in `diagnostics/stalls/` in Caffold's data folder. On Linux, logs are in the systemd journal: `journalctl --user -u caffold`. |
@@ -27,9 +27,10 @@ only in these cases:
 
 - **Voice input** with OpenAI, Gemini, or Grok sends each recording from the
   host to that provider. See [Voice input](../voice-input.md#where-recordings-go).
-- **Ask Jev first** sends each approval request an agent makes, and each
-  prompt you send, to TypeSafe, with your Jev rules. See
-  [Ask Jev first](../tasks/ask-jev-first.md#what-jev-sees).
+- **Caffold decides** sends each approval request an agent makes, and each
+  prompt you send, to the chosen decision model's provider, TypeSafe or
+  OpenAI, with your extra rules. See
+  [Caffold decides](../tasks/caffold-decides.md#what-the-decision-model-sees).
 - **Notifications** pass through your browser vendor's push service. The
   encrypted message carries only the Task's name and its status, never what
   the agent asked or wrote. See

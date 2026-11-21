@@ -241,7 +241,7 @@ pasting, or dropping them. Follow progress in a [Plan and Checklist](tasks/curre
 ### Control as work happens
 
 [Steer a running turn or stop it](tasks/steer-and-stop.md).
-Let [Ask Jev first](tasks/ask-jev-first.md) handle routine approvals under your rules,
+Let [Caffold decides](tasks/caffold-decides.md) handle routine approvals under your rules,
 and [get notified](get-started/notifications.md) when attention is needed.
 
 </section>

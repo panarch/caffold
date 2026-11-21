@@ -8,7 +8,7 @@ import {
   installManualNotifications,
   installManualServerName,
   installManualSettings,
-  MANUAL_JEV_RULES,
+  MANUAL_DECISION_MODEL_RULES,
   MANUAL_SERVER_NAME,
 } from "../support/manual-fixture.js";
 import { captureReviewScreenshot } from "../support/task-fixtures.js";
@@ -65,17 +65,18 @@ for (const theme of ["light", "dark"]) {
       await captureReviewScreenshot(page, testInfo, `settings-appearance-${theme}`);
     });
 
-    test("Jev Permissions keeps a saved key and extra rules", { tag: "@desktop" }, async ({ page }, testInfo) => {
-      await page.goto("/settings/jev");
+    test("Decision Model keeps the chosen model, a saved key, and extra rules", { tag: "@desktop" }, async ({ page }, testInfo) => {
+      await page.goto("/settings/decision-model");
 
-      const jev = page.locator("caffold-settings-jev-page");
-      await expect(page.getByRole("heading", { level: 1, name: "Jev Permissions" })).toBeVisible();
+      const decisionModel = page.locator("caffold-settings-decision-model-page");
+      await expect(page.getByRole("heading", { level: 1, name: "Decision Model" })).toBeVisible();
+      await expect(decisionModel.getByRole("radio", { name: /Jev/ })).toBeChecked();
       await expect(
-        jev.locator('caffold-settings-detail-list [data-key="api-key"] dd'),
+        decisionModel.locator('section[data-provider="jev"] caffold-settings-detail-list [data-key="api-key"] dd'),
       ).toHaveText("Saved");
-      await expect(jev.getByLabel("Extra rules")).toHaveValue(MANUAL_JEV_RULES);
+      await expect(decisionModel.getByLabel("Extra rules")).toHaveValue(MANUAL_DECISION_MODEL_RULES);
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-      await captureReviewScreenshot(page, testInfo, `settings-jev-${theme}`);
+      await captureReviewScreenshot(page, testInfo, `settings-decision-model-${theme}`);
     });
 
     test("Name & Icon names the host and picks its icon", { tag: "@desktop" }, async ({ page }, testInfo) => {

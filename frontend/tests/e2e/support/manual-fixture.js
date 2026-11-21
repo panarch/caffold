@@ -130,7 +130,7 @@ function manualSections(checkout) {
   ];
 }
 
-export const ASK_JEV_FIRST = "caffold:ask-jev-first";
+export const CAFFOLD_DECIDES = "caffold:decides";
 
 // Fixes the clock, the appearance, and the agents every manual screenshot
 // shares. Call it before any surface fixture.
@@ -161,7 +161,7 @@ export async function installManualDefaults(page, theme = "light") {
       url.searchParams.get("model") ?? "",
       MANUAL_AGENT_CATALOG,
     );
-    return route.fulfill({ json: withAskJevFirst(modes) });
+    return route.fulfill({ json: withCaffoldDecides(modes) });
   });
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({ json: manualCodexStatus() }),
@@ -689,13 +689,13 @@ export async function installManualSettings(page) {
       },
     }),
   );
-  await page.route("**/api/jev/settings", (route) =>
+  await page.route("**/api/decision-model/settings", (route) =>
     route.fulfill({
       json: {
-        model: "jev-1.13.0",
-        keyConfigured: true,
-        criteria: MANUAL_JEV_RULES,
-        lastCheck: { ok: true, message: null, model: "jev-1.13.0" },
+        selected: "jev",
+        criteria: MANUAL_DECISION_MODEL_RULES,
+        jev: { keyConfigured: true, lastCheck: { ok: true, message: null } },
+        openai: { keyConfigured: false, lastCheck: null },
       },
     }),
   );
@@ -799,7 +799,7 @@ export async function installManualNotifications(page) {
 
 export const MANUAL_TAILNET_URL = "https://studio-mac.tail7c2e.ts.net/";
 
-export const MANUAL_JEV_RULES = [
+export const MANUAL_DECISION_MODEL_RULES = [
   "Anything that reads or writes inside the working directory is fine.",
   "Ask me before anything that pushes to a remote or publishes a package.",
 ].join("\n");
@@ -837,12 +837,11 @@ function managedWorktree(id, branch) {
   };
 }
 
-function withAskJevFirst(modes) {
+function withCaffoldDecides(modes) {
   const reviewed = {
-    mode: ASK_JEV_FIRST,
-    label: "Ask Jev first",
-    description:
-      "Asks about everything. Jev holds back only what an automatic mode would stop for, plus whatever your extra rules name.",
+    mode: CAFFOLD_DECIDES,
+    label: "Caffold decides",
+    description: "Asks about everything. Jev allows the routine ones.",
     allowed: true,
     dangerous: false,
   };
@@ -994,8 +993,8 @@ function darkThemeDetail() {
   });
 }
 
-// The pagination Task runs under Ask Jev first, and both of its prompts say
-// what the agent may do, so Jev kept each of them word for word.
+// The pagination Task runs under Caffold decides, and both of its prompts say
+// what the agent may do, so the decision model kept each of them word for word.
 const PAGINATION_PROMPTS = [
   {
     atMs: MANUAL_TASKS.pagination.updatedMs - 25 * 60_000,
@@ -1017,7 +1016,7 @@ function paginationDetail() {
   const task = MANUAL_TASKS.pagination;
   const [first, second] = PAGINATION_PROMPTS;
   return detailFor(task, {
-    permissionMode: ASK_JEV_FIRST,
+    permissionMode: CAFFOLD_DECIDES,
     events: [
       event(task.threadId, first.atMs, "pagination-prompt", "user_message", "User prompt", {
         turnId: "turn_manual_pagination_1",

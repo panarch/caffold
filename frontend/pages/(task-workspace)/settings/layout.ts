@@ -33,7 +33,7 @@ import "./files/page.js";
 import "./grok/page.js";
 import "./antigravity/page.js";
 import "./copilot/page.js";
-import "./jev/page.js";
+import "./decision-model/page.js";
 import "./keyboard/page.js";
 import "./language-servers/page.js";
 import "./name-and-icon/page.js";
@@ -60,7 +60,7 @@ const TITLES: Readonly<Record<string, string>> = {
   "name-and-icon": "Name & Icon",
   "remote-access": "Remote Access",
   voice: "Voice Input",
-  jev: "Jev Permissions",
+  "decision-model": "Decision Model",
   codex: "Codex",
   claude: "Claude",
   grok: "Grok",
@@ -81,7 +81,7 @@ const ACTIVE_PAGES = [
   "name-and-icon",
   "remote-access",
   "voice",
-  "jev",
+  "decision-model",
   "language-servers",
 ];
 // The pages that read the browser's own settings again on every route.
@@ -237,10 +237,10 @@ export class CaffoldSettingsWorkspace extends CaffoldElement {
             ${drawn(this.pages.of("voice"))}
             ?hidden=${presented !== "voice"}
           ></caffold-settings-voice-page>
-          <caffold-settings-jev-page
-            ${drawn(this.pages.of("jev"))}
-            ?hidden=${presented !== "jev"}
-          ></caffold-settings-jev-page>
+          <caffold-settings-decision-model-page
+            ${drawn(this.pages.of("decision-model"))}
+            ?hidden=${presented !== "decision-model"}
+          ></caffold-settings-decision-model-page>
           <caffold-settings-codex-page
             ${drawn(this.pages.of("codex"))}
             ?hidden=${presented !== "codex"}

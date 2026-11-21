@@ -98,7 +98,7 @@ explicit worktree-isolation operation. A failure before the managed claim
 creates no Task. Caffold attempts to delete a native child if validation or
 claim fails; cleanup failures retain the child ID in diagnostics.
 
-In a Copilot Task, the CLI can require a person to answer a particular permission request. That request goes directly to the user even with **Ask Jev first**. The approval card offers the scopes the CLI can apply to that request.
+In a Copilot Task, the CLI can require a person to answer a particular permission request. That request goes directly to the user even with **Caffold decides**. The approval card offers the scopes the CLI can apply to that request.
 
 ### Continue with another agent
 

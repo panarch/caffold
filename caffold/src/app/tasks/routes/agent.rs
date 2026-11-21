@@ -4,6 +4,7 @@ use crate::agent::copilot;
 use crate::agent::driver::reviewed_permission_option;
 use crate::agent::runner::RunnerStatus;
 use crate::agent::{AgentError, PermissionModes};
+use crate::app::decision_model::ReviewerOffer;
 use crate::app::error::ApiError;
 use crate::app::tasks::TaskState;
 use axum::Json;
@@ -224,7 +225,7 @@ pub(super) async fn agent_permissions(
         .permission_modes(&cwd, model)
         .await
         .map_err(ApiError::from)?;
-    offer_reviewed_mode(&mut modes, state.task_runtime.reviewer_available());
+    offer_reviewed_mode(&mut modes, state.task_runtime.reviewer_offer());
     Ok(Json(modes))
 }
 
@@ -234,7 +235,7 @@ pub(super) async fn agent_permissions(
 /// that keep one read together and the dangerous ones belong at the end of any
 /// list. Where exactly it sits among the safe ones is not something the agent
 /// can be asked, since it is not the agent's mode.
-fn offer_reviewed_mode(modes: &mut PermissionModes, available: bool) {
+fn offer_reviewed_mode(modes: &mut PermissionModes, offer: ReviewerOffer) {
     let at = modes
         .options
         .iter()
@@ -242,7 +243,7 @@ fn offer_reviewed_mode(modes: &mut PermissionModes, available: bool) {
         .unwrap_or(modes.options.len());
     modes
         .options
-        .insert(at, reviewed_permission_option(available));
+        .insert(at, reviewed_permission_option(offer.name, offer.available));
 }
 
 fn extend(models: &mut Vec<AgentModel>, provider: TaskProvider, offered: Vec<ModelOption>) {
@@ -314,7 +315,13 @@ mod tests {
             options,
             fixed_when_conversation_starts: false,
         };
-        offer_reviewed_mode(&mut modes, available);
+        offer_reviewed_mode(
+            &mut modes,
+            ReviewerOffer {
+                name: "Jev",
+                available,
+            },
+        );
         modes
             .options
             .into_iter()
@@ -361,7 +368,7 @@ mod tests {
             fixed_when_conversation_starts: false,
         };
 
-        offer_reviewed_mode(&mut modes, false);
+        offer_reviewed_mode(&mut modes, ReviewerOffer::unconfigured());
 
         let reviewed = modes
             .options
@@ -373,11 +380,41 @@ mod tests {
             reviewed
                 .unavailable_reason
                 .as_deref()
-                .is_some_and(|reason| reason.contains("Jev Permissions")),
+                .is_some_and(|reason| reason.contains("Settings \u{2192} Decision Model")),
             "{:?}",
             reviewed.unavailable_reason
         );
         assert!(!reviewed.dangerous);
+    }
+
+    #[test]
+    fn the_description_names_the_chosen_model() {
+        let mut modes = PermissionModes {
+            default_mode: "ask".to_string(),
+            options: vec![mode("ask", false)],
+            fixed_when_conversation_starts: false,
+        };
+
+        offer_reviewed_mode(
+            &mut modes,
+            ReviewerOffer {
+                name: "OpenAI",
+                available: true,
+            },
+        );
+
+        let reviewed = modes
+            .options
+            .iter()
+            .find(|option| option.mode == REVIEWED_PERMISSION_MODE)
+            .unwrap();
+        assert_eq!(reviewed.label, "Caffold decides");
+        assert_eq!(
+            reviewed.description,
+            "Asks about everything. OpenAI allows the routine ones."
+        );
+        assert!(reviewed.allowed);
+        assert_eq!(reviewed.unavailable_reason, None);
     }
 
     use crate::agent::codex::CodexThreadClient;

@@ -282,14 +282,14 @@ const ROUTE_DEFINITIONS = [
     parent: () => settingsRoute(),
   }),
   routeDefinition({
-    id: "settings-jev",
+    id: "settings-decision-model",
     kind: "settings",
-    pattern: "/settings/jev",
+    pattern: "/settings/decision-model",
     surface: "task-workspace",
-    target: "jev",
-    toRoute: () => settingsRoute("jev"),
+    target: "decision-model",
+    toRoute: () => settingsRoute("decision-model"),
     matchesRoute: (route) =>
-      route?.kind === "settings" && route.section === "jev",
+      route?.kind === "settings" && route.section === "decision-model",
     parent: () => settingsRoute(),
   }),
   routeDefinition({
@@ -1176,7 +1176,7 @@ function settingsRoute(section = ""): ParsedRoute {
       "name-and-icon",
       "remote-access",
       "voice",
-      "jev",
+      "decision-model",
       "codex",
       "claude",
       "grok",

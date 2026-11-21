@@ -228,28 +228,26 @@ pub(crate) struct PermissionModeOption {
 /// answers the requests nothing warrants asking about before they are shown.
 /// Each driver maps it to its own most-confirming mode, because which mode that
 /// is remains the agent's knowledge.
-pub(crate) const REVIEWED_PERMISSION_MODE: &str = "caffold:ask-jev-first";
+pub(crate) const REVIEWED_PERMISSION_MODE: &str = "caffold:decides";
 
-const REVIEWED_PERMISSION_LABEL: &str = "Ask Jev first";
+const REVIEWED_PERMISSION_LABEL: &str = "Caffold decides";
 
-const REVIEWED_PERMISSION_DESCRIPTION: &str = "Asks about everything. Jev holds back only what \
-     an automatic mode would stop for, plus whatever your extra rules name.";
-
-const REVIEWED_PERMISSION_UNAVAILABLE: &str =
-    "Add a Jev API key in Settings \u{2192} Jev Permissions.";
+const REVIEWED_PERMISSION_UNAVAILABLE: &str = "Add a key in Settings \u{2192} Decision Model.";
 
 /// The reviewed mode, offered the same way in every agent's list.
 ///
 /// Its wording is written once because it means the same thing everywhere,
 /// unlike the modes beside it: what "Automatic" gives up is Claude's to say and
-/// what "Approve for me" reviews is Codex's, while this one is Caffold's in all
-/// three lists. It is offered even with nothing configured, because a mode that
-/// disappeared would be a feature nobody could find.
-pub(crate) fn reviewed_permission_option(available: bool) -> PermissionModeOption {
+/// what "Approve for me" reviews is Codex's, while this one is Caffold's in
+/// every list. Its name says who decides, as "Grok decides" does for Grok's own
+/// mode, and its description names the decision model `reviewer` that answers
+/// for Caffold. It is offered even with nothing configured, because a mode
+/// that disappeared would be a feature nobody could find.
+pub(crate) fn reviewed_permission_option(reviewer: &str, available: bool) -> PermissionModeOption {
     PermissionModeOption {
         mode: REVIEWED_PERMISSION_MODE.to_string(),
         label: REVIEWED_PERMISSION_LABEL.to_string(),
-        description: REVIEWED_PERMISSION_DESCRIPTION.to_string(),
+        description: format!("Asks about everything. {reviewer} allows the routine ones."),
         allowed: available,
         unavailable_reason: (!available).then(|| REVIEWED_PERMISSION_UNAVAILABLE.to_string()),
         dangerous: false,

@@ -170,16 +170,19 @@ and the mode on display travels back with the prompt whether or not a person
 touched the control, so a Task never starts under something the composer did
 not say.
 
-Caffold names exactly one mode of its own, **Ask Jev first**, and hands every
+Caffold names exactly one mode of its own, **Caffold decides**, and hands every
 other mode back to its agent unread. That one is Caffold's because it says what
 Caffold does rather than what an agent does; it is added to each list with the
-same wording, since it means the same thing for every agent. Choosing it runs the
+same wording, since it means the same thing for every agent, and its
+description names the decision model chosen in Settings. Choosing it runs the
 agent under whichever of its own modes asks about the most — Claude's `default`,
 Codex's `AskForApproval` profile, Grok's neither-flag session, Antigravity's `default` — and Caffold
 answers what [Reviewed Approvals](#reviewed-approvals) settles. Each driver owns
 that mapping, because which of its modes asks the most is the agent's knowledge.
 It is offered with nothing configured and withheld with its reason, so a mode
-nobody can use is never a feature nobody can find.
+nobody can use is never a feature nobody can find. The stored mode identifier is
+`caffold:decides`; the Task store's v15-to-v16 upgrade renames the
+`caffold:ask-jev-first` a Task or Section recorded before.
 
 The composer takes a mode only from the list answered for the current choice:
 the mode a person picked, then the one the Task or Section last ran under, then
@@ -187,39 +190,46 @@ the list's default, passing over any mode that list withholds, such as one the
 chosen model cannot work under. What a Task records is the mode that was chosen,
 not the agent's name for what it was run under: an agent reporting the posture
 it is in describes the same state at a lower level, and never replaces the mode
-a person picked. The composer asks for the list again when Jev's settings
-change, because a mode can stop being withheld without the choice changing. The prompt waits while that list
+a person picked. The composer asks for the list again when the chosen decision
+model or whether it has a key changes, because the mode's description and
+whether it is withheld can change without the composer's choice changing. The prompt waits while that list
 is on its way. A list that cannot be read, or that allows no mode, is shown as
 unavailable with its reason and holds the prompt until another model is chosen
 or the page is reloaded, so a prompt never leaves without a mode.
 
 ## Reviewed Approvals
 
-Under **Ask Jev first**, Caffold asks Jev before a person is asked. Jev is
-TypeSafe's decision model: it answers typed questions rather than writing text,
-so it can settle a request but cannot write a rule, a grant, or an explanation.
+Under **Caffold decides**, Caffold asks the decision model chosen in Settings
+before a person is asked. The choices are Jev, TypeSafe's decision model, and
+OpenAI's Decisions API. A decision model answers typed questions rather than
+writing text, so it can settle a request but cannot write a rule, a grant, or an
+explanation.
 
-Jev either finds no reason to ask the person, in which case Caffold allows the
-request once, or it does not, in which case the request is the person's. It is
-never asked to refuse, to allow for a session, or to allow always. A persistent
-grant would be the agent's own, and the next request of that shape would never
-be asked about at all, which is the opposite of what choosing this mode says.
-TypeSafe is asked once, with five seconds to answer. Its API sits behind
-Cloudflare, whose firewall reads each request and refuses some that carry shell
-commands before TypeSafe sees them. It refuses the same request every time, so
-asking again cannot help, and the request is never reworded to get past it,
-because Jev would then judge something other than what the agent will run. Such
-a refusal lacks the request id TypeSafe's own refusals carry, which is how
-Caffold records it as blocked rather than as a rejected key. A block, a
-timeout, a rate limit, a rejected key, unreadable settings, an answer outside 0
-to 1 — all of it ends the same way: the request is the person's, exactly as it
-is without Jev.
+The model either finds no reason to ask the person, in which case Caffold allows
+the request once, or it does not, in which case the request is the person's. It
+is never asked to refuse, to allow for a session, or to allow always. A
+persistent grant would be the agent's own, and the next request of that shape
+would never be asked about at all, which is the opposite of what choosing this
+mode says. The provider is asked once, with five seconds to answer. A timeout, a
+rate limit, a rejected key, unreadable settings, an answer outside 0 to 1, or a
+question the provider declined all end the same way: the request is the
+person's, exactly as it is without a decision model.
+
+TypeSafe's API sits behind Cloudflare, whose firewall reads each request and
+refuses some that carry shell commands before TypeSafe sees them. It refuses the
+same request every time, so asking again cannot help, and the request is never
+reworded to get past it, because the model would then judge something other than
+what the agent will run. Such a refusal lacks the request id TypeSafe's own
+refusals carry, which is how Caffold records it as blocked rather than as a
+rejected key. OpenAI can refuse one question while answering a request; that
+refusal is no judgement either.
 
 Every question asked about a permission request or a prompt leaves one line in
-the host's log, naming the Task and, for a permission request, the approval.
-The line holds the answer and how long it took, or why there was none: the HTTP
-status with the identifiers TypeSafe and Cloudflare gave the response, or the
-connection error. The request itself is never written there.
+the host's log, naming the Task, the provider, and, for a permission request,
+the approval. The line holds the answer, the model that gave it, and how long it
+took, or why there was none: the HTTP status with the identifiers the provider
+and anything in front of it gave the response, or the connection error. The
+request itself is never written there.
 
 The question is one gate, and it asks only whether the person should be asked
 before the request runs. It does not ask whether the request is permitted:
@@ -231,34 +241,42 @@ person's way.
 Its baseline is the standard of a coding agent's automatic permission mode. What
 the person has said comes before that baseline, in the order the person said it:
 this turn's prompt, then this Task's record, then the rules from Settings. A
-person who wrote no rules still gets judgements, so the key is the whole
-requirement.
+person who wrote no rules still gets judgements, so a key for the chosen model is
+the whole requirement.
 
-The threshold is not a setting. Each question is written so that being sure is
-the answer that stops the agent, and one number says where sure begins.
+The thresholds are not settings. Each question is written so that being sure is
+the answer that stops the agent, and each provider carries its own number for
+each question, because each model reads the questions on its own scale. Jev's
+model version is named on every request, because a later version would quietly
+move where its thresholds sit. OpenAI's Decisions API serves one model,
+`gpt-6-luna`, under a name with no version, so a change behind that name cannot
+be pinned and shows only when the calibration cases are run again. The
+[calibration cases](../development/testing.md#decision-model-checks) hold every
+provider's numbers to what a person expects; they are run when a provider or a
+model changes, never by the ordinary test run.
 
 Caffold asks before the request is shown. An allowed request records its arrival
 and its answer together, so the conversation holds both and no card appears and
 disappears; the phone is told only about a request that is actually waiting.
-The resolved line says when Jev answered it, and carries the model version and
-how much reason it found to ask.
+The resolved line names the model that answered and how much reason it found to
+ask, as in "Approved by Jev · 3% concern".
 
-A request Jev wanted a person for reaches the person with that answer on its
-card. Only a request it found no reason to ask about leaves no card at all, so
-every card naming a reviewer names how much reason it found. A card names no
-reviewer when none answered: another mode, nothing configured, or a call that
-failed, which the host's log records.
+A request the model wanted a person for reaches the person with that answer on
+its card, under the name of the model that answered. Only a request it found no
+reason to ask about leaves no card at all, so every card naming a reviewer names
+how much reason it found. A card names no reviewer when none answered: another
+mode, nothing configured, or a call that failed, which the host's log records.
 
-What reaches TypeSafe is one request as the agent's driver already wrote it for
-a person to read — the command, the directory the driver named, the network
+What reaches the provider is one request as the agent's driver already wrote it
+for a person to read — the command, the directory the driver named, the network
 destination, the requested access, the grant root, and the tool with its
 arguments — together with the rules from Settings, what this Task's own prompts
 permitted, and the prompt that began the turn the request came out of. The
 agent's own title and reason travel under a name that says the agent wrote them,
-and Jev is told to read them as a claim about what is being asked rather than as
-a reason not to ask. The model version is named
-on every request, because a later version would quietly move where the threshold
-sits.
+and the model is told to read them as a claim about what is being asked rather
+than as a reason not to ask. Which agent asked is not sent: a request gets the
+same answer whoever asked it, and a model's answer can move with the agent's
+name alone.
 
 Where the Task works is sent beside the rules instead, because it is Caffold's
 own answer rather than anything the agent asked for. Rules are written about the
@@ -304,20 +322,29 @@ forgotten from the Task's details, which is the only place it is presented,
 and forgetting it cannot be undone: it is rebuilt only from what a person says
 next. A prompt sent under any other mode is never sent anywhere.
 
-### Jev Settings
+### Decision Model Settings
 
-- The rules and the API key live in the data directory's `jev/`, with an
-  owner-only directory (`0700`) and file (`0600`); a symbolic link at either
-  path is refused. API responses report only whether a key is configured.
-- The key is not written to logs or error messages, and TypeSafe's error bodies
-  are never read, because the one for a rejected key can repeat part of it.
-- Saving a key asks Jev one trivial question so the page can say whether it
-  works. That answer is not persisted: a check from a previous run says nothing
-  about whether TypeSafe is reachable now.
-- Saving or removing the key and writing the rules require a same-origin
-  request.
-- With no key the mode is withheld, so nothing is sent and every
-  request stays the person's.
+- The chosen model, each provider's API key, and the rules live in the data
+  directory's `decision-model/`, with an owner-only directory (`0700`) and key
+  file (`0600`); a symbolic link at either path is refused. API
+  responses report only whether each key is configured. Jev is chosen until
+  another model is.
+- A data directory that still holds the `jev/` directory a Jev-only Caffold
+  kept has its key and rules moved into `decision-model/` once at startup, with
+  Jev chosen. The new directory is assembled beside its place and renamed into
+  it, so a move that was cut short is made again; an old directory that cannot
+  be read, or one beside settings that already exist, is left where it is and
+  the log says why.
+- Keys are not written to logs or error messages, and the providers' error
+  bodies are never read, because the one for a rejected key can repeat part of
+  it.
+- Saving a key asks its provider one trivial question so the page can say
+  whether it works. That answer is not persisted: a check from a previous run
+  says nothing about whether the provider is reachable now.
+- Choosing a model, saving or removing a key, and writing the rules require a
+  same-origin request.
+- With no key for the chosen model the mode is withheld, so nothing is sent and
+  every request stays the person's.
 
 ## Codex Execution Approvals
 
@@ -442,7 +469,7 @@ Current rules:
 
 ## GitHub Copilot execution approvals
 
-The CLI retains pending requests by native ID. The SDK supplies the required decision source and the grants offered for that request. Caffold sends organization-mandated human approvals directly to the person, including in **Ask Jev first** mode. A person's answer carries `human_response`. An eligible one-time allowance from Jev carries `host_policy`. The Copilot driver verifies the native request before sending a decision. If the receipt is lost, it queries the SDK once. A pending request or a failed query keeps the original card answerable. Reconnection reconciles the cards with the SDK’s pending list. See [Agent runtimes](agent-runtimes.md#github-copilot-lifecycle) for session ownership.
+The CLI retains pending requests by native ID. The SDK supplies the required decision source and the grants offered for that request. Caffold sends organization-mandated human approvals directly to the person, including under **Caffold decides**. A person's answer carries `human_response`. An eligible one-time allowance from the decision model carries `host_policy`. The Copilot driver verifies the native request before sending a decision. If the receipt is lost, it queries the SDK once. A pending request or a failed query keeps the original card answerable. Reconnection reconciles the cards with the SDK’s pending list. See [Agent runtimes](agent-runtimes.md#github-copilot-lifecycle) for session ownership.
 
 ## Antigravity Execution Approvals
 
@@ -457,7 +484,7 @@ then asks to interrupt. A terminal update for the exact wire tool-call ID
 withdraws its pending request. The agent's option warning is shown without
 broadening the native grant.
 
-Jev reads the prompt only when the approval names its exact display turn.
+The decision model reads the prompt only when the approval names its exact display turn.
 A reconstructed approval without a native association does not guess a prompt.
 Task-level permission instructions remain separate.
 Structured questions are disabled through the native configuration; an

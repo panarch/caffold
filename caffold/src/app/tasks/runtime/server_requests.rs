@@ -27,7 +27,7 @@ use crate::agent::{
     ApprovalDecision, ApprovalOutcome, ApprovalRequest, SessionEvent, SessionEventKind,
     ThreadStatus, TurnStatus,
 };
-use crate::app::jev::{Judgement, RequestedAccess, ReviewedRequest, ReviewedTool};
+use crate::app::decision_model::{Judgement, RequestedAccess, ReviewedRequest, ReviewedTool};
 use crate::app::notes;
 use crate::app::tasks::{
     events::{
@@ -103,19 +103,6 @@ pub(super) enum AskedBy {
     Copilot,
 }
 
-impl AskedBy {
-    /// Which agent asked, named for the reviewer that reads the request.
-    fn agent_name(&self) -> &'static str {
-        match self {
-            Self::Codex { .. } => "codex",
-            Self::Claude => "claude",
-            Self::Grok => "grok",
-            Self::Antigravity => "antigravity",
-            Self::Copilot => "copilot",
-        }
-    }
-}
-
 /// One request as its driver wrote it, in the shape the reviewer reads.
 ///
 /// Nothing is reworded on the way: what reaches the reviewer is what a person
@@ -123,17 +110,17 @@ impl AskedBy {
 /// that says the agent wrote them, because the reviewer is told to read them as
 /// a claim rather than as grounds. The working directory is the one thing the
 /// reviewer is told that the request did not carry, and it is Caffold's answer
-/// rather than the agent's: only Caffold knows where it put the Task.
+/// rather than the agent's: only Caffold knows where it put the Task. Which
+/// agent asked is left out, because a request gets the same answer whoever
+/// asked it, and a model's answer can move with the agent's name alone.
 fn reviewed_request(
     request: &ApprovalRequest,
-    agent: &'static str,
     task_instructions: Option<String>,
     working_directory: Option<String>,
     turn_prompt: Option<String>,
 ) -> ReviewedRequest {
     let detail = &request.detail;
     ReviewedRequest {
-        agent: agent.to_string(),
         title: request.title.clone(),
         agent_claimed_reason: request.reason.clone(),
         command: detail.command.clone(),
@@ -705,7 +692,6 @@ impl TaskRuntime {
                 pending.asked_by.clone(),
             )
         };
-        let agent = asked_by.agent_name();
         let store = self.task_store.clone();
         let wanted = thread_id.clone();
         let reviewed = tokio::task::spawn_blocking(move || {
@@ -759,13 +745,7 @@ impl TaskRuntime {
             .review(
                 &thread_id,
                 approval_id,
-                &reviewed_request(
-                    &request,
-                    agent,
-                    instructions,
-                    working_directory,
-                    turn_prompt,
-                ),
+                &reviewed_request(&request, instructions, working_directory, turn_prompt),
             )
             .await
     }
@@ -1700,7 +1680,7 @@ fn approval_id_from_request(request_id: &JsonValue, params: &JsonValue) -> Strin
 #[cfg(test)]
 mod tests {
     use crate::agent::antigravity::AntigravityClient;
-    use crate::app::jev::{self, PermissionReviewer};
+    use crate::app::decision_model::{self, PermissionReviewer};
     use std::{fs, path::Path, process::Command, sync::Arc, sync::Mutex as StdMutex};
 
     use tokio::sync::broadcast;
@@ -2337,7 +2317,7 @@ mod tests {
         store.claim(managed, 1).unwrap();
         let events = TaskEvents::default();
         let runtime = test_runtime_with_store(events.clone(), store).with_permission_reviewer(
-            jev::test_reviewer(root.path(), base, "ts-test-key", "Allow all."),
+            decision_model::test_reviewer(root.path(), base, "ts-test-key", "Allow all."),
         );
         let id = format!("copilot:{task}:permission-1");
         let request = command_request(&id);
@@ -2462,10 +2442,13 @@ mod tests {
         store.claim(managed, 1).unwrap();
         for _ in 0..2 {
             let events = TaskEvents::default();
-            let runtime =
-                test_runtime_with_store(events.clone(), store.clone()).with_permission_reviewer(
-                    jev::test_reviewer(root.path(), base.clone(), "ts-test-key", "Allow all."),
-                );
+            let runtime = test_runtime_with_store(events.clone(), store.clone())
+                .with_permission_reviewer(decision_model::test_reviewer(
+                    root.path(),
+                    base.clone(),
+                    "ts-test-key",
+                    "Allow all.",
+                ));
             let mut request = command_request(id);
             request.requires_human = true;
             for _ in 0..2 {
@@ -2539,8 +2522,12 @@ mod tests {
     async fn a_task_under_another_mode_is_never_sent_to_the_reviewer() {
         let temp = tempfile::tempdir().unwrap();
         let (base, asked) = jev_answering(1.0).await;
-        let reviewer =
-            jev::test_reviewer(temp.path(), base, "ts-test-key", "Allow anything at all.");
+        let reviewer = decision_model::test_reviewer(
+            temp.path(),
+            base,
+            "ts-test-key",
+            "Allow anything at all.",
+        );
 
         let (events, _) = claude_asking_under(Some("default"), Some(reviewer)).await;
 
@@ -2552,7 +2539,10 @@ mod tests {
             vec!["approval_requested"],
             "the request waits for a person"
         );
-        assert!(asked.lock().unwrap().is_empty(), "nothing was asked of Jev");
+        assert!(
+            asked.lock().unwrap().is_empty(),
+            "nothing was asked of the decision model"
+        );
         assert!(
             events[0].payload.as_ref().unwrap()["reviewed"].is_null(),
             "a question nobody was asked about names no reviewer"
@@ -2576,7 +2566,7 @@ mod tests {
     async fn an_allowed_request_arrives_already_answered_and_says_who_answered() {
         let temp = tempfile::tempdir().unwrap();
         let (base, asked) = jev_answering(0.03).await;
-        let reviewer = jev::test_reviewer(
+        let reviewer = decision_model::test_reviewer(
             temp.path(),
             base,
             "ts-test-key",
@@ -2602,13 +2592,11 @@ mod tests {
         let resolved = events.last().unwrap();
         // The line carries how little reason there was to ask, because an
         // answered request leaves no card to read it from.
-        assert_eq!(
-            resolved.summary,
-            "Approval answered by Jev (3% reason to ask)"
-        );
+        assert_eq!(resolved.summary, "Approved by Jev \u{b7} 3% concern");
         let payload = resolved.payload.as_ref().unwrap();
         assert_eq!(payload["outcome"], "allow");
-        assert_eq!(payload["reviewed"]["model"], "jev-1.13.0");
+        assert_eq!(payload["reviewed"]["provider"], "Jev");
+        assert!(payload["reviewed"].get("model").is_none());
         assert_eq!(payload["reviewed"]["concern"], 0.03);
 
         let request = asked.lock().unwrap().first().cloned().unwrap();
@@ -2617,7 +2605,8 @@ mod tests {
             "Running the project's own tests is allowed."
         );
         assert_eq!(request["state"]["request"]["command"], "cargo test");
-        assert_eq!(request["state"]["request"]["agent"], "claude");
+        // Which agent asked is not said, so the answer cannot depend on it.
+        assert!(request["state"]["request"].get("agent").is_none());
         // Claude names no directory in a request, so the rules would have had
         // nothing to measure a path against had Caffold not said where the
         // Task works — and what it says is where the session works now, not
@@ -2631,7 +2620,7 @@ mod tests {
     async fn a_judgement_below_the_threshold_leaves_the_request_to_a_person() {
         let temp = tempfile::tempdir().unwrap();
         let (base, asked) = jev_answering(0.9).await;
-        let reviewer = jev::test_reviewer(
+        let reviewer = decision_model::test_reviewer(
             temp.path(),
             base,
             "ts-test-key",
@@ -2654,13 +2643,13 @@ mod tests {
         let payload = events[0].payload.as_ref().unwrap();
         assert_eq!(payload["reviewed"]["concern"], 0.9);
         assert_eq!(payload["reviewed"]["allows"], false);
-        assert_eq!(payload["reviewed"]["model"], "jev-1.13.0");
+        assert_eq!(payload["reviewed"]["provider"], "Jev");
     }
 
     #[tokio::test]
     async fn an_unreachable_reviewer_leaves_the_request_to_a_person() {
         let temp = tempfile::tempdir().unwrap();
-        let reviewer = jev::test_reviewer(
+        let reviewer = decision_model::test_reviewer(
             temp.path(),
             "http://127.0.0.1:1".to_string(),
             "ts-test-key",

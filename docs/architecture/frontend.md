@@ -622,8 +622,9 @@ Product-owned native controls use distinct closed action kinds rather than
 pretending to be buttons. Appearance declares non-current Theme radios, its
 Interface and Code typeface selects, and the three size ranges; Files declares
 its non-current ordering radio; Voice Input declares its non-current provider
-radios and each provider's API key textbox; Jev Permissions declares its Extra
-rules and API key textboxes; Name & Icon declares its Name textbox and its
+radios and each provider's API key textbox; Decision Model declares its
+non-current model radios, each model's API key textbox, and its Extra rules
+textbox; Name & Icon declares its Name textbox and its
 non-current icon radios; Claude declares its Config directory textbox;
 Keyboard declares its enabled On/Off switch;
 Git Compare declares its visible Base and Head selects; and the Branch Review
@@ -2215,7 +2216,8 @@ Scroll surfaces, while foldable and phone layouts contribute only the pane with
 a layout box. Appearance registers non-current Theme choices, both typeface
 choices, and its three ranges; Files registers the non-current ordering choice;
 Voice Input registers its non-current provider choices and its enabled API key
-fields; Jev Permissions registers its enabled Extra rules and API key fields;
+fields; Decision Model registers its non-current model choices, its enabled API
+key fields, and its Extra rules field;
 Name & Icon registers its enabled Name field and Save and its non-current
 icons; Language Servers registers its language switches, its running servers'
 path fields, and Turn off buttons; Claude registers its enabled Config directory field, Save, and Use

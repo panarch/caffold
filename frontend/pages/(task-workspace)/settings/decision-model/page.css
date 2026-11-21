@@ -1,5 +1,5 @@
 :host {
-  container: settings-jev / inline-size;
+  container: settings-decision-model / inline-size;
   display: block;
   width: 100%;
   height: 100%;
@@ -39,7 +39,10 @@
   min-width: 0;
 }
 
-p {
+p,
+h2,
+fieldset,
+legend {
   margin: 0;
 }
 
@@ -84,7 +87,7 @@ button:disabled {
   cursor: default;
 }
 
-.settings-jev-message {
+.settings-decision-model-message {
   margin-top: var(--interface-space-5);
   padding: var(--interface-space-5) var(--interface-space-6);
   border-left: 3px solid var(--danger);
@@ -93,33 +96,128 @@ button:disabled {
   font-size: var(--settings-text-size);
 }
 
-caffold-settings-detail-list {
-  margin-top: var(--interface-space-10);
+.settings-decision-model-options {
+  display: grid;
+  gap: var(--interface-space-5);
+  min-width: 0;
+  margin: var(--interface-space-10) 0 0;
+  border: 0;
+  padding: 0;
 }
 
-.settings-jev-criteria,
-.settings-jev-key {
+.settings-decision-model-options label {
   display: grid;
-  gap: var(--interface-space-3);
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--interface-space-5);
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--surface);
+  padding: var(--interface-space-6);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .settings-decision-model-options label:hover {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
+}
+
+.settings-decision-model-options label:has(input:disabled) {
+  border-color: var(--border);
+  background: var(--surface);
+  cursor: default;
+}
+
+.settings-decision-model-options label:has(input:checked) {
+  border-color: var(--border-strong);
+  background: var(--selection-bg);
+}
+
+.settings-decision-model-options label:has(input:focus-visible) {
+  border-color: var(--focus-ring);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.settings-decision-model-options input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0.1875rem 0 0;
+  accent-color: var(--focus-ring);
+  cursor: pointer;
+}
+
+.settings-decision-model-options input:disabled {
+  cursor: default;
+}
+
+.settings-decision-model-options input:focus-visible {
+  outline: none;
+}
+
+.settings-decision-model-option-copy {
+  display: grid;
+  gap: var(--interface-space-2);
+  min-width: 0;
+}
+
+.settings-decision-model-option-copy strong {
+  font-size: var(--settings-field-label-size);
+  line-height: var(--interface-line-height);
+}
+
+.settings-decision-model-option-copy > span {
+  color: var(--muted);
+  font-size: var(--settings-field-description-size);
+  line-height: var(--interface-line-height);
+}
+
+.settings-decision-model-provider,
+.settings-decision-model-criteria {
+  display: grid;
   margin-top: var(--interface-space-10);
   padding-top: var(--interface-space-7);
   border-top: 1px solid var(--border);
 }
 
-.settings-jev-criteria label,
-.settings-jev-key label {
+.settings-decision-model-provider {
+  gap: var(--interface-space-5);
+}
+
+.settings-decision-model-provider h2 {
   font-size: var(--settings-field-label-size);
   font-weight: 600;
 }
 
-#settings-jev-criteria-note {
+.settings-decision-model-criteria,
+.settings-decision-model-key {
+  gap: var(--interface-space-3);
+}
+
+.settings-decision-model-key {
+  display: grid;
+}
+
+.settings-decision-model-key label {
+  font-size: var(--settings-text-size);
+}
+
+.settings-decision-model-criteria label {
+  font-size: var(--settings-field-label-size);
+  font-weight: 600;
+}
+
+#settings-decision-model-criteria-note {
   color: var(--muted);
   font-size: var(--settings-field-description-size);
 }
 
 /* The rules are a page of judgement, so the box holds several lines and
    grows with what is typed rather than scrolling inside a fixed height. */
-.settings-jev-criteria textarea {
+.settings-decision-model-criteria textarea {
   width: 100%;
   min-width: 0;
   field-sizing: content;
@@ -135,24 +233,24 @@ caffold-settings-detail-list {
   resize: vertical;
 }
 
-.settings-jev-criteria textarea:focus-visible {
+.settings-decision-model-criteria textarea:focus-visible {
   border-color: var(--border-strong);
   outline: none;
 }
 
-.settings-jev-criteria textarea:disabled {
+.settings-decision-model-criteria textarea:disabled {
   color: var(--disabled-text);
 }
 
-.settings-jev-actions,
-.settings-jev-key-row {
+.settings-decision-model-actions,
+.settings-decision-model-key-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--interface-space-4);
 }
 
-.settings-jev-key input {
+.settings-decision-model-key input {
   flex: 1 1 16rem;
   min-width: 0;
   min-height: var(--settings-page-action-size);
@@ -165,18 +263,18 @@ caffold-settings-detail-list {
   font-size: var(--settings-text-size);
 }
 
-.settings-jev-key input:focus-visible {
+.settings-decision-model-key input:focus-visible {
   border-color: var(--border-strong);
   outline: none;
 }
 
-@container settings-jev (max-width: 520px) {
+@container settings-decision-model (max-width: 520px) {
   .settings-content-section > header {
     align-items: start;
     flex-direction: column;
   }
 
-  .settings-jev-key input {
+  .settings-decision-model-key input {
     flex-basis: 100%;
   }
 }

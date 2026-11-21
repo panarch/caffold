@@ -280,12 +280,12 @@ test("offers what a Task's prompts settled only under the reviewed mode", () => 
     null,
   );
   assert.deepEqual(
-    drawnActions({ task, permissionMode: "caffold:ask-jev-first" }).row(
+    drawnActions({ task, permissionMode: "caffold:decides" }).row(
       "permission-instructions",
     ),
     {
       label: "What your prompts settled",
-      description: "What Jev reads before it answers a permission request here.",
+      description: "What the decision model reads before it answers.",
       disabled: false,
     },
   );
@@ -485,7 +485,7 @@ test("lists the rows in the popover's order, with Archive set off by its own lin
       task: { threadId: "thread-a", threadStatus: IDLE },
       canonicalTaskAvailable: true,
       provider: "codex",
-      permissionMode: "caffold:ask-jev-first",
+      permissionMode: "caffold:decides",
       pinned: false,
     },
     {

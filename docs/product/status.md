@@ -18,10 +18,11 @@ boundaries.
 - **Settings → Voice Input** choice of host-local Whisper, OpenAI, Gemini, or
   Grok for voice transcription, with Whisper model download and deletion and
   write-only API keys;
-- **Settings → Jev Permissions** optional extra rules and a write-only API key,
-  and an **Ask Jev first** approval mode in every agent's composer that has Jev
-  hold back only what an automatic mode would stop for, plus whatever those
-  rules name, and leaves the rest to a person;
+- **Settings → Decision Model** choice of Jev or OpenAI as the decision model,
+  a write-only API key for each, and optional extra rules, and a
+  **Caffold decides** approval mode in every agent's composer that has the
+  chosen model hold back only what an automatic mode would stop for, plus
+  whatever those rules name, and leaves the rest to a person;
 - Tasks backed by Codex, Claude Code, Grok, Antigravity, or GitHub Copilot, with the agent selected by model
   when the Task is created and fixed for the Task's lifetime;
 - [Continue with another agent](workflows.md#continue-with-another-agent), starting

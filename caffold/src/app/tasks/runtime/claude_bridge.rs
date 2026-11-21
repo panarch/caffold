@@ -1152,7 +1152,7 @@ mod tests {
                         model: Some("sonnet".to_string()),
                         reasoning_effort: None,
                         speed: "fast".to_string(),
-                        permission_mode: Some("caffold:ask-jev-first".to_string()),
+                        permission_mode: Some("caffold:decides".to_string()),
                     },
                 )
             })
@@ -1161,7 +1161,7 @@ mod tests {
         let answered = call_answered(&runner, 22).await;
         assert_eq!(
             answered["content"][0]["text"],
-            r#"{"agent":"claude","model":"sonnet","reasoningEffort":null,"speed":"fast","permissionMode":"caffold:ask-jev-first"}"#
+            r#"{"agent":"claude","model":"sonnet","reasoningEffort":null,"speed":"fast","permissionMode":"caffold:decides"}"#
         );
     }
 

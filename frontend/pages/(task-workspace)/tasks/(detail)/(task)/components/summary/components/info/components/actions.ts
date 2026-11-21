@@ -33,8 +33,8 @@ import switchStyle from "#app/component-styles/switch.css.js";
 import busySpin from "#app/pages/component-styles/busy-spin.css.js";
 import styles from "./actions.css.js";
 
-/** The approval mode Caffold answers under, which is the one Jev judges for. */
-const REVIEWED_PERMISSION_MODE = "caffold:ask-jev-first";
+/** The approval mode Caffold answers under, which its decision model judges for. */
+const REVIEWED_PERMISSION_MODE = "caffold:decides";
 /** The agents whose conversations Caffold can fork. */
 const FORKING_PROVIDERS = ["codex", "claude", "grok", "copilot"];
 const IDLE_ONLY = "Available when the Task is idle.";
@@ -242,7 +242,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
               ${actionIcon("ShieldCheck")}
               <span class="task-detail-action-label">What your prompts settled</span>
               <span class="task-detail-action-description"
-                >What Jev reads before it answers a permission request here.</span
+                >What the decision model reads before it answers.</span
               >
             </button>`
           : nothing
