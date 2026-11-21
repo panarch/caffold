@@ -1,4 +1,3 @@
-import type { HwpDocument } from "@rhwp/core";
 import { html, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { CaffoldElement } from "../caffold-element.js";
@@ -19,7 +18,24 @@ const PREVIEW_LABEL = "Hangul document preview";
 const NEARBY_PAGE_MARGIN = "100% 0px";
 const MAX_RENDER_PIXEL_RATIO = 2;
 
-type Rhwp = typeof import("@rhwp/core");
+// Production builds omit the npm package. These types describe the CDN API
+// used by the viewer.
+interface RhwpDocument {
+  pageCount(): number;
+  getPageInfo(page: number): string;
+  renderPageToCanvas(
+    page: number,
+    canvas: HTMLCanvasElement,
+    scale: number,
+  ): void;
+  free(): void;
+}
+
+interface Rhwp {
+  default(): Promise<unknown>;
+  HwpDocument: new (bytes: Uint8Array) => RhwpDocument;
+}
+
 type RenderState = "empty" | "loading" | "error" | "hwp";
 
 interface PageRecord {
@@ -48,7 +64,7 @@ class CaffoldHwpViewer extends CaffoldElement {
   private accessor pages: PageRecord[] = [];
 
   private activeFile: DocumentPreviewFile | null = null;
-  private openedDocument: HwpDocument | null = null;
+  private openedDocument: RhwpDocument | null = null;
   private generation = 0;
   private readingAnchor: PageAnchor | null = null;
   private layoutWidth = 0;
@@ -268,7 +284,7 @@ class CaffoldHwpViewer extends CaffoldElement {
   }
 }
 
-function pageRecord(opened: HwpDocument, index: number): PageRecord {
+function pageRecord(opened: RhwpDocument, index: number): PageRecord {
   const { width, height } = JSON.parse(opened.getPageInfo(index)) as {
     width: number;
     height: number;
