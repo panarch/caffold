@@ -209,6 +209,7 @@ test("keeps long Task titles clipped in the header and readable in Info", { tag:
   await expect(popover).toBeVisible();
   await expect(taskValue).toHaveText(title);
   await expect(popover.locator('[data-task-info-field="status"]')).toHaveText("idle");
+  await expect(popover.getByText("Task ID", { exact: true })).toBeVisible();
   await expect(popover.locator('[data-task-info-field="thread"]')).toHaveText(
     threadId,
   );
@@ -501,7 +502,7 @@ test("unfolds the paths from the location line and copies each value, folding ag
     `~/${WORKTREE_ROOT.slice("Users/me/".length)}`,
   );
 
-  await popover.getByRole("button", { name: "Copy Thread ID" }).click();
+  await popover.getByRole("button", { name: "Copy Task ID" }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(
     task.threadId,
   );
@@ -524,7 +525,7 @@ test("reaches the location line and each Copy from the keyboard inside Task deta
   await activateActionHintIntoPopover(page, /Task details, idle$/);
   const popover = page.locator("caffold-task-detail-summary .task-detail-popover");
   const hint = popoverActionHintDialog(page);
-  await expect(hint.getByRole("button", { name: / — Copy Thread ID$/ })).toBeVisible();
+  await expect(hint.getByRole("button", { name: / — Copy Task ID$/ })).toBeVisible();
   const showPaths = hint.getByRole("button", { name: / — Show paths$/ });
   const code = await showPaths.getAttribute("data-action-hint-code");
   await page.keyboard.type(code.toLowerCase());

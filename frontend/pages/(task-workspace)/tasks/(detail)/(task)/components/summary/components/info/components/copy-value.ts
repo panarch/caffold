@@ -15,7 +15,7 @@ const COPY_FEEDBACK_DURATION_MS = 1_800;
 type CopyState = "idle" | "copying" | "copied" | "failed";
 
 /**
- * Copy for one value in the Task details popover, such as the Thread ID or a
+ * Copy for one value in the Task details popover, such as the Task ID or a
  * path, drawn as the icon alone at the end of the value's line.
  *
  * `label` names what is copied. The outcome shows on the icon for a moment;

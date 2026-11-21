@@ -179,7 +179,7 @@
   overflow-wrap: anywhere;
 }
 
-/* The Thread and the Claude config directory: a name, the value, and Copy. */
+/* The Task ID and Claude config directory each show a name, value, and Copy. */
 .task-detail-meta-line {
   display: flex;
   align-items: center;

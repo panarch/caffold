@@ -237,6 +237,8 @@ for (const theme of ["light", "dark"]) {
       const details = page.locator(".task-detail-popover");
       await expect(details).toBeVisible();
       await expect(details).toContainText(MANUAL_TASKS.darkTheme.worktree.branch);
+      await expect(details.getByText("Task ID", { exact: true })).toBeVisible();
+      await expect(details.getByRole("button", { name: "Copy Task ID" })).toBeVisible();
       await expect(details.getByRole("button", { name: "Pin task" })).toBeVisible();
       await expect(details.getByRole("button", { name: "Fork task" })).toBeVisible();
       await expect(details.getByRole("button", { name: "Archive task" })).toBeVisible();

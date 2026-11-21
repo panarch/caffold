@@ -312,11 +312,10 @@ the checkout is a worktree of its own. Pressing the line unfolds the full paths,
 each with Copy: **Path** for a Task at the top of its checkout or outside Git;
 otherwise **Repository**, then **Worktree** for a worktree of its own, and
 **Working directory** for a folder inside the checkout. A path reads as the New
-Task folder field reads it. The paths fold again when the popover
-closes. The Task's Thread ID follows, with Copy, and its **Claude config**
-directory, with Copy, when the Task was
-created under one other than Claude's default; a Task keeps that directory for
-its life.
+Task folder field reads it. The paths fold again when the popover closes.
+The **Task ID** row has a Copy button. If the Task was created under a custom
+Claude config directory, **Claude config** shows that directory with its own
+Copy button. The Task keeps that directory for its life.
 
 Task actions follow as one list. Each row shows an icon, its name, and below
 the name what it does, or why it cannot be done now, such as **Available when
