@@ -928,6 +928,75 @@ test("pins and unpins the open Task, holding the button until the list reads it 
   expect(requests).toEqual(["pin", "unpin"]);
 });
 
+test("holds the other Task actions while Archive runs, and frees them when Archive is refused", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const task = summaryTask(
+    "thread_summary_archiving",
+    "Archiving task",
+    "repo-archiving",
+    100,
+  );
+  await installSummaryFixture(page, [task]);
+  let observeArchive;
+  const archiveObserved = new Promise((resolve) => {
+    observeArchive = resolve;
+  });
+  let refuseArchive;
+  const archiveGate = new Promise((resolve) => {
+    refuseArchive = resolve;
+  });
+  await page.route(`**/api/tasks/${task.threadId}/archive`, async (route) => {
+    observeArchive();
+    await archiveGate;
+    await route.fulfill({
+      status: 409,
+      json: {
+        error: {
+          code: "managed_worktree_dirty",
+          message: "managed worktree has uncommitted changes: /tmp/worktree",
+          allowedActions: ["forceArchive"],
+          worktreeId: "worktree-archiving",
+        },
+      },
+    });
+  });
+
+  await page.goto(`/tasks/${task.threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(task));
+  const summary = page.locator("caffold-task-detail-summary");
+  await summary.getByRole("button", { name: /Task details/ }).click();
+  const popover = summary.locator(".task-detail-popover");
+  const row = (type) => popover.locator(`[data-task-info-action="${type}"]`);
+  const description = (type) =>
+    row(type).locator(".task-detail-action-description");
+  await expect(row("pin")).toBeEnabled();
+  await expect(row("fork")).toBeEnabled();
+
+  await row("archive").click();
+  await archiveObserved;
+  await expect(row("archive").locator(".task-detail-action-label")).toHaveText(
+    "Archiving...",
+  );
+  for (const type of ["pin", "fork"]) {
+    await expect(row(type)).toBeDisabled();
+    await expect(description(type)).toHaveText(
+      "Unavailable while the Task is archiving.",
+    );
+  }
+
+  refuseArchive();
+  await expect(row("force-archive")).toBeVisible();
+  await expect(row("pin")).toBeEnabled();
+  await expect(description("pin")).toHaveText(
+    "Keep it at the top of the Task list.",
+  );
+  await expect(row("fork")).toBeEnabled();
+  await expect(description("fork")).toHaveText(
+    "Copies the conversation, not the files, into a new Task.",
+  );
+});
+
 test("leaves Fork out of an Antigravity Task's details", { tag: "@server-steady" }, async ({ page }) => {
   const threadId = "thread_summary_antigravity_fork";
   const task = {

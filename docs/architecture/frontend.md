@@ -1117,6 +1117,11 @@ Task Detail's `force-archive-dialog` owns only native confirmation, the captured
 Task/worktree identity, and focus return to the stable Task details button.
 Cancel/Escape send no mutation. Task Detail owns the archive request, checks the
 captured identity against the current failure, and ignores stale completions.
+While it runs, pin, prompt, and settled-prompts requests wait: Task Detail
+refuses them, draws the reason above the follow-up Composer unless a workspace
+notice already stands there, and hands it to the Composer, which holds its
+requests and titles Send and its locked turn options with it. Task actions
+hold their language-server requests on the same snapshot value.
 Leaving the Task resets the confirmation without returning focus to the old Task.
 
 For keyboard navigation, each of these layout owners merges only the public

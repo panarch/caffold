@@ -174,8 +174,8 @@ caffold-loading-text {
 
 /* Sits right above the Composer and explains it, so it starts and wraps
    where the Composer's prompt text does. */
-.workspace-access {
-  --workspace-access-text-inset: calc(
+.task-follow-up-composer-notice {
+  --task-follow-up-composer-notice-text-inset: calc(
     var(--task-follow-up-composer-panel-border-inline) +
     var(--task-follow-up-composer-panel-padding-inline) +
     var(--task-composer-prompt-padding-inline)
@@ -185,12 +185,13 @@ caffold-loading-text {
     var(--task-follow-up-composer-max-width)
   );
   margin: 0 auto;
-  padding: var(--interface-space-4) var(--workspace-access-text-inset);
+  padding: var(--interface-space-4)
+    var(--task-follow-up-composer-notice-text-inset);
   color: var(--muted);
   font-size: var(--interface-meta-font-size);
   line-height: var(--interface-line-height);
   overflow-wrap: anywhere;
 }
-.workspace-access a {
+.task-follow-up-composer-notice a {
   color: var(--control-fg);
 }

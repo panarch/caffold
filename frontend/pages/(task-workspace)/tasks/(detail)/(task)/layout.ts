@@ -155,6 +155,7 @@ import secondaryButton from "#app/component-styles/secondary-button.css.js";
 import styles from "./layout.css.js";
 
 const CLEAN_COMPOSER_CACHE_LIMIT = 6;
+const ARCHIVING = "Unavailable while the Task is archiving.";
 
 // The surface of the open Task that Detail shows.
 type TaskDetailView = "conversation" | "review" | "git" | "github" | "terminal";
@@ -1304,6 +1305,13 @@ export class CaffoldTaskDetail extends CaffoldElement {
       });
       return;
     }
+    if (this.archiveStateValue.loading) {
+      composer.resolveSubmission(submissionId, {
+        status: "rejected",
+        error: new Error(ARCHIVING),
+      });
+      return;
+    }
     const node = nextPromptSubmissionNode(
       this.followUpRequests.get(threadId)?.node ?? PROMPT_SUBMISSION_NODE.IDLE,
       attachments.length
@@ -1731,8 +1739,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       loading: true,
       error: confirmation ? failure : null,
     };
-    this.syncFollowUpComposer();
-    this.emitSubjectSnapshot();
+    this.draw();
     try {
       const task = expectedWorktreeId
         ? await forceArchiveTask(threadId, expectedWorktreeId)
@@ -1744,7 +1751,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
         return;
       }
       this.archiveStateValue = { loading: false, error: null };
-      this.syncFollowUpComposer();
+      this.draw();
       this.dispatchEvent(
         new CustomEvent<TaskDetailIntent>(TASK_DETAIL_INTENT_EVENT, {
           bubbles: true,
@@ -1761,7 +1768,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       }
       const failure = error as TaskResponseError;
       this.archiveStateValue = { loading: false, error: failure };
-      this.syncFollowUpComposer();
+      this.draw();
       if (this.reportTaskAbsence(threadId, failure)) {
         return;
       }
@@ -1772,7 +1779,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
         this.detailLoadError = failure;
         this.loading = false;
         this.draw();
-      } else this.emitSubjectSnapshot();
+      }
     }
   }
 
@@ -1874,7 +1881,11 @@ export class CaffoldTaskDetail extends CaffoldElement {
   // The request stays in progress until the Task list has read the pin back,
   // so the popover never shows the state the Task just left.
   async pinSelectedTask(pinned: boolean) {
-    if (!this.selectedThreadId || this.pinStateValue.loading) {
+    if (
+      !this.selectedThreadId ||
+      this.pinStateValue.loading ||
+      this.archiveStateValue.loading
+    ) {
       return;
     }
     const actionToken = ++this.pinActionToken;
@@ -2050,6 +2061,9 @@ export class CaffoldTaskDetail extends CaffoldElement {
 
   /** Show what this Task's own prompts settled. */
   openPermissionInstructions(opener?: Element | null) {
+    if (this.archiveStateValue.loading) {
+      return;
+    }
     this.permissionInstructionsDialog.value?.open({
       threadId: this.selectedThreadId,
       opener,
@@ -2217,6 +2231,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
           this.taskDetail?.workspaceAccess &&
             this.taskDetail.workspaceAccess.mode !== "readWrite",
         ),
+      unavailableReason: this.archiveStateValue.loading ? ARCHIVING : "",
       settingsLocked:
         isTaskActivelyWorking(task) ||
         this.taskDetail?.workspaceAccess?.mode === "readOnly" ||
@@ -2373,6 +2388,16 @@ export class CaffoldTaskDetail extends CaffoldElement {
   override render() {
     const notice = this.notice;
     const pane = this.pane;
+    const access = this.taskDetail?.workspaceAccess;
+    // What the line above the follow-up Composer says, if anything.
+    let composerNotice: TemplateResult | string = "";
+    if (access?.mode === "readOnly") {
+      composerNotice = html`This worktree belongs to another Task. You can read this conversation. <a ${this.hints.link({ id: "workspace-owner", label: "Open the current workspace owner", action: ACTION_HINT_ACTION.LINK_OPEN })} href=${`/tasks/${encodeURIComponent(access.ownerTaskId ?? "")}`}>Open the current Task</a>`;
+    } else if (access?.mode === "unavailable") {
+      composerNotice = access.reason ?? "";
+    } else if (this.archiveStateValue.loading) {
+      composerNotice = ARCHIVING;
+    }
     const conversation =
       pane &&
       html`<div
@@ -2409,7 +2434,11 @@ export class CaffoldTaskDetail extends CaffoldElement {
             @caffold:task-detail-intent=${this.permissionIntent}
           ></caffold-task-permission-instructions-dialog>
           <div class="task-follow-up-composer-dock">
-            ${this.taskDetail?.workspaceAccess?.mode === "readOnly" ? html`<p class="workspace-access" role="status">This worktree belongs to another Task. You can read this conversation. <a ${this.hints.link({ id: "workspace-owner", label: "Open the current workspace owner", action: ACTION_HINT_ACTION.LINK_OPEN })} href=${`/tasks/${encodeURIComponent(this.taskDetail.workspaceAccess.ownerTaskId ?? "")}`}>Open the current Task</a></p>` : this.taskDetail?.workspaceAccess?.mode === "unavailable" ? html`<p class="workspace-access" role="status">${this.taskDetail.workspaceAccess.reason}</p>` : nothing}
+            ${
+              composerNotice
+                ? html`<p class="task-follow-up-composer-notice" role="status">${composerNotice}</p>`
+                : nothing
+            }
             <caffold-task-current-plan
               ${drawn(this.currentPlanComponent)}
             ></caffold-task-current-plan>

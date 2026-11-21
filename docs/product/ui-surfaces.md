@@ -321,7 +321,12 @@ its life.
 Task actions follow as one list. Each row shows an icon, its name, and below
 the name what it does, or why it cannot be done now, such as **Available when
 the Task is idle.** While a row's request runs, such as **Forking...**, a
-turning progress icon takes the icon's place. What a row reports, such as each
+turning progress icon takes the icon's place. While Archive runs, every other
+row and the buttons under it wait, saying **Unavailable while the Task is
+archiving.**; while Fork runs, Archive says **Unavailable while the Task is
+forking.** The follow-up Composer waits for Archive too: Send, Attach, voice
+input, and its options are unavailable and the same words show above it, while
+its draft stays editable. What a row reports, such as each
 language server's state or why its last request failed, sits under the row,
 with the button that answers it. A Task whose next turn runs under Caffold
 decides also offers **What your prompts settled** there, which
@@ -443,7 +448,8 @@ with** button named for that agent; the current Task's selected model and option
 stay unchanged. The button opens **Continue with another agent**, with that agent's default model
 initially selected. Its modal uses the shared model, effort, speed and permission
 choices and explains which model supplies the summary and how the directory is
-reused. The picker keeps its existing active-turn, transport and readonly locks.
+reused. The picker keeps its active-turn, transport, readonly and archiving
+locks.
 The target opens with a preparation prompt; its conversation shows the actual
 submission and outcome. A source in another Task's managed worktree shows a
 history-only notice and a link to its current owner, with prompt and terminal

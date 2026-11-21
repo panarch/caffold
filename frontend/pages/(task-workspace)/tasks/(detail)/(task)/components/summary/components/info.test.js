@@ -322,7 +322,7 @@ test("keeps Archive available through stale transport unless canonical status is
     ),
     {
       label: "Archive task",
-      description: "Another Task action is in progress.",
+      description: "Unavailable while the Task is forking.",
       disabled: true,
     },
   );
@@ -403,7 +403,7 @@ test("leaves Fork out for an agent that cannot fork, and says why another cannot
   );
   assert.equal(
     fork({ archiveState: { loading: true, error: null } }).description,
-    "Another Task action is in progress.",
+    "Unavailable while the Task is archiving.",
   );
   assert.equal(
     fork({ task: { threadId: "thread-a", threadStatus: { type: "active", activeFlags: [] } } })
@@ -513,9 +513,12 @@ function server(language, state, fields = {}) {
 
 // The Language servers row: its description, its switch's action and whether
 // it is disabled, and what hangs under it.
-function languageServersBlock(languageServers) {
+function languageServersBlock(languageServers, snapshot = {}) {
   const task = { threadId: "thread-a", threadStatus: IDLE };
-  const { markup } = drawnActions({ task, pinned: false }, languageServers);
+  const { markup } = drawnActions(
+    { task, pinned: false, ...snapshot },
+    languageServers,
+  );
   const row = markup.match(
     /class="task-detail-action task-detail-language-servers-action" >(.*?)<\/label>(?: <div class="task-detail-action-under">(.*?)<\/div>)?/,
   );
@@ -730,10 +733,122 @@ test("shows only the reason under the row, and holds the switch, while the last 
   );
 });
 
+const ARCHIVING = "Unavailable while the Task is archiving.";
+
+test("holds every other action while the Task archives, and says why", () => {
+  const archiving = {
+    task: { threadId: "thread-a", threadStatus: IDLE },
+    canonicalTaskAvailable: true,
+    transportState: "ready",
+    provider: "codex",
+    permissionMode: "caffold:decides",
+    pinned: false,
+    archiveState: { loading: true, error: null },
+  };
+  const missingServer = {
+    repository: {
+      path: "repo",
+      enabled: true,
+      servers: [server("rust", "failed", { failure: RUST_NOT_INSTALLED })],
+    },
+    fresh: true,
+  };
+  const drawn = drawnActions(archiving, missingServer);
+  assert.deepEqual(drawn.row("permission-instructions"), {
+    label: "What your prompts settled",
+    description: ARCHIVING,
+    disabled: true,
+  });
+  assert.deepEqual(drawn.row("pin"), {
+    label: "Pin task",
+    description: ARCHIVING,
+    disabled: true,
+  });
+  assert.deepEqual(drawn.row("fork"), {
+    label: "Fork task",
+    description: ARCHIVING,
+    disabled: true,
+  });
+
+  const servers = languageServersBlock(missingServer, archiving);
+  assert.equal(servers.description, ARCHIVING);
+  assert.deepEqual(servers.switch, ["turn-off-language-servers", true]);
+  // What the servers report stays readable; only what acts on them waits.
+  assert.deepEqual(servers.notes, [
+    "Rust: rust-analyzer is not installed for the 1.94-aarch64-apple-darwin toolchain.",
+  ]);
+  assert.match(
+    servers.under,
+    /data-task-info-action="install-language-servers"[^>]*\?disabled="true"/,
+  );
+
+  // A request already running keeps saying so.
+  assert.deepEqual(
+    drawnActions({ ...archiving, pinState: { loading: true, error: null } }).row(
+      "pin",
+    ),
+    {
+      label: "Pinning...",
+      description: "Keep it at the top of the Task list.",
+      disabled: true,
+    },
+  );
+  assert.equal(
+    languageServersBlock(
+      {
+        repository: { path: "repo", enabled: false, servers: [server("rust", "off")] },
+        fresh: true,
+        turning: "on",
+      },
+      archiving,
+    ).description,
+    "Starting language servers...",
+  );
+});
+
+test("asks nothing of its language servers while the Task archives", () => {
+  const turned = [];
+  const events = [];
+  const host = owner(actions, {
+    snapshot: taskInfoSnapshot({
+      task: { threadId: "thread-a", threadStatus: IDLE },
+      archiveState: { loading: true, error: null },
+    }),
+    languageServers: {
+      repository: {
+        path: "Users/me/repo",
+        enabled: true,
+        servers: [server("rust", "failed", { failure: RUST_NOT_INSTALLED })],
+      },
+      fresh: true,
+      turning: null,
+      error: null,
+    },
+    languageServersLifecycle: { turn: (enabled) => turned.push(enabled) },
+    detailsButton: null,
+    dispatchEvent: (event) => events.push(event),
+  });
+  actions.turnLanguageServers.call(host);
+  actions.requestLanguageServerInstall.call(host);
+  assert.deepEqual(turned, []);
+  assert.deepEqual(events, []);
+
+  host.snapshot = taskInfoSnapshot({
+    task: { threadId: "thread-a", threadStatus: IDLE },
+  });
+  actions.turnLanguageServers.call(host);
+  actions.requestLanguageServerInstall.call(host);
+  assert.deepEqual(turned, [false]);
+  assert.equal(events.length, 1);
+});
+
 test("asks for every missing server's install and returns focus to the details button", () => {
   const events = [];
   const detailsButton = {};
   const host = owner(actions, {
+    snapshot: taskInfoSnapshot({
+      task: { threadId: "thread-a", threadStatus: IDLE },
+    }),
     languageServers: {
       repository: {
         path: "Users/me/repo",

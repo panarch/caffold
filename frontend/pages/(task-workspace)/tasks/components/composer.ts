@@ -57,6 +57,8 @@ export interface ComposerContext {
   cancel: boolean;
   disabled: boolean;
   readOnly: boolean;
+  // Why the owner holds the Composer's requests for now, or nothing.
+  unavailableReason: string;
   settingsLocked: boolean;
   allowHandoff: boolean;
   requestError: string;
@@ -217,6 +219,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
     cancel: false,
     disabled: false,
     readOnly: false,
+    unavailableReason: "",
     settingsLocked: false,
     allowHandoff: false,
     requestError: "",
@@ -338,6 +341,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
       cwd: cleanLogicalPath(context.cwd ?? this.context.cwd),
       disabled: Boolean(context.disabled),
       readOnly: Boolean(context.readOnly ?? this.context.readOnly),
+      unavailableReason: `${context.unavailableReason ?? ""}`,
       settingsLocked: Boolean(context.settingsLocked),
       turnActive: Boolean(context.turnActive),
       uploading: Boolean(context.uploading),
@@ -564,13 +568,25 @@ export class CaffoldTaskComposer extends CaffoldElement {
     );
   }
 
+  // Whether the owner holds sending, attaching, voice input, and the turn
+  // options.
+  private requestsHeld() {
+    return (
+      this.context.disabled ||
+      this.context.readOnly ||
+      Boolean(this.context.unavailableReason)
+    );
+  }
+
   primaryActionView() {
     const submitting = Boolean(this.activeSubmissionFor());
     const hasDraft = Boolean(
       this.state.prompt.trim() || this.state.attachments.length,
     );
     const voicePhase = this.voice.phase;
-    const transportBlocked = this.context.disabled || this.context.readOnly;
+    const held = this.requestsHeld();
+    const heldTitle =
+      this.context.unavailableReason || "Caffold server is reconnecting.";
     const optionsReady = Boolean(this.turnOptions()?.readyForSubmission());
     const send = ({
       disabled = false,
@@ -585,12 +601,12 @@ export class CaffoldTaskComposer extends CaffoldElement {
       icon: busy ? "LoaderCircle" : "ArrowUp",
       busy,
       label,
-      title: transportBlocked
-        ? "Caffold server is reconnecting."
+      title: held
+        ? heldTitle
         : disabled && submitting
           ? "Sending prompt"
           : label,
-      disabled: transportBlocked || disabled || !optionsReady,
+      disabled: held || disabled || !optionsReady,
     });
     const stop = ({
       disabled = false,
@@ -605,8 +621,8 @@ export class CaffoldTaskComposer extends CaffoldElement {
       icon: "Square",
       busy: false,
       label,
-      title: transportBlocked ? "Caffold server is reconnecting." : title,
-      disabled: transportBlocked || disabled,
+      title: held ? heldTitle : title,
+      disabled: held || disabled,
     });
 
     if (voicePhase === "recording") {
@@ -972,8 +988,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
     const submitting = Boolean(this.activeSubmissionFor());
     const requestLocked =
       submitting ||
-      this.context.disabled ||
-      this.context.readOnly ||
+      this.requestsHeld() ||
       VOICE_BUSY_PHASES.has(this.voice.phase) ||
       this.context.interrupting;
     return {
@@ -991,6 +1006,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
         permissionMode: this.context.permissionMode ?? "",
       },
       locked: requestLocked || this.context.settingsLocked,
+      lockedReason: this.context.unavailableReason,
       placement: this.context.mode === "follow-up" ? "above" : "below",
       voiceInput: VOICE_BUSY_PHASES.has(this.voice.phase),
     };
@@ -1117,8 +1133,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
   private voiceDisabled() {
     return (
       Boolean(this.activeSubmissionFor()) ||
-      this.context.disabled ||
-      this.context.readOnly ||
+      this.requestsHeld() ||
       this.context.interrupting ||
       VOICE_WAITING_PHASES.has(this.voice.phase) ||
       this.voice.phase === "unavailable"
@@ -1488,8 +1503,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
 
   private acceptsAttachments() {
     return (
-      !this.context.disabled &&
-      !this.context.readOnly &&
+      !this.requestsHeld() &&
       !(this.context.mode === "create" && this.activeSubmissionFor())
     );
   }
@@ -1547,8 +1561,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
       const submitter = event.submitter;
       if (
         !this.activeSubmissionFor() &&
-        !this.context.disabled &&
-        !this.context.readOnly &&
+        !this.requestsHeld() &&
         submitter?.classList.contains("task-primary-action-button")
       ) {
         void this.stopVoiceRecording({ submitAfterTranscription: true });
@@ -1557,8 +1570,7 @@ export class CaffoldTaskComposer extends CaffoldElement {
     }
     if (
       this.activeSubmissionFor() ||
-      this.context.disabled ||
-      this.context.readOnly ||
+      this.requestsHeld() ||
       !this.turnOptions()?.readyForSubmission() ||
       VOICE_BUSY_PHASES.has(this.voice.phase)
     ) {

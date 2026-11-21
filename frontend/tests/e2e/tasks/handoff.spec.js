@@ -216,7 +216,7 @@ for (const unavailable of [true, false]) {
   });
 }
 
-test("updates handoff availability while Archive is pending and after it fails", { tag: "@server-changes" }, async ({ page }) => {
+test("holds the model picker while Archive is pending and offers handoff again after it fails", { tag: "@server-changes" }, async ({ page }) => {
   await installEventSourceMock(page, { autoOpen: true });
   await mockAgentModels(page);
   await page.route(/\/api\/agent\/models(?:\?|$)/, route => route.fulfill({ json: {
@@ -255,9 +255,11 @@ test("updates handoff availability while Archive is pending and after it fails",
     await page.getByRole("button", { name: /^Task details/ }).click();
     await page.locator('[data-task-info-action="archive"]').click();
     await expect.poll(() => requested).toBe(true);
-    await trigger.click();
-    await expect(picker.locator(".task-provider-option")).toHaveText(["Codex"]);
+    await expect(trigger).toBeDisabled();
+    await expect(trigger).toHaveAttribute("title", "Unavailable while the Task is archiving.");
     pending.resolve();
+    await expect(trigger).toBeEnabled();
+    await trigger.click();
     await expect(picker.getByRole("button", { name: "Claude", exact: true })).toBeVisible();
     await picker.getByRole("button", { name: "Claude", exact: true }).click();
     await expect(picker.getByRole("button", { name: "Continue with Claude", exact: true })).toBeVisible();
