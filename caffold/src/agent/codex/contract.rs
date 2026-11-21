@@ -33,7 +33,10 @@ use super::protocol::{
     ThreadTokenUsage, TokenUsageBreakdown, TurnItemsView, TurnStatus, TurnsPage, seconds_to_ms,
     seconds_to_ms_value,
 };
-use super::{CodexThreadClient, CodexThreadError, CodexTurnOptions, NORMAL_SERVICE_TIER_ID};
+use super::{
+    CodexThreadClient, CodexThreadError, CodexTurnOptions, MessageBeingWritten,
+    NORMAL_SERVICE_TIER_ID,
+};
 use crate::agent::driver::{
     ModelOption, NORMAL_SPEED, PermissionModeOption, REVIEWED_PERMISSION_MODE, SpeedOption,
     TurnOptions, TurnRejected, bounded,
@@ -154,7 +157,7 @@ fn failure_item(turn_id: &str, error: &Value) -> Option<ConversationItem> {
 
 /// What one app-server notification means.
 ///
-/// Codex pushes thirteen kinds of notification this adapter consumes;
+/// Codex pushes fourteen kinds of notification this adapter consumes;
 /// this says what each one is in Caffold's vocabulary, so that the parts of
 /// Caffold reacting to it — the conversation, the Task list, Web Push, pending
 /// approvals — read one report rather than each interpreting Codex's own.
@@ -162,9 +165,10 @@ fn failure_item(turn_id: &str, error: &Value) -> Option<ConversationItem> {
 /// An empty result is a notification Caffold does nothing with, including one from a
 /// version of app-server that knows more than this does.
 ///
-/// Approvals are the one kind that needs the connection: which approval a
-/// self-resolved request belonged to is a routing question, and routing is the
-/// driver's.
+/// Two kinds need the connection. Which approval a self-resolved request
+/// belonged to is a routing question, and routing is the driver's. A piece of a
+/// message's text means something only after the pieces before it, which only
+/// this connection saw arrive.
 pub(crate) async fn session_events(
     notification: &CodexNotification,
     client: &CodexThreadClient,
@@ -264,12 +268,20 @@ async fn session_event(
                 turn: TurnState::from(turn),
             },
         ),
-        CodexNotification::TurnCompleted { thread_id, turn } => (
-            thread_id.clone(),
-            SessionEventKind::TurnEnded {
-                turn: TurnState::from(turn),
-            },
-        ),
+        CodexNotification::TurnCompleted { thread_id, turn } => {
+            // Codex sends no end for a message its turn was stopped in; the
+            // message stays as its pieces left it.
+            client
+                .messages_being_written()
+                .await
+                .retain(|(thread, _), message| thread != thread_id || message.turn_id != turn.id);
+            (
+                thread_id.clone(),
+                SessionEventKind::TurnEnded {
+                    turn: TurnState::from(turn),
+                },
+            )
+        }
         CodexNotification::Error {
             thread_id,
             turn_id,
@@ -292,27 +304,63 @@ async fn session_event(
             turn_id,
             item,
             started_at_ms,
-        } => (
-            thread_id.clone(),
-            item_changed(
-                turn_id,
-                conversation_item(item, ActivityStatus::InProgress)?,
-                *started_at_ms,
-            ),
-        ),
+        } => {
+            let reported = conversation_item(item, ActivityStatus::InProgress)?;
+            if matches!(reported.kind, ItemKind::AssistantMessage { .. }) {
+                client.messages_being_written().await.insert(
+                    (thread_id.clone(), reported.id.clone()),
+                    MessageBeingWritten {
+                        turn_id: turn_id.clone(),
+                        item: item.clone(),
+                    },
+                );
+            }
+            (
+                thread_id.clone(),
+                item_changed(turn_id, reported, *started_at_ms),
+            )
+        }
+        // Between a message's two announcements its text arrives in pieces,
+        // each showing the message as written so far.
+        CodexNotification::AgentMessageDelta {
+            thread_id,
+            turn_id,
+            item_id,
+            delta,
+        } => {
+            let mut messages = client.messages_being_written().await;
+            let message = messages.get_mut(&(thread_id.clone(), item_id.clone()))?;
+            match message.item.get_mut("text") {
+                Some(Value::String(text)) => text.push_str(delta),
+                _ => message.item["text"] = Value::from(delta.as_str()),
+            }
+            (
+                thread_id.clone(),
+                item_changed(
+                    turn_id,
+                    conversation_item(&message.item, ActivityStatus::InProgress)?,
+                    0,
+                ),
+            )
+        }
         CodexNotification::ItemCompleted {
             thread_id,
             turn_id,
             item,
             completed_at_ms,
-        } => (
-            thread_id.clone(),
-            item_changed(
-                turn_id,
-                conversation_item(item, ActivityStatus::Completed)?,
-                *completed_at_ms,
-            ),
-        ),
+        } => {
+            let reported = conversation_item(item, ActivityStatus::Completed)?;
+            if matches!(reported.kind, ItemKind::AssistantMessage { .. }) {
+                client
+                    .messages_being_written()
+                    .await
+                    .remove(&(thread_id.clone(), reported.id.clone()));
+            }
+            (
+                thread_id.clone(),
+                item_changed(turn_id, reported, *completed_at_ms),
+            )
+        }
         // Codex mirrors some finished items a second time in the shape the
         // model returned them. Both announcements are the same item, so both
         // arrive as the same report — this one without a time of its own.
@@ -2153,7 +2201,9 @@ mod tests {
     /// Every notification app-server pushes while a thread is subscribed.
     ///
     /// Adding a surface for one is then a deliberate change here rather than a
-    /// notification quietly going unread.
+    /// notification quietly going unread. A piece of a message's text says
+    /// something only after that message's start, so the tests of pieces below
+    /// start one first.
     fn every_notification() -> [(&'static str, serde_json::Value); 13] {
         let turn = json!({ "id": "turn_1", "status": "completed", "completedAt": 2.0 });
         let item = json!({ "id": "item_1", "type": "agentMessage", "text": "Done." });
@@ -2483,6 +2533,273 @@ mod tests {
         };
         assert_eq!(item.status, ActivityStatus::Completed);
         assert_eq!(at_ms, 20);
+    }
+
+    #[tokio::test]
+    async fn a_reply_grows_with_each_piece_codex_writes() {
+        let client = CodexThreadClient::mock(Vec::new());
+        reported_on(&client, "item/started", started("turn_1", "msg_1")).await;
+
+        let mut shown = Vec::new();
+        for delta in ["Hel", "lo"] {
+            let event = reported_on(&client, "item/agentMessage/delta", piece("msg_1", delta))
+                .await
+                .expect("a piece of a message this connection saw start");
+            shown.push(event.kind);
+        }
+        let finished = json!({
+            "threadId": "thread_1", "turnId": "turn_1", "completedAtMs": 20,
+            "item": { "id": "msg_1", "type": "agentMessage", "text": "Hello", "phase": "final_answer" },
+        });
+        shown.push(
+            reported_on(&client, "item/completed", finished)
+                .await
+                .unwrap()
+                .kind,
+        );
+
+        let answer = |text: &str, status, at_ms| SessionEventKind::ItemChanged {
+            turn_id: "turn_1".to_string(),
+            item: ConversationItem {
+                id: "msg_1".to_string(),
+                observed_at_ms: None,
+                status,
+                kind: ItemKind::AssistantMessage {
+                    text: text.to_string(),
+                    phase: Some(MessagePhase::Final),
+                    suggested_prompts: Vec::new(),
+                },
+            },
+            at_ms,
+        };
+        assert_eq!(
+            shown,
+            vec![
+                answer("Hel", ActivityStatus::InProgress, 0),
+                answer("Hello", ActivityStatus::InProgress, 0),
+                answer("Hello", ActivityStatus::Completed, 20),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn pieces_of_a_reply_this_connection_did_not_see_start_are_not_shown() {
+        let client = CodexThreadClient::mock(Vec::new());
+        assert_eq!(
+            reported_on(&client, "item/agentMessage/delta", piece("msg_1", "mid-")).await,
+            None
+        );
+
+        reported_on(&client, "item/started", started("turn_1", "msg_1")).await;
+        let replacement = CodexThreadClient::mock(Vec::new());
+        assert_eq!(
+            reported_on(
+                &replacement,
+                "item/agentMessage/delta",
+                piece("msg_1", "sentence")
+            )
+            .await,
+            None,
+            "a new connection did not see the message start"
+        );
+        assert!(
+            reported_on(&client, "item/agentMessage/delta", piece("msg_1", "Hello"))
+                .await
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_finished_reply_takes_no_more_pieces() {
+        let client = CodexThreadClient::mock(Vec::new());
+        reported_on(&client, "item/started", started("turn_1", "msg_1")).await;
+        let finished = json!({
+            "threadId": "thread_1", "turnId": "turn_1", "completedAtMs": 20,
+            "item": { "id": "msg_1", "type": "agentMessage", "text": "Hello" },
+        });
+        reported_on(&client, "item/completed", finished).await;
+        assert_eq!(
+            reported_on(&client, "item/agentMessage/delta", piece("msg_1", "!")).await,
+            None
+        );
+
+        reported_on(&client, "item/started", started("turn_2", "msg_2")).await;
+        let ended = json!({
+            "threadId": "thread_1",
+            "turn": { "id": "turn_2", "status": "completed", "completedAt": 2.0, "items": [] },
+        });
+        reported_on(&client, "turn/completed", ended).await;
+        let late =
+            json!({ "threadId": "thread_1", "turnId": "turn_2", "itemId": "msg_2", "delta": "!" });
+        assert_eq!(
+            reported_on(&client, "item/agentMessage/delta", late).await,
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn an_interrupted_reply_stays_as_codex_last_reported_it() {
+        let client = CodexThreadClient::mock(Vec::new());
+        reported_on(&client, "item/started", started("turn_1", "msg_1")).await;
+        reported_on(
+            &client,
+            "item/agentMessage/delta",
+            piece("msg_1", "Bridges have"),
+        )
+        .await;
+
+        // Codex ends a stopped turn without finishing the message it was
+        // writing, and leaves the message out of the turn.
+        let stopped = protocol::decode_notification(
+            "turn/completed",
+            json!({
+                "threadId": "thread_1",
+                "turn": { "id": "turn_1", "status": "interrupted", "completedAt": 2.0, "items": [] },
+            }),
+        )
+        .unwrap();
+        let reports = session_events(&stopped, &client).await;
+        assert_eq!(reports.len(), 1, "only the turn ended: {reports:?}");
+        let SessionEventKind::TurnEnded { turn } = &reports[0].kind else {
+            panic!("the turn ended");
+        };
+        assert_eq!(turn.status, agent::TurnStatus::Interrupted);
+        assert_eq!(
+            reported_on(
+                &client,
+                "item/agentMessage/delta",
+                piece("msg_1", " always")
+            )
+            .await,
+            None
+        );
+    }
+
+    /// The pieces Codex really sends grow one message to exactly the text it
+    /// finishes with.
+    #[tokio::test]
+    #[ignore = "requires an authenticated Codex CLI and spends model usage"]
+    async fn live_codex_reply_grows_as_it_is_written() {
+        use crate::agent::codex::{
+            CodexDaemonInfo, CodexRuntimeEvent, inspect_codex_installation,
+            reconnect_spike::SocketAppServer,
+        };
+        use anyhow::{Context, bail, ensure};
+        use std::time::Duration;
+
+        let installation = inspect_codex_installation().await.unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let mut server = SocketAppServer::start().await.unwrap();
+        let result: anyhow::Result<()> = async {
+            let client = CodexThreadClient::start_with_proxy(
+                &installation.path,
+                Some(&server.socket_path),
+                CodexDaemonInfo {
+                    status: "isolatedTestRuntime".into(),
+                    backend: None,
+                    pid: None,
+                    managed_codex_path: None,
+                    managed_codex_version: None,
+                    socket_path: Some(server.socket_path.display().to_string()),
+                    cli_version: None,
+                    app_server_version: None,
+                },
+                None,
+            )
+            .await?;
+            let mut events = client.subscribe();
+            let thread = client
+                .request_value(
+                    "thread/start",
+                    json!({
+                        "cwd": temp.path(), "ephemeral": true, "model": "gpt-6-luna",
+                        "approvalPolicy": "never", "sandbox": "read-only",
+                    }),
+                )
+                .await?;
+            let thread_id = thread["thread"]["id"].as_str().context("thread id")?;
+            client
+                .request_value(
+                    "turn/start",
+                    json!({
+                        "threadId": thread_id, "effort": "low",
+                        "input": [{ "type": "text", "text_elements": [], "text":
+                            "Reply with three short sentences about rivers. Do not use any tools." }],
+                    }),
+                )
+                .await?;
+
+            let mut written = Vec::new();
+            let mut finished = None;
+            tokio::time::timeout(Duration::from_secs(180), async {
+                loop {
+                    let notification = match events.recv().await? {
+                        CodexRuntimeEvent::Notification(notification) => notification,
+                        CodexRuntimeEvent::Error { message } => bail!("{message}"),
+                        _ => continue,
+                    };
+                    for event in session_events(&notification, &client).await {
+                        if let SessionEventKind::ItemChanged { item, .. } = event.kind
+                            && let ItemKind::AssistantMessage { text, .. } = item.kind
+                        {
+                            match item.status {
+                                ActivityStatus::InProgress if !text.is_empty() => {
+                                    written.push(text)
+                                }
+                                ActivityStatus::Completed => finished = Some(text),
+                                _ => {}
+                            }
+                        }
+                    }
+                    if matches!(notification, CodexNotification::TurnCompleted { .. }) {
+                        return Ok(());
+                    }
+                }
+            })
+            .await
+            .context("the turn did not finish in time")??;
+
+            eprintln!("Codex wrote the message in {} pieces", written.len());
+            let finished = finished.context("Codex finished no message")?;
+            ensure!(written.len() >= 2, "the message did not grow: {written:?}");
+            ensure!(
+                written
+                    .windows(2)
+                    .all(|pair| pair[1].len() > pair[0].len() && pair[1].starts_with(&pair[0])),
+                "a piece rewrote what was already shown: {written:?}"
+            );
+            ensure!(
+                written.last() == Some(&finished),
+                "the pieces left {:?}, Codex finished with {finished:?}",
+                written.last()
+            );
+            Ok(())
+        }
+        .await;
+        server.stop().await;
+        result.unwrap();
+    }
+
+    /// One notification, translated on a connection that may have seen others.
+    async fn reported_on(
+        client: &CodexThreadClient,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Option<SessionEvent> {
+        let notification = protocol::decode_notification(method, params).expect("Codex sends this");
+        session_event(&notification, client).await
+    }
+
+    /// An agent message starting, as Codex announces it: with no text yet.
+    fn started(turn_id: &str, item_id: &str) -> serde_json::Value {
+        json!({
+            "threadId": "thread_1", "turnId": turn_id, "startedAtMs": 10,
+            "item": { "id": item_id, "type": "agentMessage", "text": "", "phase": "final_answer" },
+        })
+    }
+
+    fn piece(item_id: &str, delta: &str) -> serde_json::Value {
+        json!({ "threadId": "thread_1", "turnId": "turn_1", "itemId": item_id, "delta": delta })
     }
 
     #[tokio::test]

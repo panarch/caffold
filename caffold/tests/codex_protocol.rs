@@ -450,6 +450,14 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
         server_notifications.contains("\"method\": \"serverRequest/resolved\""),
         "missing server-request resolution notification",
     );
+    assert!(
+        server_notifications.contains("\"method\": \"item/agentMessage/delta\""),
+        "missing agent message pieces",
+    );
+    schema.assert_declares(
+        "v2/AgentMessageDeltaNotification.ts",
+        &["threadId: string, turnId: string, itemId: string, delta: string"],
+    );
     schema.assert_declares(
         "v2/ServerRequestResolvedNotification.ts",
         &["threadId: string", "requestId: RequestId"],
