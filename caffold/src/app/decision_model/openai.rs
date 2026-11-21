@@ -18,7 +18,7 @@ pub(super) const MODEL: &str = "gpt-6-luna";
 /// Where gpt-6-luna's answers become decisions, measured on the calibration
 /// cases.
 pub(super) const THRESHOLDS: Thresholds = Thresholds {
-    ask: 0.7,
+    ask: 0.75,
     keep: 0.7,
 };
 
