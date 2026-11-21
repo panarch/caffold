@@ -20,7 +20,7 @@ function copyValueHost(properties = {}) {
       feedbackTimer: undefined,
       copyState: "idle",
       value: "62f05222-da19-4b65-ae32-fe14543574b7",
-      label: "Thread ID",
+      label: "Task ID",
     }),
     ...Object.getOwnPropertyDescriptors(properties),
   });
@@ -102,7 +102,7 @@ test("retires a copy in flight when its value changes", () => {
 
   // A new label leaves the copy alone.
   const current = host.generation;
-  host.willUpdate(new Map([["label", "Thread"]]));
+  host.willUpdate(new Map([["label", "Path"]]));
   assert.equal(host.acceptsCompletion(current), true);
 });
 

@@ -112,7 +112,7 @@ test("opens the agent's numbers above the pie in the Task details form", { tag: 
   await page.locator("caffold-task-detail-info .task-detail-info-button").click();
   const reference = await page.evaluate(([popover]) => {
     const style = getComputedStyle(popover);
-    // Task details names its Thread as the form names its terms.
+    // Task details labels the Task ID as the form labels its terms.
     const term = getComputedStyle(popover.querySelector(".task-detail-meta-name"));
     const value = getComputedStyle(
       popover.querySelector('[data-task-info-field="thread"]'),

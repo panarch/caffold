@@ -90,7 +90,7 @@ function canonical(fields = {}) {
 const HOME = { root: "/", homePath: "Users/me" };
 const WORKTREE = "Users/me/Library/Application Support/Caffold/data/worktrees/1737fabc";
 
-test("heads the popover with the Task's title and status, and its whole Thread ID", () => {
+test("heads the popover with the Task's title and status, and shows its whole Task ID", () => {
   const drawn = drawnInfo({
     task: canonical(),
     canonicalTaskAvailable: true,

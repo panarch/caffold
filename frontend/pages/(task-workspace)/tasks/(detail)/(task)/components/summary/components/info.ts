@@ -85,7 +85,7 @@ export function taskInfoSnapshot(
 
 /**
  * The Task's details button in the summary: its status, and a popover with
- * the Task's title and status, where it works, and its Thread above its
+ * the Task's title and status, where it works, and its Task ID above its
  * actions.
  *
  * Where it works reads as one line: the repository, or the folder outside
@@ -157,6 +157,7 @@ export class CaffoldTaskDetailInfo extends CaffoldElement {
       : null;
     const claudeConfigDir = canonical?.claudeConfigDir ?? "";
     const threadId = taskThreadId(task);
+    const taskIdLabel = "Task ID";
     const label = `Task details, ${statusLabel}`;
     return html`
       <button
@@ -279,12 +280,12 @@ export class CaffoldTaskDetailInfo extends CaffoldElement {
               : nothing
           }
           <div class="task-detail-meta-line">
-            <span class="task-detail-meta-name">Thread</span>
+            <span class="task-detail-meta-name">${taskIdLabel}</span>
             <span class="task-detail-meta-value" data-task-info-field="thread">${threadId}</span>
             <caffold-task-detail-info-copy-value
               ${drawn(this.copies.of("thread"))}
               .value=${threadId}
-              .label=${"Thread ID"}
+              .label=${taskIdLabel}
             ></caffold-task-detail-info-copy-value>
           </div>
           ${
