@@ -38,7 +38,8 @@ const REVIEWED_PERMISSION_MODE = "caffold:decides";
 /** The agents whose conversations Caffold can fork. */
 const FORKING_PROVIDERS = ["codex", "claude", "grok", "copilot"];
 const IDLE_ONLY = "Available when the Task is idle.";
-const ANOTHER_ACTION = "Another Task action is in progress.";
+const ARCHIVING = "Unavailable while the Task is archiving.";
+const FORKING = "Unavailable while the Task is forking.";
 
 // A request the Task screen runs for the Task: whether it runs, and why the
 // last one failed.
@@ -93,7 +94,8 @@ export interface LanguageServerInstallIntent {
  * language servers on or off, fork it, and archive it. Each row says what it
  * does, or why it cannot be done now; what a row reports, such as each
  * server's state or why the last request failed, and what can be done about
- * it, sits under the row.
+ * it, sits under the row. While the Task archives, every other row and the
+ * buttons under it wait.
  *
  * The language servers are read once before the popover opens and then
  * while it is open.
@@ -168,24 +170,30 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
       return nothing;
     }
     const threadId = taskThreadId(snapshot.task);
+    const archiving = snapshot.archiveState.loading;
+    // Every row but Archive waits while the Task archives. A row whose own
+    // request runs keeps showing it; any other says why it waits.
+    const archiveWait = archiving ? ARCHIVING : "";
     const pinned = snapshot.pinned;
     const pinning = snapshot.pinState.loading;
     const pinError = actionErrorMessage(snapshot.pinState.error);
     const pinLabel = pinned ? "Unpin task" : "Pin task";
+    const pinDescription = pinned
+      ? "Return it to its Section."
+      : "Keep it at the top of the Task list.";
     const forking = snapshot.forkState.loading;
     // Until the Task's details name its agent, Fork waits dimmed for them.
     const forkOffered = snapshot.provider
       ? FORKING_PROVIDERS.includes(snapshot.provider)
       : !snapshot.canonicalTaskAvailable;
-    const forkUnavailable = forkDisabledReason(snapshot);
+    const forkUnavailable = archiveWait || forkDisabledReason(snapshot);
     const forkError = actionErrorMessage(snapshot.forkState.error);
     const createdTaskId = (snapshot.forkState.error as TaskResponseError | null)
       ?.createdTaskId;
-    const archiving = snapshot.archiveState.loading;
     const archiveUnavailable = archiving
       ? ""
-      : snapshot.forkState.loading
-        ? ANOTHER_ACTION
+      : forking
+        ? FORKING
         : snapshot.archiveBlockedByActive
           ? IDLE_ONLY
           : "";
@@ -213,7 +221,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
         ? "Turning off language servers..."
         : serversBusy
           ? "Starting language servers..."
-          : "Go to definition and Find references.";
+          : archiveWait || "Go to definition and Find references.";
     const missingServers =
       serversKnown && serversOn ? notInstalled(servers) : [];
     const installLabel =
@@ -237,12 +245,16 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
               type="button"
               class="task-detail-action"
               data-task-info-action="permission-instructions"
+              ?disabled=${archiving}
               @click=${this.requestAction}
             >
               ${actionIcon("ShieldCheck")}
               <span class="task-detail-action-label">What your prompts settled</span>
               <span class="task-detail-action-description"
-                >What the decision model reads before it answers.</span
+                >${
+                  archiveWait ||
+                  "What the decision model reads before it answers."
+                }</span
               >
             </button>`
           : nothing
@@ -260,7 +272,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
                 type="button"
                 class="task-detail-action"
                 data-task-info-action=${pinned ? "unpin" : "pin"}
-                ?disabled=${pinning}
+                ?disabled=${pinning || archiving}
                 @click=${this.requestAction}
               >
                 ${actionIcon(pinned ? "PinOff" : "Pin", pinning)}
@@ -268,9 +280,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
                   pinning ? (pinned ? "Unpinning..." : "Pinning...") : pinLabel
                 }</span>
                 <span class="task-detail-action-description">${
-                  pinned
-                    ? "Return it to its Section."
-                    : "Keep it at the top of the Task list."
+                  (!pinning && archiveWait) || pinDescription
                 }</span>
               </button>
               ${
@@ -318,7 +328,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
                   aria-labelledby=${`${threadId}-language-servers-label`}
                   aria-describedby=${`${threadId}-language-servers-description`}
                   .checked=${live(turning ? turning === "on" : serversOn)}
-                  ?disabled=${!serversKnown || serversBusy}
+                  ?disabled=${!serversKnown || serversBusy || archiving}
                   @change=${this.turnLanguageServers}
                 >
               </label>
@@ -366,6 +376,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
                               type="button"
                               class="task-secondary-button task-detail-follow-up"
                               data-task-info-action="install-language-servers"
+                              ?disabled=${archiving}
                               @click=${this.requestLanguageServerInstall}
                             >${actionContent("Bot", installLabel)}</button>`
                           : nothing
@@ -508,6 +519,9 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
   }
 
   private turnLanguageServers() {
+    if (this.snapshot?.archiveState.loading) {
+      return;
+    }
     void this.languageServersLifecycle.turn(
       this.languageServers.repository?.enabled !== true,
     );
@@ -519,7 +533,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
     const servers = notInstalled(
       this.languageServers.repository?.servers ?? [],
     );
-    if (servers.length === 0) {
+    if (servers.length === 0 || this.snapshot?.archiveState.loading) {
       return;
     }
     this.dispatchEvent(
@@ -640,16 +654,14 @@ function languageServerSaid({ state, failure }: LanguageServerStatus) {
     : "";
 }
 
-// Why an agent that forks cannot fork the Task now, or nothing.
+// Why an agent that forks cannot fork the Task now, besides an archive, or
+// nothing.
 function forkDisabledReason(snapshot: TaskInfoActionsSnapshot) {
   if (!snapshot.canonicalTaskAvailable) {
     return "Available once Task details load.";
   }
   if (isTaskTransportStale(snapshot.transportState)) {
     return "Unavailable while the Task connection is interrupted.";
-  }
-  if (snapshot.archiveState.loading) {
-    return ANOTHER_ACTION;
   }
   if (taskThreadStatusType(snapshot.task) !== "idle") {
     return IDLE_ONLY;

@@ -338,6 +338,60 @@ test("reports why turning on failed under the row and turns the switch back", { 
   await expect(toggle).toBeEnabled();
 });
 
+test("holds the Language servers switch and install while the Task archives", { tag: "@server-changes" }, async ({ page }) => {
+  const { task, detailsButton, popover, section, toggle, under } = await openTask(
+    page,
+    "repo-archiving",
+    { servers: [rust("failed", { failure: RUST_NOT_INSTALLED })], enabled: true },
+  );
+  let observeArchive;
+  const archiveObserved = new Promise((resolve) => {
+    observeArchive = resolve;
+  });
+  let refuseArchive;
+  const archiveGate = new Promise((resolve) => {
+    refuseArchive = resolve;
+  });
+  await page.route(`**/api/tasks/${task.threadId}/archive`, async (route) => {
+    observeArchive();
+    await archiveGate;
+    await route.fulfill({
+      status: 409,
+      json: {
+        error: {
+          code: "managed_worktree_dirty",
+          message: "managed worktree has uncommitted changes: /tmp/worktree",
+          allowedActions: ["forceArchive"],
+          worktreeId: "worktree-archiving",
+        },
+      },
+    });
+  });
+  await detailsButton.click();
+  const description = section.locator(".task-detail-action-description");
+  const install = under.getByRole("button", {
+    name: "Ask an agent to install rust-analyzer",
+  });
+  await expect(toggle).toBeEnabled();
+  await expect(install).toBeEnabled();
+
+  await popover.locator('[data-task-info-action="archive"]').click();
+  await archiveObserved;
+  await expect(toggle).toBeDisabled();
+  await expect(description).toHaveText("Unavailable while the Task is archiving.");
+  await expect(install).toBeDisabled();
+  // What the servers report stays readable.
+  await expect(under.locator('[data-language-server="rust"]')).toHaveText(
+    `Rust: rust-analyzer is not installed for the ${RUST_TOOLCHAIN} toolchain.`,
+  );
+
+  refuseArchive();
+  await expect(popover.locator('[data-task-info-action="force-archive"]')).toBeVisible();
+  await expect(toggle).toBeEnabled();
+  await expect(description).toHaveText(DESCRIPTION);
+  await expect(install).toBeEnabled();
+});
+
 test("reaches the Language servers switch from the keyboard inside Task details", { tag: "@server-steady" }, async ({ page }) => {
   const { requests, popover, section } = await openTask(page, "repo-keys", {
     servers: [rust("off")],

@@ -277,6 +277,31 @@ test("prefers the conversation-start lock copy over the active-turn lock on a fi
   assert.equal(permission.title, GROK_FIXED);
 });
 
+test("gives the owner's reason on both locked pickers when it has one", async (t) => {
+  const reason = "Unavailable while the Task is archiving.";
+  const { element, server } = mount({ locked: true, lockedReason: reason });
+  t.after(() => server.restore());
+  await answerModels(server);
+  await answerModes(server);
+
+  const held = drawing(element);
+  assert.equal(held.model.disabled, true);
+  assert.equal(held.model.title, reason);
+  assert.equal(held.permission.disabled, true);
+  assert.equal(held.permission.title, reason);
+
+  element.setContext({ cwd: "src", locked: true });
+  const locked = drawing(element);
+  assert.equal(
+    locked.model.title,
+    "Model, reasoning, and speed can be changed after the active turn finishes.",
+  );
+  assert.equal(
+    locked.permission.title,
+    "Approval mode can be changed after the active turn finishes.",
+  );
+});
+
 test("does not change approval mode after the catalog has fixed it", async (t) => {
   const { element, server } = mount({
     provider: "grok",

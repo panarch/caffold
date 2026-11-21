@@ -23,6 +23,7 @@ function screen(state = {}) {
     loading: false,
     events: [],
     detailSession: { absence: null, state: "ready" },
+    archiveStateValue: { loading: false, error: null },
     pane: null,
     notice: null,
     ...state,
@@ -328,6 +329,36 @@ test("force archive rejects a confirmation captured for another Task or worktree
   await owner.archiveSelectedTask({ threadId: "thread-b", worktreeId: "current" });
   await owner.archiveSelectedTask({ threadId: "thread-a", worktreeId: "previous" });
   assert.equal(owner.archiveStateValue.loading, false);
+});
+
+test("holds the Task's own requests while an archive runs", async () => {
+  const outcomes = [];
+  const composer = {
+    resolveSubmission: (submissionId, { status, error }) =>
+      outcomes.push([submissionId, status, error.message]),
+  };
+  const owner = screen({
+    taskDetail: { task: { threadId: "thread-a" } },
+    archiveStateValue: { loading: true, error: null },
+    pinStateValue: { loading: false, error: null },
+    followUpComposers: new Map([["thread-a", composer]]),
+    activeFollowUpComposerThreadId: "thread-a",
+    permissionInstructionsDialog: {
+      value: { open() { assert.fail("the dialog waits for the archive"); } },
+    },
+    emitSubjectSnapshot() { assert.fail("a held request must not start"); },
+  });
+  await owner.pinSelectedTask(true);
+  assert.equal(owner.pinStateValue.loading, false);
+  owner.openPermissionInstructions(null);
+  await owner.sendFollowUpSubmission(composer, {
+    submissionId: "follow-up:1",
+    threadId: "thread-a",
+    prompt: "Keep going",
+  });
+  assert.deepEqual(outcomes, [
+    ["follow-up:1", "rejected", "Unavailable while the Task is archiving."],
+  ]);
 });
 
 test("open preserves a loaded task and marks an unseen completion as seen", async () => {

@@ -779,6 +779,76 @@ test("shows keyboard focus on a strip segment the way it shows hover", { tag: "@
   }
 });
 
+test("keeps the plan control above the notice over the Composer", { tag: "@server-changes" }, async ({
+  page,
+}, testInfo) => {
+  const workspace = prepareWorkspace(testInfo);
+  writeCurrentDocuments(workspace.absolutePath, {
+    plan: "# Notice fixture\n",
+    checklist: checklistMarkdown(4, 1),
+  });
+  await installTaskApiFixture(page);
+  const detail = detailFor("thread-1", workspace.logicalPath);
+  await installTaskDetails(page, [detail]);
+  let observeArchive;
+  const archiveObserved = new Promise((resolve) => {
+    observeArchive = resolve;
+  });
+  let refuseArchive;
+  const archiveGate = new Promise((resolve) => {
+    refuseArchive = resolve;
+  });
+  await page.route("**/api/tasks/thread-1/archive", async (route) => {
+    observeArchive();
+    await archiveGate;
+    await route.fulfill({
+      status: 409,
+      json: {
+        error: {
+          code: "managed_worktree_dirty",
+          message: "managed worktree has uncommitted changes: /tmp/worktree",
+          allowedActions: ["forceArchive"],
+          worktreeId: "worktree-archiving",
+        },
+      },
+    });
+  });
+  await page.goto(`/tasks/thread-1?cwd=${encodeURIComponent(workspace.logicalPath)}`);
+  const projection = currentPlanResponse(page, workspace.logicalPath);
+  await openTaskWithBootstrap(page.locator("caffold-tasks-page"), detail);
+  expect((await (await projection).json()).status).toBe("ready");
+  const strip = page.locator("caffold-task-current-plan .task-current-plan-strip");
+  await expect(strip).toBeVisible();
+
+  await page
+    .locator("caffold-task-detail-summary")
+    .getByRole("button", { name: /Task details/ })
+    .click();
+  await page
+    .locator('.task-detail-popover [data-task-info-action="archive"]')
+    .click();
+  await archiveObserved;
+  const notice = page
+    .getByRole("status")
+    .filter({ hasText: "Unavailable while the Task is archiving." });
+  await expect(notice).toBeVisible();
+  // The plan control rides up with the notice, which sits above the
+  // Composer's panel.
+  const panel = page.locator(
+    "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden]) .task-composer-panel",
+  );
+  const [stripBox, noticeBox, panelBox] = await Promise.all([
+    strip.boundingBox(),
+    notice.boundingBox(),
+    panel.boundingBox(),
+  ]);
+  expect(stripBox.y + stripBox.height).toBeLessThanOrEqual(noticeBox.y + 0.5);
+  expect(noticeBox.y + noticeBox.height).toBeLessThanOrEqual(panelBox.y + 0.5);
+
+  refuseArchive();
+  await expect(notice).toHaveCount(0);
+});
+
 test("keeps a Task without a plan free of the strip while its updates pause", { tag: "@server-changes" }, async ({
   page,
 }, testInfo) => {

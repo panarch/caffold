@@ -53,6 +53,8 @@ export interface TurnOptionsContext {
   cwd?: string;
   initialSelection?: TurnOptionsSelection;
   locked?: boolean;
+  // Why the owner locks the choices, when it says.
+  lockedReason?: string;
   placement?: "above" | "below";
   provider?: string;
   allowHandoff?: boolean;
@@ -100,6 +102,7 @@ interface ResolvedContext {
   cwd: string;
   initialSelection: TurnOptionsSelection;
   locked: boolean;
+  lockedReason: string;
   placement: "above" | "below";
   provider: string;
   allowHandoff: boolean;
@@ -196,6 +199,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     cwd: ".",
     initialSelection: {},
     locked: false,
+    lockedReason: "",
     placement: "below",
     provider: "",
     allowHandoff: false,
@@ -280,6 +284,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
         ...context.initialSelection,
       },
       locked: Boolean(context.locked),
+      lockedReason: `${context.lockedReason ?? ""}`,
       placement: context.placement === "above" ? "above" : "below",
       provider: (context.provider ?? this.context.provider).trim(),
       allowHandoff: Boolean(context.allowHandoff ?? this.context.allowHandoff),
@@ -288,6 +293,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     const changed =
       next.cwd !== this.context.cwd ||
       next.locked !== this.context.locked ||
+      next.lockedReason !== this.context.lockedReason ||
       next.placement !== this.context.placement ||
       next.voiceInput !== this.context.voiceInput ||
       next.provider !== this.context.provider ||
@@ -315,6 +321,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
       cwd: cleanLogicalPath(context.cwd ?? this.context.cwd),
       initialSelection: { ...context.initialSelection },
       locked: Boolean(context.locked),
+      lockedReason: `${context.lockedReason ?? ""}`,
       placement: context.placement === "above" ? "above" : "below",
       provider: (context.provider ?? "").trim(),
       allowHandoff: Boolean(context.allowHandoff),
@@ -742,7 +749,8 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
         label: `Choose ${chosen}`,
         popoverLabel: `${chosen.charAt(0).toUpperCase()}${chosen.slice(1)} options`,
         title: locked
-          ? "Model, reasoning, and speed can be changed after the active turn finishes."
+          ? this.context.lockedReason ||
+            "Model, reasoning, and speed can be changed after the active turn finishes."
           : modelPending
             ? "Loading models"
             : modelUnavailable
@@ -765,7 +773,8 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
         title: permissionFixed
           ? PERMISSION_FIXED_WHEN_CONVERSATION_STARTS
           : locked
-            ? "Approval mode can be changed after the active turn finishes."
+            ? this.context.lockedReason ||
+              "Approval mode can be changed after the active turn finishes."
             : !settled
               ? "Loading permission modes"
               : settled.error

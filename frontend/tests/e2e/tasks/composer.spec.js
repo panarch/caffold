@@ -3,6 +3,10 @@ import { activateActionHint, workspaceTargets } from "../support/action-hints.js
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { focusLook, pointerHovers } from "../support/focus-look.js";
 import {
+  installTaskApiFixture,
+  taskDetailFixture,
+} from "../support/task-api-fixture.js";
+import {
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
@@ -971,6 +975,79 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
   await expect
     .poll(() => conversation.evaluate((element) => element.scrollTop))
     .toBe(savedScrollTop);
+});
+
+test("waits to send while the Task archives, saying why above the Composer", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  const detail = taskDetailFixture();
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+  let observeArchive;
+  const archiveObserved = new Promise((resolve) => {
+    observeArchive = resolve;
+  });
+  let refuseArchive;
+  const archiveGate = new Promise((resolve) => {
+    refuseArchive = resolve;
+  });
+  await page.route("**/api/tasks/thread-1/archive", async (route) => {
+    observeArchive();
+    await archiveGate;
+    await route.fulfill({
+      status: 409,
+      json: {
+        error: {
+          code: "managed_worktree_dirty",
+          message: "managed worktree has uncommitted changes: /tmp/worktree",
+          allowedActions: ["forceArchive"],
+          worktreeId: "worktree-archiving",
+        },
+      },
+    });
+  });
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
+
+  const composer = page.locator(
+    "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])",
+  );
+  const prompt = composer.getByRole("textbox", { name: "Follow-up prompt" });
+  const send = composer.getByRole("button", { name: "Send prompt" });
+  const attach = composer.getByRole("button", { name: "Attach files" });
+  const options = composer.getByRole("button", { name: /^Choose model/ });
+  const reason = "Unavailable while the Task is archiving.";
+  const notice = page.getByRole("status").filter({ hasText: reason });
+  await prompt.fill("Keep this draft");
+  await expect(send).toBeEnabled();
+  await expect(notice).toHaveCount(0);
+
+  await page
+    .locator("caffold-task-detail-summary")
+    .getByRole("button", { name: /Task details/ })
+    .click();
+  const popover = page.locator(".task-detail-popover");
+  await popover.locator('[data-task-info-action="archive"]').click();
+  await archiveObserved;
+  await expect(notice).toBeVisible();
+  await expect(send).toBeDisabled();
+  await expect(send).toHaveAttribute("title", reason);
+  await expect(attach).toBeDisabled();
+  await expect(options).toBeDisabled();
+  await expect(options).toHaveAttribute("title", reason);
+  // The draft stays the person's to edit while the Task archives.
+  await prompt.fill("Keep this draft, edited while it archives");
+  await expect(prompt).toHaveValue("Keep this draft, edited while it archives");
+
+  refuseArchive();
+  await expect(popover.locator('[data-task-info-action="force-archive"]')).toBeVisible();
+  await expect(notice).toHaveCount(0);
+  await expect(prompt).toHaveValue("Keep this draft, edited while it archives");
+  await expect(send).toBeEnabled();
+  await expect(send).toHaveAttribute("title", "Send prompt");
+  await expect(options).toBeEnabled();
 });
 
 test("places attachment remove controls over thumbnail corners inside the attachment strip", { tag: "@all-viewports" }, async ({

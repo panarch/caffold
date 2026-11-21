@@ -78,6 +78,7 @@ test("draws Send again once the turn options take the new context", () => {
     allowHandoff: false,
     initialSelection: { modelProvider: "", model: "", effort: "", speed: "default", permissionMode: "" },
     locked: false,
+    lockedReason: "",
     placement: "above",
     voiceInput: false,
   });
@@ -118,6 +119,63 @@ test("turns Send while a new Task is being started, and only then", () => {
   assert.deepEqual(action(), { kind: "send", icon: "LoaderCircle", busy: true, disabled: true });
   owner.context.mode = "follow-up";
   assert.deepEqual(action(), { kind: "send", icon: "ArrowUp", busy: false, disabled: true });
+});
+
+test("waits with the reason its owner gives, keeping the draft editable", () => {
+  let submitted = 0;
+  const owner = composerHost({
+    turnOptions: () => ({
+      readyForSubmission: () => true,
+      submissionOptions: () => {
+        submitted += 1;
+        return {};
+      },
+      hidePopovers() {},
+      setContext() {},
+    }),
+  });
+  Object.assign(owner.context, {
+    mode: "follow-up",
+    unavailableReason: "Unavailable while the Task is archiving.",
+  });
+  owner.voice.phase = "idle";
+  owner.state.prompt = "Keep this draft";
+  const send = () => {
+    const { kind, title, disabled } = owner.primaryActionView();
+    return { kind, title, disabled };
+  };
+  const submit = () =>
+    owner.handleSubmit({ preventDefault() {}, submitter: null });
+
+  assert.deepEqual(send(), {
+    kind: "send",
+    title: "Unavailable while the Task is archiving.",
+    disabled: true,
+  });
+  assert.equal(owner.acceptsAttachments(), false);
+  assert.equal(owner.voiceDisabled(), true);
+  assert.equal(owner.turnOptionsContext().locked, true);
+  assert.equal(
+    owner.turnOptionsContext().lockedReason,
+    "Unavailable while the Task is archiving.",
+  );
+  assert.equal(owner.promptFieldLocked(), false);
+  submit();
+  assert.equal(submitted, 0);
+  assert.equal(owner.state.prompt, "Keep this draft");
+
+  owner.context.unavailableReason = "";
+  assert.deepEqual(send(), {
+    kind: "send",
+    title: "Send prompt",
+    disabled: false,
+  });
+  assert.equal(owner.acceptsAttachments(), true);
+  assert.equal(owner.voiceDisabled(), false);
+  assert.equal(owner.turnOptionsContext().locked, false);
+  assert.equal(owner.turnOptionsContext().lockedReason, "");
+  submit();
+  assert.equal(submitted, 1);
 });
 
 test("gives a refused new Task's request back to the draft once, though its locked field still shows it", () => {
@@ -365,6 +423,7 @@ function composerHost(properties = {}) {
         submitLabel: "Send prompt",
         cancel: false,
         disabled: false,
+        unavailableReason: "",
         settingsLocked: false,
         allowHandoff: false,
         requestError: "",
