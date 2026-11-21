@@ -35,7 +35,9 @@ pub(crate) const MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION: &str = "2.1.259";
 /// Arguments every session is started with, whatever else the driver adds.
 ///
 /// `--verbose` is what makes `stream-json` stream rather than emit one blob at
-/// the end. `--permission-prompt-tool stdio` is what makes the agent ask before
+/// the end, and `--include-partial-messages` adds the pieces of each block
+/// while it is written, so an answer shows before it is finished.
+/// `--permission-prompt-tool stdio` is what makes the agent ask before
 /// it acts: without it `can_use_tool` is never sent, and a Caffold with no
 /// approval cards would look like an agent that never needed permission.
 ///
@@ -54,6 +56,7 @@ pub(crate) const BASE_ARGUMENTS: &[&str] = &[
     "--output-format",
     "stream-json",
     "--verbose",
+    "--include-partial-messages",
     "--permission-prompt-tool",
     "stdio",
     "--allow-dangerously-skip-permissions",
@@ -113,6 +116,7 @@ pub(crate) enum StreamFrame {
     Result(ResultFrame),
     ControlRequest(ControlRequestFrame),
     ControlResponse(ControlResponseFrame),
+    StreamEvent(StreamEventFrame),
     /// Everything else the agent says.
     ///
     /// Roughly twenty auxiliary kinds exist and more arrive on minor releases.
@@ -259,6 +263,57 @@ pub(crate) enum ContentBlock {
         source: Option<ImageSource>,
     },
     /// A block kind this release does not draw.
+    #[serde(other)]
+    Other,
+}
+
+/// A piece of the message the agent is writing.
+///
+/// The agent forwards the model's own stream event and names the message it
+/// belongs to. The event numbers blocks within that message, as the finished
+/// frames and the transcript can be numbered too.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct StreamEventFrame {
+    pub(crate) event: StreamEvent,
+    #[serde(default)]
+    pub(crate) api_message_id: Option<String>,
+    #[serde(default)]
+    pub(crate) parent_tool_use_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub(crate) enum StreamEvent {
+    ContentBlockStart {
+        index: usize,
+        content_block: StartedBlock,
+    },
+    ContentBlockDelta {
+        index: usize,
+        delta: BlockDelta,
+    },
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub(crate) enum StartedBlock {
+    Text,
+    Thinking,
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub(crate) enum BlockDelta {
+    TextDelta {
+        text: String,
+    },
+    ThinkingDelta {
+        thinking: String,
+    },
     #[serde(other)]
     Other,
 }
@@ -847,6 +902,89 @@ mod tests {
     }
 
     #[test]
+    fn a_piece_names_its_message_and_the_block_it_continues() {
+        let started = frame(json!({
+            "type": "stream_event", "uuid": "e-1", "api_message_id": "msg_1", "parent_tool_use_id": null,
+            "event": { "type": "content_block_start", "index": 1, "content_block": { "type": "thinking", "thinking": "", "signature": "" } },
+        }));
+        let StreamFrame::StreamEvent(started) = started else {
+            panic!("a stream event");
+        };
+        assert_eq!(started.api_message_id.as_deref(), Some("msg_1"));
+        assert!(matches!(
+            started.event,
+            StreamEvent::ContentBlockStart {
+                index: 1,
+                content_block: StartedBlock::Thinking
+            }
+        ));
+
+        for (delta, read) in [
+            (json!({ "type": "text_delta", "text": "Hel" }), "text"),
+            (
+                json!({ "type": "thinking_delta", "thinking": "Hmm" }),
+                "thinking",
+            ),
+            (
+                json!({ "type": "signature_delta", "signature": "abc" }),
+                "other",
+            ),
+        ] {
+            let StreamFrame::StreamEvent(piece) = frame(json!({
+                "type": "stream_event", "api_message_id": "msg_1",
+                "event": { "type": "content_block_delta", "index": 0, "delta": delta },
+            })) else {
+                panic!("a stream event");
+            };
+            let StreamEvent::ContentBlockDelta { index: 0, delta } = piece.event else {
+                panic!("a piece of block 0");
+            };
+            match (read, delta) {
+                ("text", BlockDelta::TextDelta { text }) => assert_eq!(text, "Hel"),
+                ("thinking", BlockDelta::ThinkingDelta { thinking }) => assert_eq!(thinking, "Hmm"),
+                ("other", BlockDelta::Other) => {}
+                (read, delta) => panic!("{read} read as {delta:?}"),
+            }
+        }
+
+        for event in [
+            json!({ "type": "message_start", "message": { "id": "msg_1" } }),
+            json!({ "type": "content_block_stop", "index": 0 }),
+            json!({ "type": "message_stop" }),
+            json!({ "type": "content_block_start", "index": 2, "content_block": { "type": "tool_use", "id": "toolu_1", "name": "Bash", "input": {} } }),
+        ] {
+            let StreamFrame::StreamEvent(piece) =
+                frame(json!({ "type": "stream_event", "event": event }))
+            else {
+                panic!("a stream event");
+            };
+            assert!(
+                matches!(
+                    piece.event,
+                    StreamEvent::Other
+                        | StreamEvent::ContentBlockStart {
+                            content_block: StartedBlock::Other,
+                            ..
+                        }
+                ),
+                "nothing to show: {:?}",
+                piece.event
+            );
+        }
+    }
+
+    #[test]
+    fn a_piece_that_does_not_say_which_block_it_continues_is_not_a_piece() {
+        // The block number is the piece's name; without it the piece cannot be
+        // placed, and the line is reported unreadable rather than guessed at.
+        let unnumbered = serde_json::from_value::<StreamFrame>(json!({
+            "type": "stream_event", "api_message_id": "msg_1",
+            "event": { "type": "content_block_delta", "delta": { "type": "text_delta", "text": "Hel" } },
+        }));
+        assert!(unnumbered.is_err());
+    }
+
+    #[test]
     fn a_block_kind_this_release_does_not_draw_survives_beside_ones_it_does() {
         // One unreadable block must not cost the message the blocks around it.
         let parsed = frame(json!({
@@ -1061,6 +1199,7 @@ mod tests {
         // Both are load-bearing and neither is obvious from the flag name, so
         // their absence should fail here rather than as silence at run time.
         assert!(BASE_ARGUMENTS.contains(&"--verbose"));
+        assert!(BASE_ARGUMENTS.contains(&"--include-partial-messages"));
         let permission = BASE_ARGUMENTS
             .windows(2)
             .find(|pair| pair[0] == "--permission-prompt-tool");

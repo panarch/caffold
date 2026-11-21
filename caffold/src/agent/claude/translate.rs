@@ -20,6 +20,7 @@
 //! tomorrow rendering as work rather than disappearing.
 
 use std::collections::HashMap;
+use std::ops::Range;
 
 use serde_json::Value;
 
@@ -47,15 +48,51 @@ struct StartedToolCall {
 #[derive(Debug, Default)]
 pub(crate) struct ToolCalls(HashMap<String, StartedToolCall>);
 
+/// Where each message's blocks are numbered from, as a reader goes along.
+///
+/// The agent sends one message as a frame per block, and numbers the blocks
+/// across the whole message while it writes them. Both readers count the
+/// blocks of each message's frames as they come, so a finished block gets the
+/// number its pieces had. Like [`ToolCalls`], a live session keeps one while it
+/// runs and a transcript read for the length of the file.
+#[derive(Debug, Default)]
+pub(crate) struct BlockNumbers(HashMap<String, usize>);
+
+impl BlockNumbers {
+    /// The numbers of the blocks in the next frame of the message `message_id`.
+    ///
+    /// `written_from` is the number its pieces gave its first block, when they
+    /// were seen. That number is the agent's own, and it stands even where the
+    /// count does not reach back, as on a backend that took over a message
+    /// part of the way through.
+    pub(crate) fn next(
+        &mut self,
+        message_id: &str,
+        message: &Message,
+        written_from: Option<usize>,
+    ) -> Range<usize> {
+        let blocks = match &message.content {
+            MessageContent::Blocks(blocks) => blocks.len(),
+            MessageContent::Text(_) | MessageContent::Unreadable(_) => 1,
+        };
+        let finished = self.0.entry(message_id.to_string()).or_default();
+        let first = written_from.unwrap_or(*finished);
+        *finished = first + blocks;
+        first..*finished
+    }
+}
+
 /// Everything one message contributes to a conversation, in order.
 ///
 /// `anchor` identifies the message itself, and is what the items that are not
 /// tool calls are numbered from — the agent identifies a message but not the
 /// blocks inside it, and an item needs an identity that survives being reported
-/// twice.
+/// twice. `first_block` is where this part of the message starts: the agent
+/// sends one message as several frames, one block each.
 pub(crate) fn message_items(
     message: &Message,
     anchor: &str,
+    first_block: usize,
     calls: &mut ToolCalls,
     failed_to_run: bool,
 ) -> Vec<ConversationItem> {
@@ -73,51 +110,11 @@ pub(crate) fn message_items(
 
     let mut items = Vec::new();
     for (index, block) in blocks.iter().enumerate() {
-        let id = format!("{anchor}:{index}");
+        let id = format!("{anchor}:{}", first_block + index);
         match block {
-            ContentBlock::Text { text } => items.push(ConversationItem {
-                id,
-                observed_at_ms: None,
-                status: ActivityStatus::Completed,
-                kind: if failed_to_run {
-                    // The harness wrote this where an answer would have been.
-                    // Drawn as the agent talking, "Failed to authenticate"
-                    // reads as its answer to what was asked.
-                    ItemKind::Failure { text: text.clone() }
-                } else {
-                    ItemKind::AssistantMessage {
-                        text: text.clone(),
-                        // Claude does not mark one message as the answer, and
-                        // a guess here would put the wrong message in the
-                        // place the interface reserves for one.
-                        phase: None,
-                        // Claude suggests a next prompt only when a session
-                        // turns `promptSuggestions` on, which Caffold does not.
-                        suggested_prompts: Vec::new(),
-                    }
-                },
-            }),
-            ContentBlock::Thinking { thinking } => items.push(ConversationItem {
-                id,
-                observed_at_ms: None,
-                status: ActivityStatus::Completed,
-                kind: if thinking.is_empty() {
-                    ItemKind::Reasoning {
-                        summary: Vec::new(),
-                        content: vec![thinking.clone()],
-                    }
-                } else {
-                    // The agent is asked to show its progress notes rather
-                    // than its reasoning, so a thinking block with words in
-                    // it is what the agent tells a person between tool calls,
-                    // and an empty one is the thinking it kept to itself.
-                    ItemKind::AssistantMessage {
-                        text: thinking.clone(),
-                        phase: None,
-                        suggested_prompts: Vec::new(),
-                    }
-                },
-            }),
+            ContentBlock::Text { .. } | ContentBlock::Thinking { .. } => {
+                items.extend(said(id, block, ActivityStatus::Completed, failed_to_run));
+            }
             ContentBlock::ToolUse { id, name, input } => {
                 items.push(calls.start(id, name, input));
             }
@@ -136,6 +133,76 @@ pub(crate) fn message_items(
         }
     }
     items
+}
+
+/// A block the agent is still writing, as far as it has got.
+///
+/// It reads as its finished frame will, still in progress. Before it has any
+/// words there is nothing to show.
+pub(crate) fn block_so_far(id: String, block: &ContentBlock) -> Option<ConversationItem> {
+    let (ContentBlock::Text { text: words } | ContentBlock::Thinking { thinking: words }) = block
+    else {
+        return None;
+    };
+    if words.is_empty() {
+        return None;
+    }
+    said(id, block, ActivityStatus::InProgress, false)
+}
+
+/// What the agent said in one text or thinking block.
+fn said(
+    id: String,
+    block: &ContentBlock,
+    status: ActivityStatus,
+    failed_to_run: bool,
+) -> Option<ConversationItem> {
+    let kind = match block {
+        ContentBlock::Text { text } => {
+            if failed_to_run {
+                // The harness wrote this where an answer would have been.
+                // Drawn as the agent talking, "Failed to authenticate" reads
+                // as its answer to what was asked.
+                ItemKind::Failure { text: text.clone() }
+            } else {
+                ItemKind::AssistantMessage {
+                    text: text.clone(),
+                    // Claude does not mark one message as the answer, and a
+                    // guess here would put the wrong message in the place the
+                    // interface reserves for one.
+                    phase: None,
+                    // Claude suggests a next prompt only when a session turns
+                    // `promptSuggestions` on, which Caffold does not.
+                    suggested_prompts: Vec::new(),
+                }
+            }
+        }
+        ContentBlock::Thinking { thinking } => {
+            if thinking.is_empty() {
+                ItemKind::Reasoning {
+                    summary: Vec::new(),
+                    content: vec![thinking.clone()],
+                }
+            } else {
+                // The agent is asked to show its progress notes rather than
+                // its reasoning, so a thinking block with words in it is what
+                // the agent tells a person between tool calls, and an empty
+                // one is the thinking it kept to itself.
+                ItemKind::AssistantMessage {
+                    text: thinking.clone(),
+                    phase: None,
+                    suggested_prompts: Vec::new(),
+                }
+            }
+        }
+        _ => return None,
+    };
+    Some(ConversationItem {
+        id,
+        observed_at_ms: None,
+        status,
+        kind,
+    })
 }
 
 /// Everything a person put in a message, out of the message they put it in.
@@ -436,7 +503,38 @@ mod tests {
     }
 
     fn items(value: Value, calls: &mut ToolCalls) -> Vec<ConversationItem> {
-        message_items(&message(value), "msg_1", calls, false)
+        message_items(&message(value), "msg_1", 0, calls, false)
+    }
+
+    #[test]
+    fn a_block_being_written_reads_as_it_will_once_finished() {
+        let text = ContentBlock::Text { text: "Hel".into() };
+        let note = ContentBlock::Thinking {
+            thinking: "Checking the tests".into(),
+        };
+        let quiet = ContentBlock::Thinking {
+            thinking: String::new(),
+        };
+
+        let so_far = block_so_far("msg_1:0".into(), &text).expect("words to show");
+        assert_eq!(so_far.status, ActivityStatus::InProgress);
+        assert!(
+            matches!(&so_far.kind, ItemKind::AssistantMessage { text, phase: None, .. } if text == "Hel")
+        );
+        let so_far = block_so_far("msg_1:1".into(), &note).expect("a progress note to show");
+        assert!(
+            matches!(&so_far.kind, ItemKind::AssistantMessage { text, .. } if text == "Checking the tests")
+        );
+        assert!(block_so_far("msg_1:2".into(), &quiet).is_none());
+        assert!(
+            block_so_far(
+                "msg_1:3".into(),
+                &ContentBlock::Text {
+                    text: String::new()
+                }
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -691,6 +789,33 @@ mod tests {
 
         assert_eq!(items[0].id, "msg_1:0");
         assert_eq!(items[1].id, "msg_1:1");
+
+        // The same blocks sent as the agent sends them, one frame each, are
+        // numbered across the message just the same.
+        let thinking = message(
+            json!({ "content": [{ "type": "thinking", "thinking": "Reading the file first." }] }),
+        );
+        let answer =
+            message(json!({ "content": [{ "type": "text", "text": "here is the answer" }] }));
+        let mut numbers = BlockNumbers::default();
+        let first = numbers.next("msg_1", &thinking, None);
+        let second = numbers.next("msg_1", &answer, None);
+        assert_eq!((first.clone(), second.clone()), (0..1, 1..2));
+        let framed: Vec<String> = [(thinking, first.start), (answer, second.start)]
+            .iter()
+            .flat_map(|(message, first)| message_items(message, "msg_1", *first, &mut calls, false))
+            .map(|item| item.id)
+            .collect();
+        assert_eq!(framed, [items[0].id.clone(), items[1].id.clone()]);
+        assert_eq!(
+            numbers.next("msg_2", &message(json!({ "content": [] })), None),
+            0..0
+        );
+        // A block whose pieces were numbered keeps that number, and the count
+        // goes on from it.
+        let block = message(json!({ "content": [{ "type": "text", "text": "after" }] }));
+        assert_eq!(numbers.next("msg_3", &block, Some(2)), 2..3);
+        assert_eq!(numbers.next("msg_3", &block, None), 3..4);
         assert!(matches!(
             &items[0].kind,
             ItemKind::AssistantMessage { text, .. } if text == "Reading the file first."
@@ -781,7 +906,7 @@ mod tests {
             "content": [{ "type": "text", "text": "API Error: Connection refused" }],
         });
 
-        let items = message_items(&message(value), "msg_1", calls, true);
+        let items = message_items(&message(value), "msg_1", 0, calls, true);
 
         assert_eq!(items.len(), 1);
         assert!(matches!(

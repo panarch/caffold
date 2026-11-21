@@ -59,14 +59,14 @@ use serde_json::{Value, json};
 use tokio::sync::{Mutex as AsyncMutex, Notify, RwLock, broadcast, oneshot};
 
 use self::protocol::{
-    ControlRequestFrame, InterruptReceipt, MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION, MessageFrame,
-    ResultFrame, StreamFrame, SystemFrame,
+    ContentBlock, ControlRequestFrame, InterruptReceipt, MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION,
+    MessageFrame, ResultFrame, StreamFrame, SystemFrame,
 };
 use self::runner::{RunnerClient, SessionFrames};
 use self::session::SessionStart;
 use self::settings::ASK_EACH_TIME_MODE;
 use self::transcript::BackgroundTaskDelivery;
-use self::translate::ToolCalls;
+use self::translate::{BlockNumbers, ToolCalls};
 use crate::agent::driver::{
     CancelledPrompt, ClaudeConversation, Driver, ModelOption, NORMAL_SPEED, PermissionModeOption,
     PermissionModes, REVIEWED_PERMISSION_MODE, SpeedOption, TurnOptions, TurnRejected, bounded,
@@ -273,6 +273,11 @@ struct SessionState {
     background_work: bool,
     /// Tool calls waiting on their results.
     calls: ToolCalls,
+    /// How many blocks of each message the agent has finished.
+    blocks_finished: BlockNumbers,
+    /// The text and thinking blocks the agent is writing, by message id and
+    /// block number, with what it has written so far.
+    blocks_being_written: HashMap<(String, usize), ContentBlock>,
     /// The turn Caffold opened and the agent has not answered.
     active_turn: Option<String>,
     /// The active turn was read from the transcript when this session was
@@ -1824,6 +1829,10 @@ fn end_active_turn(
     status: TurnStatus,
     completed_at_ms: u64,
 ) -> Option<EndedTurn> {
+    // A block the agent stopped writing is never finished, and stays as its
+    // pieces left it.
+    state.blocks_finished = BlockNumbers::default();
+    state.blocks_being_written.clear();
     let turn_id = state.active_turn.take()?;
     let retold = state
         .retold_once_ended
