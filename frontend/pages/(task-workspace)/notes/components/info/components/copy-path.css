@@ -3,8 +3,8 @@
   justify-items: start;
 }
 
-/* The same button the Task details popover gives its actions, with its icon
-   before the label as File details draws Download. */
+/* The same button File details draws Download with, and the Task details
+   popover its follow-up actions, with its icon before the label. */
 .notes-info-copy-path-button {
   position: relative;
   isolation: isolate;

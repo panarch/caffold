@@ -200,10 +200,10 @@ for (const theme of ["light", "dark"]) {
 
       await page.getByRole("button", { name: /^Task details/ }).click();
       const details = page.locator(".task-detail-popover");
-      await expect(details).toContainText(
-        "Language servers answer Go to definition and Find references in this repository's code.",
-      );
-      await expect(details.getByRole("button", { name: "Turn on language servers" })).toBeEnabled();
+      await expect(details).toContainText("Go to definition and Find references.");
+      const languageServers = details.getByRole("switch", { name: "Language servers" });
+      await expect(languageServers).toBeEnabled();
+      await expect(languageServers).not.toBeChecked();
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await captureReviewScreenshot(page, testInfo, `task-details-language-servers-${theme}`);
     });

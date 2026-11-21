@@ -13,13 +13,17 @@
   pointer-events: none;
 }
 
+/* The popover keeps one width wherever it has room, so long titles, branch
+   names, and paths wrap inside it instead of widening it. On a phone it
+   spreads from its left inset as Note details does, no wider than the
+   viewport less 1.5rem. */
 .task-detail-popover {
   position: fixed;
   inset: auto;
   position-area: block-end center;
   position-try-fallbacks: flip-block;
-  width: max-content;
-  max-width: min(42rem, calc(100vw - 1.5rem));
+  width: min(28rem, calc(100vw - 1.5rem));
+  max-width: calc(100vw - 1.5rem);
   max-height: min(75vh, 600px);
   margin: var(--interface-space-3) var(--interface-space-5);
   padding: 0.75rem;
@@ -36,29 +40,162 @@
   background: transparent;
 }
 
-.task-detail-popover dl {
-  display: grid;
-  grid-template-columns: max-content minmax(192px, 1fr);
-  gap: 0.5625rem 0.875rem;
-  margin: 0;
+/* The title takes the room it needs and wraps; the status keeps its words on
+   the first line's end. */
+.task-detail-popover-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--interface-space-6);
 }
 
-.task-detail-popover dl div {
-  display: contents;
+.task-detail-popover-title {
+  min-width: 0;
+  font-size: var(--workspace-header-title-size);
+  font-weight: 600;
+  line-height: var(--interface-line-height);
+  overflow-wrap: anywhere;
 }
 
-.task-detail-popover dt {
+.task-detail-popover-status {
+  flex: none;
   color: var(--muted);
   font-size: var(--interface-meta-font-size);
   line-height: var(--interface-line-height);
 }
 
-.task-detail-popover dd {
-  min-width: 0;
-  margin: 0;
-  overflow-wrap: anywhere;
+.task-detail-meta {
+  display: grid;
+  gap: var(--interface-space-1);
+  margin-top: var(--interface-space-3);
   font-size: var(--interface-meta-font-size);
   line-height: var(--interface-line-height);
+}
+
+/* Where the Task works, as one button the popover's width: its parts move to
+   the next line whole, a part longer than the line breaks anywhere, and the
+   chevron stays at the end. It reaches into the popover's padding so the
+   hover fills the line. */
+.task-detail-location {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--interface-space-4);
+  width: calc(100% + 2 * var(--interface-space-3));
+  min-height: var(--interface-compact-control-size);
+  margin-inline: calc(0rem - var(--interface-space-3));
+  padding: var(--interface-space-2) var(--interface-space-3);
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+  text-align: start;
+}
+
+.task-detail-location:focus-visible {
+  background: var(--control-hover-bg);
+  outline: none;
+}
+
+@media (hover: hover) {
+  .task-detail-location:hover {
+    background: var(--control-hover-bg);
+  }
+}
+
+.task-detail-location-parts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--interface-space-1) var(--interface-space-5);
+  min-width: 0;
+}
+
+.task-detail-location-repository,
+.task-detail-location-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--interface-space-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-detail-location-worktree {
+  color: var(--muted);
+}
+
+.task-detail-location-icon {
+  display: block;
+  flex: none;
+  width: var(--interface-icon-small-size);
+  height: var(--interface-icon-small-size);
+  color: var(--muted);
+}
+
+.task-detail-location-chevron {
+  display: block;
+  transition: transform 120ms ease;
+}
+
+.task-detail-location[aria-expanded="true"] .task-detail-location-chevron {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-detail-location-chevron {
+    transition: none;
+  }
+}
+
+/* Each path under its name, as wide as the popover, breaking after a slash
+   first and anywhere when it must; Copy sits at the end of its first line. */
+.task-detail-paths {
+  display: grid;
+  gap: var(--interface-space-3);
+  padding: var(--interface-space-1) 0 var(--interface-space-3);
+}
+
+.task-detail-paths[hidden] {
+  display: none;
+}
+
+.task-detail-path {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: var(--interface-space-4);
+}
+
+.task-detail-path-name {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+
+.task-detail-path-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The Thread and the Claude config directory: a name, the value, and Copy. */
+.task-detail-meta-line {
+  display: flex;
+  align-items: center;
+  gap: var(--interface-space-3);
+  min-width: 0;
+  min-height: var(--interface-compact-control-size);
+}
+
+.task-detail-meta-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-detail-meta-name {
+  flex: none;
+  color: var(--muted);
 }
 
 @media (max-width: 520px) {
@@ -71,22 +208,4 @@
     width: auto;
     margin: 0;
   }
-
-  .task-detail-popover dl {
-    grid-template-columns: 1fr;
-    gap: 0.1875rem;
-  }
-
-  .task-detail-popover dl div {
-    display: grid;
-    gap: 0.125rem;
-  }
-
-  .task-detail-popover dl div + div {
-    margin-top: 0.5rem;
-  }
-}
-
-.task-detail-popover dl div[hidden] {
-  display: none;
 }

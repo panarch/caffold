@@ -112,8 +112,11 @@ test("opens the agent's numbers above the pie in the Task details form", { tag: 
   await page.locator("caffold-task-detail-info .task-detail-info-button").click();
   const reference = await page.evaluate(([popover]) => {
     const style = getComputedStyle(popover);
-    const term = getComputedStyle(popover.querySelector("dt"));
-    const value = getComputedStyle(popover.querySelector("dd"));
+    // Task details names its Thread as the form names its terms.
+    const term = getComputedStyle(popover.querySelector(".task-detail-meta-name"));
+    const value = getComputedStyle(
+      popover.querySelector('[data-task-info-field="thread"]'),
+    );
     return {
       border: style.borderTopWidth,
       borderColor: style.borderTopColor,

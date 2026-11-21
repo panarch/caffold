@@ -62,7 +62,7 @@ test("scales visible Task controls without shrinking their touch targets", { tag
   await page.getByRole("button", { name: /Task details/ }).click();
   await page
     .locator(
-      ".task-detail-popover:popover-open .task-detail-archive-action .task-secondary-button",
+      '.task-detail-popover:popover-open [data-task-info-action="archive"]',
     )
     .scrollIntoViewIfNeeded();
   const compact = await taskInterfaceMetrics(page);
@@ -81,7 +81,7 @@ test("scales visible Task controls without shrinking their touch targets", { tag
   }
   await page
     .locator(
-      ".task-detail-popover:popover-open .task-detail-archive-action .task-secondary-button",
+      '.task-detail-popover:popover-open [data-task-info-action="archive"]',
     )
     .scrollIntoViewIfNeeded();
   const spacious = await taskInterfaceMetrics(page);
@@ -468,9 +468,9 @@ async function taskInterfaceMetrics(page) {
     ".task-git-button",
     ".task-github-button",
     ".task-terminal-button",
-    ".task-detail-popover:popover-open .task-detail-archive-action .task-secondary-button",
-    ".task-detail-popover dt",
-    ".task-detail-popover dd",
+    '.task-detail-popover:popover-open [data-task-info-action="archive"]',
+    ".task-detail-popover .task-detail-meta-name",
+    '.task-detail-popover [data-task-info-field="thread"]',
     ".task-detail-popover:popover-open",
   ]).then(async (handles) => [
     ...handles,

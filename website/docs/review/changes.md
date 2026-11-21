@@ -77,12 +77,12 @@ turn on the language.
 ![Settings → Language Servers with TypeScript/JavaScript on and its server running](../assets/screenshots/settings-language-servers-light-desktop.png#only-light)
 ![Settings → Language Servers with TypeScript/JavaScript on and its server running](../assets/screenshots/settings-language-servers-dark-desktop.png#only-dark)
 
-Then, in a Task in that repository, open the Task's details and choose **Turn
-on language servers**. The server first reads the whole repository; the
+Then, in a Task in that repository, open the Task's details and turn on
+**Language servers**. The server first reads the whole repository; the
 details show its progress, then that it is ready and how much memory it uses.
 
-![Task details with Turn on language servers](../assets/screenshots/task-details-language-servers-light-desktop.png#only-light)
-![Task details with Turn on language servers](../assets/screenshots/task-details-language-servers-dark-desktop.png#only-dark)
+![Task details with the Language servers switch](../assets/screenshots/task-details-language-servers-light-desktop.png#only-light)
+![Task details with the Language servers switch](../assets/screenshots/task-details-language-servers-dark-desktop.png#only-dark)
 
 If a server isn't installed, the details say so: for Rust, in the toolchain
 the repository uses, since each toolchain has its own rust-analyzer. **Ask an

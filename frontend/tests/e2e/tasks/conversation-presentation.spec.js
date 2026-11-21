@@ -1362,40 +1362,41 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   const taskDetailsPopover = tasksPage.locator(".task-detail-popover");
   await expect(taskDetailsPopover).toBeVisible();
   await expect(taskDetailsPopover).toContainText("idle");
-  await expect(taskDetailsPopover).toContainText(threadId);
-  await expect(taskDetailsPopover).toContainText(contextPath);
-  await expect(taskDetailsPopover).toContainText("Worktree");
-  await expect(taskDetailsPopover).toContainText("Branch");
-  await expect(taskDetailsPopover).toContainText("main");
+  await expect(
+    taskDetailsPopover.locator('[data-task-info-field="thread"]'),
+  ).toHaveText(threadId);
+  const location = taskDetailsPopover.locator('[data-task-info-field="location"]');
+  await expect(location.locator(".task-detail-location-repository")).toHaveText(
+    contextPath.split("/").at(-1),
+  );
+  await expect(location.locator(".task-detail-location-branch")).toHaveText("main");
+  await expect(
+    taskDetailsPopover.locator('[data-task-info-path="path"] .task-detail-path-value'),
+  ).toHaveText(contextPath);
   if (testInfo.project.name !== "phone") {
     const metadataLayout = await taskDetailsPopover.evaluate((popover) => {
-      const values = new Map(
-        [...popover.querySelectorAll("dl > div")].map((row) => [
-          row.querySelector("dt").textContent,
-          row.querySelector("dd"),
-        ]),
-      );
       const lineCount = (element) => {
         const range = document.createRange();
         range.selectNodeContents(element);
-        return [...range.getClientRects()].filter(({ width, height }) => width > 0 && height > 0)
-          .length;
+        return new Set(
+          [...range.getClientRects()]
+            .filter(({ width, height }) => width > 0 && height > 0)
+            .map(({ top }) => Math.round(top)),
+        ).size;
       };
       const rootFontSize = Number.parseFloat(
         getComputedStyle(document.documentElement).fontSize,
       );
       return {
-        maxWidth: Math.min(42 * rootFontSize, innerWidth - 1.5 * rootFontSize),
-        threadLines: lineCount(values.get("Thread")),
-        workingDirectoryLines: lineCount(values.get("Working directory")),
-        worktreeLines: lineCount(values.get("Worktree")),
+        expectedWidth: Math.min(28 * rootFontSize, innerWidth - 1.5 * rootFontSize),
+        threadLines: lineCount(popover.querySelector('[data-task-info-field="thread"]')),
+        locationLines: lineCount(popover.querySelector(".task-detail-location-parts")),
         width: popover.getBoundingClientRect().width,
       };
     });
-    expect(metadataLayout.width).toBeLessThan(metadataLayout.maxWidth);
+    expect(Math.abs(metadataLayout.width - metadataLayout.expectedWidth)).toBeLessThan(1);
     expect(metadataLayout.threadLines).toBe(1);
-    expect(metadataLayout.workingDirectoryLines).toBe(1);
-    expect(metadataLayout.worktreeLines).toBe(1);
+    expect(metadataLayout.locationLines).toBe(1);
   }
   const [taskDetailsButtonBox, taskDetailsPopoverBox] = await Promise.all([
     taskDetailsButton.boundingBox(),

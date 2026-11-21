@@ -13,6 +13,8 @@ const actions = registry.element(
   "caffold-task-detail-info-actions",
 ).prototype;
 const { ActionHints } = await import("#app/action-hints.js");
+const { KeyboardContexts } = await import("#app/keyboard-navigation.js");
+const { DrawnRef, DrawnRefs } = await import("#components/drawn-refs.js");
 after(() => registry.restore());
 
 // One of the components with the state and stand-ins a test gives it, drawn
@@ -24,6 +26,212 @@ function owner(prototype, state) {
     ...state,
   }));
 }
+
+const IDLE = { type: "idle" };
+
+// The popover's head and meta lines as Task Info draws them.
+function drawnInfo(snapshot, state = {}) {
+  const host = owner(info, {
+    snapshot: taskInfoSnapshot(snapshot),
+    pathsOpen: false,
+    ...state,
+  });
+  host.hints = new ActionHints(host);
+  host.keyboard = new KeyboardContexts(host);
+  host.infoButton = new DrawnRef(host);
+  host.infoPopover = new DrawnRef(host);
+  host.actions = new DrawnRef(host);
+  host.copies = new DrawnRefs(host);
+  const markup = templateHtml(host.render()).replace(/\s+/g, " ");
+  const field = (name) =>
+    markup.match(
+      new RegExp(`data-task-info-field="${name}"[^>]*>([^<]*)<`),
+    )?.[1] ?? null;
+  const location = markup.match(
+    /class="task-detail-location-parts">(.*?)<\/span> <span class="task-detail-location-chevron"/,
+  )?.[1];
+  return {
+    markup,
+    field,
+    location: location
+      ? [...location.matchAll(/<span>([^<]*)<\/span>|>(worktree)</g)].map(
+          ([, part, worktree]) => part ?? worktree,
+        )
+      : null,
+    paths: [
+      ...markup.matchAll(
+        /data-task-info-path="([a-z-]+)" > <span class="task-detail-path-name">([^<]*)<\/span> <span class="task-detail-path-value">(.*?)<\/span>/g,
+      ),
+    ].map(([, name, label, path]) => [name, label, path.replaceAll("<wbr>", "")]),
+    pathsHidden: /class="task-detail-paths" \?hidden="true"/.test(markup),
+  };
+}
+
+function canonical(fields = {}) {
+  return {
+    threadId: "62f05222-da19-4b65-ae32-fe14543574b7",
+    title: "Write the work log",
+    threadStatus: IDLE,
+    cwd: "/Users/me/Workspace/rust/codger",
+    cwdPath: "Users/me/Workspace/rust/codger",
+    relativeCwd: "",
+    worktree: {
+      rootPath: "Users/me/Workspace/rust/codger",
+      repositoryRootPath: "Users/me/Workspace/rust/codger",
+      branch: "main",
+      headSha: "1fb17151a4c0ffee",
+      relativeCwd: "",
+      linked: false,
+    },
+    ...fields,
+  };
+}
+
+const HOME = { root: "/", homePath: "Users/me" };
+const WORKTREE = "Users/me/Library/Application Support/Caffold/data/worktrees/1737fabc";
+
+test("heads the popover with the Task's title and status, and its whole Thread ID", () => {
+  const drawn = drawnInfo({
+    task: canonical(),
+    canonicalTaskAvailable: true,
+    serverPaths: HOME,
+  });
+  assert.equal(drawn.field("title"), "Write the work log");
+  assert.equal(drawn.field("status"), "idle");
+  assert.equal(drawn.field("thread"), "62f05222-da19-4b65-ae32-fe14543574b7");
+  assert.equal(drawn.field("claude-config-dir"), null);
+  assert.match(
+    drawnInfo({
+      task: canonical({ claudeConfigDir: "/Users/me/.claude-work" }),
+      canonicalTaskAvailable: true,
+    }).field("claude-config-dir"),
+    /^\/Users\/me\/\.claude-work$/,
+  );
+});
+
+test("leaves where the Task works out until its details are read", () => {
+  const drawn = drawnInfo({
+    task: { threadId: "thread-a", title: "Listed", threadStatus: IDLE },
+    canonicalTaskAvailable: false,
+  });
+  assert.equal(drawn.field("status"), "unavailable");
+  assert.equal(drawn.location, null);
+  assert.deepEqual(drawn.paths, []);
+});
+
+test("reads where the Task works as one line, and its paths as New Task reads a folder", () => {
+  const checkout = drawnInfo({
+    task: canonical(),
+    canonicalTaskAvailable: true,
+    serverPaths: HOME,
+  });
+  assert.deepEqual(checkout.location, ["codger", "main"]);
+  assert.deepEqual(checkout.paths, [
+    ["path", "Path", "~/Workspace/rust/codger"],
+  ]);
+  assert.equal(checkout.pathsHidden, true);
+  assert.equal(
+    drawnInfo(
+      { task: canonical(), canonicalTaskAvailable: true, serverPaths: HOME },
+      { pathsOpen: true },
+    ).pathsHidden,
+    false,
+  );
+
+  const worktree = drawnInfo({
+    task: canonical({
+      cwd: `/${WORKTREE}/frontend`,
+      cwdPath: `${WORKTREE}/frontend`,
+      worktree: {
+        rootPath: WORKTREE,
+        repositoryRootPath: "Users/me/Workspace/rust/codger",
+        branch: "try-ai-text-detectors",
+        headSha: "1290ff05",
+        relativeCwd: "frontend",
+        linked: true,
+      },
+    }),
+    canonicalTaskAvailable: true,
+    serverPaths: { root: "/" },
+  });
+  assert.deepEqual(worktree.location, [
+    "codger/frontend",
+    "try-ai-text-detectors",
+    "worktree",
+  ]);
+  assert.deepEqual(worktree.paths, [
+    ["repository", "Repository", "/Users/me/Workspace/rust/codger"],
+    ["worktree", "Worktree", `/${WORKTREE}`],
+    ["working-directory", "Working directory", `/${WORKTREE}/frontend`],
+  ]);
+  assert.match(worktree.markup, /\/<wbr>Workspace\/<wbr>rust/);
+
+  const subfolder = drawnInfo({
+    task: canonical({
+      cwdPath: "Users/me/Workspace/rust/codger/frontend",
+      worktree: { ...canonical().worktree, branch: null, relativeCwd: "frontend" },
+    }),
+    canonicalTaskAvailable: true,
+    serverPaths: { root: "Users" },
+  });
+  assert.deepEqual(subfolder.location, ["codger/frontend", "1fb17151"]);
+  assert.deepEqual(subfolder.paths, [
+    ["repository", "Repository", "Users/me/Workspace/rust/codger"],
+    [
+      "working-directory",
+      "Working directory",
+      "Users/me/Workspace/rust/codger/frontend",
+    ],
+  ]);
+
+  const outsideGit = drawnInfo({
+    task: canonical({
+      cwd: "/Users/me/notes",
+      cwdPath: "Users/me/notes",
+      worktree: null,
+    }),
+    canonicalTaskAvailable: true,
+    serverPaths: HOME,
+  });
+  assert.deepEqual(outsideGit.location, ["notes"]);
+  assert.deepEqual(outsideGit.paths, [["path", "Path", "~/notes"]]);
+
+  const outsideRoot = drawnInfo({
+    task: canonical({ cwd: "/Volumes/work/notes", cwdPath: null, worktree: null }),
+    canonicalTaskAvailable: true,
+    serverPaths: { root: "/Users/me" },
+  });
+  assert.deepEqual(outsideRoot.paths, [["path", "Path", "/Volumes/work/notes"]]);
+});
+
+test("folds its paths when the popover closes or another Task takes its place", () => {
+  const host = owner(info, {
+    snapshot: taskInfoSnapshot({ task: canonical(), canonicalTaskAvailable: true }),
+    pathsOpen: true,
+    infoPopover: { value: null },
+    infoButton: { value: null },
+    actions: { value: { setPopoverOpen() {} } },
+  });
+  info.handleBeforeToggle.call(host, {
+    target: host.infoPopover.value,
+    newState: "open",
+  });
+  assert.equal(host.pathsOpen, true);
+  info.handleBeforeToggle.call(host, {
+    target: host.infoPopover.value,
+    newState: "closed",
+  });
+  assert.equal(host.pathsOpen, false);
+
+  host.pathsOpen = true;
+  const previous = host.snapshot;
+  host.snapshot = taskInfoSnapshot({
+    task: canonical({ threadId: "thread-b" }),
+    canonicalTaskAvailable: true,
+  });
+  info.willUpdate.call(host, new Map([["snapshot", previous]]));
+  assert.equal(host.pathsOpen, false);
+});
 
 function drawnActions(snapshot, languageServers = {}) {
   const host = owner(actions, {
@@ -38,90 +246,227 @@ function drawnActions(snapshot, languageServers = {}) {
   });
   host.hints = new ActionHints(host);
   const markup = templateHtml(host.render()).replace(/\s+/g, " ");
-  const button = (type) =>
-    markup.match(new RegExp(`data-task-info-action="${type}"[^>]*>`))?.[0] ?? "";
-  return {
-    markup,
-    disabled: (type) => button(type).includes('?disabled="true"'),
+  // A row's label, description, and whether it is disabled, or null when the
+  // list leaves it out.
+  const row = (type) => {
+    const found = markup.match(
+      new RegExp(
+        `data-task-info-action="${type}"([^>]*)>.*?<span class="task-detail-action-label"[^>]*>([^<]*)</span ?> ?<span class="task-detail-action-description"[^>]*>([^<]*)</span ?>`,
+      ),
+    );
+    return found
+      ? {
+          label: found[2].trim(),
+          description: found[3].trim(),
+          disabled: found[1].includes('?disabled="true"'),
+        }
+      : null;
   };
+  // What hangs under the row whose action is `type`.
+  const under = (type) =>
+    markup
+      .split(`data-task-info-action="${type}"`)[1]
+      ?.match(/^.*?<\/(?:button|label)> (?:<div class="task-detail-action-under">(.*?)<\/div>)?/)?.[1] ??
+    "";
+  return { markup, row, under };
 }
 
-test("hides what a Task's prompts settled outside the reviewed mode", () => {
-  const task = { threadId: "thread-a", threadStatus: { type: "idle" } };
-  const hidden = (permissionMode) =>
-    /data-task-info-permission-instructions \?hidden="true"/.test(
-      drawnActions({ task, permissionMode }).markup,
-    );
-
-  assert.equal(hidden("approveForMe"), true);
-  assert.equal(hidden("caffold:ask-jev-first"), false);
+test("offers what a Task's prompts settled only under the reviewed mode", () => {
+  const task = { threadId: "thread-a", threadStatus: IDLE };
+  assert.equal(
+    drawnActions({ task, permissionMode: "approveForMe" }).row(
+      "permission-instructions",
+    ),
+    null,
+  );
+  assert.deepEqual(
+    drawnActions({ task, permissionMode: "caffold:ask-jev-first" }).row(
+      "permission-instructions",
+    ),
+    {
+      label: "What your prompts settled",
+      description: "What Jev reads before it answers a permission request here.",
+      disabled: false,
+    },
+  );
 });
 
-test("keeps Archive available through stale transport unless canonical status is active", () => {
+test("keeps Archive available through stale transport unless canonical status is active, and says why", () => {
   const task = {
     threadId: "thread-a",
     threadStatus: { type: "active", activeFlags: [] },
   };
-
-  assert.equal(
-    drawnActions({ task, transportState: "unavailable" }).disabled("archive"),
-    false,
+  assert.deepEqual(
+    drawnActions({ task, transportState: "unavailable" }).row("archive"),
+    {
+      label: "Archive task",
+      description: "Removes it from the active list.",
+      disabled: false,
+    },
   );
-  assert.equal(
+  assert.deepEqual(
     drawnActions({
       task,
       transportState: "unavailable",
       archiveBlockedByActive: true,
-    }).disabled("archive"),
-    true,
+    }).row("archive"),
+    {
+      label: "Archive task",
+      description: "Available when the Task is idle.",
+      disabled: true,
+    },
+  );
+  assert.deepEqual(
+    drawnActions({ task, forkState: { loading: true, error: null } }).row(
+      "archive",
+    ),
+    {
+      label: "Archive task",
+      description: "Another Task action is in progress.",
+      disabled: true,
+    },
+  );
+  const archiving = drawnActions({
+    task,
+    archiveState: { loading: true, error: null },
+  });
+  assert.deepEqual(archiving.row("archive"), {
+    label: "Archiving...",
+    description: "Removes it from the active list.",
+    disabled: true,
+  });
+  assert.match(archiving.markup, /task-detail-action-icon is-busy/);
+});
+
+test("says Archive removes the worktree Caffold prepared and keeps its branch", () => {
+  assert.equal(
+    drawnActions({
+      task: { threadId: "thread-a", threadStatus: IDLE },
+      worktreePrepared: true,
+    }).row("archive").description,
+    "Removes its worktree and keeps the branch.",
   );
 });
 
-test("keeps Fork unavailable without canonical Detail", () => {
-  const drawn = drawnActions({
-    task: { threadId: "thread-a", threadStatus: { type: "idle" } },
-    canonicalTaskAvailable: false,
-    transportState: "ready",
-    provider: "codex",
-  });
-
-  assert.equal(drawn.disabled("fork"), true);
+test("offers Discard changes and archive under Archive when its refusal allows it", () => {
+  const error = Object.assign(
+    new Error("managed worktree has uncommitted changes: /tmp/worktree"),
+    { allowedActions: ["forceArchive"], worktreeId: "worktree-1" },
+  );
+  const under = drawnActions({
+    task: { threadId: "thread-a", threadStatus: IDLE },
+    archiveState: { loading: false, error },
+  }).under("archive");
   assert.match(
-    drawn.markup,
-    /task-detail-fork-availability" \?hidden="false" >Fork is unavailable until Task details load\.</,
+    under,
+    /task-detail-archive-error" role="alert" >managed worktree has uncommitted changes: \/tmp\/worktree</,
+  );
+  assert.match(
+    under,
+    /data-task-info-action="force-archive".*<span>Discard changes and archive<\/span>/,
+  );
+});
+
+test("leaves Fork out for an agent that cannot fork, and says why another cannot fork now", () => {
+  const task = { threadId: "thread-a", threadStatus: IDLE };
+  const fork = (snapshot) =>
+    drawnActions({
+      task,
+      canonicalTaskAvailable: true,
+      transportState: "ready",
+      provider: "codex",
+      ...snapshot,
+    }).row("fork");
+
+  assert.equal(fork({ provider: "antigravity" }), null);
+  assert.equal(fork({ provider: "" }), null);
+  assert.deepEqual(fork({ provider: "", canonicalTaskAvailable: false }), {
+    label: "Fork task",
+    description: "Available once Task details load.",
+    disabled: true,
+  });
+  for (const provider of ["codex", "claude", "grok", "copilot"]) {
+    assert.deepEqual(fork({ provider }), {
+      label: "Fork task",
+      description: "Copies the conversation, not the files, into a new Task.",
+      disabled: false,
+    });
+  }
+  assert.deepEqual(fork({ canonicalTaskAvailable: false }), {
+    label: "Fork task",
+    description: "Available once Task details load.",
+    disabled: true,
+  });
+  assert.equal(
+    fork({ transportState: "unavailable" }).description,
+    "Unavailable while the Task connection is interrupted.",
+  );
+  assert.equal(
+    fork({ archiveState: { loading: true, error: null } }).description,
+    "Another Task action is in progress.",
+  );
+  assert.equal(
+    fork({ task: { threadId: "thread-a", threadStatus: { type: "active", activeFlags: [] } } })
+      .description,
+    "Available when the Task is idle.",
+  );
+  assert.deepEqual(fork({ forkState: { loading: true, error: null } }), {
+    label: "Forking...",
+    description: "Copies the conversation, not the files, into a new Task.",
+    disabled: true,
+  });
+});
+
+test("keeps Fork dimmed and offers Open forked task under it when the fork was made but could not be opened", () => {
+  const error = Object.assign(
+    new Error("The fork was created, but its details could not be opened: gone"),
+    { createdTaskId: "child-1" },
+  );
+  const drawn = drawnActions({
+    task: { threadId: "thread-a", threadStatus: IDLE },
+    canonicalTaskAvailable: true,
+    transportState: "ready",
+    provider: "claude",
+    forkState: { loading: false, error },
+  });
+  assert.equal(drawn.row("fork").disabled, true);
+  assert.match(
+    drawn.under("fork"),
+    /task-detail-fork-error" role="alert" >The fork was created, but its details could not be opened: gone<.*href="\/tasks\/child-1".*<span>Open forked task<\/span>/,
   );
 });
 
 test("offers Pin or Unpin only for a Task the list has placed", () => {
-  const task = { threadId: "thread-a", threadStatus: { type: "idle" } };
-  const pinBlock = (snapshot) =>
-    drawnActions({ task, ...snapshot }).markup.match(
-      /task-detail-pin-action"[^>]*\?hidden="(true|false)" > <p>([^<]*)<\/p>.*?data-task-info-action="(pin|unpin)"[^>]*>.*?<span>([^<]*)<\/span> ?<\/button>/,
-    )?.slice(1);
-
-  assert.equal(pinBlock({ pinned: null })[0], "true");
-  assert.deepEqual(pinBlock({ pinned: false }), [
-    "false",
-    "Pinned Tasks stay at the top of the Task list and the Task Switcher.",
-    "pin",
-    "Pin task",
-  ]);
-  assert.deepEqual(pinBlock({ pinned: true }), [
-    "false",
-    "This Task is pinned. Unpinning returns it to the top of its Section.",
-    "unpin",
-    "Unpin task",
-  ]);
-  assert.equal(
-    pinBlock({ pinned: false, pinState: { loading: true, error: null } })[3],
-    "Pinning...",
+  const task = { threadId: "thread-a", threadStatus: IDLE };
+  assert.equal(drawnActions({ task, pinned: null }).row("pin"), null);
+  assert.deepEqual(drawnActions({ task, pinned: false }).row("pin"), {
+    label: "Pin task",
+    description: "Keep it at the top of the Task list.",
+    disabled: false,
+  });
+  assert.deepEqual(drawnActions({ task, pinned: true }).row("unpin"), {
+    label: "Unpin task",
+    description: "Return it to its Section.",
+    disabled: false,
+  });
+  assert.deepEqual(
+    drawnActions({
+      task,
+      pinned: false,
+      pinState: { loading: true, error: null },
+    }).row("pin"),
+    {
+      label: "Pinning...",
+      description: "Keep it at the top of the Task list.",
+      disabled: true,
+    },
   );
   assert.equal(
     drawnActions({
       task,
       pinned: true,
       pinState: { loading: true, error: null },
-    }).disabled("unpin"),
+    }).row("unpin").disabled,
     true,
   );
   assert.match(
@@ -129,8 +474,28 @@ test("offers Pin or Unpin only for a Task the list has placed", () => {
       task,
       pinned: false,
       pinState: { loading: false, error: new Error("Pin failed.") },
-    }).markup,
-    /task-detail-pin-error" role="alert" \?hidden="false" >Pin failed\.</,
+    }).under("pin"),
+    /task-detail-pin-error" role="alert" >Pin failed\.</,
+  );
+});
+
+test("lists the rows in the popover's order, with Archive set off by its own line", () => {
+  const markup = drawnActions(
+    {
+      task: { threadId: "thread-a", threadStatus: IDLE },
+      canonicalTaskAvailable: true,
+      provider: "codex",
+      permissionMode: "caffold:ask-jev-first",
+      pinned: false,
+    },
+    {
+      repository: { path: "repo", enabled: false, servers: [server("rust", "off")] },
+      fresh: true,
+    },
+  ).markup;
+  assert.match(
+    markup,
+    /^ ?<hr class="task-detail-actions-divider">.*"permission-instructions".*"pin".*"turn-on-language-servers".*"fork".*<hr class="task-detail-actions-divider">.*"archive"/,
   );
 });
 
@@ -146,56 +511,65 @@ function server(language, state, fields = {}) {
   };
 }
 
-// The Language servers section's paragraphs and its buttons' labels, with
-// whether each button is disabled.
+// The Language servers row: its description, its switch's action and whether
+// it is disabled, and what hangs under it.
 function languageServersBlock(languageServers) {
-  const task = { threadId: "thread-a", threadStatus: { type: "idle" } };
-  const markup = drawnActions({ task, pinned: false }, languageServers).markup;
-  const block = markup.match(
-    /task-detail-language-servers-action" \?hidden="(true|false)" >(.*?)<p class="task-detail-action-error/,
+  const task = { threadId: "thread-a", threadStatus: IDLE };
+  const { markup } = drawnActions({ task, pinned: false }, languageServers);
+  const row = markup.match(
+    /class="task-detail-action task-detail-language-servers-action" >(.*?)<\/label>(?: <div class="task-detail-action-under">(.*?)<\/div>)?/,
   );
+  if (!row) {
+    return { present: false };
+  }
+  const switchControl = row[1].match(
+    /role="switch".*?data-task-info-action="([a-z-]+)".*?\?disabled="(true|false)"/,
+  );
+  const under = row[2] ?? "";
   return {
-    hidden: block[1] === "true",
-    paragraphs: [...block[2].matchAll(/<p[^>]*>([^<]*)<\/p>/g)].map(
+    present: true,
+    description: row[1].match(
+      /task-detail-action-description"[^>]*>([^<]*)</,
+    )[1],
+    switch: [switchControl[1], switchControl[2] === "true"],
+    notes: [...under.matchAll(/<p class="task-detail-action-note[^"]*"[^>]*>([^<]*)<\/p>/g)].map(
       ([, text]) => text,
     ),
     buttons: [
-      ...block[2].matchAll(
-        /data-task-info-action="([a-z-]+)"[^>]*?(?:\?disabled="(true|false)"[^>]*)?>.*?<span>([^<]*)<\/span> ?<\/button>/g,
+      ...under.matchAll(
+        /data-task-info-action="([a-z-]+)".*?<span>([^<]*)<\/span> ?<\/button>/g,
       ),
-    ].map(([, action, disabled, label]) => [action, label, disabled === "true"]),
-    markup,
+    ].map(([, action, label]) => [action, label]),
+    under,
+    busy: /task-detail-action-icon is-busy/.test(row[1]),
   };
 }
 
-const ABOUT =
-  "Language servers answer Go to definition and Find references in this repository's code.";
+const DESCRIPTION = "Go to definition and Find references.";
 
-test("leaves the Language servers section out until the repository lists a server", () => {
-  assert.equal(languageServersBlock({}).hidden, true);
+test("leaves the Language servers row out until the repository lists a server", () => {
+  assert.equal(languageServersBlock({}).present, false);
   assert.equal(
     languageServersBlock({
       repository: { path: "repo", enabled: false, servers: [] },
       fresh: true,
-    }).hidden,
-    true,
+    }).present,
+    false,
   );
 });
 
-test("offers to turn a repository's language servers on, and says nothing more while off", () => {
+test("offers a switch that turns a repository's language servers on, and says nothing more while off", () => {
   const block = languageServersBlock({
     repository: { path: "repo", enabled: false, servers: [server("rust", "off")] },
     fresh: true,
   });
-  assert.equal(block.hidden, false);
-  assert.deepEqual(block.paragraphs, [ABOUT]);
-  assert.deepEqual(block.buttons, [
-    ["turn-on-language-servers", "Turn on language servers", false],
-  ]);
-  assert.match(block.markup, /task-detail-pin-action.*task-detail-language-servers-action.*task-detail-fork-action/);
+  assert.equal(block.description, DESCRIPTION);
+  assert.deepEqual(block.switch, ["turn-on-language-servers", false]);
+  assert.deepEqual(block.notes, []);
+  assert.deepEqual(block.buttons, []);
 });
 
-test("tells each language's state while on, with progress and memory when known", () => {
+test("tells each language's state under the row while on, with progress and memory when known", () => {
   const block = languageServersBlock({
     repository: {
       path: "repo",
@@ -207,13 +581,11 @@ test("tells each language's state while on, with progress and memory when known"
     },
     fresh: true,
   });
-  assert.deepEqual(block.paragraphs, [
-    ABOUT,
+  assert.equal(block.description, DESCRIPTION);
+  assert.deepEqual(block.switch, ["turn-off-language-servers", false]);
+  assert.deepEqual(block.notes, [
     "Rust: ready · rust-analyzer · 2.8 GB",
     "TypeScript/JavaScript: sleeping",
-  ]);
-  assert.deepEqual(block.buttons, [
-    ["turn-off-language-servers", "Turn off language servers", false],
   ]);
   assert.deepEqual(
     languageServersBlock({
@@ -223,19 +595,19 @@ test("tells each language's state while on, with progress and memory when known"
         servers: [server("rust", "ready", { memoryBytes: 671_088_640 })],
       },
       fresh: true,
-    }).paragraphs[1],
-    "Rust: ready · rust-analyzer · 640 MB",
+    }).notes,
+    ["Rust: ready · rust-analyzer · 640 MB"],
   );
   assert.deepEqual(
     languageServersBlock({
       repository: { path: "repo", enabled: true, servers: [server("rust", "ready")] },
       fresh: true,
-    }).paragraphs[1],
-    "Rust: ready · rust-analyzer",
+    }).notes,
+    ["Rust: ready · rust-analyzer"],
   );
 });
 
-test("holds the button busy while a server gets ready or the switch turns", () => {
+test("holds the switch while a server gets ready or the switch turns, and says so", () => {
   const starting = languageServersBlock({
     repository: {
       path: "repo",
@@ -244,31 +616,27 @@ test("holds the button busy while a server gets ready or the switch turns", () =
     },
     fresh: true,
   });
-  assert.deepEqual(starting.paragraphs, [
-    ABOUT,
+  assert.equal(starting.description, "Starting language servers...");
+  assert.deepEqual(starting.switch, ["turn-off-language-servers", true]);
+  assert.deepEqual(starting.notes, [
     "Rust: getting ready · Indexing 402/407 (caffold)",
   ]);
-  assert.deepEqual(starting.buttons, [
-    ["turn-off-language-servers", "Starting language servers...", true],
-  ]);
-  assert.match(starting.markup, /task-detail-action-icon is-busy/);
+  assert.equal(starting.busy, true);
 
   const turningOn = languageServersBlock({
     repository: { path: "repo", enabled: false, servers: [server("rust", "off")] },
     fresh: true,
     turning: "on",
   });
-  assert.deepEqual(turningOn.buttons, [
-    ["turn-on-language-servers", "Starting language servers...", true],
-  ]);
+  assert.equal(turningOn.description, "Starting language servers...");
+  assert.deepEqual(turningOn.switch, ["turn-on-language-servers", true]);
   const turningOff = languageServersBlock({
     repository: { path: "repo", enabled: true, servers: [server("rust", "ready")] },
     fresh: true,
     turning: "off",
   });
-  assert.deepEqual(turningOff.buttons, [
-    ["turn-off-language-servers", "Turning off language servers...", true],
-  ]);
+  assert.equal(turningOff.description, "Turning off language servers...");
+  assert.deepEqual(turningOff.switch, ["turn-off-language-servers", true]);
 });
 
 const RUST_NOT_INSTALLED = {
@@ -284,7 +652,7 @@ const TYPESCRIPT_NOT_INSTALLED = {
   checkCommand: "typescript-language-server --version",
 };
 
-test("says which check failed for each language, with what a server that could not start printed, and offers one install", () => {
+test("says which check failed for each language, with what a server that could not start printed, and offers one install under the row", () => {
   const block = languageServersBlock({
     repository: {
       path: "repo",
@@ -296,14 +664,12 @@ test("says which check failed for each language, with what a server that could n
     },
     fresh: true,
   });
-  assert.deepEqual(block.paragraphs, [
-    ABOUT,
+  assert.deepEqual(block.notes, [
     "Rust: rust-analyzer is not installed for the 1.94-aarch64-apple-darwin toolchain.",
     "TypeScript/JavaScript: typescript-language-server stopped.",
   ]);
   assert.deepEqual(block.buttons, [
-    ["install-language-servers", "Ask an agent to install rust-analyzer", false],
-    ["turn-off-language-servers", "Turn off language servers", false],
+    ["install-language-servers", "Ask an agent to install rust-analyzer"],
   ]);
 
   const couldNotStart = languageServersBlock({
@@ -318,14 +684,15 @@ test("says which check failed for each language, with what a server that could n
     },
     fresh: true,
   });
-  assert.deepEqual(couldNotStart.paragraphs, [
-    ABOUT,
+  assert.deepEqual(couldNotStart.notes, [
     "Rust: rust-analyzer could not start.",
     "could not load the sysroot",
   ]);
-  assert.deepEqual(couldNotStart.buttons, [
-    ["turn-off-language-servers", "Turn off language servers", false],
-  ]);
+  assert.match(
+    couldNotStart.under,
+    /task-detail-language-server-said" data-language-server-said="rust" >could not load the sysroot/,
+  );
+  assert.deepEqual(couldNotStart.buttons, []);
 });
 
 test("one install button covers every server that is not installed", () => {
@@ -340,30 +707,26 @@ test("one install button covers every server that is not installed", () => {
     },
     fresh: true,
   });
-  assert.deepEqual(block.paragraphs, [
-    ABOUT,
+  assert.deepEqual(block.notes, [
     "Rust: rust-analyzer is not installed for the 1.94-aarch64-apple-darwin toolchain.",
     "TypeScript/JavaScript: typescript-language-server is not installed.",
   ]);
   assert.deepEqual(block.buttons, [
-    ["install-language-servers", "Ask an agent to install 2 servers", false],
-    ["turn-off-language-servers", "Turn off language servers", false],
+    ["install-language-servers", "Ask an agent to install 2 servers"],
   ]);
 });
 
-test("shows only the reason, and no choice, while the last answer could not be read again", () => {
+test("shows only the reason under the row, and holds the switch, while the last answer could not be read again", () => {
   const block = languageServersBlock({
     repository: { path: "repo", enabled: true, servers: [server("rust", "ready")] },
     fresh: false,
     error: new Error("The server did not answer."),
   });
-  assert.deepEqual(block.paragraphs, [ABOUT]);
-  assert.deepEqual(block.buttons, [
-    ["turn-off-language-servers", "Turn off language servers", true],
-  ]);
+  assert.deepEqual(block.notes, []);
+  assert.deepEqual(block.switch, ["turn-off-language-servers", true]);
   assert.match(
-    block.markup,
-    /task-detail-language-servers-error" role="alert" \?hidden="false" >The server did not answer\.</,
+    block.under,
+    /task-detail-language-servers-error" role="alert" >The server did not answer\.</,
   );
 });
 
@@ -481,6 +844,7 @@ test("tells its actions when its own popover opens and closes", () => {
   const popover = {};
   const button = {};
   const infoOwner = owner(info, {
+    pathsOpen: false,
     infoPopover: { value: popover },
     infoButton: { value: button },
     actions: {

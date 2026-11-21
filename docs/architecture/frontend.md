@@ -2599,8 +2599,9 @@ stay mounted while hidden; the existing owner controls their lifetime.
 
 A shared style is a stylesheet directly under a `component-styles/` directory
 at the nearest common owner of the components that use it.
-`frontend/component-styles/` holds `compact-icon-button.css` and
-`secondary-button.css`, the bordered text button; `pages/component-styles/`
+`frontend/component-styles/` holds `compact-icon-button.css`,
+`secondary-button.css`, the bordered text button, and `switch.css`, a switch
+drawn on its own checkbox; `pages/component-styles/`
 holds `busy-spin.css`; `pages/(task-workspace)/tasks/component-styles/` holds
 `action-icon.css`, the icon in a Tasks action. A shared style's rules start at
 `:scope`, name no consumer, and may define their own keyframes; its head
@@ -2616,6 +2617,11 @@ Git/GitHub Back controls, terminal and file refresh controls, pagination, and
 Task/Notes Info. Local colors, margins, visibility and native-state appearance
 remain with each owner. Regular-size Back controls and controls with different
 surfaces keep their existing styles.
+
+`switch.css` draws the track on a `role="switch"` checkbox and the knob on its
+`::before`, and moves the knob once the box is checked. Settings → Keyboard,
+Settings → Language Servers, and the Language servers row in Task details use
+it; each owner places the box and draws its focus.
 
 `busy-spin.css` turns a busy element in place, one turn every 0.8 s, and stops
 it under reduced motion; the element's shape stays with its owner. Rings that

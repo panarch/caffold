@@ -123,7 +123,7 @@ answers by reading its repository's status again.
 
 [Frontend Architecture](frontend.md#names-in-code) owns the name menu, the
 places list, and `G`. Task details reads its repository once before its
-popover opens, so the section and its button are there for a keyboard session
+popover opens, so its row and switch are there for a keyboard session
 that opens it, then again as it opens, looking again for failed servers, and
 every second while a server is starting. Its section has one line per language, which says which check
 failed and, below it, what a server that could not start printed. One button

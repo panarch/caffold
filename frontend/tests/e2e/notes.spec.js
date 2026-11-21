@@ -507,7 +507,7 @@ test("Action Hints copy the Note path from inside Note details", { tag: "@server
     .toBe("Projects / Decisions / Storage decision (note id: storage)");
 });
 
-test("Note details actions measure the same as the Task details actions, with icons placed as File details places Download's", { tag: "@all-viewports" }, async ({
+test("Note details actions measure the same as File details Download, with their icons placed as Download's", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const actionGeometry = async (section, button) => section.evaluate((element, control) => {
@@ -542,17 +542,14 @@ test("Note details actions measure the same as the Task details actions, with ic
 
   await mockAgentModels(page);
   const { taskScenario, taskReview } = await openCompletedTaskForReview(page);
-  await page.locator("caffold-task-detail-info .task-detail-info-button").click();
-  const taskSection = page.locator(".task-detail-popover .task-detail-fork-action");
-  await expect(taskSection).toBeVisible();
-  const task = await actionGeometry(taskSection, taskSection.locator(':scope > button[data-task-info-action="fork"]'));
-
   await page.goto(`/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=alpha.rs`);
   const viewer = taskReview.locator("caffold-review-file-viewer:not([hidden])");
   await expect(viewer).toContainText("pub const ALPHA");
   await viewer.locator(".viewer-info-button").click();
-  const fileDownload = viewer.locator(".viewer-meta-popover > .viewer-meta-actions > .viewer-download-link");
+  const fileSection = viewer.locator(".viewer-meta-popover > .viewer-meta-actions");
+  const fileDownload = fileSection.locator(":scope > .viewer-download-link");
   await expect(fileDownload.locator(".viewer-download-svg")).toBeVisible();
+  const file = await actionGeometry(fileSection, fileDownload);
   const fileIcon = await iconPlacement(fileDownload);
 
   await stubNotes(page);
@@ -575,9 +572,9 @@ test("Note details actions measure the same as the Task details actions, with ic
     notesSection.locator(":scope > caffold-notes-info-download > a"),
   );
 
-  expect(copyPath).toEqual(task);
-  expect(copyMarkdown).toEqual(task);
-  expect(download).toEqual(task);
+  expect(copyPath).toEqual(file);
+  expect(copyMarkdown).toEqual(file);
+  expect(download).toEqual(file);
   for (const control of [
     ":scope > caffold-notes-info-copy-path > button",
     ":scope > caffold-notes-info-copy-markdown > button",
@@ -816,13 +813,10 @@ test("a phone spreads Note details across the screen under its Info button, as T
   const popoverPlacement = async (popover, anchor) => popover.evaluate((element, anchorElement) => {
     const anchor = anchorElement.getBoundingClientRect();
     const box = element.getBoundingClientRect();
-    const label = element.querySelector("dt").getBoundingClientRect();
-    const value = element.querySelector("dd").getBoundingClientRect();
     return {
       left: box.left,
       rightGap: document.documentElement.clientWidth - box.right,
       gapBelowAnchor: box.top - anchor.bottom,
-      valueUnderLabel: value.top >= label.bottom,
     };
   }, await anchor.elementHandle());
 
@@ -844,8 +838,14 @@ test("a phone spreads Note details across the screen under its Info button, as T
     noteDetails,
     workspace.getByRole("button", { name: "Note details" }),
   );
+  // Each Note detail's value sits under its name.
+  const valueUnderLabel = await noteDetails.evaluate((element) =>
+    element.querySelector("dd").getBoundingClientRect().top >=
+      element.querySelector("dt").getBoundingClientRect().bottom,
+  );
 
-  expect(notes).toEqual({ ...task, valueUnderLabel: true });
+  expect(notes).toEqual(task);
+  expect(valueUnderLabel).toBe(true);
   await captureReviewScreenshot(page, testInfo, "notes-phone-details");
 });
 

@@ -21,6 +21,7 @@ import "#components/segmented-control.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import type { CaffoldSegmentedControl } from "#components/segmented-control.js";
 import type { ComposerSubmission } from "../components/composer.js";
+import type { ServerPaths } from "../components/directory-path.js";
 import {
   type TaskTransportState,
   taskThreadStatusType,
@@ -144,6 +145,7 @@ export class CaffoldDetailLayout extends CaffoldElement {
   private managedTask: ListedTask | null = null;
   private managedTaskRepository = false;
   private managedTaskPinned = false;
+  private serverPaths: ServerPaths = {};
   private sectionActivationKey = "";
   private sharedDomainContextKey = "";
   private domainActivationPromise: Promise<unknown> | null = null;
@@ -453,7 +455,8 @@ export class CaffoldDetailLayout extends CaffoldElement {
     return this.taskDetail.value?.streamState;
   }
 
-  setServerPaths(server: { root?: string; homePath?: string | null }) {
+  setServerPaths(server: ServerPaths) {
+    this.serverPaths = { ...server };
     this.sectionDetail.value?.setServerPaths(server);
   }
 
@@ -858,6 +861,8 @@ export class CaffoldDetailLayout extends CaffoldElement {
       // a Section cannot be.
       pinned: this.listedTask() ? this.managedTaskPinned : null,
       pinState: snapshot?.pinState,
+      worktreePrepared: Boolean(this.listedTask()?.worktree),
+      serverPaths: this.serverPaths,
     });
     const reviewChoice = !repository
       ? "review"

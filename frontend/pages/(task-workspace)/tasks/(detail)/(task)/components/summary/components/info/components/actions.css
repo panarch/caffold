@@ -2,64 +2,162 @@
   display: block;
 }
 
-.task-detail-task-action {
-  display: grid;
-  justify-items: start;
-  gap: var(--interface-space-3);
-  margin-top: var(--interface-space-6);
-  padding-top: var(--interface-space-5);
-  border-top: 1px solid var(--border);
+/* One line between the Task's details and the rows, and one before Archive. */
+.task-detail-actions-divider {
+  height: 1px;
+  margin: var(--interface-space-3) 0;
+  border: 0;
+  background: var(--border);
 }
 
-.task-detail-task-action > p {
-  max-width: 36rem;
-  margin: 0;
+.task-detail-actions-divider:first-child {
+  margin-top: var(--interface-space-5);
+}
+
+/* Every row is an icon, what the row does on the first line, and below it
+   what it does or why it cannot now, so the actions read as one list. A row
+   is as wide as the popover, reaching into its padding so the hover fills it,
+   and its words wrap instead of widening it. The end keeps room for the
+   row's keyboard badge. */
+.task-detail-action {
+  display: grid;
+  grid-template-columns: var(--interface-icon-small-size) minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: var(--interface-control-gap);
+  width: calc(100% + 2 * var(--interface-space-3));
+  margin-inline: calc(0rem - var(--interface-space-3));
+  padding: var(--interface-space-3)
+    calc(var(--interface-space-3) + var(--keyboard-choice-slot-size))
+    var(--interface-space-3) var(--interface-space-3);
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+  text-align: start;
+}
+
+.task-detail-action:focus-visible,
+.task-detail-action:has(input:focus-visible) {
+  background: var(--control-hover-bg);
+  outline: none;
+}
+
+@media (hover: hover) {
+  .task-detail-action:not(:disabled, :has(input:disabled)):hover {
+    background: var(--control-hover-bg);
+  }
+}
+
+.task-detail-action:disabled {
+  cursor: default;
+}
+
+.task-detail-action:disabled > * {
+  color: var(--disabled-text);
+}
+
+.task-detail-action > .task-detail-action-icon {
+  grid-row: 1 / span 2;
+  grid-column: 1;
+  margin-top: calc(
+    (
+      var(--interface-meta-font-size) *
+      var(--interface-line-height) -
+      var(--interface-icon-small-size)
+    ) /
+    2
+  );
+  color: var(--control-fg);
+}
+
+.task-detail-action-label {
+  grid-row: 1;
+  grid-column: 2;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-detail-action-description {
+  grid-row: 2;
+  grid-column: 2;
+  min-width: 0;
   color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* The Language servers row ends in its switch, which carries the badge. */
+.task-detail-language-servers-action {
+  padding-inline-end: var(--interface-space-3);
+}
+
+.task-detail-language-servers-action:has(input:disabled) {
+  cursor: default;
+}
+
+.task-detail-language-servers-switch {
+  grid-row: 1 / span 2;
+  grid-column: 3;
+  align-self: center;
+}
+
+/* The row shows the switch's focus. */
+.task-detail-language-servers-switch:focus-visible {
+  outline: none;
+}
+
+/* What a row reports, such as each server's state or why its last request
+   failed, and what can be done about it, set in to where the row's words
+   start. */
+.task-detail-action-under {
+  display: grid;
+  justify-items: start;
+  gap: var(--interface-space-1);
+  padding: 0 0 var(--interface-space-3)
+    calc(var(--interface-icon-small-size) + var(--interface-control-gap));
   font-size: var(--interface-meta-font-size);
   line-height: var(--interface-line-height);
 }
 
-/* A server's progress or what it said can name a long path, which breaks
-   anywhere rather than widening the popover. */
-.task-detail-language-servers-action > p {
+.task-detail-action-under > p {
+  max-width: 100%;
+  margin: 0;
+  color: var(--muted);
   overflow-wrap: anywhere;
 }
 
 /* What a server that did not start said sits under its line, set back. */
-.task-detail-language-servers-action > .task-detail-language-server-said {
+.task-detail-action-under > .task-detail-language-server-said {
   padding-left: var(--interface-space-6);
   color: var(--muted-subtle);
 }
 
-/* Buttons side by side, each as wide as its label; the next one moves to a
-   new line when the popover is too narrow, far enough down that the touch
-   areas do not overlap. */
-.task-detail-action-row {
-  display: flex;
-  flex-wrap: wrap;
-  justify-self: stretch;
-  gap: max(
-      var(--interface-space-3),
-      calc(2 * var(--interface-compact-hit-outset))
-    )
-    var(--interface-space-3);
-  min-width: 0;
+.task-detail-action-under > .task-detail-action-error {
+  color: var(--danger);
 }
 
-.task-detail-task-action .task-secondary-button {
+/* A follow-up action, the small bordered button File details gives Download,
+   under what it answers. */
+.task-detail-follow-up {
   position: relative;
   /* As close as the Note and File details actions hold their icons, nearer
      than the shared button's gap. */
   gap: 0.3125rem;
   min-height: var(--interface-compact-hit-size);
-  margin-block: calc(0rem - var(--interface-compact-hit-outset));
+  margin-block: calc(
+      var(--interface-space-2) -
+      var(--interface-compact-hit-outset)
+    )
+    calc(0rem - var(--interface-compact-hit-outset));
   border: 0;
   background: transparent;
   font-size: var(--interface-meta-font-size);
   text-decoration: none;
 }
 
-.task-detail-task-action .task-secondary-button::before {
+.task-detail-follow-up::before {
   position: absolute;
   inset: var(--interface-compact-hit-outset) 0;
   border: 1px solid var(--border);
@@ -68,23 +166,23 @@
   content: "";
 }
 
-.task-detail-task-action .task-secondary-button:focus-visible::before {
+.task-detail-follow-up:focus-visible::before {
   border-color: var(--border-strong);
 }
 
 @media (hover: hover) {
-  .task-detail-task-action .task-secondary-button:not(:disabled):hover::before {
+  .task-detail-follow-up:not(:disabled):hover::before {
     border-color: var(--border-strong);
   }
 }
 
-.task-detail-task-action .task-secondary-button:disabled {
+.task-detail-follow-up:disabled {
   color: var(--disabled-text);
   cursor: not-allowed;
   opacity: 0.58;
 }
 
-.task-detail-task-action .task-secondary-button:disabled::before {
+.task-detail-follow-up:disabled::before {
   border-color: var(--border);
   background: var(--surface-muted);
 }
@@ -100,12 +198,4 @@
   width: 100%;
   height: 100%;
   stroke-width: 2.2;
-}
-
-.task-detail-task-action .task-detail-action-error {
-  color: var(--danger);
-}
-
-.task-detail-task-action[hidden] {
-  display: none;
 }
