@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { installTaskApiFixture, taskDetailFixture } from "../support/task-api-fixture.js";
-import { captureReviewScreenshot, emitTaskDetailBootstrap } from "../support/task-fixtures.js";
+import { captureReviewScreenshot, emitTaskDetailBootstrap, isScrolledToBottom } from "../support/task-fixtures.js";
 
 test("menus switch between their own anchors and mobile placement when resized", { tag: "@all-viewports" }, async ({ page }) => {
   await installCatalog(page);
@@ -181,7 +181,7 @@ test("retains two readable columns and model-specific controls at each viewport"
   await captureReviewScreenshot(page, testInfo, "model-picker-short");
 });
 
-test("keeps long names readable and selection stable while scrolling a long model list", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
+test("scrolls a long model list in place with readable names, stable selection, and its settings in view", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   const longName = "Model-with-an-unusually-long-unbroken-name-for-inspection";
   const models = Array.from({ length: 22 }, (_, index) => ({
     ...catalog()[0], model: `long-${index}`, displayName: `${longName}-${index}`, isDefault: index === 0,
@@ -191,11 +191,13 @@ test("keeps long names readable and selection stable while scrolling a long mode
   await page.goto("/tasks/new?cwd=src");
   const picker = page.locator(".task-new-form caffold-task-turn-options");
   const menu = picker.locator(".task-model-popover");
-  await picker.locator(".task-model-button").click();
+  const trigger = picker.locator(".task-model-button");
+  const list = menu.locator(".task-model-list");
+  await trigger.click();
   await expect(menu).toBeVisible();
   await menu.locator('[data-model="long-21"]').click();
   await expect(menu.locator('[data-model="long-21"]')).toHaveAttribute("aria-pressed", "true");
-  const before = await menu.evaluate((element) => element.scrollTop);
+  const before = await list.evaluate((element) => element.scrollTop);
   expect(before).toBeGreaterThan(0);
   const after = await picker.evaluate(async (element) => {
     const popover = element.shadowRoot.querySelector(".task-model-popover");
@@ -203,16 +205,44 @@ test("keeps long names readable and selection stable while scrolling a long mode
     const selected = popover.querySelector('[data-model][aria-pressed="true"]');
     element.requestUpdate();
     await element.updateComplete;
+    const bounds = popover.getBoundingClientRect();
+    const settings = popover.querySelector(".task-model-settings").getBoundingClientRect();
+    const rows = [...popover.querySelectorAll("[data-model]")].map((row) => ({
+      row: row.getBoundingClientRect(),
+      name: row.querySelector("strong").getBoundingClientRect(),
+    }));
+    const column = popover.querySelector(".task-provider-models");
     return {
-      scroll: popover.scrollTop,
+      scroll: popover.querySelector(".task-model-list").scrollTop,
+      menuScroll: popover.scrollTop,
+      columnScrolls: column.scrollHeight > column.clientHeight,
+      settingsInView: settings.height > 0 && settings.top >= bounds.top && settings.bottom <= bounds.bottom,
+      namesInsideRows: rows.every(({ row, name }) => name.top >= row.top && name.bottom <= row.bottom),
+      rowsStacked: rows.every(({ row }, index) => index === 0 || row.top >= rows[index - 1].row.bottom - 0.5),
       retainedProvider: providers === popover.querySelector(".task-provider-options"),
       retainedModel: selected === popover.querySelector('[data-model][aria-pressed="true"]'),
       overflow: [...popover.querySelectorAll("button, strong")].some((node) => node.scrollWidth > node.clientWidth + 1),
       outerOverflow: popover.scrollWidth > popover.clientWidth,
     };
   });
-  expect(after).toEqual({ scroll: before, retainedProvider: true, retainedModel: true, overflow: false, outerOverflow: false });
+  expect(after).toEqual({
+    scroll: before, menuScroll: 0, columnScrolls: false, settingsInView: true, namesInsideRows: true, rowsStacked: true,
+    retainedProvider: true, retainedModel: true, overflow: false, outerOverflow: false,
+  });
   await captureReviewScreenshot(page, testInfo, "model-picker-long");
+
+  // Opening the menu again scrolls the list itself to the chosen model.
+  await list.evaluate((element) => { element.scrollTop = 0; });
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await expect(menu.locator('[data-model="long-21"]')).toBeFocused();
+  await expect.poll(() => picker.evaluate((element) => {
+    const popover = element.shadowRoot.querySelector(".task-model-popover");
+    const shown = popover.querySelector(".task-model-list").getBoundingClientRect();
+    const chosen = popover.querySelector('[data-model="long-21"]').getBoundingClientRect();
+    return chosen.top >= shown.top - 1 && chosen.bottom <= shown.bottom + 1;
+  })).toBe(true);
 });
 
 test("fits a narrow phone with enlarged Interface text", { tag: "@phone" }, async ({ page }, testInfo) => {
@@ -225,12 +255,51 @@ test("fits a narrow phone with enlarged Interface text", { tag: "@phone" }, asyn
   const menu = page.locator(".task-new-form .task-model-popover");
   await page.locator(".task-new-form .task-model-button").click();
   await expect(menu).toBeVisible();
-  expect(await menu.evaluate((element) => ({
-    contained: element.getBoundingClientRect().right <= innerWidth,
-    overflow: element.scrollWidth > element.clientWidth,
-    labelsClipped: [...element.querySelectorAll("button strong")].some((node) => node.scrollWidth > node.clientWidth + 1),
-  }))).toEqual({ contained: true, overflow: false, labelsClipped: false });
+  expect(await menu.evaluate((element) => {
+    const list = element.querySelector(".task-model-list");
+    const shown = list.getBoundingClientRect();
+    return {
+      contained: element.getBoundingClientRect().right <= innerWidth,
+      overflow: element.scrollWidth > element.clientWidth,
+      labelsClipped: [...element.querySelectorAll("button strong")].some((node) => node.scrollWidth > node.clientWidth + 1),
+      listScrolls: list.scrollHeight > list.clientHeight,
+      modelsWhole: [...list.querySelectorAll("[data-model]")].every((row) => {
+        const { top, bottom } = row.getBoundingClientRect();
+        return top >= shown.top && bottom <= shown.bottom;
+      }),
+    };
+  })).toEqual({ contained: true, overflow: false, labelsClipped: false, listScrolls: false, modelsWhole: true });
   await captureReviewScreenshot(page, testInfo, "model-picker-narrow-large");
+});
+
+test("keeps two rows of a long model list on a narrow phone and scrolls the column for the rest", { tag: "@phone" }, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.addInitScript(() => {
+    localStorage.setItem("caffold:settings", JSON.stringify({ interfaceScalePercent: 120 }));
+  });
+  await installCatalog(page, visualCatalog());
+  await page.goto("/tasks/new?cwd=src");
+  const menu = page.locator(".task-new-form .task-model-popover");
+  const column = menu.locator(".task-provider-models");
+  await page.locator(".task-new-form .task-model-button").click();
+  await expect(menu).toBeVisible();
+  const layout = await menu.evaluate((element) => {
+    const list = element.querySelector(".task-model-list");
+    const [first, second] = list.querySelectorAll("[data-model]");
+    const column = element.querySelector(".task-provider-models");
+    return {
+      listScrolls: list.scrollHeight > list.clientHeight,
+      twoRowsTall: list.clientHeight >= second.getBoundingClientRect().bottom - first.getBoundingClientRect().top - 1,
+      columnScrolls: column.scrollHeight > column.clientHeight,
+      menuScrolls: element.scrollHeight > element.clientHeight,
+    };
+  });
+  expect(layout).toEqual({ listScrolls: true, twoRowsTall: true, columnScrolls: true, menuScrolls: false });
+  const fast = menu.locator('[data-speed="priority"]');
+  await fast.scrollIntoViewIfNeeded();
+  await expect(fast).toBeInViewport();
+  await expect.poll(() => isScrolledToBottom(column)).toBe(true);
+  await captureReviewScreenshot(page, testInfo, "model-picker-narrow-long");
 });
 
 test("opening the menu again offers the models the agents answer now", { tag: "@server-changes" }, async ({ page }) => {

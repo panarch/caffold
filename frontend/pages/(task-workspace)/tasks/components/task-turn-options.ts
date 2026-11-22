@@ -14,7 +14,7 @@ import {
 } from "#app/api.js";
 import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
-import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
+import { ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
@@ -236,10 +236,12 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     hidePopover(event.currentTarget);
   };
   private readonly hints = new ActionHints(this);
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly modelButton = new DrawnRef<HTMLButtonElement>(this);
   private readonly permissionButton = new DrawnRef<HTMLButtonElement>(this);
   private readonly modelPopover = new DrawnRef<HTMLElement>(this);
+  private readonly modelList = new DrawnRef<HTMLElement>(this);
   private readonly permissionPopover = new DrawnRef<HTMLElement>(this);
 
   // An owner shows the control as it is mounted, and a dialog that opens at
@@ -610,7 +612,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     return this.keyboard.contexts({
       scopeId: `task-composer:${scopeId}`,
       actionHints: (pull) => ({ ...this.hints.scope(pull), blocked }),
-      scroll: () => ({ ...emptyScrollSurfaceScope(), blocked }),
+      scroll: (pull) => ({ ...this.surfaces.scope(pull), blocked }),
     });
   }
 
@@ -834,12 +836,23 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
               >${inlineIcon("ArrowRight", "", "task-model-handoff-icon")}<span>Continue with ${label}</span></button>
             </section>`
               : html`
-          <section aria-label="Models">
+          <section class="task-models" aria-label="Models">
             <p>Model</p>
-            <div class="task-model-list">${repeat(
+            <div
+              ${drawn(this.modelList)}
+              ${this.surfaces.surface({
+                id: "models",
+                label: () => "Models",
+                axes: ["vertical"],
+              })}
+              class="task-model-list"
+            >${repeat(
               offered.filter((option) => option.provider === provider),
               (option) => `${option.provider}:${option.model}`,
-              (option) => modelOption(option, model, this.hints),
+              (option) =>
+                modelOption(option, model, this.hints, () => [
+                  this.modelList.value,
+                ]),
             )}</div>
           </section>
           <div class="task-model-settings">${
@@ -1472,7 +1485,7 @@ function providerOption(
       id: `provider:${encodeURIComponent(provider)}`,
       label,
       action: ACTION_HINT_ACTION.MODEL_PROVIDER_BROWSE,
-      badgeAt: "top-right",
+      badgeAt: "center-right",
     })}
     type="button"
     class="task-model-option task-provider-option"
@@ -1486,6 +1499,7 @@ function modelOption(
   option: ModelOption,
   selectedModel: ModelOption | null,
   hints: ActionHints,
+  clipRoots: () => Array<Element | undefined>,
 ) {
   const selected =
     option.model === selectedModel?.model &&
@@ -1498,10 +1512,11 @@ function modelOption(
       id: `model:${id}`,
       label: optionLabel(option.displayName, selected),
       action: ACTION_HINT_ACTION.MODEL_SELECT,
-      badgeAt: "top-right",
+      badgeAt: "center-left",
+      clipRoots,
     })}
     type="button"
-    class="task-model-option"
+    class="task-model-option has-leading-check"
     data-turn-options-action="select-model"
     data-provider=${option.provider}
     data-model=${option.model}
@@ -1564,10 +1579,10 @@ function reasoningOption(
       id: `reasoning:${encodeURIComponent(value)}`,
       label: optionLabel(value, selected),
       action: ACTION_HINT_ACTION.REASONING_SELECT,
-      badgeAt: "top-right",
+      badgeAt: "center-left",
     })}
     type="button"
-    class="task-model-option"
+    class="task-model-option has-leading-check"
     data-turn-options-action="select-effort"
     data-effort=${value}
     aria-pressed=${selected ? "true" : "false"}
@@ -1589,10 +1604,10 @@ function speedOption(
       id: `speed:${encodeURIComponent(speed)}`,
       label: optionLabel(name, selected),
       action: ACTION_HINT_ACTION.SPEED_SELECT,
-      badgeAt: "top-right",
+      badgeAt: "center-left",
     })}
     type="button"
-    class="task-model-option"
+    class="task-model-option has-leading-check"
     data-turn-options-action="select-speed"
     data-speed=${speed}
     aria-pressed=${selected ? "true" : "false"}

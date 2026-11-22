@@ -89,6 +89,7 @@ test("places each badge where its target asks on the visible rect", () => {
     ["top-left", 10, 6],
     ["top-right", 70, 6],
     ["center-left", 10, 13],
+    ["center-right", 70, 13],
     ["center", 40, 13],
   ]) {
     owner.targets[0].badgeAt = badgeAt;

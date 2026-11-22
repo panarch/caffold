@@ -282,6 +282,7 @@ export class CaffoldActionHintDialog extends CaffoldElement {
         "top-left": { left: rect.left, top: rect.top },
         "top-right": { left: rect.right - bounds.width, top: rect.top },
         "center-left": { left: rect.left, top: middle },
+        "center-right": { left: rect.right - bounds.width, top: middle },
         center: {
           left: (rect.left + rect.right - bounds.width) / 2,
           top: middle,
