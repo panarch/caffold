@@ -904,6 +904,7 @@ const BADGE_PLACEMENTS: Record<ActionHintBadgePlacement, true> = {
   "top-left": true,
   "top-right": true,
   "center-left": true,
+  "center-right": true,
   center: true,
 };
 

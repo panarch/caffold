@@ -743,23 +743,24 @@ test("scrolls a mouse-open retained Model popover and closes it with Escape", { 
   const modelPopover = page.locator(
     "caffold-task-detail .task-follow-up-form .task-model-popover",
   );
+  const modelList = modelPopover.locator(".task-model-list");
   const popoverHud = modelPopover.locator(
     "caffold-scroll-mode-hud .scroll-mode-status",
   );
   await modelButton.click();
   await expect(modelPopover).toBeVisible();
-  await expect.poll(() => modelPopover.evaluate(
+  await expect.poll(() => modelList.evaluate(
     (element) => element.scrollHeight > element.clientHeight + 1,
   )).toBe(true);
-  const before = await modelPopover.evaluate((element) => element.scrollTop);
+  const before = await modelList.evaluate((element) => element.scrollTop);
 
   await page.keyboard.press("s");
   await expect(scrollSelector(page)).toBeHidden();
-  await expect(popoverHud).toContainText("Scroll: Model options");
+  await expect(popoverHud).toContainText("Scroll: Models");
   await expect(scrollHud(page)).toBeHidden();
   await page.keyboard.press("s");
   await expect(modelPopover).toBeVisible();
-  await expect(popoverHud).toContainText("Scroll: Model options");
+  await expect(popoverHud).toContainText("Scroll: Models");
   await expect(scrollSelector(page)).toBeHidden();
   await captureReviewScreenshot(
     page,
@@ -767,7 +768,7 @@ test("scrolls a mouse-open retained Model popover and closes it with Escape", { 
     "scroll-mode-model-popover",
   );
   await page.keyboard.press("j");
-  await expect.poll(() => modelPopover.evaluate((element) => element.scrollTop))
+  await expect.poll(() => modelList.evaluate((element) => element.scrollTop))
     .toBeGreaterThan(before);
 
   await page.keyboard.press("Escape");

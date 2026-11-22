@@ -17,6 +17,7 @@ export type ActionHintBadgePlacement =
   | "top-left"
   | "top-right"
   | "center-left"
+  | "center-right"
   | "center";
 
 export interface ActionHintTarget {

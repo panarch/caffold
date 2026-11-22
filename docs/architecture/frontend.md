@@ -613,11 +613,12 @@ owner last drew, puts the parent's scope ID in front of each declared ID,
 and leaves out a declaration whose `when` is false, whose control is disabled,
 or whose anchor has no layout box. Each target's `badgeAt` says where its badge
 sits on its anchor, the vertical position first: `top-left`, which a
-declaration gets when it leaves `badgeAt` out, `top-right`, `center-left`, or
-`center`. Only that value places the badge. A row that starts with an icon
-names that icon as its `anchor` with `center`, so the badge covers the icon and
-leaves the label clear. Task actions do so for every row, the Language servers
-switch included, since the whole row toggles it. A container adds only
+declaration gets when it leaves `badgeAt` out, `top-right`, `center-left`,
+`center-right`, or `center`. Only that value places the badge. A row that
+starts with an icon names that icon as its `anchor` with `center`, so the badge
+covers the icon and leaves the label clear. Task actions do so for every row,
+the Language servers switch included, since the whole row toggles it. A
+container adds only
 which direct children it merges, and reaches them through the `DrawnRef` it
 drew them with rather than by selector. Scroll surfaces are declared the same
 way with `ScrollSurfaces` (`scroll-scope.ts`), and modals and popovers with
@@ -851,9 +852,15 @@ rendering keeps the popover root, its presentation host, and each option
 button, keyed by what the option chooses, so a refreshed list patches a renamed
 option's label onto its retained badge. The selected Model and Permission
 options carry native `autofocus`, so the popover's initial focus is settled
-before any keyboard session is captured. Popover option targets declare
+before any keyboard session is captured. Permission options declare
 `badgeAt: "top-right"`, so their badges sit at the top right of each row
-instead of covering the label. If a frozen option control is replaced,
+instead of covering the label, and the Model menu's providers ask for
+`center-right`. The Model menu's model, reasoning-level, and speed options draw
+their check in a leading column and ask for `center-left`, so each badge covers
+that check, directly before the name the option chooses. A long model list
+scrolls by itself under its heading while the reasoning level and speed stay in
+view, so the list declares its own Scroll surface and clips its options'
+badges. If a frozen option control is replaced,
 its option owner group retires even when the semantic value is unchanged. A
 popover context containing no surviving target consequently closes; a later
 `F` collects fresh bindings and options. Product owners continue to own native

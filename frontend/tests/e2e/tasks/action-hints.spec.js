@@ -631,11 +631,21 @@ test("hands create M to the native model popover and P to prompt editing", { tag
     name: / — low.*Selected$/,
   });
   await expect(lowBadge).toBeVisible();
-  await expectBadgeAtRowEnd(
+  await expectBadgeBeforeName(
     lowBadge,
     modelPopover.locator(
       '[data-turn-options-action="select-effort"][data-effort="low"]',
     ),
+  );
+  await expectBadgeBeforeName(
+    popoverHint.getByRole("button", { name: / — GPT-5\.6-Sol.*Selected$/ }),
+    modelPopover.locator(
+      '[data-turn-options-action="select-model"][aria-pressed="true"]',
+    ),
+  );
+  await expectBadgeAtRowEndMiddle(
+    popoverHint.getByRole("button", { name: / — Codex$/ }),
+    modelPopover.locator('[data-turn-options-action="browse-provider"][data-provider="codex"]'),
   );
   await page.keyboard.press("Escape");
   await expect(popoverHint).toBeHidden();
@@ -825,9 +835,10 @@ test("switches a session-bound popover to Scroll with S and recaptures hints wit
   const modelPopover = page.locator(
     "caffold-task-new .task-model-popover",
   );
+  const modelList = modelPopover.locator(".task-model-list");
   await expect(modelPopover).toBeVisible();
-  await expect.poll(() => modelPopover.evaluate(
-    (popover) => popover.scrollHeight > popover.clientHeight,
+  await expect.poll(() => modelList.evaluate(
+    (list) => list.scrollHeight > list.clientHeight,
   )).toBe(true);
   const popoverHint = popoverActionHintDialog(page);
   await expect(popoverHint).toBeVisible();
@@ -844,16 +855,16 @@ test("switches a session-bound popover to Scroll with S and recaptures hints wit
   await expect(
     modelPopover.locator("caffold-scroll-mode-hud .scroll-mode-status"),
   ).toBeVisible();
-  const before = await scrollTop(modelPopover);
+  const before = await scrollTop(modelList);
   await page.keyboard.press("d");
-  await expect.poll(() => scrollTop(modelPopover)).toBeGreaterThan(before);
+  await expect.poll(() => scrollTop(modelList)).toBeGreaterThan(before);
   for (let step = 0; step < 12; step += 1) {
-    if (await isScrolledToBottom(modelPopover)) {
+    if (await isScrolledToBottom(modelList)) {
       break;
     }
     await page.keyboard.press("d");
   }
-  await expect.poll(() => isScrolledToBottom(modelPopover)).toBe(true);
+  await expect.poll(() => isScrolledToBottom(modelList)).toBe(true);
 
   await page.keyboard.press("f");
   await expect(popoverHint).toBeVisible();
@@ -1825,6 +1836,42 @@ async function expectBadgeAtRowEnd(badge, row) {
     rowBox.x + rowBox.width + 1,
   );
   expect(badgeBox.x).toBeGreaterThanOrEqual(rowBox.x + rowBox.width / 2);
+}
+
+// The badge covers the option's check, centered on the row, and stops before
+// its name, so it reads as that name's key.
+async function expectBadgeBeforeName(badge, option) {
+  await expect.poll(async () => {
+    const [badgeBox, optionBox, nameBox] = await Promise.all([
+      badge.boundingBox(),
+      option.boundingBox(),
+      option.locator("strong").boundingBox(),
+    ]);
+    if (!badgeBox || !optionBox || !nameBox) {
+      return null;
+    }
+    return {
+      atStart: Math.abs(badgeBox.x - optionBox.x) <= 0.5,
+      middle: Math.abs(badgeBox.y + badgeBox.height / 2 - (optionBox.y + optionBox.height / 2)) <= 0.5,
+      clearOfName: badgeBox.x + badgeBox.width <= nameBox.x + 0.5,
+    };
+  }).toEqual({ atStart: true, middle: true, clearOfName: true });
+}
+
+async function expectBadgeAtRowEndMiddle(badge, row) {
+  await expect.poll(async () => {
+    const [badgeBox, rowBox] = await Promise.all([
+      badge.boundingBox(),
+      row.boundingBox(),
+    ]);
+    if (!badgeBox || !rowBox) {
+      return null;
+    }
+    return {
+      atEnd: Math.abs(badgeBox.x + badgeBox.width - (rowBox.x + rowBox.width)) <= 0.5,
+      middle: Math.abs(badgeBox.y + badgeBox.height / 2 - (rowBox.y + rowBox.height / 2)) <= 0.5,
+    };
+  }).toEqual({ atEnd: true, middle: true });
 }
 
 async function enterActionHints(page) {

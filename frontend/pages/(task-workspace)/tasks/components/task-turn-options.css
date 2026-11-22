@@ -191,6 +191,18 @@
   justify-self: start;
 }
 
+/* Every row down to the model list is held to the popover's height, so a long
+   list scrolls in place and the settings under it stay in view. */
+.task-model-popover:popover-open {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.task-model-popover-content {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+}
+
 :host([data-placement="above"]) .task-model-popover,
 :host([data-placement="above"]) .task-permission-popover {
   position-area: block-start center;
@@ -211,6 +223,7 @@
 .task-model-browser {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 2.5fr);
+  grid-template-rows: minmax(0, 1fr);
   align-items: start;
   gap: var(--interface-space-4);
 }
@@ -221,11 +234,25 @@
   align-self: start;
 }
 
+/* The column scrolls only when the settings and the least the list keeps do
+   not fit together. It and the list are positioned so the hidden "Selected"
+   text of their options scrolls and clips with them. */
 .task-provider-models {
+  position: relative;
+  display: grid;
+  align-content: start;
   min-width: 0;
   align-self: stretch;
+  overflow-y: auto;
   padding-left: var(--interface-space-3);
   border-left: 1px solid var(--border-subtle);
+}
+
+/* The heading and the list take rows of the column, so the least height the
+   list keeps holds against the settings. */
+.task-models {
+  grid-row: span 2;
+  grid-template-rows: subgrid;
 }
 
 .task-model-handoff {
@@ -273,6 +300,23 @@
 .task-model-settings {
   display: grid;
   gap: 0.125rem;
+}
+
+/* Rows keep their content's height when the list is shorter than them. A list
+   of one or two models never shrinks; a longer one keeps two rows' height. */
+.task-model-list {
+  position: relative;
+  grid-auto-rows: max-content;
+  min-height: max-content;
+  overflow-y: auto;
+}
+
+.task-model-list:has(> :nth-child(3)) {
+  min-height: calc(
+    2 *
+    max(2.125rem, calc(var(--interface-target-floor) - 2px)) +
+    0.125rem
+  );
 }
 
 .task-model-setting-options {
@@ -368,6 +412,21 @@
   height: var(--interface-icon-small-size);
   color: var(--control-selected-fg);
   stroke-width: 2.4;
+}
+
+/* An Action Hint badge sits at the option's start, over the check. */
+.task-model-option.has-leading-check {
+  grid-template-columns: var(--interface-icon-size) minmax(0, 1fr);
+}
+
+.task-model-option.has-leading-check > span {
+  grid-area: 1 / 2;
+}
+
+.task-model-option.has-leading-check > .task-model-check {
+  grid-area: 1 / 1;
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
 }
 
 .task-model-note {
