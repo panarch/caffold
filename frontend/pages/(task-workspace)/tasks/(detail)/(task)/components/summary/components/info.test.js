@@ -245,6 +245,7 @@ function drawnActions(snapshot, languageServers = {}) {
     },
   });
   host.hints = new ActionHints(host);
+  host.rowIcons = new DrawnRefs(host);
   const markup = templateHtml(host.render()).replace(/\s+/g, " ");
   // A row's label, description, and whether it is disabled, or null when the
   // list leaves it out.

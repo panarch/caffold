@@ -176,7 +176,10 @@ export class CodeNames {
           control: element,
           anchor: element,
           clipRoots: [...clipRoots, scrollport],
-          badgeAtEnd: false,
+          // A name's badge sits on the name's own line, over its first
+          // letters, so it reads as that name's and leaves the lines around
+          // it.
+          badgeAt: "center-left",
           activate: () =>
             this.show(
               { element, line, character, name, message: null },

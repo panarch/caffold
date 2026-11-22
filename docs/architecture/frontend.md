@@ -611,10 +611,16 @@ its element is drawn and leaves with it. The owner's public
 `actionHintScope(pull)` returns `this.hints.scope(pull)`, which reads what the
 owner last drew, puts the parent's scope ID in front of each declared ID,
 and leaves out a declaration whose `when` is false, whose control is disabled,
-or whose anchor has no layout box. A container adds only which direct children
-it merges, and reaches them through the `DrawnRef` it drew them with rather
-than by selector. Scroll surfaces are declared the same way with
-`ScrollSurfaces` (`scroll-scope.ts`), and modals and popovers with
+or whose anchor has no layout box. Each target's `badgeAt` says where its badge
+sits on its anchor, the vertical position first: `top-left`, which a
+declaration gets when it leaves `badgeAt` out, `top-right`, `center-left`, or
+`center`. Only that value places the badge. A row that starts with an icon
+names that icon as its `anchor` with `center`, so the badge covers the icon and
+leaves the label clear. Task actions do so for every row, the Language servers
+switch included, since the whole row toggles it. A container adds only
+which direct children it merges, and reaches them through the `DrawnRef` it
+drew them with rather than by selector. Scroll surfaces are declared the same
+way with `ScrollSurfaces` (`scroll-scope.ts`), and modals and popovers with
 `KeyboardContexts` (`keyboard-navigation/context.ts`) together with the
 presentation host inside each. Content no template draws, such as the links,
 disclosures, code blocks, and tables Markdown renders, keeps a list its owner
@@ -846,8 +852,8 @@ button, keyed by what the option chooses, so a refreshed list patches a renamed
 option's label onto its retained badge. The selected Model and Permission
 options carry native `autofocus`, so the popover's initial focus is settled
 before any keyboard session is captured. Popover option targets declare
-`badgeAtEnd`, so their badges sit at the trailing edge of each row instead of
-covering the label. If a frozen option control is replaced,
+`badgeAt: "top-right"`, so their badges sit at the top right of each row
+instead of covering the label. If a frozen option control is replaced,
 its option owner group retires even when the semantic value is unchanged. A
 popover context containing no surviving target consequently closes; a later
 `F` collects fresh bindings and options. Product owners continue to own native
@@ -1821,8 +1827,9 @@ lets the names in Source and on the new side of Diff be pressed.
 - `G` starts an Action Hint session over the names in view: each viewer's
   Action Hint scope includes them under `code.name.open`, which the keyboard
   coordinator keeps for `G` and leaves out for `F`. The dialog's names look
-  dims the code around them and sets a small translucent badge over the start
-  of each. Choosing one
+  dims the code around them and draws each badge small and translucent, and
+  each name's target asks for `center-left`, so its badge sits over the start
+  of the name on the name's own line. Choosing one
   opens the menu with Go to definition focused, so Enter goes; the menu does
   not carry the session on.
 

@@ -17,8 +17,7 @@
 /* Every row is an icon, what the row does on the first line, and below it
    what it does or why it cannot now, so the actions read as one list. A row
    is as wide as the popover, reaching into its padding so the hover fills it,
-   and its words wrap instead of widening it. The end keeps room for the
-   row's keyboard badge. */
+   and its words wrap instead of widening it. */
 .task-detail-action {
   display: grid;
   grid-template-columns: var(--interface-icon-small-size) minmax(0, 1fr) auto;
@@ -26,9 +25,7 @@
   column-gap: var(--interface-control-gap);
   width: calc(100% + 2 * var(--interface-space-3));
   margin-inline: calc(0rem - var(--interface-space-3));
-  padding: var(--interface-space-3)
-    calc(var(--interface-space-3) + var(--keyboard-choice-slot-size))
-    var(--interface-space-3) var(--interface-space-3);
+  padding: var(--interface-space-3);
   border: 0;
   border-radius: 4px;
   background: transparent;
@@ -86,11 +83,6 @@
   min-width: 0;
   color: var(--muted);
   overflow-wrap: anywhere;
-}
-
-/* The Language servers row ends in its switch, which carries the badge. */
-.task-detail-language-servers-action {
-  padding-inline-end: var(--interface-space-3);
 }
 
 .task-detail-language-servers-action:has(input:disabled) {

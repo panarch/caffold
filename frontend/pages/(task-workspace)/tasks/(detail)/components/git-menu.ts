@@ -118,7 +118,7 @@ export class CaffoldTaskDetailGit extends CaffoldElement {
             id: "compare",
             label: "Compare",
             action: ACTION_HINT_ACTION.GIT_DESTINATION,
-            badgeAtEnd: true,
+            badgeAt: "top-right",
           })}
           type="button"
           popovertarget=${this.popoverId}
@@ -132,7 +132,7 @@ export class CaffoldTaskDetailGit extends CaffoldElement {
             id: "log",
             label: "Log",
             action: ACTION_HINT_ACTION.GIT_DESTINATION,
-            badgeAtEnd: true,
+            badgeAt: "top-right",
           })}
           type="button"
           popovertarget=${this.popoverId}

@@ -1004,6 +1004,33 @@ test("revalidation rejects a changed context or presentation binding", () => {
   }
 });
 
+test("snapshot capture keeps a known badge placement and puts any other at the top left", () => {
+  const restoreGlobals = installDomGlobals();
+  try {
+    const descriptor = (id, badgeAt, left) => {
+      const control = new FakeHTMLElement();
+      control.rect = { left, top: 10, right: left + 20, bottom: 30 };
+      return {
+        id, actionId: "task.open", controlKind: "button", label: id,
+        invalidationOwner: control, control, anchor: control, clipRoots: [],
+        badgeAt, activate: () => {},
+      };
+    };
+    const scope = {
+      targets: [descriptor("icon", "center", 0), descriptor("unknown", "middle", 40)],
+    };
+    const controller = new ActionHintController({
+      workspace: new FakeHTMLElement(), dialog: new FakeDialog(), collectScope: () => scope,
+    });
+    assert.deepEqual(
+      controller.captureSnapshot(scope).targets.map(({ id, badgeAt }) => [id, badgeAt]),
+      [["icon", "center"], ["unknown", "top-left"]],
+    );
+  } finally {
+    restoreGlobals();
+  }
+});
+
 test("snapshot capture rejects a descriptor outside the central semantic policy", () => {
   const restoreGlobals = installDomGlobals();
   try {

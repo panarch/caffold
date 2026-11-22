@@ -318,7 +318,7 @@ export class CaffoldTaskCurrentPlan extends CaffoldElement {
               id: "refresh",
               label: refreshLabel,
               action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-              badgeAtEnd: true,
+              badgeAt: "top-right",
             })}
             type="button"
             class="task-secondary-button"

@@ -1,4 +1,5 @@
 import {
+  type ActionHintBadgePlacement,
   type ActionHintScope,
   type ActionHintTarget,
   buttonActionHintTarget,
@@ -899,6 +900,13 @@ function sameActionHintBinding(
   );
 }
 
+const BADGE_PLACEMENTS: Record<ActionHintBadgePlacement, true> = {
+  "top-left": true,
+  "top-right": true,
+  "center-left": true,
+  center: true,
+};
+
 function normalizeDescriptors(targets: unknown) {
   if (!Array.isArray(targets)) {
     return null;
@@ -954,7 +962,9 @@ function normalizeDescriptors(targets: unknown) {
       activationKey,
       clipRoots,
       occlusionRoots,
-      badgeAtEnd: Boolean(target.badgeAtEnd),
+      badgeAt: Object.hasOwn(BADGE_PLACEMENTS, target.badgeAt)
+        ? target.badgeAt
+        : "top-left",
     });
   }
   return descriptors;

@@ -65,7 +65,7 @@ export class CaffoldNotesInfoCopyMarkdown extends CaffoldElement {
           id: "copy-markdown",
           label: feedback || "Copy Markdown",
           action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          badgeAtEnd: true,
+          badgeAt: "top-right",
           when: this.copyState !== "copying",
         })}
         type="button"

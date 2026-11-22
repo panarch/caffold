@@ -260,8 +260,8 @@ export class CaffoldActionHintDialog extends CaffoldElement {
     );
   }
 
-  // Each badge sits at its target's start, or its end for a target that
-  // asks, and inside the viewport. Sizes are read once the badges are drawn.
+  // Each badge sits where its target asks on the target's visible rect, and
+  // inside the viewport. Sizes are read once the badges are drawn.
   private positionBadges() {
     for (const target of this.targets) {
       const badge = this.badges.get(target.code);
@@ -277,16 +277,18 @@ export class CaffoldActionHintDialog extends CaffoldElement {
       }
       const bounds = this.badgeSizes.get(badge) ?? measured;
       const rect = target.visibleRect;
-      const position = clampBadgePosition(
-        {
-          left: target.badgeAtEnd ? rect.right - bounds.width : rect.left,
-          // A name's badge sits on the name's own line, over its first
-          // letters, so it reads as that name's and leaves the lines around it.
-          top:
-            this.look === "names"
-              ? rect.top + (rect.height - bounds.height) / 2
-              : rect.top,
+      const middle = (rect.top + rect.bottom - bounds.height) / 2;
+      const placed = {
+        "top-left": { left: rect.left, top: rect.top },
+        "top-right": { left: rect.right - bounds.width, top: rect.top },
+        "center-left": { left: rect.left, top: middle },
+        center: {
+          left: (rect.left + rect.right - bounds.width) / 2,
+          top: middle,
         },
+      } satisfies Record<ActionHintSessionTarget["badgeAt"], unknown>;
+      const position = clampBadgePosition(
+        placed[target.badgeAt],
         bounds,
         this.viewportRect,
       );

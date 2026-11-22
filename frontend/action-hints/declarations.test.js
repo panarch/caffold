@@ -21,7 +21,7 @@ test("a declaration becomes a target named inside the scope it is pulled into", 
         id: "restart",
         label: "Restart Codex",
         action: ACTION_HINT_ACTION.DIALOG_BUTTON,
-        badgeAtEnd: true,
+        badgeAt: "top-right",
       }),
     ],
     { scopeId: "codex-runtime-restart", clipRoots: [clip] },
@@ -39,7 +39,7 @@ test("a declaration becomes a target named inside the scope it is pulled into", 
   assert.equal(target.anchor, button);
   assert.equal(target.invalidationOwner, owner);
   assert.deepEqual(target.clipRoots, [clip]);
-  assert.equal(target.badgeAtEnd, true);
+  assert.equal(target.badgeAt, "top-right");
 });
 
 test("the parent names the action of a declaration that leaves it out", () => {
@@ -131,6 +131,49 @@ test("a declaration may name its own anchor, owner, and clip roots, which it scr
   assert.deepEqual(target.clipRoots, [owner, list]);
   assert.deepEqual(scope.mutationRoots, [row]);
   assert.deepEqual(scope.scrollRoots, [owner, list]);
+});
+
+test("a button or a switch may sit its badge at the center of the icon it names as its anchor", () => {
+  const owner = control();
+  const pin = control();
+  const pinIcon = control();
+  const toggle = control();
+  const rowIcon = control();
+  const copy = control();
+  const scope = declaredActionHintScope(owner, [
+    declared(pin, "button", {
+      id: "pin",
+      label: "Pin task",
+      action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+      anchor: () => pinIcon,
+      badgeAt: "center",
+    }),
+    declared(toggle, "switch", {
+      id: "language-servers",
+      label: "Turn on language servers",
+      action: ACTION_HINT_ACTION.CONTROL_SWITCH_TOGGLE,
+      anchor: () => rowIcon,
+      badgeAt: "center",
+    }),
+    declared(copy, "button", {
+      id: "copy",
+      label: "Copy Task ID",
+      action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+    }),
+  ], {});
+
+  assert.deepEqual(
+    scope.targets.map(({ control, anchor, badgeAt }) => [
+      control,
+      anchor,
+      badgeAt,
+    ]),
+    [
+      [pin, pinIcon, "center"],
+      [toggle, rowIcon, "center"],
+      [copy, copy, "top-left"],
+    ],
+  );
 });
 
 test("a change in any declaration's owner revalidates, the component's own included", () => {

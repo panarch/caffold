@@ -12,6 +12,13 @@ export type ActionHintControlKind =
   | "separator"
   | "reorder-handle";
 
+// Where a badge sits on its target's anchor, the vertical position first.
+export type ActionHintBadgePlacement =
+  | "top-left"
+  | "top-right"
+  | "center-left"
+  | "center";
+
 export interface ActionHintTarget {
   id: string;
   actionId: string;
@@ -22,7 +29,7 @@ export interface ActionHintTarget {
   anchor: Element;
   clipRoots: Element[];
   occlusionRoots?: Element[];
-  badgeAtEnd: boolean;
+  badgeAt: ActionHintBadgePlacement;
   activationKey?: string;
   activate: () => void;
 }
@@ -73,8 +80,10 @@ export function buttonActionHintTarget({
   control,
   anchor = control,
   clipRoots,
-  badgeAtEnd = false,
-}: ActionHintTargetOptions & { badgeAtEnd?: boolean }): ActionHintTarget {
+  badgeAt,
+}: ActionHintTargetOptions & {
+  badgeAt?: ActionHintBadgePlacement;
+}): ActionHintTarget {
   return focusAndClickActionHintTarget({
     id,
     actionId,
@@ -84,7 +93,7 @@ export function buttonActionHintTarget({
     control,
     anchor,
     clipRoots,
-    badgeAtEnd,
+    badgeAt,
   });
 }
 
@@ -220,7 +229,10 @@ export function switchActionHintTarget({
   control,
   anchor = control,
   clipRoots,
-}: ActionHintTargetOptions): ActionHintTarget {
+  badgeAt,
+}: ActionHintTargetOptions & {
+  badgeAt?: ActionHintBadgePlacement;
+}): ActionHintTarget {
   return focusAndClickActionHintTarget({
     id,
     actionId,
@@ -230,6 +242,7 @@ export function switchActionHintTarget({
     control,
     anchor,
     clipRoots,
+    badgeAt,
   });
 }
 
@@ -403,11 +416,11 @@ function focusActionHintTarget({
   control,
   anchor = control,
   clipRoots,
-  badgeAtEnd = false,
+  badgeAt = "top-left",
   activationKey,
 }: ActionHintTargetOptions & {
   controlKind: ActionHintControlKind;
-  badgeAtEnd?: boolean;
+  badgeAt?: ActionHintBadgePlacement;
   activationKey?: string;
 }): ActionHintTarget {
   if (!invalidationOwner) {
@@ -422,7 +435,7 @@ function focusActionHintTarget({
     control,
     anchor,
     clipRoots,
-    badgeAtEnd: Boolean(badgeAtEnd),
+    badgeAt,
     ...(activationKey == null ? {} : { activationKey }),
     activate: () => control.focus({ preventScroll: true }),
   };

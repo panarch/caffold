@@ -65,7 +65,7 @@ export class CaffoldNotesInfoCopyPath extends CaffoldElement {
           id: "copy-path",
           label: feedback || "Copy path",
           action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          badgeAtEnd: true,
+          badgeAt: "top-right",
           when: Boolean(this.path) && this.copyState !== "copying",
         })}
         type="button"
