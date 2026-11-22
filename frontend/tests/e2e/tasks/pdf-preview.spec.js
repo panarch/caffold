@@ -6,10 +6,12 @@ import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { captureReviewScreenshot } from "../support/task-fixtures.js";
 import { openCompletedTaskForReview } from "../support/task-review-test.js";
 
-// The document is US Letter, so a phone must scale the page down while a wider
-// viewer stops at the page's own width.
+// The document is US Letter, 612 by 792 points. At the size it prints, 96 CSS
+// pixels to the inch, a page is 816 pixels wide, so a phone must scale it down
+// while a wider viewer stops there.
 const PAGE_WIDTH = 612;
 const PAGE_HEIGHT = 792;
+const PRINTED_PAGE_WIDTH = (PAGE_WIDTH * 96) / 72;
 
 const FIXTURE_DOCUMENT = repositoryPath(
   "frontend/tests/e2e/fixtures",
@@ -181,10 +183,10 @@ test("renders a PDF as the only representation its file supports", { tag: "@all-
   })).toBeGreaterThan(0);
 
   // The page keeps the document's aspect ratio, never overflows the panel it
-  // scrolls inside, and never grows past the width the document declares.
+  // scrolls inside, and never grows past the size it prints at.
   const pageBox = await viewer.locator(".pdf-viewer-page").first().boundingBox();
   expect(pageBox.width / pageBox.height).toBeCloseTo(PAGE_WIDTH / PAGE_HEIGHT, 2);
-  expect(pageBox.width).toBeLessThanOrEqual(PAGE_WIDTH);
+  expect(pageBox.width).toBeLessThanOrEqual(PRINTED_PAGE_WIDTH);
   const overflow = await viewer.evaluate(
     (element) => element.scrollWidth - element.clientWidth,
   );
@@ -196,11 +198,11 @@ test("renders a PDF as the only representation its file supports", { tag: "@all-
       Number.parseFloat(style.paddingLeft) -
       Number.parseFloat(style.paddingRight);
   });
-  if (available < PAGE_WIDTH) {
-    // A phone-width panel scales the page down to the space it has.
+  if (available < PRINTED_PAGE_WIDTH) {
+    // A narrower panel scales the page down to the space it has.
     expect(pageBox.width).toBeCloseTo(available, 0);
   } else {
-    expect(pageBox.width).toBeCloseTo(PAGE_WIDTH, 0);
+    expect(pageBox.width).toBeCloseTo(PRINTED_PAGE_WIDTH, 0);
   }
 
   await captureReviewScreenshot(page, testInfo, "tasks-pdf-preview");
@@ -479,4 +481,117 @@ test("returns to the page it was reading in a document opened again after anothe
   } finally {
     await rm(documentPath(testInfo, "-second"), { force: true });
   }
+});
+
+// The room the viewer gives its pages, and the box and drawn canvas of each
+// page.
+function pdfLayout(viewer) {
+  return viewer.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+    return {
+      room: {
+        width: element.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight),
+        height: element.clientHeight - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.paddingBottom),
+      },
+      pages: [...element.shadowRoot.querySelectorAll(".pdf-viewer-page")].map((page) => {
+        const box = page.getBoundingClientRect();
+        const canvas = page.querySelector("canvas");
+        return {
+          width: box.width,
+          height: box.height,
+          canvasWidth: canvas?.width ?? 0,
+          canvasHeight: canvas?.height ?? 0,
+          sharpWidth: Math.round(page.clientWidth * ratio),
+        };
+      }),
+    };
+  });
+}
+
+async function openZoom(taskReview) {
+  const fileViewer = taskReview.locator("caffold-review-file-viewer");
+  await fileViewer.getByRole("button", { name: "Zoom", exact: true }).click();
+  const zoom = fileViewer.locator("caffold-zoom-control");
+  await expect(zoom).toBeVisible();
+  return {
+    zoom,
+    percent: zoom.getByRole("textbox", { name: "Zoom percent" }),
+    slider: zoom.getByRole("slider", { name: "Zoom" }),
+  };
+}
+
+test("Zoom fits a page to the viewer or draws it at a percent of the size it prints at, on the page it was reading", { tag: "@server-steady" }, async ({
+  page,
+}, testInfo) => {
+  await writeFile(documentPath(testInfo), blankPages(6));
+  const { taskReview } = await openDocument(page, testInfo);
+  const viewer = taskReview.locator("caffold-pdf-viewer");
+  await expect(viewer.locator(".pdf-viewer-page")).toHaveCount(6);
+  const { zoom, percent, slider } = await openZoom(taskReview);
+
+  // Fit page keeps a whole page within the viewer's height.
+  await zoom.getByRole("button", { name: "Fit page" }).click();
+  await expect.poll(async () => {
+    const { room, pages } = await pdfLayout(viewer);
+    return pages[0].height <= room.height + 1;
+  }).toBe(true);
+  const whole = (await pdfLayout(viewer)).pages[0];
+  expect(whole.width / whole.height).toBeCloseTo(PAGE_WIDTH / PAGE_HEIGHT, 2);
+  await expect(percent).toHaveValue(`${Math.round((whole.width / PRINTED_PAGE_WIDTH) * 100)}%`);
+
+  // A percent is that share of the size the page prints at, and the place
+  // read stays on screen.
+  await scrollToPlace(viewer, 3, 0.4);
+  await expect.poll(() => readingPlace(viewer)).toEqual({ page: 3, fraction: 0.4 });
+  await percent.fill("150");
+  await percent.press("Enter");
+  await expect.poll(async () => (await pdfLayout(viewer)).pages[3].width).toBeCloseTo(PRINTED_PAGE_WIDTH * 1.5, 0);
+  const kept = await readingPlace(viewer);
+  expect(kept.page).toBe(3);
+  expect(Math.abs(kept.fraction - 0.4)).toBeLessThanOrEqual(0.02);
+  await expect.poll(async () => {
+    const { pages } = await pdfLayout(viewer);
+    return pages[3].canvasWidth === pages[3].sharpWidth;
+  }).toBe(true);
+
+  // While the slider is held, the page keeps the picture it has, stretched to
+  // its box; let go of, the page is drawn at its new size.
+  const drawnAt = (await pdfLayout(viewer)).pages[3].canvasWidth;
+  const box = await slider.boundingBox();
+  const middle = box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width * 0.65, middle);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.75, middle, { steps: 5 });
+  await expect.poll(async () => (await pdfLayout(viewer)).pages[3].width)
+    .toBeGreaterThan(PRINTED_PAGE_WIDTH * 1.5 + 50);
+  expect((await pdfLayout(viewer)).pages[3].canvasWidth).toBe(drawnAt);
+  await page.mouse.up();
+  await expect.poll(async () => {
+    const { pages } = await pdfLayout(viewer);
+    return pages[3].canvasWidth === pages[3].sharpWidth && pages[3].canvasWidth !== drawnAt;
+  }).toBe(true);
+});
+
+test.describe("on a screen of two device pixels to the CSS pixel", () => {
+  test.use({ deviceScaleFactor: 2 });
+
+  test("draws a page zoomed far in coarser, within the canvas size an iPhone draws", { tag: "@server-steady" }, async ({
+    page,
+  }, testInfo) => {
+    await writeFile(documentPath(testInfo), blankPages(2));
+    const { taskReview } = await openDocument(page, testInfo);
+    const viewer = taskReview.locator("caffold-pdf-viewer");
+    await expect(viewer.locator(".pdf-viewer-page canvas").first()).toBeVisible();
+    const { percent } = await openZoom(taskReview);
+
+    await percent.fill("400");
+    await percent.press("Enter");
+    await expect.poll(async () => (await pdfLayout(viewer)).pages[0].canvasWidth)
+      .toBeGreaterThan(PRINTED_PAGE_WIDTH * 4);
+    const [first] = (await pdfLayout(viewer)).pages;
+    expect(first.canvasWidth * first.canvasHeight).toBeLessThanOrEqual(4096 * 4096);
+    expect(first.canvasWidth).toBeLessThan(first.sharpWidth);
+    expect(first.canvasWidth / first.canvasHeight).toBeCloseTo(PAGE_WIDTH / PAGE_HEIGHT, 2);
+  });
 });

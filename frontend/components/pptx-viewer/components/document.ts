@@ -17,6 +17,7 @@ import type { ActionHintPull } from "#app/action-hints.js";
 import type { DocumentPreviewFile } from "../../dom.js";
 import "../../loading-text.js";
 import { CaffoldElement } from "#app/caffold-element.js";
+import type { ViewerZoom, ZoomSize } from "../../viewer-zoom.js";
 
 import styles from "./document.css.js";
 
@@ -40,7 +41,7 @@ interface PptxRenderer {
   buildPresentation(
     files: unknown,
     options: { lazySlides: boolean },
-  ): { width: number };
+  ): { width: number; height: number };
   PptxViewer: new (
     container: HTMLElement,
     options: {
@@ -61,6 +62,11 @@ class CaffoldPptxDocument extends CaffoldElement {
   accessor file: DocumentPreviewFile | null = null;
   @property({ attribute: false })
   accessor scrollContainer: HTMLElement | null = null;
+  // The size the slides are drawn at, in the room the viewer gives them.
+  @property({ attribute: false })
+  accessor zoom: ViewerZoom = { fit: "width" };
+  @property({ attribute: false })
+  accessor room: ZoomSize | null = null;
   @state()
   private accessor renderState: DocumentRenderState = "empty";
   @state()
@@ -77,6 +83,8 @@ class CaffoldPptxDocument extends CaffoldElement {
   private generation = 0;
   private slideObserver: MutationObserver | null = null;
   private viewer: PptxViewer | null = null;
+  // Every slide of a deck has its size.
+  private slideSize: ZoomSize | null = null;
 
   override connectedCallback() {
     super.connectedCallback();
@@ -118,6 +126,9 @@ class CaffoldPptxDocument extends CaffoldElement {
   }
 
   override updated(changed: PropertyValues) {
+    if (changed.has("zoom") || changed.has("room")) {
+      this.zoomSlides();
+    }
     if (changed.has("renderState")) {
       this.dataset.renderState = this.renderState;
       this.dispatchEvent(
@@ -126,6 +137,12 @@ class CaffoldPptxDocument extends CaffoldElement {
         }),
       );
     }
+  }
+
+  // The scale the slides are drawn at, once the deck is drawn.
+  slideScale() {
+    const width = this.container?.getBoundingClientRect().width ?? 0;
+    return this.slideSize && width > 0 ? width / this.slideSize.width : null;
   }
 
   // The deck's slides in order. The renderer lays out each slide's place at
@@ -207,9 +224,11 @@ class CaffoldPptxDocument extends CaffoldElement {
       if (!this.isCurrent(generation)) {
         return;
       }
-      // `contain` scales a slide to its container's width, so a container no
-      // wider than the slide keeps a wide panel from enlarging it.
-      container.style.maxWidth = `${presentation.width}px`;
+      this.slideSize = {
+        width: presentation.width,
+        height: presentation.height,
+      };
+      this.zoomSlides();
       const viewer = new library.PptxViewer(container, {
         fitMode: "contain",
         // The viewer is the scrollport, so slides near it are the ones drawn.
@@ -251,6 +270,30 @@ class CaffoldPptxDocument extends CaffoldElement {
     return container;
   }
 
+  // `contain` scales a slide to its container's width, and refits it when
+  // that width changes, so the container's width is the slides' zoom. A fit
+  // never makes the container wider than the slide, so a wide panel does not
+  // enlarge it; Fit page also keeps a slide within the room's height.
+  private zoomSlides() {
+    const container = this.container;
+    const size = this.slideSize;
+    if (!container || !size) {
+      return;
+    }
+    const zoom = this.zoom;
+    if ("percent" in zoom) {
+      container.style.width = `${(size.width * zoom.percent) / 100}px`;
+      container.style.maxWidth = "none";
+      return;
+    }
+    const byHeight =
+      zoom.fit === "page" && this.room
+        ? Math.min(1, this.room.height / size.height)
+        : 1;
+    container.style.width = "";
+    container.style.maxWidth = `${size.width * byHeight}px`;
+  }
+
   private release() {
     this.generation += 1;
     this.renderState = "empty";
@@ -259,6 +302,7 @@ class CaffoldPptxDocument extends CaffoldElement {
     this.viewer?.destroy();
     this.viewer = null;
     this.container = null;
+    this.slideSize = null;
   }
 
   private isCurrent(generation: number) {

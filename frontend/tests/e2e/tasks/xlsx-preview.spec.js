@@ -230,6 +230,16 @@ test("renders an Excel workbook as the only representation its file supports", {
   await captureReviewScreenshot(page, testInfo, "tasks-xlsx-preview");
 });
 
+test("offers no Zoom for a workbook, whose cells scroll both ways at their own size", { tag: "@server-steady" }, async ({
+  page,
+}, testInfo) => {
+  const { taskReview } = await openDocument(page, testInfo);
+  await expect(taskReview.locator("caffold-xlsx-viewer")).toHaveAttribute("data-render-state", "xlsx");
+  const fileViewer = taskReview.locator("caffold-review-file-viewer");
+  await expect(fileViewer.getByRole("button", { name: /^Show details for / })).toBeVisible();
+  await expect(fileViewer.getByRole("button", { name: "Zoom", exact: true })).toHaveCount(0);
+});
+
 test("draws the workbook's sizes, merges, hidden tracks, and formatting", { tag: "@server-steady" }, async ({
   page,
 }, testInfo) => {

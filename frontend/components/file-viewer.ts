@@ -61,6 +61,11 @@ import type {
   VisualSide,
   VisualSides,
 } from "./file-viewer/components/visual-diff.js";
+import "./file-viewer/components/zoom-control.js";
+import type {
+  CaffoldZoomControl,
+  ZoomControlIntentDetail,
+} from "./file-viewer/components/zoom-control.js";
 import {
   diffViewerPresentation,
   sourceViewerPresentation,
@@ -83,6 +88,13 @@ import type {
   CaffoldSegmentedControl,
   SegmentedControlIntentDetail,
 } from "./segmented-control.js";
+import {
+  readZoomPlace,
+  returnToZoomPlace,
+  type ViewerZoom,
+  type ViewerZoomShownDetail,
+  type ZoomPlace,
+} from "./viewer-zoom.js";
 import "./xlsx-viewer.js";
 import { returnPopoverFocus } from "#app/popover-focus.js";
 import { scopedStyle } from "#app/scoped-style.js";
@@ -115,46 +127,64 @@ const WRAP_STORAGE_KEY = "caffold:file-viewer-wrap";
 const WRAP_CHANGE_EVENT = "caffold:file-viewer-wrap-change";
 
 // A document preview hands its file to the viewer of its kind, with where the
-// file opens.
+// file opens and, for each kind but a workbook, the size it is drawn at.
+interface DocumentViewerBinding {
+  file: DocumentPreviewFile | null;
+  position: ReadingPosition | null;
+  viewer: DrawnRef<DocumentViewer>;
+  zoom: ViewerZoom;
+  zoomDragging: boolean;
+  zoomShown: (event: CustomEvent<ViewerZoomShownDetail>) => void;
+}
+
 const DOCUMENT_VIEWERS: Record<
   DocumentPreviewKind,
-  (
-    file: DocumentPreviewFile | null,
-    position: ReadingPosition | null,
-    viewer: DrawnRef<DocumentViewer>,
-  ) => TemplateResult
+  (binding: DocumentViewerBinding) => TemplateResult
 > = {
-  pdf: (file, position, viewer) =>
+  pdf: (binding) =>
     html`<caffold-pdf-viewer
-      ${drawn(viewer)}
-      .file=${file}
-      .position=${pageAnchorIn(position)}
+      ${drawn(binding.viewer)}
+      .file=${binding.file}
+      .position=${pageAnchorIn(binding.position)}
+      .zoom=${binding.zoom}
+      .zoomDragging=${binding.zoomDragging}
+      @caffold:viewer-zoom-shown=${binding.zoomShown}
     ></caffold-pdf-viewer>`,
-  docx: (file, position, viewer) =>
+  docx: (binding) =>
     html`<caffold-docx-viewer
-      ${drawn(viewer)}
-      .file=${file}
-      .position=${pageAnchorIn(position)}
+      ${drawn(binding.viewer)}
+      .file=${binding.file}
+      .position=${pageAnchorIn(binding.position)}
+      .zoom=${binding.zoom}
+      @caffold:viewer-zoom-shown=${binding.zoomShown}
     ></caffold-docx-viewer>`,
-  hwp: (file, position, viewer) =>
+  hwp: (binding) =>
     html`<caffold-hwp-viewer
-      ${drawn(viewer)}
-      .file=${file}
-      .position=${pageAnchorIn(position)}
+      ${drawn(binding.viewer)}
+      .file=${binding.file}
+      .position=${pageAnchorIn(binding.position)}
+      .zoom=${binding.zoom}
+      .zoomDragging=${binding.zoomDragging}
+      @caffold:viewer-zoom-shown=${binding.zoomShown}
     ></caffold-hwp-viewer>`,
-  pptx: (file, position, viewer) =>
+  pptx: (binding) =>
     html`<caffold-pptx-viewer
-      ${drawn(viewer)}
-      .file=${file}
-      .position=${pageAnchorIn(position)}
+      ${drawn(binding.viewer)}
+      .file=${binding.file}
+      .position=${pageAnchorIn(binding.position)}
+      .zoom=${binding.zoom}
+      @caffold:viewer-zoom-shown=${binding.zoomShown}
     ></caffold-pptx-viewer>`,
-  xlsx: (file, position, viewer) =>
+  xlsx: (binding) =>
     html`<caffold-xlsx-viewer
-      ${drawn(viewer)}
-      .file=${file}
-      .position=${workbookIn(position)}
+      ${drawn(binding.viewer)}
+      .file=${binding.file}
+      .position=${workbookIn(binding.position)}
     ></caffold-xlsx-viewer>`,
 };
+
+// Each image or document opens fitted to the width.
+const FIT_WIDTH: ViewerZoom = Object.freeze({ fit: "width" });
 
 // An image or document preview is fetched here, once for its file, and drawn
 // from that copy. Review asks for it again only when the file may have
@@ -356,6 +386,9 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   // showing an empty image the browser would draw as broken.
   @state()
   private accessor imageDrawn = false;
+  // The drawn picture's own width, which a zoom percent takes a share of.
+  @state()
+  private accessor imageNaturalWidth = 0;
   // The fetched copy of the previewed file the image or document draws from.
   @state()
   private accessor imageSource = "";
@@ -374,6 +407,18 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   };
   @state()
   private accessor wrap = false;
+  // The size an image or a document is drawn at, as chosen in Zoom. Showing
+  // another file starts it again fitted to the width; reading the same file
+  // again keeps it.
+  @state()
+  private accessor zoom: ViewerZoom = FIT_WIDTH;
+  // Whether the person holds Zoom's slider.
+  @state()
+  private accessor zoomDragging = false;
+  // The percent of its own size the image or the document's page at the top
+  // is drawn at, as measured or as its viewer says; null until it is drawn.
+  @state()
+  private accessor shownPercent: number | null = null;
   // Whether names in Source and the new side of a diff can be pressed; only
   // an owner that shows the working tree hands this over.
   @state()
@@ -387,14 +432,21 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   static override styles = [
     scopedStyle(compactIconButton, ".viewer-refresh-button"),
     scopedStyle(compactIconButton, ".viewer-wrap-button"),
+    scopedStyle(compactIconButton, ".viewer-zoom-button"),
     scopedStyle(compactIconButton, ".viewer-close-button"),
     scopedStyle(secondaryButton, ".task-secondary-button"),
     styles,
   ];
 
   private readonly detailsPopoverId: string;
+  private readonly zoomPopoverId: string;
   private previewFiles: Partial<Record<PreviewSlot, PreviewFile>> = {};
   private retainedContent: RetainedContent | null = null;
+  // Where the image stage was read before the person changed its zoom, to
+  // return to once the picture has its new size.
+  private imagePlace: ZoomPlace | null = null;
+  private imageResize: ResizeObserver | null = null;
+  private observedImage: HTMLImageElement | null = null;
   private readonly iconsReady = () => this.requestUpdate();
   private readonly followWrap = (event: CustomEvent<{ wrap: boolean }>) => {
     this.wrap = event.detail.wrap;
@@ -403,7 +455,9 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly detailsPopover = new DrawnRef<HTMLElement>(this);
+  private readonly zoomControl = new DrawnRef<CaffoldZoomControl>(this);
   private readonly imageStage = new DrawnRef<HTMLDivElement>(this);
+  private readonly imagePreview = new DrawnRef<HTMLImageElement>(this);
   private readonly noticeContent = new DrawnRef<HTMLDivElement>(this);
   private readonly codeViewer = new DrawnRef<CaffoldCodeViewer>(this);
   private readonly diffViewer = new DrawnRef<CaffoldDiffViewer>(this);
@@ -416,6 +470,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     super();
     viewerInstanceId += 1;
     this.detailsPopoverId = `caffold-viewer-details-${viewerInstanceId}`;
+    this.zoomPopoverId = `caffold-viewer-zoom-${viewerInstanceId}`;
   }
 
   override connectedCallback() {
@@ -429,6 +484,10 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   override disconnectedCallback() {
     super.disconnectedCallback();
     this.deactivate();
+    // Connected again, the viewer watches its picture anew.
+    this.imageResize?.disconnect();
+    this.imageResize = null;
+    this.observedImage = null;
     window.removeEventListener(WRAP_CHANGE_EVENT, this.followWrap);
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
@@ -452,10 +511,12 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     const downloadPath = presentation?.downloadPath ?? "";
     const details = Boolean(subtitle || lineStats || metadata.length > 0);
     const closeIcon = this.closeMode === "back" ? "ArrowLeft" : "X";
-    // Wrap sits beside the choice of representation: right after the header's
-    // own, or else last, which in Review is beside the choice Review places at
-    // the header's end.
+    // Wrap, for source and diffs, and Zoom, for the previews of images and
+    // documents but workbooks, sit beside the choice of representation: right
+    // after the header's own, or else last, which in Review is beside the
+    // choice Review places at the header's end.
     const offersChange = this.changeChoices.choices.length > 0;
+    const zoomable = isZoomable(state);
     const wrapLabel = this.wrap
       ? "Stop wrapping code lines"
       : "Wrap code lines";
@@ -478,6 +539,23 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
             ${inlineIcon("WrapText", "", "viewer-wrap-icon")}
           </button>`
         : nothing;
+    const zoomButton = zoomable
+      ? html`<button
+          ${this.hints.button({
+            id: "zoom:open",
+            label: "Zoom",
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
+          type="button"
+          class="viewer-zoom-button"
+          data-action="zoom"
+          popovertarget=${this.zoomPopoverId}
+          aria-label="Zoom"
+          title="Zoom"
+        >
+          ${inlineIcon("ZoomIn", "", "viewer-zoom-icon")}
+        </button>`
+      : nothing;
     const header = html`
       <header class="viewer-header">
         <div class="viewer-title-row">
@@ -537,7 +615,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
                       style="--viewer-change-choice-count: ${this.changeChoices.choices.length};"
                       @caffold:segmented-control-intent=${this.chooseChange}
                     ></caffold-segmented-control>
-                    ${wrapButton}`
+                    ${wrapButton}${zoomButton}`
                 : nothing
             }
             ${
@@ -582,7 +660,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
                   </button>`
                 : nothing
             }
-            ${offersChange ? nothing : wrapButton}
+            ${offersChange ? nothing : html`${wrapButton}${zoomButton}`}
           </div>
         </div>
         ${
@@ -635,6 +713,28 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
                   ${this.keyboard.presentation()}
                 ></caffold-keyboard-navigation-presentation>
               </div>`
+            : nothing
+        }
+        ${
+          zoomable
+            ? html`<caffold-zoom-control
+                ${drawn(this.zoomControl)}
+                ${this.keyboard.popover({
+                  id: "zoom",
+                  label: "Zoom",
+                  sessionBound: true,
+                })}
+                id=${this.zoomPopoverId}
+                class="viewer-zoom-popover"
+                popover="auto"
+                aria-label="Zoom"
+                .snapshot=${{ zoom: this.zoom, percent: this.shownPercent }}
+                @beforetoggle=${returnPopoverFocus}
+                @caffold:zoom-control-intent=${this.chooseZoom}
+                @caffold:keyboard-session-dismiss=${this.closeZoomPopover}
+              ><caffold-keyboard-navigation-presentation
+                ${this.keyboard.presentation()}
+              ></caffold-keyboard-navigation-presentation></caffold-zoom-control>`
             : nothing
         }
       </header>
@@ -746,6 +846,13 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
         const imageLoading = this.imageDrawn
           ? nothing
           : html`<caffold-loading-text>Loading image...</caffold-loading-text>`;
+        // CSS fits the picture; a percent is drawn as that share of its own
+        // width.
+        const zoom = this.zoom;
+        const zoomWidth =
+          "percent" in zoom && this.imageNaturalWidth
+            ? `--image-zoom-width: ${(this.imageNaturalWidth * zoom.percent) / 100}px`
+            : nothing;
         return html`
           <section class="viewer-panel image-panel">
             ${header}
@@ -758,9 +865,12 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
                 clipRoots: () => [this, this.imageStage.value],
               })}
               class="image-stage"
+              data-zoom=${"fit" in zoom ? zoom.fit : "percent"}
             >
               <img
+                ${drawn(this.imagePreview)}
                 class="image-preview"
+                style=${zoomWidth}
                 src=${this.imageSource || nothing}
                 alt=${state.image.name}
                 ?hidden=${!this.imageDrawn}
@@ -776,11 +886,14 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
         return html`
           <section class="viewer-panel file-panel document-panel">
             ${header}
-            ${DOCUMENT_VIEWERS[state.document.kind](
-              this.documentFile,
-              this.documentPosition,
-              this.documentViewer,
-            )}
+            ${DOCUMENT_VIEWERS[state.document.kind]({
+              file: this.documentFile,
+              position: this.documentPosition,
+              viewer: this.documentViewer,
+              zoom: this.zoom,
+              zoomDragging: this.zoomDragging,
+              zoomShown: this.showZoomShown,
+            })}
           </section>
         `;
       case "markdown":
@@ -815,6 +928,13 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
       selected: this.changeChoices.selected,
       choices: this.changeChoices.choices,
     });
+    this.observeImageSize();
+    const place = this.imagePlace;
+    const stage = this.imageStage.value;
+    if (place && stage) {
+      this.imagePlace = null;
+      returnToZoomPlace(stage, [], place);
+    }
   }
 
   get status() {
@@ -824,6 +944,7 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   deactivate() {
     this.cancelRetainedContent();
     this.closeDetailsPopover();
+    this.closeZoomPopover();
     this.releasePreviewFiles([]);
   }
 
@@ -905,6 +1026,8 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     const held = this.previewFiles.file;
     if (this.state.status !== "image" || this.state.image.path !== image.path) {
       this.imageDrawn = false;
+      this.imageNaturalWidth = 0;
+      this.startZoom();
     }
     const metadata = [
       { field: "path", label: "Path", value: image.path },
@@ -946,6 +1069,12 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     this.cancelRetainedContent();
     const held = this.previewFiles.file;
     const previous = this.state;
+    if (
+      previous.status !== "document" ||
+      previous.document.path !== previewDocument.path
+    ) {
+      this.startZoom();
+    }
     this.documentPosition = position;
     this.state = {
       status: "document",
@@ -1173,10 +1302,16 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   }
 
   keyboardNavigationContexts({ scopeId = "" }: { scopeId?: string } = {}) {
+    // Each open popover reads the targets inside it: the details' own, and the
+    // controls Zoom draws.
     return mergeKeyboardNavigationContexts(
       this.keyboard.contexts({
         scopeId,
-        actionHints: (pull) => this.hints.scope(pull),
+        actionHints: (pull) =>
+          mergeActionHintScopes(
+            this.hints.scope(pull),
+            this.zoomControl.value?.actionHintScope(pull),
+          ),
       }),
       this.codeViewer.value?.keyboardNavigationContexts({
         scopeId: `${scopeId}:source`,
@@ -1248,14 +1383,59 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   }
 
   private closeDetailsPopover() {
-    const popover = this.detailsPopover.value;
-    if (!popover?.matches(":popover-open")) {
+    hideOpenPopover(this.detailsPopover.value);
+  }
+
+  private closeZoomPopover() {
+    hideOpenPopover(this.zoomControl.value);
+  }
+
+  // Another file's preview starts fitted to the width, with Zoom closed.
+  private startZoom() {
+    this.closeZoomPopover();
+    this.zoom = FIT_WIDTH;
+    this.zoomDragging = false;
+    this.shownPercent = null;
+    this.imagePlace = null;
+  }
+
+  // The image keeps the point in the middle of what shows where it is.
+  private chooseZoom(event: CustomEvent<ZoomControlIntentDetail>) {
+    const stage = this.state.status === "image" ? this.imageStage.value : null;
+    if (stage) {
+      this.imagePlace ??= readZoomPlace(stage, []);
+    }
+    this.zoom = event.detail.zoom;
+    this.zoomDragging = event.detail.dragging;
+  }
+
+  private showZoomShown(event: CustomEvent<ViewerZoomShownDetail>) {
+    this.shownPercent = event.detail.percent;
+  }
+
+  // The picture changes size as it is drawn, zoomed, or given other room, and
+  // each change is measured as the percent it shows.
+  private observeImageSize() {
+    const image = this.imagePreview.value ?? null;
+    if (image === this.observedImage) {
       return;
     }
-    try {
-      popover.hidePopover();
-    } catch {
-      // A parent transition may already have detached the viewer.
+    this.imageResize?.disconnect();
+    this.observedImage = image;
+    if (image) {
+      this.imageResize ??= new ResizeObserver(() => this.measureImage());
+      this.imageResize.observe(image);
+    }
+  }
+
+  private measureImage() {
+    const image = this.imagePreview.value;
+    if (this.state.status !== "image" || !this.imageDrawn || !image) {
+      return;
+    }
+    if (image.naturalWidth) {
+      this.shownPercent =
+        (image.getBoundingClientRect().width / image.naturalWidth) * 100;
     }
   }
 
@@ -1398,11 +1578,15 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
     return action ? `caffold:${action}` : "";
   }
 
-  // A picture let go of for another file's may still finish loading.
+  // A picture let go of for another file's may still finish loading. A newer
+  // copy may have another size and keep its place's, so it is measured once
+  // it is drawn as well as when its place changes.
   private showDrawnImage(event: Event) {
     const image = event.currentTarget as HTMLImageElement;
     if (image.src === this.previewFiles.file?.objectUrl) {
       this.imageDrawn = true;
+      this.imageNaturalWidth = image.naturalWidth;
+      void this.updateComplete.then(() => this.measureImage());
     }
   }
 
@@ -1627,6 +1811,26 @@ export class CaffoldReviewFileViewer extends CaffoldElement {
   private get visualDiffElement() {
     this.performUpdate();
     return this.visualDiff.value;
+  }
+}
+
+// Zoom serves the preview of an image or of a document, but not of a workbook,
+// whose cells scroll both ways at their own size.
+function isZoomable(state: ViewerState) {
+  return (
+    state.status === "image" ||
+    (state.status === "document" && state.document.kind !== "xlsx")
+  );
+}
+
+function hideOpenPopover(popover: HTMLElement | undefined) {
+  if (!popover?.matches(":popover-open")) {
+    return;
+  }
+  try {
+    popover.hidePopover();
+  } catch {
+    // A parent transition may already have detached the viewer.
   }
 }
 

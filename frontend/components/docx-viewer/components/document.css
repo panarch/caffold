@@ -3,18 +3,20 @@
   min-width: 0;
 }
 
-/* Override the document renderer's backdrop and page chrome inside its root. */
+/* Override the document renderer's backdrop and page chrome inside its root.
+   A page narrower than the viewer sits in the middle, and a page zoomed wider
+   starts at the left edge, so scrolling reaches all of it. */
 .docx-wrapper {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: 1rem;
   padding: 0;
   background: transparent;
 }
 
 .docx-wrapper > section.docx {
-  margin: 0;
+  margin: 0 auto;
   border: 1px solid var(--border);
   box-shadow: none;
 }

@@ -210,3 +210,106 @@ test("reports a failed WASM download inside Review", { tag: "@server-steady" }, 
   await expect(viewer).toHaveAttribute("data-render-state", "error");
   await expect(taskReview.getByRole("button", { name: "Preview", exact: true })).toHaveAttribute("aria-pressed", "true");
 });
+
+// The room the viewer gives its pages, and the box and drawn canvas of each
+// page.
+function hwpLayout(viewer) {
+  return viewer.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+    return {
+      room: {
+        width: element.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight),
+        height: element.clientHeight - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.paddingBottom),
+      },
+      pages: [...element.shadowRoot.querySelectorAll("[data-hwp-page]")].map((page) => {
+        const box = page.getBoundingClientRect();
+        const canvas = page.querySelector("canvas");
+        return {
+          width: box.width,
+          height: box.height,
+          canvasWidth: canvas?.width ?? 0,
+          canvasHeight: canvas?.height ?? 0,
+          sharpWidth: Math.round(page.clientWidth * ratio),
+        };
+      }),
+    };
+  });
+}
+
+async function openHwpZoom(taskReview) {
+  const fileViewer = taskReview.locator("caffold-review-file-viewer");
+  await fileViewer.getByRole("button", { name: "Zoom", exact: true }).click();
+  const zoom = fileViewer.locator("caffold-zoom-control");
+  await expect(zoom).toBeVisible();
+  return {
+    zoom,
+    percent: zoom.getByRole("textbox", { name: "Zoom percent" }),
+    slider: zoom.getByRole("slider", { name: "Zoom" }),
+  };
+}
+
+test("Zoom fits a Hangul page to the viewer or draws it at a percent of its size, drawing it again once let go", { tag: "@server-steady" }, async ({
+  page,
+}, testInfo) => {
+  const { taskReview, viewer } = await openDocument(page, testInfo);
+  await expect(viewer.locator("[data-hwp-page]")).toHaveCount(5);
+  await expect(viewer.locator("[data-hwp-page] canvas").first()).toBeVisible();
+  const { zoom, percent, slider } = await openHwpZoom(taskReview);
+
+  await zoom.getByRole("button", { name: "Fit page" }).click();
+  await expect.poll(async () => {
+    const { room, pages } = await hwpLayout(viewer);
+    return pages[0].height <= room.height + 1;
+  }).toBe(true);
+  const whole = (await hwpLayout(viewer)).pages[0];
+  expect(whole.width / whole.height).toBeCloseTo(793.7 / 1122.5, 2);
+  await expect(percent).toHaveValue(`${Math.round((whole.width / 793.7) * 100)}%`);
+
+  await readThirdPage(viewer);
+  await percent.fill("150");
+  await percent.press("Enter");
+  await expect.poll(async () => (await hwpLayout(viewer)).pages[2].width).toBeCloseTo(793.7 * 1.5, 0);
+  const kept = await readingPlace(viewer);
+  expect(kept.page).toBe(2);
+  expect(Math.abs(kept.fraction - 0.25)).toBeLessThanOrEqual(0.02);
+  // RHWP rounds a canvas side its own way, a pixel either side.
+  await expect.poll(async () => {
+    const { pages } = await hwpLayout(viewer);
+    return Math.abs(pages[2].canvasWidth - pages[2].sharpWidth) <= 1;
+  }).toBe(true);
+
+  const drawnAt = (await hwpLayout(viewer)).pages[2].canvasWidth;
+  const box = await slider.boundingBox();
+  const middle = box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width * 0.65, middle);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.75, middle, { steps: 5 });
+  await expect.poll(async () => (await hwpLayout(viewer)).pages[2].width)
+    .toBeGreaterThan(793.7 * 1.5 + 50);
+  expect((await hwpLayout(viewer)).pages[2].canvasWidth).toBe(drawnAt);
+  await page.mouse.up();
+  await expect.poll(async () => {
+    const { pages } = await hwpLayout(viewer);
+    return Math.abs(pages[2].canvasWidth - pages[2].sharpWidth) <= 1 && pages[2].canvasWidth !== drawnAt;
+  }).toBe(true);
+});
+
+test.describe("on a screen of two device pixels to the CSS pixel", () => {
+  test.use({ deviceScaleFactor: 2 });
+
+  test("draws a Hangul page zoomed far in coarser, within the canvas size an iPhone draws", { tag: "@server-steady" }, async ({
+    page,
+  }, testInfo) => {
+    const { taskReview, viewer } = await openDocument(page, testInfo);
+    await expect(viewer.locator("[data-hwp-page] canvas").first()).toBeVisible();
+    const { percent } = await openHwpZoom(taskReview);
+
+    await percent.fill("400");
+    await percent.press("Enter");
+    await expect.poll(async () => (await hwpLayout(viewer)).pages[0].canvasWidth).toBeGreaterThan(793.7 * 4);
+    const [first] = (await hwpLayout(viewer)).pages;
+    expect(first.canvasWidth * first.canvasHeight).toBeLessThanOrEqual(4096 * 4096);
+    expect(first.canvasWidth).toBeLessThan(first.sharpWidth);
+  });
+});

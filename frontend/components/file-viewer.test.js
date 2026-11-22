@@ -156,6 +156,7 @@ test("opens source or a diff where its owner kept it, and ignores another kind o
   const owner = viewerWith({ status: "empty" });
   owner.previewFiles = {};
   owner.detailsPopover = { value: null };
+  owner.zoomControl = { value: null };
   const file = { path: "a.js", content: "a" };
   const kept = { anchor: { page: 40, fraction: 0.5 }, left: 3 };
 
@@ -221,6 +222,7 @@ function retainingViewer(state) {
     retainedContent: null,
     renders: [],
     detailsPopover: { value: null },
+    zoomControl: { value: null },
     previewFiles: {},
   };
   // Each state the viewer shows is one it draws.
@@ -234,6 +236,7 @@ function retainingViewer(state) {
     "cancelRetainedContent",
     "deactivate",
     "closeDetailsPopover",
+    "closeZoomPopover",
     "releasePreviewFile",
     "releasePreviewFiles",
     "setNotice",
@@ -402,6 +405,7 @@ function previewHost(status = "document") {
     previewFiles: {},
     imageSource: "",
     detailsPopover: { value: null },
+    zoomControl: { value: null },
     setError: (presentation, error) => errors.push(error.message),
   });
   // The document viewer is handed what the template binds; it waits for the
@@ -457,6 +461,96 @@ test("hands the document viewer where the next file opens, and none for a file k
 
   host.setDocument({ kind: "pdf", path: "p1.pdf" });
   assert.equal(host.documentPosition, null);
+});
+
+test("a preview keeps the zoom chosen while its file is read again, and another file opens fitted to the width", async () => {
+  fileServer({
+    "z1.pdf": { text: "first", version: "v1" },
+    "z2.pdf": { text: "second", version: "v1" },
+  });
+  const { host } = previewHost();
+  globalThis.window = { location: new URL(ORIGIN) };
+
+  host.setDocument({ kind: "pdf", path: "z1.pdf" });
+  assert.deepEqual(host.zoom, { fit: "width" });
+  await until(() => host.previewFiles.file.phase === "shown");
+  host.chooseZoom({ detail: { zoom: { percent: 150 }, dragging: true } });
+  host.showZoomShown({ detail: { percent: 150 } });
+  assert.deepEqual(host.zoom, { percent: 150 });
+  assert.equal(host.zoomDragging, true);
+
+  host.setDocument({ kind: "pdf", path: "z1.pdf" }, { recheck: true });
+  assert.deepEqual(host.zoom, { percent: 150 }, "reading the same file again keeps it");
+  assert.equal(host.shownPercent, 150);
+
+  host.setDocument({ kind: "pdf", path: "z2.pdf" });
+  assert.deepEqual(host.zoom, { fit: "width" });
+  assert.equal(host.zoomDragging, false);
+  assert.equal(host.shownPercent, null, "nothing is shown until the new file is drawn");
+});
+
+test("another picture opens fitted to the width and is measured anew", () => {
+  fileServer({});
+  const { host } = previewHost("image");
+  host.zoom = { percent: 200 };
+  host.shownPercent = 200;
+  host.imageNaturalWidth = 1170;
+  host.imageDrawn = true;
+
+  host.setImage({ path: "picture.png", name: "picture.png", imageType: "PNG" });
+  assert.deepEqual(host.zoom, { percent: 200 }, "the same picture keeps its zoom");
+
+  host.setImage({ path: "other.png", name: "other.png", imageType: "PNG" });
+  assert.deepEqual(host.zoom, { fit: "width" });
+  assert.equal(host.shownPercent, null);
+  assert.equal(host.imageNaturalWidth, 0);
+  assert.equal(host.imageDrawn, false);
+});
+
+test("measures a drawn picture as the percent of its own width it shows", () => {
+  const owner = elementStandIn(fileViewer, {
+    state: { status: "image" },
+    imageDrawn: true,
+    imagePreview: {
+      value: { naturalWidth: 1170, getBoundingClientRect: () => ({ width: 585 }) },
+    },
+  });
+
+  fileViewer.measureImage.call(owner);
+  assert.equal(owner.shownPercent, 50);
+
+  owner.imageDrawn = false;
+  owner.imagePreview.value.getBoundingClientRect = () => ({ width: 1170 });
+  fileViewer.measureImage.call(owner);
+  assert.equal(owner.shownPercent, 50, "a picture not drawn yet is not measured");
+});
+
+test("keeps the middle of a picture where it is when its zoom changes", () => {
+  const stage = {
+    scrollLeft: 100,
+    scrollTop: 400,
+    clientWidth: 400,
+    clientHeight: 300,
+    scrollWidth: 1000,
+    scrollHeight: 2000,
+  };
+  const owner = elementStandIn(fileViewer, {
+    state: { status: "image" },
+    imageStage: { value: stage },
+    imagePreview: { value: null },
+    changeControl: { value: null },
+    imagePlace: null,
+  });
+
+  fileViewer.chooseZoom.call(owner, { detail: { zoom: { percent: 200 }, dragging: false } });
+  stage.scrollWidth = 2000;
+  stage.scrollHeight = 4000;
+  fileViewer.updated.call(owner);
+
+  assert.deepEqual(owner.zoom, { percent: 200 });
+  assert.equal(stage.scrollLeft, 0.3 * 2000 - 200);
+  assert.equal(stage.scrollTop, 0.275 * 4000 - 150);
+  assert.equal(owner.imagePlace, null);
 });
 
 test("a recheck keeps a file the server answers with the same version", async () => {

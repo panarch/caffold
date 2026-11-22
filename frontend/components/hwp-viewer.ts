@@ -1,4 +1,4 @@
-import { html, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { CaffoldElement } from "../caffold-element.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.js";
@@ -9,6 +9,14 @@ import {
   readPageAnchor,
   scrollToPageAnchor,
 } from "./page-anchor.js";
+import {
+  canvasPixelRatio,
+  readZoomPlace,
+  returnToZoomPlace,
+  ShownZoom,
+  type ViewerZoom,
+  type ZoomPlace,
+} from "./viewer-zoom.js";
 
 import styles from "./hwp-viewer.css.js";
 
@@ -16,7 +24,6 @@ const RHWP_VERSION = "0.9.1";
 const RHWP_IMPORT = `https://cdn.jsdelivr.net/npm/@rhwp/core@${RHWP_VERSION}/rhwp.js`;
 const PREVIEW_LABEL = "Hangul document preview";
 const NEARBY_PAGE_MARGIN = "100% 0px";
-const MAX_RENDER_PIXEL_RATIO = 2;
 
 // Production builds omit the npm package. These types describe the CDN API
 // used by the viewer.
@@ -41,6 +48,7 @@ type RenderState = "empty" | "loading" | "error" | "hwp";
 interface PageRecord {
   index: number;
   width: number;
+  height: number;
   element: HTMLElement;
   renderedWidth: number;
 }
@@ -57,6 +65,15 @@ class CaffoldHwpViewer extends CaffoldElement {
   @property({ attribute: false })
   accessor position: PageAnchor | null = null;
 
+  // The size the pages are drawn at. CSS sizes each page's box from it; while
+  // the person holds the zoom slider, a page keeps the picture it has,
+  // stretched to its box, and is drawn again once they let go.
+  @property({ attribute: false })
+  accessor zoom: ViewerZoom = { fit: "width" };
+
+  @property({ attribute: false })
+  accessor zoomDragging = false;
+
   @state()
   private accessor renderState: RenderState = "empty";
 
@@ -67,11 +84,15 @@ class CaffoldHwpViewer extends CaffoldElement {
   private openedDocument: RhwpDocument | null = null;
   private generation = 0;
   private readingAnchor: PageAnchor | null = null;
+  // Where it was read before its zoom changed, to return to at the new size.
+  private zoomPlace: ZoomPlace | null = null;
   private layoutWidth = 0;
+  private layoutHeight = 0;
   private readonly nearbyPages = new Set<PageRecord>();
   private pageObserver: IntersectionObserver | null = null;
   private widthObserver: ResizeObserver | null = null;
   private readonly surfaces = new ScrollSurfaces(this);
+  private readonly shown = new ShownZoom(this);
 
   constructor() {
     super();
@@ -81,6 +102,7 @@ class CaffoldHwpViewer extends CaffoldElement {
         if (this.renderState === "hwp") {
           this.readingAnchor =
             readPageAnchor(this, this.pageElements()) ?? this.readingAnchor;
+          this.reportShownZoom();
         }
       },
       { passive: true },
@@ -101,6 +123,13 @@ class CaffoldHwpViewer extends CaffoldElement {
   }
 
   override willUpdate(changed: PropertyValues) {
+    if (
+      changed.has("zoom") &&
+      !changed.has("file") &&
+      this.renderState === "hwp"
+    ) {
+      this.zoomPlace = readZoomPlace(this, this.pageElements());
+    }
     const file = this.file;
     if (!this.isConnected || file === this.activeFile) {
       return;
@@ -120,6 +149,18 @@ class CaffoldHwpViewer extends CaffoldElement {
     if (changed.has("renderState")) {
       this.dataset.renderState = this.renderState;
     }
+    const place = this.zoomPlace;
+    if (place) {
+      this.zoomPlace = null;
+      returnToZoomPlace(this, this.pageElements(), place);
+      this.reportShownZoom();
+    }
+    if (
+      (changed.has("zoom") || changed.has("zoomDragging")) &&
+      !this.zoomDragging
+    ) {
+      this.drawNearbyPages();
+    }
   }
 
   override render() {
@@ -129,11 +170,14 @@ class CaffoldHwpViewer extends CaffoldElement {
         : this.renderState === "error"
           ? "This Hangul document could not be displayed."
           : null;
+    const zoom = this.zoom;
     return html`<div
       class="hwp-viewer-body"
+      data-zoom=${"fit" in zoom ? zoom.fit : "percent"}
+      style=${"percent" in zoom ? `--hwp-zoom-scale: ${zoom.percent / 100}` : nothing}
       ${this.surfaces.surface({
         id: "scroll",
-        axes: ["vertical"],
+        axes: ["vertical", "horizontal"],
         scrollport: () => this,
         clipRoots: () => [this],
       })}
@@ -187,7 +231,9 @@ class CaffoldHwpViewer extends CaffoldElement {
 
   private observeLayout(generation: number) {
     this.layoutWidth = this.clientWidth;
+    this.layoutHeight = this.clientHeight;
     this.restoreReadingPosition();
+    this.reportShownZoom();
     this.pageObserver = new IntersectionObserver(
       (entries) => {
         if (!this.isCurrent(generation)) {
@@ -212,31 +258,42 @@ class CaffoldHwpViewer extends CaffoldElement {
     for (const page of this.pages) {
       this.pageObserver.observe(page.element);
     }
+    // A fit follows the room the viewer has: its width, and for Fit page its
+    // height.
     this.widthObserver = new ResizeObserver(() => {
-      if (this.isCurrent(generation) && this.clientWidth !== this.layoutWidth) {
+      if (
+        this.isCurrent(generation) &&
+        (this.clientWidth !== this.layoutWidth ||
+          this.clientHeight !== this.layoutHeight)
+      ) {
         this.layoutWidth = this.clientWidth;
+        this.layoutHeight = this.clientHeight;
         this.restoreReadingPosition();
         this.drawNearbyPages();
+        this.reportShownZoom();
       }
     });
     this.widthObserver.observe(this);
   }
 
+  // Drawing is synchronous, so nothing is drawn while the person holds the
+  // zoom slider.
   private drawNearbyPages() {
     const opened = this.openedDocument;
-    if (!opened) {
+    if (!opened || this.zoomDragging) {
       return;
     }
-    const ratio = Math.min(
-      window.devicePixelRatio || 1,
-      MAX_RENDER_PIXEL_RATIO,
-    );
     try {
       for (const page of this.nearbyPages) {
         const width = page.element.clientWidth;
         if (!width || width === page.renderedWidth) {
           continue;
         }
+        const ratio = canvasPixelRatio(
+          width,
+          (width * page.height) / page.width,
+          window.devicePixelRatio,
+        );
         const canvas = document.createElement("canvas");
         canvas.className = "hwp-viewer-canvas";
         opened.renderPageToCanvas(
@@ -262,6 +319,19 @@ class CaffoldHwpViewer extends CaffoldElement {
     return this.pages.map((page) => page.element);
   }
 
+  // The scale of the page at the top, of the size the document gives it.
+  private reportShownZoom() {
+    if (this.renderState !== "hwp" || !this.pages.length) {
+      return;
+    }
+    const anchor = readPageAnchor(this, this.pageElements());
+    const page = this.pages[anchor?.page ?? 0];
+    const width = page.element.getBoundingClientRect().width;
+    if (width > 0) {
+      this.shown.report(width / page.width);
+    }
+  }
+
   private fail() {
     this.release();
     this.renderState = "error";
@@ -269,6 +339,7 @@ class CaffoldHwpViewer extends CaffoldElement {
 
   private release() {
     this.generation += 1;
+    this.shown.forget();
     this.pageObserver?.disconnect();
     this.pageObserver = null;
     this.widthObserver?.disconnect();
@@ -301,8 +372,9 @@ function pageRecord(opened: RhwpDocument, index: number): PageRecord {
   element.className = "hwp-viewer-page";
   element.dataset.hwpPage = String(index + 1);
   element.style.setProperty("--hwp-page-width", `${width}px`);
+  element.style.setProperty("--hwp-page-aspect", `${width / height}`);
   element.style.aspectRatio = `${width} / ${height}`;
-  return { index, width, element, renderedWidth: 0 };
+  return { index, width, height, element, renderedWidth: 0 };
 }
 
 function loadLibrary() {

@@ -1,0 +1,94 @@
+/* Two rows: the fit choice, then − and the slider and + with the percent. The
+   slider takes the width the others leave. */
+:host {
+  box-sizing: border-box;
+  width: min(19rem, calc(100vw - 1.5rem));
+  padding: var(--interface-space-6);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 12px 30px rgb(var(--shadow-rgb) / 16%);
+  font-size: var(--interface-meta-font-size);
+}
+
+:host(:popover-open) {
+  display: grid;
+  gap: var(--interface-space-5);
+}
+
+.zoom-fit {
+  justify-self: start;
+}
+
+.zoom-steps {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--interface-space-4);
+}
+
+.zoom-step {
+  margin-block: 0;
+  color: var(--control-fg);
+}
+
+.zoom-step-icon {
+  position: relative;
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
+}
+
+.zoom-slider {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--interface-compact-hit-size);
+  margin: 0;
+  accent-color: var(--control-selected-fg);
+  cursor: pointer;
+}
+
+.zoom-slider:disabled {
+  cursor: default;
+}
+
+.zoom-slider:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* The percent reads as a number until it is pointed at, when it takes the
+   hover of a control, or edited, when it shows the field. */
+.zoom-percent {
+  box-sizing: border-box;
+  width: 6ch;
+  height: var(--interface-compact-visual-size);
+  margin: 0;
+  padding: 0 var(--interface-space-2);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: center;
+  cursor: text;
+}
+
+.zoom-percent:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .zoom-percent:not(:disabled, :focus):hover {
+    background: var(--control-hover-bg);
+  }
+}
+
+.zoom-percent:focus {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  outline: none;
+}

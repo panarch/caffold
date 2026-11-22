@@ -29,21 +29,22 @@ function drawingViewer() {
   };
 }
 
-function page(offsetWidth) {
-  return { element: { offsetWidth, style: { zoom: "" } }, width: 0 };
-}
-
-function fittingViewer(clientWidth, pageRecords) {
+// A page already measured at its own size.
+function page(width, height = width * 1.414) {
   return {
-    isConnected: true,
-    generation: 2,
-    clientWidth,
-    pageRecords,
-    isCurrent(generation) {
-      return docxDocument.isCurrent.call(this, generation);
-    },
+    element: { offsetWidth: width, offsetHeight: height, style: { zoom: "" } },
+    width,
+    height,
+    scale: 1,
   };
 }
+
+function zoomingViewer(zoom, room, pageRecords) {
+  return { zoom, room, clientWidth: room?.width ?? 0, pageRecords };
+}
+
+const FIT_WIDTH = { fit: "width" };
+const FIT_PAGE = { fit: "page" };
 
 test("lets go of the document shown and opens the file it is handed", () => {
   const { owner, opened } = drawingViewer();
@@ -56,20 +57,12 @@ test("lets go of the document shown and opens the file it is handed", () => {
   assert.deepEqual(opened, [{ generation: 5, file }], "the document shown before is let go of first");
 });
 
-test("stops fitting the document when released", () => {
-  const events = [];
-  const owner = {
-    generation: 2,
-    widthObserver: { disconnect: () => events.push("disconnect") },
-    content: {},
-    pageRecords: [page(794)],
-  };
+test("lets go of the drawn pages when released", () => {
+  const owner = { generation: 2, content: {}, pageRecords: [page(794)] };
 
   docxDocument.release.call(owner);
 
-  assert.deepEqual(events, ["disconnect"]);
   assert.equal(owner.generation, 3);
-  assert.equal(owner.widthObserver, null);
   assert.equal(owner.content, null);
   assert.equal(owner.pageRecords, null);
 });
@@ -80,68 +73,95 @@ test("treats a replaced generation or a detached viewer as stale", () => {
   assert.equal(docxDocument.isCurrent.call({ isConnected: false, generation: 3 }, 3), false);
 });
 
-test("zooms a page down to a narrower viewer and leaves a fitting page alone", () => {
+test("Fit width zooms a page down to a narrower room and leaves a fitting page alone", () => {
   const a4 = page(794);
   const narrow = page(300);
-  const owner = fittingViewer(397, [a4, narrow]);
+  const owner = zoomingViewer(FIT_WIDTH, { width: 397, height: 500 }, [a4, narrow]);
 
-  docxDocument.fitPages.call(owner, 2);
+  docxDocument.zoomPages.call(owner);
 
   assert.equal(a4.element.style.zoom, "0.5");
+  assert.equal(a4.scale, 0.5);
   assert.equal(narrow.element.style.zoom, "");
+  assert.equal(narrow.scale, 1);
 
-  owner.clientWidth = 1200;
-  docxDocument.fitPages.call(owner, 2);
+  owner.room = { width: 1200, height: 500 };
+  docxDocument.zoomPages.call(owner);
 
-  assert.equal(a4.element.style.zoom, "");
+  assert.equal(a4.element.style.zoom, "", "a wide room leaves a page at its own size");
 });
 
-test("measures each page once, before any zoom applies", () => {
-  const a4 = page(794);
-  const owner = fittingViewer(397, [a4]);
-  docxDocument.fitPages.call(owner, 2);
-  Object.defineProperty(a4.element, "offsetWidth", {
+test("Fit page keeps each whole page within the room, page by page", () => {
+  const portrait = page(794, 1123);
+  const landscape = page(1123, 794);
+  const owner = zoomingViewer(FIT_PAGE, { width: 900, height: 650 }, [portrait, landscape]);
+
+  docxDocument.zoomPages.call(owner);
+
+  assert.equal(portrait.scale, 650 / 1123, "a tall page fits the room's height");
+  assert.equal(landscape.scale, 900 / 1123, "a wide page fits the room's width");
+});
+
+test("a percent zooms every page by the same share of its own size, past it too", () => {
+  const portrait = page(794, 1123);
+  const landscape = page(1123, 794);
+  const owner = zoomingViewer({ percent: 150 }, { width: 900, height: 650 }, [portrait, landscape]);
+
+  docxDocument.zoomPages.call(owner);
+
+  assert.equal(portrait.element.style.zoom, "1.5");
+  assert.equal(landscape.element.style.zoom, "1.5");
+});
+
+test("measures each page once, before any zoom applies, and zooms it at once", () => {
+  const element = { offsetWidth: 794, offsetHeight: 1123, style: { zoom: "" } };
+  const owner = {
+    zoom: FIT_WIDTH,
+    room: { width: 397, height: 500 },
+    renderRoot: { querySelectorAll: () => [element] },
+  };
+  owner.zoomPages = () => docxDocument.zoomPages.call(owner);
+
+  docxDocument.measurePages.call(owner);
+
+  assert.equal(element.style.zoom, "0.5");
+  Object.defineProperty(element, "offsetWidth", {
     get: () => assert.fail("a zoomed page must not be measured again"),
   });
-
-  owner.clientWidth = 794 / 4;
-  docxDocument.fitPages.call(owner, 2);
-
-  assert.equal(a4.element.style.zoom, "0.25");
+  owner.room = { width: 794 / 4, height: 500 };
+  docxDocument.zoomPages.call(owner);
+  assert.equal(element.style.zoom, "0.25");
 });
 
-test("waits for the viewer to have a width before measuring pages", () => {
+test("waits for the room to have a width before zooming pages", () => {
   const a4 = page(794);
-  const owner = fittingViewer(0, [a4]);
+  const owner = zoomingViewer(FIT_WIDTH, { width: 0, height: 0 }, [a4]);
 
-  docxDocument.fitPages.call(owner, 2);
-
-  assert.equal(a4.width, 0);
-  assert.equal(a4.element.style.zoom, "");
-});
-
-test("ignores a width change from a replaced generation", () => {
-  const a4 = page(794);
-  const owner = fittingViewer(397, [a4]);
-
-  docxDocument.fitPages.call(owner, 1);
+  docxDocument.zoomPages.call(owner);
 
   assert.equal(a4.element.style.zoom, "");
 });
 
-test("fits a drawn document's pages before it says the document is drawn", () => {
+test("zooms a drawn document's pages before it says it is drawn, and again for a new zoom or room", () => {
   const order = [];
   const owner = {
     renderState: "docx",
     dataset: {},
-    fitDrawnPages: () => order.push("fit"),
+    measurePages: () => order.push("measure"),
+    zoomPages: () => order.push("zoom"),
     dispatchEvent: (event) => order.push(`${event.type}:${event.detail}`),
   };
 
   docxDocument.updated.call(owner, new Map([["renderState", "loading"]]));
 
-  assert.deepEqual(order, ["fit", "caffold:docx-document-state:docx"]);
+  assert.deepEqual(order, ["measure", "caffold:docx-document-state:docx"]);
   assert.equal(owner.dataset.renderState, "docx");
+
+  for (const changed of ["zoom", "room"]) {
+    order.length = 0;
+    docxDocument.updated.call(owner, new Map([[changed, null]]));
+    assert.deepEqual(order, ["zoom"], changed);
+  }
 
   order.length = 0;
   owner.renderState = "loading";
@@ -149,13 +169,15 @@ test("fits a drawn document's pages before it says the document is drawn", () =>
   assert.deepEqual(order, ["caffold:docx-document-state:loading"]);
 });
 
-test("names the drawn pages in order, and none before the document is drawn", () => {
+test("names the drawn pages in order and the zoom of each, and none before the document is drawn", () => {
   const first = page(794);
-  const second = page(794);
+  const second = { ...page(794), scale: 0.5 };
 
   assert.deepEqual(
     docxDocument.pages.call({ pageRecords: [first, second] }),
     [first.element, second.element],
   );
+  assert.equal(docxDocument.pageScale.call({ pageRecords: [first, second] }, 1), 0.5);
   assert.deepEqual(docxDocument.pages.call({ pageRecords: null }), []);
+  assert.equal(docxDocument.pageScale.call({ pageRecords: null }, 0), null);
 });

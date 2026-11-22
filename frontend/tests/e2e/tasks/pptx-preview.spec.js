@@ -419,3 +419,60 @@ test("stays on the slide it was reading when the deck changes", { tag: "@server-
   await expect(viewer.getByText("Revised 4", { exact: true })).toBeVisible();
   await expect.poll(() => readingPlace(viewer)).toEqual({ slide: 3, fraction: 0.4 });
 });
+
+// The room the viewer gives the deck, and the drawn size of each slide.
+function deckLayout(viewer) {
+  return viewer.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      room: {
+        width: element.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight),
+        height: element.clientHeight - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.paddingBottom),
+      },
+      slides: [...element.shadowRoot.querySelector(".pptx-viewer-document").shadowRoot
+        .querySelectorAll(".pptx-viewer-slides > [data-slide-index]")].map((slide) => {
+        const box = slide.getBoundingClientRect();
+        return { width: box.width, height: box.height };
+      }),
+    };
+  });
+}
+
+test("Zoom fits a slide to the width or the whole slide to the viewer, or draws it at a percent of its size", { tag: "@server-steady" }, async ({
+  page,
+}, testInfo) => {
+  // A short window, so a whole slide needs less than the width allows.
+  await page.setViewportSize({ width: 1280, height: 520 });
+  await writeFile(documentPath(testInfo), await presentationDeck(longDeck("Slide")));
+  const { taskReview } = await openDocument(page, testInfo);
+  const viewer = taskReview.locator("caffold-pptx-viewer");
+  await expect(viewer).toHaveAttribute("data-render-state", "pptx");
+  const fileViewer = taskReview.locator("caffold-review-file-viewer");
+  await fileViewer.getByRole("button", { name: "Zoom", exact: true }).click();
+  const zoom = fileViewer.locator("caffold-zoom-control");
+  const percent = zoom.getByRole("textbox", { name: "Zoom percent" });
+
+  const fitted = await deckLayout(viewer);
+  expect(Math.abs(fitted.slides[0].width - Math.min(fitted.room.width, SLIDE_WIDTH))).toBeLessThanOrEqual(1);
+  await expect(percent).toHaveValue(`${Math.round((fitted.slides[0].width / SLIDE_WIDTH) * 100)}%`);
+
+  await zoom.getByRole("button", { name: "Fit page" }).click();
+  await expect.poll(async () => {
+    const layout = await deckLayout(viewer);
+    return Math.abs(layout.slides[0].height - Math.min(layout.room.height, 540)) <= 1;
+  }).toBe(true);
+  const whole = (await deckLayout(viewer)).slides[0];
+  expect(whole.width).toBeLessThan(fitted.slides[0].width);
+  await expect(percent).toHaveValue(`${Math.round((whole.width / SLIDE_WIDTH) * 100)}%`);
+
+  await scrollToPlace(viewer, 3, 0.4);
+  await expect.poll(() => readingPlace(viewer)).toEqual({ slide: 3, fraction: 0.4 });
+  await percent.fill("150");
+  await percent.press("Enter");
+  await expect.poll(async () => (await deckLayout(viewer)).slides[3].width).toBeCloseTo(SLIDE_WIDTH * 1.5, 0);
+  await expect.poll(async () => {
+    const place = await readingPlace(viewer);
+    return place.slide === 3 && Math.abs(place.fraction - 0.4) <= 0.02;
+  }).toBe(true);
+  expect(await viewer.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+});
