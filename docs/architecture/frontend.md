@@ -323,7 +323,9 @@ exhausted it exposes one Retry action that re-enters the same Task-store
 readiness, pending-route, list, and detail recovery operation at once, ahead of
 the next automatic retry. Known offline state uses the same notice without a
 spinner or Retry action. Initial bootstrap and domain-specific requests such as
-older-history loading retain their separately scoped failure UI.
+older-history loading retain their separately scoped failure UI. A Task that
+reports an incomplete Archive settles Task Detail validation with the Task's
+own diagnostic, including during foreground recovery.
 
 The same boundary privately keeps foreground recovery diagnostics for the
 server log. A record starts when the page becomes visible after being hidden,

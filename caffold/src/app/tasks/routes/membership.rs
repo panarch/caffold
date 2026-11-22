@@ -903,13 +903,14 @@ mod tests {
     use crate::app::tasks::detail::loading_detail;
     use crate::app::tasks::live::TaskLiveSource;
     use crate::app::tasks::projection::task_record_from_conversation;
-    use crate::app::tasks::worktrees::{IsolateOutcome, inspect_ready_worktree};
+    use crate::app::tasks::worktrees::{ArchiveOutcome, IsolateOutcome, inspect_ready_worktree};
     use crate::app::tasks::{TaskDetailPublication, TaskDetailSync};
     use crate::git;
     use crate::task_store;
     use crate::task_store::ManagedWorktree;
     use axum::body::Body;
     use axum::extract::Query;
+    use axum::http::{Request, StatusCode};
     use futures_util::StreamExt;
     use serde_json::{Value as JsonValue, json};
     use std::time::Duration;
@@ -2497,6 +2498,210 @@ mod tests {
                 1,
             )
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn interrupted_archive_is_reported_in_detail_and_finishes_through_normal_archive() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        initialize_git_repository(&source);
+        let id = "interrupted-archive";
+        let (state, runner) = task_state_with_agents(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        manage_claude_task(&state, id, root.path()).await;
+        let worktree = isolate_broken_fixture(&state, id, &source).await;
+        let path = Path::new(&worktree.worktree_path);
+        let native = written_down(root.path(), id, path);
+        fs::create_dir_all(native.parent().unwrap()).unwrap();
+        fs::rename(written_down(root.path(), id, root.path()), &native).unwrap();
+        // The checkout removal committed before the Task's membership changed.
+        let ArchiveOutcome::Archived(removed) = state
+            .lifecycle
+            .archive_worktree(id.to_string())
+            .await
+            .unwrap()
+        else {
+            panic!("the fixture must remove its checkout");
+        };
+        assert!(!path.exists());
+        assert!(state.task_store.get(id).unwrap().is_some());
+
+        let app = router(state.clone());
+        let response = app
+            .clone()
+            .oneshot(
+                Request::get(format!("/api/tasks/{id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let body: JsonValue = serde_json::from_slice(
+            &axum::body::to_bytes(response.into_body(), 8192)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(body["error"]["code"], "managed_worktree_archive_incomplete");
+        assert_eq!(body["error"]["allowedActions"], json!(["archiveTask"]));
+        let mut live = TaskLiveSource::new(&state).task_detail(id).await.unwrap();
+        let initial = serde_json::to_value(live.next().await.unwrap().unwrap()).unwrap();
+        assert_eq!(initial["type"], "task-sync");
+        assert_eq!(initial["payload"]["reason"], "stream-bootstrap");
+        assert_eq!(initial["payload"]["error"], body["error"]);
+        let bootstrap = tokio::time::timeout(Duration::from_secs(2), live.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        let bootstrap = serde_json::to_value(bootstrap).unwrap();
+        assert_eq!(bootstrap["payload"]["error"], body["error"]);
+        assert!(runner.spawned(id).await.is_none());
+        drop(live);
+
+        let retry = state
+            .lifecycle
+            .archive_worktree(id.to_string())
+            .await
+            .unwrap();
+        assert_eq!(retry, ArchiveOutcome::AlreadyArchived);
+        state.lifecycle.rollback_archived_worktree(id, &retry).await;
+        assert!(!path.exists());
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::post(format!("/api/tasks/{id}/archive"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: JsonValue = serde_json::from_slice(
+            &axum::body::to_bytes(response.into_body(), 8192)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(body["threadId"], id);
+        assert_eq!(body["conversationAvailable"], true);
+        assert!(state.task_store.get(id).unwrap().is_none());
+        assert!(state.task_store.get_archived(id).unwrap().is_some());
+        let response = app
+            .oneshot(
+                Request::get(format!("/api/tasks/{id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body: JsonValue = serde_json::from_slice(
+            &axum::body::to_bytes(response.into_body(), 8192)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(body["error"]["code"], "task_archived");
+        assert_eq!(
+            state.task_store.worktree_for_thread(id).unwrap().unwrap(),
+            removed
+        );
+        assert!(!path.exists());
+        let anchor = removed.checkout_anchor.unwrap();
+        assert!(git_branch_exists(&source, &anchor.branch_name));
+        assert_eq!(fs::read_to_string(native).unwrap(), "{}\n");
+        assert!(runner.spawned(id).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn interrupted_archive_cannot_finish_when_its_path_is_occupied() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        initialize_git_repository(&source);
+        let id = "interrupted-archive-occupied";
+        let client = CodexThreadClient::mock(Vec::new());
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, id, &source).await;
+        let worktree = isolate_broken_fixture(&state, id, &source).await;
+        state
+            .lifecycle
+            .archive_worktree(id.to_string())
+            .await
+            .unwrap();
+        let app = router(state.clone());
+        let response = app
+            .clone()
+            .oneshot(
+                Request::get(format!("/api/tasks/{id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body: JsonValue = serde_json::from_slice(
+            &axum::body::to_bytes(response.into_body(), 8192)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(body["error"]["allowedActions"], json!(["archiveTask"]));
+
+        // The path can become occupied after the view has offered Archive.
+        let path = Path::new(&worktree.worktree_path);
+        fs::create_dir(path).unwrap();
+        let sentinel = path.join("keep.txt");
+        fs::write(&sentinel, "keep").unwrap();
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::get(format!("/api/tasks/{id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let body: JsonValue = serde_json::from_slice(
+            &axum::body::to_bytes(response.into_body(), 8192)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(body["error"]["code"], "managed_worktree_archive_incomplete");
+        assert_eq!(
+            body["error"]["message"],
+            "The archived worktree path is occupied."
+        );
+        assert_eq!(body["error"]["allowedActions"], json!([]));
+
+        let response = app
+            .oneshot(
+                Request::post(format!("/api/tasks/{id}/archive"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let body: JsonValue = serde_json::from_slice(
+            &axum::body::to_bytes(response.into_body(), 8192)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(body["error"]["code"], "managed_worktree_ownership_changed");
+        assert!(body["error"]["allowedActions"].is_null());
+        assert_eq!(fs::read_to_string(sentinel).unwrap(), "keep");
+        assert!(state.task_store.get(id).unwrap().is_some());
+        assert!(state.task_store.get_archived(id).unwrap().is_none());
+        assert!(client.mock_requests().await.is_empty());
     }
 
     #[tokio::test]

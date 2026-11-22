@@ -41,6 +41,8 @@ pub(in crate::app::tasks) enum ManagedWorktreeError {
     InvalidId(String),
     #[error("managed worktree record does not own its configured path: {0}")]
     UnownedPath(String),
+    #[error("The archived worktree path is occupied.")]
+    ArchivedPathOccupied,
     #[error("managed worktree worker failed: {0}")]
     Worker(String),
     #[error("system clock is before the Unix epoch")]
@@ -50,6 +52,7 @@ pub(in crate::app::tasks) enum ManagedWorktreeError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::app::tasks) enum ArchiveOutcome {
     NotManaged,
+    AlreadyArchived,
     Archived(ManagedWorktree),
 }
 
@@ -212,13 +215,29 @@ impl ManagedWorktrees {
         let Some(record) = self.store.worktree_for_thread(thread_id)? else {
             return Ok(None);
         };
+        if record.state == ManagedWorktreeState::Archived && self.store.get(thread_id)?.is_some() {
+            let (message, actions) = match self.require_absent_archived_path(&record) {
+                Ok(()) => (
+                    "The worktree was removed. Archive this task to finish.".to_string(),
+                    vec!["archiveTask"],
+                ),
+                Err(error) => (error.to_string(), vec![]),
+            };
+            let mut diagnostic = ErrorBody::new("managed_worktree_archive_incomplete", message);
+            diagnostic.allowed_actions = Some(actions);
+            return Ok(Some(diagnostic));
+        }
+        Ok(self.checkout_availability_error(&record))
+    }
+
+    fn checkout_availability_error(&self, record: &ManagedWorktree) -> Option<ErrorBody> {
         if !matches!(
             record.state,
             ManagedWorktreeState::Ready | ManagedWorktreeState::Removing
         ) {
-            return Ok(None);
+            return None;
         }
-        let result = self.owned_path(&record).and_then(|path| {
+        let result = self.owned_path(record).and_then(|path| {
             inspect_attached_worktree(
                 &path,
                 Path::new(&record.repository_git_dir),
@@ -230,14 +249,14 @@ impl ManagedWorktrees {
             .map_err(Into::into)
         });
         match result {
-            Ok(_) if record.state == ManagedWorktreeState::Ready => Ok(None),
-            Ok(_) => Ok(Some(unavailable_diagnostic(
-                &record,
+            Ok(_) if record.state == ManagedWorktreeState::Ready => None,
+            Ok(_) => Some(unavailable_diagnostic(
+                record,
                 "managed_worktree_removing",
                 "worktree removal has not completed".to_string(),
                 vec!["retry"],
-            ))),
-            Err(error) => Ok(Some(self.diagnostic(&record, error))),
+            )),
+            Err(error) => Some(self.diagnostic(record, error)),
         }
     }
 
@@ -474,13 +493,12 @@ impl ManagedWorktrees {
         thread_id: &str,
         remove: impl FnOnce(&Path, &Path, &str) -> Result<WorktreeCheckout, WorktreeError>,
     ) -> Result<ArchiveOutcome, ManagedWorktreeError> {
-        if let Some(error) = self.availability_error_blocking(thread_id)? {
-            return Err(ManagedWorktreeError::Unavailable(Box::new(error)));
-        }
-        let Some(record) = self.store.worktree_for_thread(thread_id)? else {
+        let Some(record) = self.archive_record(thread_id)? else {
             return Ok(ArchiveOutcome::NotManaged);
         };
-        require_state(&record, ManagedWorktreeState::Ready)?;
+        if record.state == ManagedWorktreeState::Archived {
+            return Ok(ArchiveOutcome::AlreadyArchived);
+        }
         let path = self.owned_path(&record)?;
         let common_dir = PathBuf::from(&record.repository_git_dir);
         let checkout = inspect_attached_worktree(&path, &common_dir, None)?;
@@ -520,17 +538,45 @@ impl ManagedWorktrees {
     }
 
     fn preflight_archive_blocking(&self, thread_id: &str) -> Result<(), ManagedWorktreeError> {
-        if let Some(error) = self.availability_error_blocking(thread_id)? {
-            return Err(ManagedWorktreeError::Unavailable(Box::new(error)));
-        }
-        let Some(record) = self.store.worktree_for_thread(thread_id)? else {
+        let Some(record) = self.archive_record(thread_id)? else {
             return Ok(());
         };
-        require_state(&record, ManagedWorktreeState::Ready)?;
+        if record.state == ManagedWorktreeState::Archived {
+            return Ok(());
+        }
         let path = self.owned_path(&record)?;
         inspect_attached_worktree(&path, Path::new(&record.repository_git_dir), None)?;
         if attached_worktree_is_dirty(&path)? {
             return Err(WorktreeError::Dirty(path.display().to_string()).into());
+        }
+        Ok(())
+    }
+
+    fn archive_record(
+        &self,
+        thread_id: &str,
+    ) -> Result<Option<ManagedWorktree>, ManagedWorktreeError> {
+        let Some(record) = self.store.worktree_for_thread(thread_id)? else {
+            return Ok(None);
+        };
+        if record.state == ManagedWorktreeState::Archived {
+            self.require_absent_archived_path(&record)?;
+        } else {
+            if let Some(error) = self.checkout_availability_error(&record) {
+                return Err(ManagedWorktreeError::Unavailable(Box::new(error)));
+            }
+            require_state(&record, ManagedWorktreeState::Ready)?;
+        }
+        Ok(Some(record))
+    }
+
+    fn require_absent_archived_path(
+        &self,
+        record: &ManagedWorktree,
+    ) -> Result<(), ManagedWorktreeError> {
+        let path = self.owned_path(record)?;
+        if path.try_exists().map_err(WorktreeError::Io)? {
+            return Err(ManagedWorktreeError::ArchivedPathOccupied);
         }
         Ok(())
     }

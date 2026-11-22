@@ -722,12 +722,12 @@ fn managed_thread_from_task_record(
 pub(in crate::app::tasks) fn worktree_api_error(error: ManagedWorktreeError) -> ApiError {
     match error {
         ManagedWorktreeError::Unavailable(body) => ApiError::Diagnostic(body),
-        ManagedWorktreeError::UnownedPath(_) | ManagedWorktreeError::InvalidId(_) => {
-            ApiError::Conflict {
-                code: "managed_worktree_ownership_changed",
-                message: error.to_string(),
-            }
-        }
+        ManagedWorktreeError::UnownedPath(_)
+        | ManagedWorktreeError::InvalidId(_)
+        | ManagedWorktreeError::ArchivedPathOccupied => ApiError::Conflict {
+            code: "managed_worktree_ownership_changed",
+            message: error.to_string(),
+        },
         ManagedWorktreeError::Git(git::WorktreeError::Dirty(_)) => ApiError::BadRequest {
             code: "managed_worktree_dirty",
             message: error.to_string(),
