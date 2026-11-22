@@ -156,6 +156,7 @@ import styles from "./layout.css.js";
 
 const CLEAN_COMPOSER_CACHE_LIMIT = 6;
 const ARCHIVING = "Unavailable while the Task is archiving.";
+const INCOMPLETE_ARCHIVE_CODE = "managed_worktree_archive_incomplete";
 
 // The surface of the open Task that Detail shows.
 type TaskDetailView = "conversation" | "review" | "git" | "github" | "terminal";
@@ -1178,7 +1179,13 @@ export class CaffoldTaskDetail extends CaffoldElement {
       return { ok: true, skipped: true };
     }
     const outcome = await this.detailSession.recover();
-    if (!outcome.ok && !outcome.stale && !outcome.absence) {
+    const error = outcome.error as TaskResponseError | undefined;
+    if (
+      !outcome.ok &&
+      !outcome.stale &&
+      !outcome.absence &&
+      error?.code !== INCOMPLETE_ARCHIVE_CODE
+    ) {
       throw outcome.error ?? new Error("Task detail recovery failed.");
     }
     this.markDisplayedTaskSeen(this.selectedThreadId, this.taskDetail?.task);
@@ -2506,9 +2513,11 @@ export class CaffoldTaskDetail extends CaffoldElement {
       }
       return html`<section class="task-detail-load-error" role="alert">
         <p>${
-          Array.isArray(error.allowedActions)
-            ? "The task worktree is unavailable."
-            : "Task details are temporarily unavailable."
+          error.code === INCOMPLETE_ARCHIVE_CODE
+            ? "Task archive is incomplete."
+            : Array.isArray(error.allowedActions)
+              ? "The task worktree is unavailable."
+              : "Task details are temporarily unavailable."
         }</p>
         <p class="task-detail-error-message">${error.message}</p>
         ${this.loadErrorAction()}
@@ -2524,6 +2533,28 @@ export class CaffoldTaskDetail extends CaffoldElement {
   // What may still be done with a Task that could not be read: what the
   // server allows, or Retry when it named nothing.
   private loadErrorAction() {
+    const actions = this.detailLoadError?.allowedActions;
+    if (actions?.includes("archiveTask")) {
+      const { loading, error } = this.archiveStateValue;
+      return html`
+        <button
+          ${this.hints.button({
+            id: "load-error",
+            label: "Archive task",
+            action: ACTION_HINT_ACTION.TASK_ARCHIVE,
+          })}
+          type="button"
+          class="task-secondary-button"
+          ?disabled=${loading}
+          @click=${() => void this.archiveSelectedTask()}
+        >${loading ? "Archiving..." : "Archive task"}</button>
+        ${
+          error
+            ? html`<p class="task-detail-error-message">${(error as Error).message}</p>`
+            : nothing
+        }
+      `;
+    }
     if (
       this.missingSectionId &&
       this.detailLoadError?.code?.startsWith("managed_worktree_") &&
@@ -2540,7 +2571,6 @@ export class CaffoldTaskDetail extends CaffoldElement {
         @click=${this.openSectionRecovery}
       >Reconnect Section folder</button>`;
     }
-    const actions = this.detailLoadError?.allowedActions;
     if (actions?.includes("deleteTask")) {
       return html`<button
         ${this.hints.button({

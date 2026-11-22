@@ -106,13 +106,10 @@ impl ManagedWorktrees {
                 "the confirmed worktree has changed".to_string(),
             ));
         }
-        let path = self.owned_path(&record)?;
-        if record.state == ManagedWorktreeState::Archived
-            && path.try_exists().map_err(WorktreeError::Io)?
-        {
-            return Err(ManagedWorktreeError::UnownedPath(
-                "the archived worktree path is occupied".to_string(),
-            ));
+        if record.state == ManagedWorktreeState::Archived {
+            self.require_absent_archived_path(&record)?;
+        } else {
+            self.owned_path(&record)?;
         }
         Ok(record)
     }

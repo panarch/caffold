@@ -183,6 +183,12 @@ managed worktree:
 - its local branch and ownership record are retained;
 - the record transitions from `ready` through `removing` to `archived`.
 
+An active Task with an `archived` worktree has an incomplete Archive. Task
+Detail reports that state before opening the agent. It offers **Archive task**
+when the worktree path belongs to the Task and is absent. Ordinary Archive
+rechecks the path and finishes the Task's membership change. A membership
+failure leaves the previously removed checkout and its anchor as recorded.
+
 Restore recreates the same UUID path from the branch recorded when archive
 began before the conversation and Task return to the active list. The record
 transitions through `restoring` back to `ready`, where the checkout anchor is
