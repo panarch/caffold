@@ -119,7 +119,7 @@ export class CaffoldTaskDetailGithub extends CaffoldElement {
             id: "pulls",
             label: "Pull Requests",
             action: ACTION_HINT_ACTION.GITHUB_DESTINATION,
-            badgeAtEnd: true,
+            badgeAt: "top-right",
           })}
           type="button"
           popovertarget=${this.popoverId}
@@ -133,7 +133,7 @@ export class CaffoldTaskDetailGithub extends CaffoldElement {
             id: "issues",
             label: "Issues",
             action: ACTION_HINT_ACTION.GITHUB_DESTINATION,
-            badgeAtEnd: true,
+            badgeAt: "top-right",
           })}
           type="button"
           popovertarget=${this.popoverId}

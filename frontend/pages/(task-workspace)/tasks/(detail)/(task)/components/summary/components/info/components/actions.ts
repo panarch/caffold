@@ -16,6 +16,7 @@ import { CaffoldElement } from "#app/caffold-element.js";
 import type { LanguageServerInstall } from "#app/pages/(task-workspace)/components/language-server-install-dialog.js";
 import { languageServerMemory } from "#app/pages/(task-workspace)/language-servers.js";
 import { scopedStyle } from "#app/scoped-style.js";
+import { type DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import {
   isTaskTransportStale,
@@ -115,6 +116,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
   ];
 
   private readonly hints = new ActionHints(this);
+  private readonly rowIcons = new DrawnRefs<HTMLElement>(this);
   private readonly iconsReady = () => this.requestUpdate();
   private readonly languageServersLifecycle = new LanguageServersLifecycle({
     onChange: (snapshot) => {
@@ -240,7 +242,8 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
                 id: `${threadId}:permission-instructions`,
                 label: "What your prompts settled",
                 action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-                badgeAtEnd: true,
+                anchor: () => this.rowIcons.get("permission-instructions"),
+                badgeAt: "center",
               })}
               type="button"
               class="task-detail-action"
@@ -248,7 +251,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
               ?disabled=${archiving}
               @click=${this.requestAction}
             >
-              ${actionIcon("ShieldCheck")}
+              ${actionIcon("ShieldCheck", this.rowIcons.of("permission-instructions"))}
               <span class="task-detail-action-label">What your prompts settled</span>
               <span class="task-detail-action-description"
                 >${
@@ -267,7 +270,8 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
                   id: `${threadId}:pin`,
                   label: pinLabel,
                   action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-                  badgeAtEnd: true,
+                  anchor: () => this.rowIcons.get("pin"),
+                  badgeAt: "center",
                 })}
                 type="button"
                 class="task-detail-action"
@@ -275,7 +279,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
                 ?disabled=${pinning || archiving}
                 @click=${this.requestAction}
               >
-                ${actionIcon(pinned ? "PinOff" : "Pin", pinning)}
+                ${actionIcon(pinned ? "PinOff" : "Pin", this.rowIcons.of("pin"), pinning)}
                 <span class="task-detail-action-label">${
                   pinning ? (pinned ? "Unpinning..." : "Pinning...") : pinLabel
                 }</span>
@@ -300,7 +304,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
           : html`<label
                 class="task-detail-action task-detail-language-servers-action"
               >
-                ${actionIcon("CodeXml", serversBusy)}
+                ${actionIcon("CodeXml", this.rowIcons.of("language-servers"), serversBusy)}
                 <span
                   class="task-detail-action-label"
                   id=${`${threadId}-language-servers-label`}
@@ -316,6 +320,10 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
                       ? "Turn off language servers"
                       : "Turn on language servers",
                     action: ACTION_HINT_ACTION.CONTROL_SWITCH_TOGGLE,
+                    // The whole row toggles the switch, so its badge sits on
+                    // the row's icon like every other row's.
+                    anchor: () => this.rowIcons.get("language-servers"),
+                    badgeAt: "center",
                   })}
                   type="checkbox"
                   role="switch"
@@ -371,7 +379,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
                                 id: `${threadId}:language-server-install`,
                                 label: installLabel,
                                 action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-                                badgeAtEnd: true,
+                                badgeAt: "top-right",
                               })}
                               type="button"
                               class="task-secondary-button task-detail-follow-up"
@@ -392,7 +400,8 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
                   id: `${threadId}:fork`,
                   label: "Fork task",
                   action: ACTION_HINT_ACTION.TASK_FORK,
-                  badgeAtEnd: true,
+                  anchor: () => this.rowIcons.get("fork"),
+                  badgeAt: "center",
                 })}
                 type="button"
                 class="task-detail-action"
@@ -400,7 +409,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
                 ?disabled=${forking || Boolean(forkUnavailable) || Boolean(createdTaskId)}
                 @click=${this.requestAction}
               >
-                ${actionIcon("Split", forking)}
+                ${actionIcon("Split", this.rowIcons.of("fork"), forking)}
                 <span class="task-detail-action-label">${
                   forking ? "Forking..." : "Fork task"
                 }</span>
@@ -445,7 +454,8 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
           id: `${threadId}:archive`,
           label: "Archive task",
           action: ACTION_HINT_ACTION.TASK_ARCHIVE,
-          badgeAtEnd: true,
+          anchor: () => this.rowIcons.get("archive"),
+          badgeAt: "center",
         })}
         type="button"
         class="task-detail-action"
@@ -453,7 +463,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
         ?disabled=${archiving || Boolean(archiveUnavailable)}
         @click=${this.requestAction}
       >
-        ${actionIcon("Archive", archiving)}
+        ${actionIcon("Archive", this.rowIcons.of("archive"), archiving)}
         <span class="task-detail-action-label">${
           archiving ? "Archiving..." : "Archive task"
         }</span>
@@ -482,7 +492,7 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
                         id: `${threadId}:force-archive`,
                         label: "Discard changes and archive",
                         action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-                        badgeAtEnd: true,
+                        badgeAt: "top-right",
                       })}
                       type="button"
                       class="task-secondary-button task-detail-follow-up"
@@ -572,10 +582,15 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
   }
 }
 
-// A row's or a button's icon. While the action runs, the busy icon turns in
-// the icon's place.
-function actionIcon(icon: string, busy = false) {
+// A row's or a button's icon. A row's icon is its keyboard badge's anchor.
+// While the action runs, the busy icon turns in the icon's place.
+function actionIcon(
+  icon: string,
+  badgeAnchor?: DrawnRef<HTMLElement>,
+  busy = false,
+) {
   return html`<span
+    ${badgeAnchor ? drawn(badgeAnchor) : nothing}
     class=${busy ? "task-detail-action-icon is-busy" : "task-detail-action-icon"}
     aria-hidden="true"
   >${inlineIcon(busy ? "LoaderCircle" : icon, "", "task-detail-action-svg")}</span>`;

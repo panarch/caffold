@@ -542,6 +542,41 @@ test("reaches the location line and each Copy from the keyboard inside Task deta
   await expect(hint.getByRole("button", { name: / — Hide paths$/ })).toBeVisible();
 });
 
+test("puts each action's badge on the action's icon, clear of its label", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const task = summaryTask("thread_summary_action_badges", "Action badges", "repo-badges", 100);
+  await installSummaryFixture(page, [task]);
+
+  await page.goto(`/tasks/${task.threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(task));
+  await activateActionHintIntoPopover(page, /Task details, idle$/);
+  const popover = page.locator("caffold-task-detail-summary .task-detail-popover");
+  const hint = popoverActionHintDialog(page);
+  for (const [action, name] of [
+    ["pin", "Pin task"],
+    ["fork", "Fork task"],
+    ["archive", "Archive task"],
+  ]) {
+    const row = popover.locator(`[data-task-info-action="${action}"]`);
+    const badge = hint.getByRole("button", { name: new RegExp(` — ${name}$`) });
+    await expect(badge).toBeVisible();
+    await expect.poll(async () => {
+      const [badgeBox, icon, label] = await Promise.all([
+        badge.boundingBox(),
+        row.locator(".task-detail-action-icon").boundingBox(),
+        row.locator(".task-detail-action-label").boundingBox(),
+      ]);
+      return {
+        centered:
+          Math.abs(badgeBox.x + badgeBox.width / 2 - (icon.x + icon.width / 2)) <= 0.5 &&
+          Math.abs(badgeBox.y + badgeBox.height / 2 - (icon.y + icon.height / 2)) <= 0.5,
+        clearOfLabel: badgeBox.x + badgeBox.width <= label.x + 0.5,
+      };
+    }, { message: name }).toEqual({ centered: true, clearOfLabel: true });
+  }
+});
+
 test("keeps the task info leaf and popover stable across canonical sync", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {

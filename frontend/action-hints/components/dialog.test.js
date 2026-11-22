@@ -69,7 +69,7 @@ test("shows only the badges whose codes still match what was typed", () => {
   assert.match(cleared, /aria-live="polite" ><\/output/);
 });
 
-test("places an end-aligned badge at the visible rect's trailing edge", () => {
+test("places each badge where its target asks on the visible rect", () => {
   const button = {
     style: {},
     getBoundingClientRect: () => ({ width: 20, height: 10 }),
@@ -79,19 +79,26 @@ test("places an end-aligned badge at the visible rect's trailing edge", () => {
     targets: [
       {
         ...target("A", "Allow"),
-        badgeAtEnd: true,
         visibleRect: { left: 10, top: 6, right: 90, bottom: 30 },
       },
     ],
     viewportRect: { left: 0, top: 0, right: 100, bottom: 100 },
   });
 
-  dialog.positionBadges.call(owner);
-  assert.deepEqual(button.style, { left: "70px", top: "6px" });
-
-  owner.targets[0].badgeAtEnd = false;
-  dialog.positionBadges.call(owner);
-  assert.deepEqual(button.style, { left: "10px", top: "6px" });
+  for (const [badgeAt, left, top] of [
+    ["top-left", 10, 6],
+    ["top-right", 70, 6],
+    ["center-left", 10, 13],
+    ["center", 40, 13],
+  ]) {
+    owner.targets[0].badgeAt = badgeAt;
+    dialog.positionBadges.call(owner);
+    assert.deepEqual(
+      button.style,
+      { left: `${left}px`, top: `${top}px` },
+      badgeAt,
+    );
+  }
 });
 
 test("moves its badges only to targets that kept their codes", (t) => {
@@ -143,7 +150,7 @@ function target(code, label) {
   return {
     code,
     label,
-    badgeAtEnd: false,
+    badgeAt: "top-left",
     visibleRect: { left: 0, top: 0, right: 10, bottom: 10 },
   };
 }

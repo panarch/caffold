@@ -465,6 +465,27 @@ test("G marks the names in view, and a code opens the menu on Go to definition",
   );
 });
 
+test("G sits each badge over the start of its name, on the name's own line", { tag: "@server-steady" }, async ({ page }) => {
+  await installLanguageServers(page);
+  const { taskReview } = await openSource(page);
+  await waitForActionHintTarget(page, "sample, line 1");
+
+  const surface = page.locator(".task-workspace-surface");
+  await surface.evaluate((element) => element.focus({ preventScroll: true }));
+  await page.keyboard.press("g");
+  const badge = actionHintDialog(page).getByLabel(/ — sample, line 1$/);
+  await expect(badge).toBeVisible();
+  const name = codeName(taskReview, SAMPLE.line, "sample");
+  await expect.poll(async () => {
+    const [badgeBox, nameBox] = await Promise.all([badge.boundingBox(), name.boundingBox()]);
+    return {
+      atStart: Math.abs(badgeBox.x - nameBox.x) <= 0.5,
+      onLine:
+        Math.abs(badgeBox.y + badgeBox.height / 2 - (nameBox.y + nameBox.height / 2)) <= 0.5,
+    };
+  }).toEqual({ atStart: true, onLine: true });
+});
+
 test("F leaves the names to G", { tag: "@server-steady" }, async ({ page }) => {
   await installLanguageServers(page);
   await openSource(page);

@@ -392,6 +392,32 @@ test("holds the Language servers switch and install while the Task archives", { 
   await expect(install).toBeEnabled();
 });
 
+test("puts the Language servers badge on the row's icon, not on the switch", { tag: "@server-steady" }, async ({ page }) => {
+  const { requests, section, toggle } = await openTask(page, "repo-badge", {
+    servers: [rust("off")],
+  });
+  await expect.poll(() => requests.reads.length).toBe(1);
+  await activateActionHintIntoPopover(page, /Task details, idle$/);
+  await expect(section).toBeVisible();
+  const badge = popoverActionHintDialog(page).getByRole("button", {
+    name: / — Turn on language servers$/,
+  });
+  await expect(badge).toBeVisible();
+  await expect.poll(async () => {
+    const [badgeBox, icon, switchBox] = await Promise.all([
+      badge.boundingBox(),
+      section.locator(".task-detail-action-icon").boundingBox(),
+      toggle.boundingBox(),
+    ]);
+    return {
+      centered:
+        Math.abs(badgeBox.x + badgeBox.width / 2 - (icon.x + icon.width / 2)) <= 0.5 &&
+        Math.abs(badgeBox.y + badgeBox.height / 2 - (icon.y + icon.height / 2)) <= 0.5,
+      clearOfSwitch: badgeBox.x + badgeBox.width <= switchBox.x,
+    };
+  }).toEqual({ centered: true, clearOfSwitch: true });
+});
+
 test("reaches the Language servers switch from the keyboard inside Task details", { tag: "@server-steady" }, async ({ page }) => {
   const { requests, popover, section } = await openTask(page, "repo-keys", {
     servers: [rust("off")],

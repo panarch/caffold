@@ -828,7 +828,7 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
               <h3>Continue with ${label}</h3>
               <p>Start a new Task in the same directory. ${label} reads this conversation and the current files, then summarizes the situation.</p>
               <button
-                ${this.hints.button({ id: `handoff:${provider}`, label: `Continue with ${label}`, action: ACTION_HINT_ACTION.BUTTON_ACTIVATE, badgeAtEnd: true })}
+                ${this.hints.button({ id: `handoff:${provider}`, label: `Continue with ${label}`, action: ACTION_HINT_ACTION.BUTTON_ACTIVATE, badgeAt: "top-right" })}
                 type="button" class="task-model-handoff-button"
                 data-turn-options-action="handoff" data-provider=${provider}
               >${inlineIcon("ArrowRight", "", "task-model-handoff-icon")}<span>Continue with ${label}</span></button>
@@ -1472,7 +1472,7 @@ function providerOption(
       id: `provider:${encodeURIComponent(provider)}`,
       label,
       action: ACTION_HINT_ACTION.MODEL_PROVIDER_BROWSE,
-      badgeAtEnd: true,
+      badgeAt: "top-right",
     })}
     type="button"
     class="task-model-option task-provider-option"
@@ -1498,7 +1498,7 @@ function modelOption(
       id: `model:${id}`,
       label: optionLabel(option.displayName, selected),
       action: ACTION_HINT_ACTION.MODEL_SELECT,
-      badgeAtEnd: true,
+      badgeAt: "top-right",
     })}
     type="button"
     class="task-model-option"
@@ -1564,7 +1564,7 @@ function reasoningOption(
       id: `reasoning:${encodeURIComponent(value)}`,
       label: optionLabel(value, selected),
       action: ACTION_HINT_ACTION.REASONING_SELECT,
-      badgeAtEnd: true,
+      badgeAt: "top-right",
     })}
     type="button"
     class="task-model-option"
@@ -1589,7 +1589,7 @@ function speedOption(
       id: `speed:${encodeURIComponent(speed)}`,
       label: optionLabel(name, selected),
       action: ACTION_HINT_ACTION.SPEED_SELECT,
-      badgeAtEnd: true,
+      badgeAt: "top-right",
     })}
     type="button"
     class="task-model-option"
@@ -1616,7 +1616,7 @@ function permissionOption(
       id: `permission:${encodeURIComponent(option.mode)}`,
       label: optionLabel(`${option.label} ${description}`, selected),
       action: ACTION_HINT_ACTION.PERMISSION_SELECT,
-      badgeAtEnd: true,
+      badgeAt: "top-right",
     })}
     type="button"
     class=${`task-model-option task-permission-option${
