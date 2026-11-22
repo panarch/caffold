@@ -108,6 +108,56 @@ html:not(.cf-development) [data-md-component="announce"] {
   transform: translateY(-12%);
 }
 
+/* Footer: link groups take equal columns from the left and drop to fewer per
+   row as the screen narrows, two on a phone. Links stay neutral; the license
+   line sits below them. */
+.md-footer-meta.md-typeset .cf-footer {
+  width: 100%;
+  padding: 1.2rem 0.6rem 1rem;
+
+  & .cf-footer-links {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+    gap: 1rem 1.2rem;
+  }
+
+  & h2 {
+    margin: 0 0 0.5rem;
+    color: var(--caffold-text);
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: normal;
+  }
+
+  & ul {
+    margin: 0;
+    list-style: none;
+  }
+
+  & li {
+    margin: 0 0 0.3rem;
+  }
+
+  & a {
+    font-size: 0.7rem;
+    line-height: 1.6;
+    text-decoration: none;
+  }
+
+  & a:not(:focus, :hover) {
+    color: var(--caffold-muted);
+  }
+
+  & .cf-footer-copyright {
+    margin: 1.2rem 0 0;
+    padding-top: 0.8rem;
+    border-top: 1px solid var(--caffold-border-strong);
+    color: var(--caffold-muted);
+    font-size: 0.64rem;
+  }
+}
+
 /* Home: prose and the two-screen example share the first row on wide
    screens. Narrow screens stack them; text and commands wrap instead of
    clipping. Feature groups share the available width and wrap naturally. */

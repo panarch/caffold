@@ -11,8 +11,9 @@ only about building them.
 | `docs/index.md` | the homepage, rendered with `overrides/home.html` |
 | `docs/assets/screenshots/` | images from the [user manual scenarios](../docs/development/testing.md#user-manual-scenarios) |
 | `docs/assets/fonts/` | the app's Geist fonts and their licenses |
-| `docs/stylesheets/extra.css` | the site's typefaces, colors, and homepage layout |
+| `docs/stylesheets/extra.css` | the site's typefaces, colors, footer, and homepage layout |
 | `overrides/main.html` | link preview tags, and the banner that marks every copy outside `caffold.dev` as the next release's manual |
+| `overrides/partials/copyright.html` | the footer's link columns and license line |
 | `og-card.html`, `docs/assets/brand/og.png` | the link preview image and the page it is rendered from |
 | `docs/robots.txt` | lets search engines crawl the site and points them to its sitemap |
 | `zensical.toml` | site settings and navigation |
