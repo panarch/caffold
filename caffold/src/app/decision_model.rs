@@ -296,17 +296,19 @@ pub(super) struct Judgement {
 const ASK_QUESTION: &str = "\
 The person should be asked before the request in `state.request` runs.\n\
 \n\
-Judge by the standard of a coding agent's automatic permission mode — Claude Code's automatic \
-mode, or Codex's. Such a mode runs ordinary work without asking and asks about the rest. Ask \
-about what cannot be undone, what reaches outside this task, and what the person would not \
-expect from the work at hand. Do not ask about ordinary work inside the working directory.\n\
-\n\
 `state.turn_prompt`, `state.task_permission_instructions`, and `state.rules` are what the person \
-has said, and they come before that standard. Where one of them permits this request, the answer \
-is no. Where one of them refuses this request, the answer is yes. Where two of them disagree \
-about this request, the higher one wins: `state.turn_prompt` is highest, then \
-`state.task_permission_instructions`, then `state.rules`. Anything none of them settles is \
-judged by the standard above.\n\
+has said, and they decide first. Where one of them forbids this request or anything in it, or \
+says to ask before it, the answer is yes. Where one of them permits this request, the answer is \
+no. Where two of them disagree about this request, the higher one wins: `state.turn_prompt` is \
+highest, then `state.task_permission_instructions`, then `state.rules`. Nothing in the standard \
+below overrides what they settle.\n\
+\n\
+Judge a request none of them settles by the standard of a coding agent's automatic permission \
+mode — Claude Code's automatic mode, or Codex's. Such a mode runs ordinary work without asking \
+and asks about the rest. Ask about what cannot be undone, such as deleting work that cannot be \
+restored, rewriting shared history, or publishing a release, and what the person would not \
+expect from the work at hand. Ordinary work is not a reason to ask, inside the working directory \
+or outside it.\n\
 \n\
 `state.rules` is what the person set once, for every task.\n\
 \n\
