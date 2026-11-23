@@ -120,6 +120,12 @@
     vertical-align: middle;
   }
 
+  /* Text and blocks a stream adds fade in; Markdown takes the mark off when
+     this ends. Its length is ARRIVING_MS in markdown.ts. */
+  & [data-arriving] {
+    animation: markdown-arriving 180ms ease-out;
+  }
+
   & > .markdown-fallback {
     margin: 0;
     padding: 0;
@@ -146,5 +152,17 @@
 
   & > :last-child {
     margin-bottom: 0;
+  }
+}
+
+@keyframes markdown-arriving {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .markdown-body [data-arriving] {
+    animation: none;
   }
 }

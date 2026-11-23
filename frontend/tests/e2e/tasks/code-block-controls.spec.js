@@ -332,20 +332,24 @@ async function activateFirstActionHint(page, accessibleName) {
   await expect(dialog).toBeHidden();
 }
 
-test("keeps Markdown fallback text plain", { tag: "@server-steady" }, async ({ page }) => {
+test("keeps Markdown fallback text plain", { tag: "@server-changes" }, async ({ page }) => {
   const scenario = await seedCodeBlockTask(page, "thread_code_fallback");
-  await page.evaluate(() => {
+  // Without its Markdown renderer, Markdown shows its text as written.
+  await page.route("https://cdn.jsdelivr.net/npm/@pierre/words@**", (route) =>
+    route.abort(),
+  );
+  await page.reload();
+  const source = "```rust\nfn fallback() {}\n```";
+  await page.evaluate((markdown) => {
     const fallback = document.createElement("caffold-task-markdown");
     fallback.id = "markdown-fallback-probe";
     fallback.setAttribute("code-block-controls", "");
-    fallback.markdown = "[[caffold-test:markdown-error]]";
+    fallback.markdown = markdown;
     document.body.append(fallback);
-  });
+  }, source);
   const fallback = page.locator("#markdown-fallback-probe");
   await expect(fallback).toHaveAttribute("data-render-state", "plain");
-  await expect(fallback.locator(".markdown-fallback")).toHaveText(
-    "[[caffold-test:markdown-error]]",
-  );
+  await expect(fallback.locator(".markdown-fallback")).toHaveText(source);
   await expect(fallback.locator("caffold-task-code-block, [data-code-action]"))
     .toHaveCount(0);
   expect(scenario.pageErrors).toEqual([]);

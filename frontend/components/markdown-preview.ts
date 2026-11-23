@@ -27,7 +27,8 @@ import { DrawnRef, drawn } from "./drawn-refs.js";
 
 import styles from "./markdown-preview.css.js";
 
-const MARKED_IMPORT = "https://esm.sh/marked@15.0.12";
+const WORDS_IMPORT =
+  "https://cdn.jsdelivr.net/npm/@pierre/words@0.3.0/dist/no-math.js";
 
 // An image starts fetching when it comes this close to view, as a
 // conversation thumbnail does. `scrollMargin` is newer than TypeScript's DOM
@@ -76,15 +77,17 @@ interface FetchedImage {
   objectUrl: string;
 }
 
-type ParseMarkdown = (
-  source: string,
-  options: Record<string, unknown>,
-) => string | Promise<string>;
+// The part of Words the preview uses. With `frontmatter` it answers the YAML
+// frontmatter's values, which the preview leaves out, and the HTML as bytes in
+// Words' memory, read before Words renders again.
+interface Words {
+  renderToHtml(
+    source: string,
+    options: typeof RENDER_OPTIONS,
+  ): [unknown, Uint8Array];
+}
 
-// marked's module export is the parser, which also carries `parse`.
-type MarkedParser = ParseMarkdown & { parse?: ParseMarkdown };
-
-let parserPromise: Promise<MarkedParser> | null = null;
+let wordsPromise: Promise<Words> | null = null;
 
 @customElement("caffold-markdown-preview")
 export class CaffoldMarkdownPreview extends CaffoldElement {
@@ -437,7 +440,7 @@ export class CaffoldMarkdownPreview extends CaffoldElement {
       this.recordReading();
       this.watchImages();
     } catch {
-      parserPromise = null;
+      wordsPromise = null;
       this.renderPlainText(renderToken, scroll);
     }
   }
@@ -495,22 +498,19 @@ async function markdownContent(
   markdown: string | undefined,
   images: MarkdownImages | null,
 ) {
-  const parser = await loadParser();
+  const words = await loadWords();
   const source = `${markdown ?? ""}`.replace(/^[\u200B-\u200F\uFEFF]/, "");
-  const parse = parser.parse?.bind(parser) ?? parser;
-  const markup = await parse(source, { gfm: true, breaks: false });
+  const [, wordsHtml] = words.renderToHtml(source, RENDER_OPTIONS);
   const template = document.createElement("template");
-  template.innerHTML = `${markup ?? ""}`;
+  template.innerHTML = new TextDecoder().decode(wordsHtml);
   sanitizeChildren(template.content, images);
   wrapTables(template.content);
   return template.content;
 }
 
-function loadParser() {
-  parserPromise ??= import(MARKED_IMPORT).then(
-    (module) => module.marked ?? module.default ?? module,
-  );
-  return parserPromise;
+function loadWords() {
+  wordsPromise ??= import(WORDS_IMPORT);
+  return wordsPromise;
 }
 
 function sanitizeChildren(
@@ -758,6 +758,33 @@ const FORBIDDEN_ELEMENTS = new Set([
   "style",
   "textarea",
 ]);
+
+// The raw HTML Words keeps for `sanitizeChildren`: the elements it allows, with
+// the attributes `sanitizeAttributes` keeps, images with what drawing or
+// describing them reads, and elements it unwraps, whose text would otherwise go
+// with them.
+const RAW_HTML_TO_SANITIZE: Readonly<Record<string, readonly string[]>> = {
+  ...Object.fromEntries(
+    [
+      ...ALLOWED_ELEMENTS,
+      ..."abbr article b caption center col colgroup dd details div dl dt fieldset figcaption figure i ins kbd label legend mark picture s section small source span sub summary sup tfoot u".split(
+        " ",
+      ),
+    ].map((tag) => [tag, []]),
+  ),
+  a: ["href", "title"],
+  input: ["checked", "disabled", "type"],
+  ol: ["start"],
+  img: ["src", "alt", "title", "width", "height"],
+};
+
+// A document is finished, so unfinished syntax stays as written. Its leading
+// YAML frontmatter is left out; Source shows it.
+const RENDER_OPTIONS = {
+  cjk: true,
+  frontmatter: true,
+  allowedHtml: RAW_HTML_TO_SANITIZE,
+} as const;
 
 declare global {
   interface HTMLElementTagNameMap {

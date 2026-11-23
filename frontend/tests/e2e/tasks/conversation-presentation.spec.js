@@ -11,6 +11,7 @@ import {
 } from "../support/action-hints.js";
 import {
   captureReviewScreenshot,
+  recordSlides,
   stabilizeDynamicText,
 } from "../support/task-fixtures.js";
 
@@ -542,9 +543,17 @@ test("owns final Markdown links without guessing fragments or stale bindings", {
   await revealActionHintControl(external);
   hint = await enterActionHints(page);
   await expect(hint.getByLabel(/Open External docs in a new tab$/)).toBeVisible();
-  // Markdown drawn again replaces its links, so the shown hint is withdrawn.
+  // Text written after a finished block leaves that block's links in place, so
+  // the shown hint stays.
   await markdown.evaluate((element, source) => {
-    element.markdown = `${source}\n`;
+    element.markdown = `${source}\n\nWritten after the links.`;
+  }, markdownSource);
+  await expect(markdown).toContainText("Written after the links.");
+  await expect(hint.getByLabel(/Open External docs in a new tab$/)).toBeVisible();
+  // Markdown drawn again from its start replaces its links, so the shown hint
+  // is withdrawn.
+  await markdown.evaluate((element, source) => {
+    element.markdown = `Rewritten.\n\n${source}`;
   }, markdownSource);
   await expect(actionHintDialog(page)).toBeVisible();
   await expect(hint.getByLabel(/Open External docs in a new tab$/))
@@ -1055,31 +1064,6 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       }),
     )
     .toBe(true);
-  await expect
-    .poll(() =>
-      tasksPage.evaluate(async () => {
-        const probe = document.createElement("caffold-task-markdown");
-        probe.markdown = "Fallback content";
-        document.body.append(probe);
-        await probe.updateComplete;
-        const loading = probe.shadowRoot.querySelector(".markdown-body > .markdown-loading");
-        const style = getComputedStyle(loading);
-        const result = {
-          backgroundColor: style.backgroundColor,
-          borderWidth: style.borderWidth,
-          margin: style.margin,
-          padding: style.padding,
-        };
-        probe.remove();
-        return result;
-      }),
-    )
-    .toEqual({
-      backgroundColor: "rgba(0, 0, 0, 0)",
-      borderWidth: "0px",
-      margin: "0px",
-      padding: "0px",
-    });
   await tasksPage.evaluate(() => {
     const probe = document.createElement("caffold-task-markdown");
     probe.id = "unsafe-markdown-probe";
@@ -1713,4 +1697,667 @@ test("shows the turn's time on an answer the provider did not time", { tag: "@se
   await expect(
     answer.locator(".task-assistant-message-header time"),
   ).not.toBeEmpty();
+});
+
+// Sends one agent message to an opened Task as its text grows, the way a
+// streamed answer arrives.
+async function streamAgentMessage(page, threadId) {
+  let revision = 1;
+  const write = async (text) => {
+    revision += 1;
+    await page.evaluate(({ threadId, revision, text }) => {
+      const source = window.__caffoldMockEventSources.find((candidate) =>
+        candidate.url.includes(`/api/tasks/${threadId}/stream`),
+      );
+      source.emit("task-event", {
+        threadId,
+        revision,
+        eventRevision: revision,
+        event: {
+          id: "event_growing_markdown",
+          threadId,
+          type: "assistant_message",
+          summary: "Live assistant response",
+          payload: { phase: "final", text },
+          position: { anchorMs: Date.now(), index: 0 },
+        },
+      });
+    }, { threadId, revision, text });
+  };
+  return { write };
+}
+
+// Opens a finished Task whose Markdown has drawn, and returns the Markdown of
+// the message streamAgentMessage writes, which starts "Growing answer".
+async function openTaskForStreaming(page, threadId) {
+  const scenario = await installTaskLoopFixture(page, { threadId });
+  await scenario.seedCompletedTask();
+  await page.goto(`/tasks/${threadId}`);
+  await expect(
+    page.locator('.task-assistant-message caffold-task-markdown').first(),
+  ).toHaveAttribute("data-render-state", "markdown");
+  const message = page
+    .locator("li.task-assistant-message")
+    .filter({ hasText: "Growing answer" });
+  return message.locator("caffold-task-markdown");
+}
+
+test("keeps the blocks an agent message has finished while the rest is still written", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const threadId = "thread_growing_markdown_blocks";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const finished = [
+    "Growing answer with [a kept link](https://example.com/kept).",
+    "",
+    "```rust",
+    "fn kept() {}",
+    "```",
+    "",
+  ].join("\n");
+  await write(`${finished}Still being writ`);
+  await expect(markdown).toContainText("Still being writ");
+  const drawnFirst = await markdown.evaluate((element) => {
+    const body = element.shadowRoot.querySelector(".markdown-body");
+    window.__growingMarkdownNodes = {
+      paragraph: body.querySelector("p"),
+      link: body.querySelector("a"),
+      codeBlock: body.querySelector("caffold-task-code-block"),
+    };
+    return Object.values(window.__growingMarkdownNodes).every(Boolean);
+  });
+  expect(drawnFirst).toBe(true);
+
+  await write(`${finished}Still being written.`);
+  await expect(markdown).toContainText("Still being written.");
+  const table = "\n\n| Kept | Drawn |\n| --- | --- |\n| yes | once |";
+  await write(`${finished}Still being written.${table}`);
+  await expect(markdown.locator("table")).toContainText("once");
+
+  expect(await markdown.evaluate((element) => {
+    const body = element.shadowRoot.querySelector(".markdown-body");
+    const nodes = window.__growingMarkdownNodes;
+    return {
+      paragraph: body.querySelector("p") === nodes.paragraph,
+      link: body.querySelector("a") === nodes.link,
+      codeBlock: body.querySelector("caffold-task-code-block") === nodes.codeBlock,
+    };
+  })).toEqual({ paragraph: true, link: true, codeBlock: true });
+  // What was drawn piece by piece is what the whole text draws at once, apart
+  // from the pieces added text arrives in and the line breaks between blocks.
+  expect(await markdown.evaluate(async (element, text) => {
+    const whole = document.createElement("caffold-task-markdown");
+    whole.setAttribute("thread-id", element.getAttribute("thread-id"));
+    whole.setAttribute("code-block-controls", "");
+    whole.markdown = text;
+    document.body.append(whole);
+    await whole.updateComplete;
+    const html = (markdown) => {
+      const body = markdown.shadowRoot
+        .querySelector(".markdown-body")
+        .cloneNode(true);
+      for (const piece of body.querySelectorAll("span[data-piece]")) {
+        piece.replaceWith(...piece.childNodes);
+      }
+      for (const node of body.querySelectorAll("[data-arriving]")) {
+        node.removeAttribute("data-arriving");
+      }
+      body.normalize();
+      const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+      const breaks = [];
+      while (walker.nextNode()) {
+        const { data } = walker.currentNode;
+        if (!data.trim() && data.includes("\n")) {
+          breaks.push(walker.currentNode);
+        }
+      }
+      for (const node of breaks) {
+        node.remove();
+      }
+      return body.innerHTML;
+    };
+    const same = html(whole) === html(element);
+    whole.remove();
+    return same;
+  }, `${finished}Still being written.${table}`)).toBe(true);
+});
+
+// Records each element a stream marks as fading in, as Markdown marks it:
+// whether it holds added text, the animation it runs, and whether it is code.
+async function recordArrivals(markdown) {
+  await markdown.evaluate((element) => {
+    window.__arrivals = [];
+    new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (node.nodeType !== Node.ELEMENT_NODE) {
+            continue;
+          }
+          for (const arriving of [node, ...node.querySelectorAll("[data-arriving]")]) {
+            if (!arriving.hasAttribute("data-arriving")) {
+              continue;
+            }
+            window.__arrivals.push({
+              name: arriving.localName,
+              piece: arriving.hasAttribute("data-piece"),
+              text: arriving.textContent,
+              animation: getComputedStyle(arriving).animationName,
+              code: Boolean(
+                arriving.closest("pre, caffold-task-code-block")
+                  || arriving.querySelector("pre, caffold-task-code-block"),
+              ),
+            });
+          }
+        }
+      }
+    }).observe(element.shadowRoot, { childList: true, subtree: true });
+  });
+  return () => markdown.evaluate(() => window.__arrivals);
+}
+
+test("keeps writing into the paragraph an agent message is still writing", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const threadId = "thread_growing_markdown_paragraph";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const start = "Growing answer: the first words of a paragraph";
+  await write(start);
+  await expect(markdown).toContainText(start);
+  await markdown.evaluate((element) => {
+    const paragraph = element.shadowRoot.querySelector(".markdown-body > p");
+    const text = paragraph.firstChild;
+    getSelection().setBaseAndExtent(text, 0, text, 7);
+    window.__growingParagraph = paragraph;
+  });
+  const arrivals = await recordArrivals(markdown);
+
+  await write(`${start} keep coming, and **more** of them arrive.`);
+  await expect(markdown).toContainText("keep coming, and more of them arrive.");
+  expect(await markdown.evaluate((element) => {
+    const paragraph = element.shadowRoot.querySelector(".markdown-body > p");
+    return {
+      sameParagraph: paragraph === window.__growingParagraph,
+      selection: getSelection().toString(),
+    };
+  })).toEqual({ sameParagraph: true, selection: "Growing" });
+  // Only the added text fades in, each piece in a span of its own.
+  const arrived = await arrivals();
+  expect(arrived.length).toBeGreaterThan(0);
+  expect(arrived.map(({ text }) => text).join("")).toBe(
+    " keep coming, and more of them arrive.",
+  );
+  expect(new Set(arrived.map(({ animation }) => animation))).toEqual(
+    new Set(["markdown-arriving"]),
+  );
+  // The mark comes off once the fade ends.
+  await expect
+    .poll(() =>
+      markdown.evaluate(
+        (element) => element.shadowRoot.querySelectorAll("[data-arriving]").length,
+      ),
+    )
+    .toBe(0);
+  await expect(markdown.locator("strong")).toHaveText("more");
+});
+
+test("grows a table an agent message is still writing in place", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const threadId = "thread_growing_markdown_table";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const header = "Growing answer table:\n\n| Name | Note |\n| --- | --- |\n";
+  await write(`${header}| first | starts`);
+  const table = markdown.locator("table");
+  await expect(table).toContainText("starts");
+  await table.evaluate((element) => {
+    window.__growingTable = element;
+    window.__growingFirstRow = element.querySelector("tbody tr");
+  });
+  const arrivals = await recordArrivals(markdown);
+
+  await write(`${header}| first | starts and grows |\n| second | arrives`);
+  await expect(table).toContainText("arrives");
+  expect(await table.evaluate((element) => ({
+    sameTable: element === window.__growingTable,
+    sameFirstRow: element.querySelector("tbody tr") === window.__growingFirstRow,
+    rows: [...element.querySelectorAll("tbody tr")].map((row) =>
+      [...row.cells].map((cell) => cell.textContent),
+    ),
+  }))).toEqual({
+    sameTable: true,
+    sameFirstRow: true,
+    rows: [
+      ["first", "starts and grows"],
+      ["second", "arrives"],
+    ],
+  });
+  // The text added to the first row and the second row fade in.
+  expect(
+    (await arrivals()).map(({ name, text }) => [name, text.replaceAll("\n", "")]),
+  ).toEqual([
+    ["span", " and grows"],
+    ["tr", "secondarrives"],
+  ]);
+});
+
+test("keeps code and finished messages from fading", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const threadId = "thread_growing_markdown_code";
+  const markdown = await openTaskForStreaming(page, threadId);
+  // A finished message is drawn whole, without fading.
+  expect(await page
+    .locator(".task-assistant-message caffold-task-markdown")
+    .first()
+    .evaluate((element) => element.shadowRoot.querySelectorAll("[data-piece], [data-arriving]").length),
+  ).toBe(0);
+
+  const { write } = await streamAgentMessage(page, threadId);
+  const intro = "Growing answer with code:\n\n";
+  await write(intro);
+  await expect(markdown).toContainText("Growing answer with code:");
+  const arrivals = await recordArrivals(markdown);
+  await write(`${intro}\`\`\`rust\nfn one() {}\n`);
+  await expect(markdown.locator("caffold-task-code-block pre code")).toHaveText("fn one() {}\n");
+  await write(`${intro}\`\`\`rust\nfn one() {}\nfn two() {}\n\`\`\`\n\nAfter the code.`);
+  await expect(markdown).toContainText("After the code.");
+  const arrived = await arrivals();
+  expect(arrived.filter(({ code }) => code)).toEqual([]);
+  expect(arrived.map(({ text }) => text)).toEqual(["After the code."]);
+});
+
+test("draws arriving text without motion when motion is reduced", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const threadId = "thread_growing_markdown_reduced_motion";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  await write("Growing answer that keeps");
+  await expect(markdown).toContainText("Growing answer that keeps");
+  const arrivals = await recordArrivals(markdown);
+  await write("Growing answer that keeps going.");
+  await expect(markdown).toContainText("keeps going.");
+  expect(await arrivals()).toEqual([
+    {
+      name: "span",
+      piece: true,
+      text: " going.",
+      animation: "none",
+      code: false,
+    },
+  ]);
+});
+
+test("keeps writing into the same code block while its fence is open", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const threadId = "thread_growing_markdown_fence";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const opening = "Growing answer with code:\n\n```rust\nfn one() {}\n";
+  await write(opening);
+  const codeBlock = markdown.locator("caffold-task-code-block");
+  await expect(codeBlock).toHaveCount(1);
+  await expect(codeBlock.locator("pre code")).toHaveText("fn one() {}\n");
+  await codeBlock.locator('button[data-code-action="wrap"]').click();
+  await expect(codeBlock).toHaveAttribute("data-code-wrap", "on");
+  await codeBlock.evaluate((block) => {
+    window.__writingCodeBlock = block;
+  });
+
+  await write(`${opening}fn two() {}\n`);
+  await expect(codeBlock.locator("pre code")).toHaveText("fn one() {}\nfn two() {}\n");
+  await write(`${opening}fn two() {}\n\`\`\`\n\nAfter the fence.`);
+  await expect(markdown).toContainText("After the fence.");
+  await expect(codeBlock).toHaveCount(1);
+  await expect(codeBlock.locator("pre code")).toHaveText("fn one() {}\nfn two() {}\n");
+  await expect(codeBlock).toHaveAttribute("data-code-wrap", "on");
+  expect(await codeBlock.evaluate((block) => block === window.__writingCodeBlock))
+    .toBe(true);
+});
+
+test("draws a late link definition once it arrives", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const threadId = "thread_growing_markdown_definition";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const text = "Growing answer: see [the docs][docs] first.\n\nMore follows.";
+  await write(text);
+  await expect(markdown).toContainText("[the docs][docs]");
+  await expect(markdown.getByRole("link", { name: "the docs" })).toHaveCount(0);
+
+  await write(`${text}\n\n[docs]: https://example.com/docs\n`);
+  await expect(markdown.getByRole("link", { name: "the docs" })).toHaveAttribute(
+    "href",
+    "https://example.com/docs",
+  );
+  await expect(markdown).not.toContainText("[docs]:");
+});
+
+test("draws Korean emphasis and the unfinished emphasis that ends a message", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page, {
+    completedAssistantResponse: [
+      "**중요.**다음 문장이에요.",
+      "",
+      "**`cargo test`**를 실행했어요.",
+      "",
+      "앞 문단의 *별표 하나는 글자 그대로예요.",
+      "",
+      "마지막 문단에서 **참고",
+    ].join("\n"),
+    threadId: "thread_markdown_korean_emphasis",
+  });
+  await scenario.seedCompletedTask();
+  await page.goto(`/tasks/${scenario.threadId}`);
+  const markdown = page.locator(".task-assistant-message caffold-task-markdown");
+  await expect(markdown).toHaveAttribute("data-render-state", "markdown");
+
+  await expect(markdown.locator("strong")).toHaveText(["중요.", "cargo test", "참고"]);
+  await expect(markdown.locator("strong > code")).toHaveText("cargo test");
+  await expect(markdown.locator("em")).toHaveCount(0);
+  await expect(markdown).toContainText("앞 문단의 *별표 하나는 글자 그대로예요.");
+});
+
+test("passes only the raw HTML Task Markdown keeps", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page, {
+    completedAssistantResponse: [
+      "| 항목 | 설명 |",
+      "| --- | --- |",
+      "| A | 첫 줄<br>둘째 줄 |",
+      "",
+      "<script>window.__taskMarkdownScriptRan = true;</script>",
+      "",
+      "<style>body { display: none; }</style>",
+      "",
+      '<iframe src="https://example.com/frame"></iframe>',
+      "",
+      "<center>",
+      "가운데 글자",
+      "</center>",
+      "",
+      "<kbd>⌘</kbd>+<kbd>J</kbd>",
+      "",
+      "<pr-created>https://github.com/owner/repo/pull/7</pr-created>",
+      "",
+      "[unsafe](javascript:alert(1))",
+    ].join("\n"),
+    threadId: "thread_markdown_raw_html",
+  });
+  await scenario.seedCompletedTask();
+  await page.goto(`/tasks/${scenario.threadId}`);
+  const markdown = page.locator(".task-assistant-message caffold-task-markdown");
+  await expect(markdown).toHaveAttribute("data-render-state", "markdown");
+
+  await expect(markdown.locator("td br")).toHaveCount(1);
+  await expect(markdown.locator("script, style, iframe")).toHaveCount(0);
+  for (const hidden of ["<script", "__taskMarkdownScriptRan", "<style", "display: none", "<iframe"]) {
+    await expect(markdown).not.toContainText(hidden);
+  }
+  expect(await page.evaluate(() => window.__taskMarkdownScriptRan)).toBeUndefined();
+  await expect(markdown).toContainText("가운데 글자");
+  await expect(markdown).toContainText("⌘+J");
+  await expect(
+    markdown.getByRole("link", { name: "https://github.com/owner/repo/pull/7" }),
+  ).toHaveAttribute("href", "https://github.com/owner/repo/pull/7");
+  await expect(markdown.getByRole("link", { name: "unsafe" })).toHaveCount(0);
+  await expect(markdown).toContainText("unsafe");
+});
+
+test("shows the loading notice plainly until the Markdown renderer arrives", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page, {
+    threadId: "thread_markdown_loading_notice",
+  });
+  let releaseWords;
+  const wordsHeld = new Promise((resolve) => {
+    releaseWords = resolve;
+  });
+  await page.route("https://cdn.jsdelivr.net/npm/@pierre/words@**", async (route) => {
+    await wordsHeld;
+    await route.fallback();
+  });
+  await scenario.seedCompletedTask();
+  await page.goto(`/tasks/${scenario.threadId}`);
+  const markdown = page.locator(".task-assistant-message caffold-task-markdown");
+  await expect(markdown).toHaveAttribute("data-render-state", "loading");
+  expect(await markdown.evaluate((element) => {
+    const style = getComputedStyle(
+      element.shadowRoot.querySelector(".markdown-body > .markdown-loading"),
+    );
+    return {
+      backgroundColor: style.backgroundColor,
+      borderWidth: style.borderWidth,
+      margin: style.margin,
+      padding: style.padding,
+    };
+  })).toEqual({
+    backgroundColor: "rgba(0, 0, 0, 0)",
+    borderWidth: "0px",
+    margin: "0px",
+    padding: "0px",
+  });
+
+  releaseWords();
+  await expect(markdown).toHaveAttribute("data-render-state", "markdown");
+  await expect(markdown.locator(".markdown-loading")).toHaveCount(0);
+});
+
+// Streams a long answer into an opened Task until the conversation scrolls,
+// puts the reader at its end, and returns the answer written so far.
+async function fillConversation(page, markdown, write) {
+  const long = `Growing answer that fills the view.\n\n${"A paragraph that takes room. ".repeat(80)}`;
+  await write(long);
+  await expect(markdown).toContainText("Growing answer that fills the view.");
+  const scroller = page.locator(".task-conversation-scroll");
+  await expect
+    .poll(() => scroller.evaluate((element) => element.scrollHeight > element.clientHeight))
+    .toBe(true);
+  // An opened Task need not show its end, so the reader goes there.
+  await scroller.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  await expect
+    .poll(() =>
+      scroller.evaluate(
+        (element) => element.scrollHeight - element.clientHeight - element.scrollTop <= 2,
+      ),
+    )
+    .toBe(true);
+  return long;
+}
+
+test("slides the conversation up while its reader follows a stream", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const slides = await recordSlides(page);
+  const threadId = "thread_follow_slide";
+  const markdown = await openTaskForStreaming(page, threadId);
+  // Opening a Task puts it at its bottom at once.
+  expect(await slides()).toEqual([]);
+  const { write } = await streamAgentMessage(page, threadId);
+  const long = await fillConversation(page, markdown, write);
+  await slides();
+  const scroller = page.locator(".task-conversation-scroll");
+  const heightBefore = await scroller.evaluate((element) => element.scrollHeight);
+
+  await write(`${long}\n\nA new paragraph arrives at the end.`);
+  await expect(markdown).toContainText("A new paragraph arrives at the end.");
+  const after = await scroller.evaluate((element) => ({
+    atBottom: element.scrollHeight - element.clientHeight - element.scrollTop <= 2,
+    grew: element.scrollHeight,
+  }));
+  // The scroll is at the new bottom at once; the view slides the distance.
+  expect(after.atBottom).toBe(true);
+  const started = await slides();
+  expect(started.length).toBeGreaterThan(0);
+  for (const slide of started) {
+    expect(slide).toMatchObject({
+      to: "translateY(0)",
+      duration: 180,
+      easing: "ease-out",
+      composite: "add",
+    });
+  }
+  const distance = started.reduce(
+    (sum, { from }) => sum + Number.parseFloat(from.match(/translateY\(([-\d.]+)px\)/)[1]),
+    0,
+  );
+  expect(Math.abs(distance - (after.grew - heightBefore))).toBeLessThan(1);
+  await expect
+    .poll(() =>
+      page.locator(".task-conversation-flow").evaluate((element) => element.getAnimations().length),
+    )
+    .toBe(0);
+});
+
+test("keeps a reader who scrolled up from sliding", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const slides = await recordSlides(page);
+  const threadId = "thread_follow_scrolled_up";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const long = await fillConversation(page, markdown, write);
+  const scroller = page.locator(".task-conversation-scroll");
+  await scroller.evaluate((element) => {
+    element.scrollTop = 0;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  await slides();
+
+  await write(`${long}\n\nWritten while the reader looks above.`);
+  await expect(markdown).toContainText("Written while the reader looks above.");
+  expect(await slides()).toEqual([]);
+  expect(await scroller.evaluate((element) => element.scrollTop)).toBeLessThan(16);
+});
+
+test("ends a slide when the reader takes hold of the conversation", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const slides = await recordSlides(page);
+  const threadId = "thread_follow_take_hold";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const long = await fillConversation(page, markdown, write);
+  await slides();
+  await page.evaluate(() => {
+    window.__holdSlides = true;
+  });
+  const column = page.locator(".task-conversation-column");
+  let written = long;
+
+  for (const [type, init] of [
+    ["wheel", { deltaY: -40 }],
+    ["touchstart", {}],
+    ["pointerdown", {}],
+    ["keydown", { key: "ArrowUp" }],
+  ]) {
+    written = `${written}\n\nA paragraph to slide in before the ${type}.`;
+    await write(written);
+    await expect(markdown).toContainText(`A paragraph to slide in before the ${type}.`);
+    expect(
+      await page.evaluate(() => window.__slides.map(({ animation }) => animation.playState)),
+    ).toContain("paused");
+    await expect(column).toHaveAttribute("data-sliding", "");
+    await page.locator(".task-conversation-scroll").dispatchEvent(type, init);
+    expect(new Set((await slides()).map(({ playState }) => playState))).toEqual(
+      new Set(["finished"]),
+    );
+    await expect(column).not.toHaveAttribute("data-sliding");
+  }
+});
+
+test("keeps following while a slide is still under way", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const slides = await recordSlides(page);
+  const threadId = "thread_follow_during_slide";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const long = await fillConversation(page, markdown, write);
+  await slides();
+  await page.evaluate(() => {
+    window.__holdSlides = true;
+  });
+  const scroller = page.locator(".task-conversation-scroll");
+  const atBottom = () =>
+    scroller.evaluate(
+      (element) => element.scrollHeight - element.clientHeight - element.scrollTop <= 2,
+    );
+
+  await write(`${long}\n\nThe first new paragraph.`);
+  await expect(markdown).toContainText("The first new paragraph.");
+  // A slide under way neither lengthens the scroll nor moves its bottom.
+  expect(await atBottom()).toBe(true);
+  expect((await slides()).length).toBeGreaterThan(0);
+
+  await write(`${long}\n\nThe first new paragraph.\n\nThe second, while the first still slides.`);
+  await expect(markdown).toContainText("The second, while the first still slides.");
+  expect(await atBottom()).toBe(true);
+  expect((await slides()).length).toBeGreaterThan(0);
+});
+
+test("ends a slide when the conversation grows shorter under its reader", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const slides = await recordSlides(page);
+  const threadId = "thread_follow_shorter";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const long = await fillConversation(page, markdown, write);
+  await slides();
+  await page.evaluate(() => {
+    window.__holdSlides = true;
+  });
+  const column = page.locator(".task-conversation-column");
+  const scroller = page.locator(".task-conversation-scroll");
+
+  await write(`${long}\n\nA paragraph that goes again.`);
+  await expect(markdown).toContainText("A paragraph that goes again.");
+  expect(
+    await page.evaluate(() => window.__slides.map(({ animation }) => animation.playState)),
+  ).toContain("paused");
+  await expect(column).toHaveAttribute("data-sliding", "");
+
+  // What the slide was showing is gone, so it ends where the view now stands
+  // rather than carrying on below it.
+  await write(long);
+  await expect(markdown).not.toContainText("A paragraph that goes again.");
+  expect(new Set((await slides()).map(({ playState }) => playState))).toEqual(
+    new Set(["finished"]),
+  );
+  await expect(column).not.toHaveAttribute("data-sliding");
+  expect(await scroller.evaluate(
+    (element) => element.scrollHeight - element.clientHeight - element.scrollTop <= 2,
+  )).toBe(true);
+});
+
+test("follows without sliding when motion is reduced", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const slides = await recordSlides(page);
+  const threadId = "thread_follow_reduced_motion";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const long = await fillConversation(page, markdown, write);
+  await slides();
+
+  await write(`${long}\n\nArrives without motion.`);
+  await expect(markdown).toContainText("Arrives without motion.");
+  expect(await slides()).toEqual([]);
+  expect(await page.locator(".task-conversation-scroll").evaluate(
+    (element) => element.scrollHeight - element.clientHeight - element.scrollTop <= 2,
+  )).toBe(true);
 });

@@ -1355,6 +1355,21 @@ the Task subject and are preserved by Task identity through incremental shell
 updates. Moving from Tasks to Settings ends active editing and transport work
 without destroying a retained Composer draft.
 
+A reader at the bottom stays there as a live change or drawn Markdown lengthens
+the transcript. The scroll moves to the new bottom at once. When a live change
+is drawn for that reader, the column's contents then slide up over the distance
+the whole change added in 180 ms, the time added text takes to fade in, and
+successive slides add up, so the view follows without jumping. The column
+clips its contents vertically while they slide, so a slide never lengthens the
+scroll and the bottom stays where the scroll is. A wheel, touch, pointer press,
+or key on the conversation finishes any slide, and so does a transcript that
+grows shorter while one is under way, which sends the scroll back. Reduced
+motion leaves out the slide. Opening a Task, a prompt sent, older history, and
+a disclosure place the reader at once. A Task opened for the first time since
+Caffold loaded in the browser is still opening until its first page of history
+is drawn, even when that page follows its details. Only a conversation already
+on screen slides, so a Task opened again returns at once to where it was left.
+
 While a Task's details or its first page of history are still being read,
 Task Detail shows one retained loading phrase centered over the Task area. A
 conversation already on screen while its page is read goes without it.
@@ -1421,6 +1436,34 @@ merge only the direct retained children they mount. A stream patch can
 therefore retire only the replaced
 entry, approval card, or child owner while unaffected sibling, App Shell, and
 Composer codes remain frozen, without introducing a descendant-DOM scan.
+
+Markdown draws an agent message or a reasoning summary from its text with
+Words, the `@pierre/words` Markdown renderer, a pinned release imported from
+jsDelivr at first use. It shows its loading phrase until Words first arrives
+and the text as written when Words cannot be fetched. Each Markdown element
+keeps one Words session and hands it the whole text at every change. The
+session answers with the top-level blocks finished since its last answer and
+the end that can still change. Markdown compares each block of the previous end
+with its next version. A block whose next version only grew keeps its nodes
+and takes what it added: text after its last text, inline elements, items, or
+rows after its last, or one table cell filling while the cells after it stay
+the same. Any other changed block is drawn anew in its place. A stream patch so
+leaves the nodes, links, selections, and code blocks of finished and growing
+blocks where they are. The code block of a fence still being written takes the
+fence's further code and stays the same element once the fence closes, so its
+Wrap and scroll survive. While a stream continues, added text arrives in a span
+of its own and fades in over 180 ms, and so does a block that begins, unless
+the reader asks for reduced motion. Code shows at once, and Markdown drawn
+whole does not fade. The mark of a fade comes off when it ends, so moving or
+showing the Markdown again does not fade it twice. A text that does not
+continue the one drawn, a link reference or footnote definition, and a change
+of Task, file links, or code-block controls draw every block again without
+fading. Emphasis, code, and links still open at the end of the
+text draw as if closed, and stay so if the text ends before they close.
+Emphasis also opens and closes next to Chinese, Japanese, and Korean text. Raw
+HTML reaches Markdown's sanitizer only as the elements it keeps or unwraps,
+with the attributes it keeps; Words drops other raw HTML elements, and the
+text of an HTML block made of them goes with them.
 
 Conversation mounts `conversation/components/approval.ts` for each pending
 normalized approval. Approval owns its card DOM, request-error presentation,
@@ -1593,7 +1636,10 @@ of its pair, so opening a PNG from Diff shows Visual and opening code from
 Visual shows Diff. The file viewer owns representation chrome and image
 rendering, and delegates Markdown rendering, sanitization, fallback, and local
 scroll to the shared `caffold-markdown-preview` component also used by the
-current-plan dialog.
+current-plan dialog. It draws a whole document with Task Markdown's pinned
+Words release, leaving unfinished syntax as written and a leading YAML
+frontmatter block out. Raw HTML reaches its sanitizer as it reaches Task
+Markdown's, with what drawing or describing an image reads.
 Both name the Markdown file's folder and the Task root, so the preview draws
 an image whose address names a file under the workspace root, read from that
 folder, or from the Task root when the address starts with `/`, without its
@@ -2853,8 +2899,8 @@ of both even though they come from `frontend/node_modules`, a TypeScript
 module is listed at the `.js` path it is served at, and a stylesheet a module
 imports is listed at the `.css.js` path of its module, and at its own path too
 only when the document also loads it. pdf.js,
-docx-preview, pptx-renderer, SheetJS, RHWP, Mermaid, and xterm.js with its fit
-addon are the exceptions:
+docx-preview, pptx-renderer, SheetJS, RHWP, Mermaid, Words, and xterm.js with
+its fit addon are the exceptions:
 their owners import pinned releases at first use, and the browser suite answers
 those URLs from the same versions in `node_modules`. SheetJS comes from its own
 CDN, which publishes its current releases there rather than on npm, and the

@@ -649,12 +649,13 @@ test("renders a route-owned Markdown Preview without changing file selection", {
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-markdown-preview");
 
-  await markdownPreview.evaluate((element) => {
-    element.setMarkdown("[[caffold-test:markdown-error]]");
-  });
+  // Without its Markdown renderer the preview shows the file as written.
+  const words = "https://cdn.jsdelivr.net/npm/@pierre/words@**";
+  await page.route(words, (route) => route.abort());
+  await page.reload();
   await expect(markdownPreview).toHaveAttribute("data-render-state", "plain");
-  await expect(markdownPreview.locator(".markdown-preview-fallback")).toHaveText(
-    "[[caffold-test:markdown-error]]",
+  await expect(markdownPreview.locator(".markdown-preview-fallback")).toContainText(
+    "# Markdown file preview\n\nCaffold renders **textual Markdown**",
   );
   expect(await page.locator("caffold-task-workspace").evaluate((workspace) =>
     workspace.actionHintScope().targets.some(
@@ -663,6 +664,7 @@ test("renders a route-owned Markdown Preview without changing file selection", {
     )
   )).toBe(false);
 
+  await page.unroute(words);
   await page.reload();
   await expect(markdownPreview).toHaveAttribute("data-render-state", "markdown");
   await expect(preview.locator("h1")).toHaveText("Markdown file preview");
@@ -2486,4 +2488,75 @@ test("Zoom serves a picture's preview from the keyboard, and another file opens 
   } finally {
     await rm(path, { force: true });
   }
+});
+
+// Draws Markdown in a Markdown Preview of its own, outside any file, on a page
+// that has loaded the component.
+async function drawStandaloneMarkdownPreview(page, markdown) {
+  await openCompletedTaskForReview(page);
+  await page.waitForFunction(() => customElements.get("caffold-markdown-preview"));
+  await page.evaluate((source) => {
+    const preview = document.createElement("caffold-markdown-preview");
+    preview.id = "standalone-markdown-preview";
+    document.body.append(preview);
+    preview.setMarkdown(source);
+  }, markdown);
+  const preview = page.locator("#standalone-markdown-preview");
+  await expect(preview).toHaveAttribute("data-render-state", "markdown");
+  return preview;
+}
+
+test("leaves a Markdown document's frontmatter out of its Preview", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const preview = await drawStandaloneMarkdownPreview(page, [
+    "---",
+    "title: Plan",
+    "status: draft",
+    "---",
+    "",
+    "# Plan body",
+    "",
+    "The text starts here.",
+  ].join("\n"));
+
+  await expect(preview.locator("h1")).toHaveText("Plan body");
+  await expect(preview.locator("hr, h2")).toHaveCount(0);
+  await expect(preview).toContainText("The text starts here.");
+  await expect(preview).not.toContainText("title: Plan");
+  await expect(preview).not.toContainText("status: draft");
+});
+
+test("keeps the raw HTML a Markdown Preview drops out of its text", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const preview = await drawStandaloneMarkdownPreview(page, [
+    "<script>window.__markdownPreviewScriptRan = true;</script>",
+    "",
+    "<style>body { display: none; }</style>",
+    "",
+    '<iframe src="https://example.com/frame"></iframe>',
+    "",
+    "<details>",
+    "<summary>펼치기</summary>",
+    "",
+    "안쪽 내용",
+    "",
+    "</details>",
+    "",
+    '<img src="docs/diagram.png" alt="Diagram">',
+    "",
+    "**중요.**다음 문장",
+  ].join("\n"));
+
+  await expect(preview.locator("script, style, iframe")).toHaveCount(0);
+  for (const hidden of ["<script", "__markdownPreviewScriptRan", "<style", "display: none", "<iframe"]) {
+    await expect(preview).not.toContainText(hidden);
+  }
+  expect(await page.evaluate(() => window.__markdownPreviewScriptRan)).toBeUndefined();
+  await expect(preview).toContainText("펼치기");
+  await expect(preview).toContainText("안쪽 내용");
+  // A preview that names no folder reads each image as its description.
+  await expect(preview).toContainText("[Image: Diagram]");
+  await expect(preview.locator("strong")).toHaveText("중요.");
 });

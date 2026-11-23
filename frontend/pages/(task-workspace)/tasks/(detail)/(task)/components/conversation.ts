@@ -45,7 +45,10 @@ import {
   type RunGroupDisclosureIntentDetail,
 } from "./conversation/components/run-group.js";
 import "./conversation/components/markdown.js";
-import type { MarkdownRenderedDetail } from "./conversation/components/markdown.js";
+import {
+  ARRIVING_MS,
+  type MarkdownRenderedDetail,
+} from "./conversation/components/markdown.js";
 import "./conversation/components/message-attachments.js";
 import "./conversation/components/older-history.js";
 import type {
@@ -195,6 +198,8 @@ export class CaffoldTaskConversation extends CaffoldElement {
   private shownEntries: ConversationEntry[] = [];
   private readonly scrollerElement = new DrawnRef<HTMLDivElement>(this);
   private readonly column = new DrawnRef<HTMLDivElement>(this);
+  // The column's contents, which slide while the column clips them.
+  private readonly flow = new DrawnRef<HTMLDivElement>(this);
   private readonly list = new DrawnRef<HTMLOListElement>(this);
   private readonly olderHistoryElement = new DrawnRef<CaffoldTaskOlderHistory>(
     this,
@@ -262,10 +267,16 @@ export class CaffoldTaskConversation extends CaffoldElement {
     }
     this.snapshot = nextSnapshot;
     const storedScroll = this.scrollByThread.get(nextThreadId) ?? null;
+    // Only a conversation already on screen gives a place read off the
+    // screen; one shown again, as when its Task opens again, has only the
+    // place it was left at.
+    const wasOnScreen =
+      previousThreadId === nextThreadId && previousScroll !== null;
     this.draw(
       previousThreadId === nextThreadId
         ? (previousScroll ?? storedScroll)
         : storedScroll,
+      wasOnScreen,
     );
     return true;
   }
@@ -319,7 +330,7 @@ export class CaffoldTaskConversation extends CaffoldElement {
       return;
     }
     if (previousScroll.atBottom) {
-      scroller.scrollTop = maxScrollTop(scroller);
+      this.followBottom(scroller, previousScroll.scrollTop);
     } else {
       this.restoreAnchor(scroller, previousScroll);
     }
@@ -352,6 +363,10 @@ export class CaffoldTaskConversation extends CaffoldElement {
         })}
         class="task-conversation-scroll"
         @scroll=${this.handleScroll}
+        @wheel=${this.takeHold}
+        @touchstart=${this.takeHold}
+        @pointerdown=${this.takeHold}
+        @keydown=${this.takeHold}
         @caffold:task-approval-intent=${this.sendApproval}
         @caffold:task-suggested-prompt-intent=${this.sendSuggestedPrompt}
         @caffold:task-older-history-intent=${this.requestOlderHistory}
@@ -363,49 +378,51 @@ export class CaffoldTaskConversation extends CaffoldElement {
         @caffold:task-markdown-rendered=${this.handleMarkdownRendered}
       >
         <div ${drawn(this.column)} class="task-conversation-column">
-          <div class="task-conversation-notices">${
-            detailError
-              ? html`<div
-                  class="task-detail-load-error task-detail-load-error-inline"
-                  role="alert"
-                >
-                  <p>Task details could not be refreshed.</p>
-                  <p class="task-load-error-message">${detailError.message}</p>
-                  <button
-                    ${this.hints.button({
-                      id: "retry-detail",
-                      label: "Retry",
-                      action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-                    })}
-                    type="button"
-                    class="task-secondary-button"
-                    data-task-action="retry-task-detail"
-                    data-conversation-action="retry-detail"
-                    @click=${this.retryDetail}
-                  >Retry</button>
-                </div>`
-              : nothing
-          }</div>
-          <caffold-task-older-history
-            ${drawn(this.olderHistoryElement)}
-            .threadId=${threadId}
-            .hasOlder=${Boolean(this.snapshot.eventsPage.nextCursor)}
-            .loading=${this.snapshot.loadingOlder}
-            .error=${historyError?.message ?? null}
-            .active=${this.active}
-          ></caffold-task-older-history>
-          <ol
-            ${drawn(this.list)}
-            class="task-conversation"
-            aria-label="Task conversation"
-          >${keyed(
-            threadId,
-            repeat(
-              entries,
-              (entry) => entry.identity,
-              (entry) => this.entryTemplate(entry, controlsDisabled),
-            ),
-          )}</ol>
+          <div ${drawn(this.flow)} class="task-conversation-flow">
+            <div class="task-conversation-notices">${
+              detailError
+                ? html`<div
+                    class="task-detail-load-error task-detail-load-error-inline"
+                    role="alert"
+                  >
+                    <p>Task details could not be refreshed.</p>
+                    <p class="task-load-error-message">${detailError.message}</p>
+                    <button
+                      ${this.hints.button({
+                        id: "retry-detail",
+                        label: "Retry",
+                        action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                      })}
+                      type="button"
+                      class="task-secondary-button"
+                      data-task-action="retry-task-detail"
+                      data-conversation-action="retry-detail"
+                      @click=${this.retryDetail}
+                    >Retry</button>
+                  </div>`
+                : nothing
+            }</div>
+            <caffold-task-older-history
+              ${drawn(this.olderHistoryElement)}
+              .threadId=${threadId}
+              .hasOlder=${Boolean(this.snapshot.eventsPage.nextCursor)}
+              .loading=${this.snapshot.loadingOlder}
+              .error=${historyError?.message ?? null}
+              .active=${this.active}
+            ></caffold-task-older-history>
+            <ol
+              ${drawn(this.list)}
+              class="task-conversation"
+              aria-label="Task conversation"
+            >${keyed(
+              threadId,
+              repeat(
+                entries,
+                (entry) => entry.identity,
+                (entry) => this.entryTemplate(entry, controlsDisabled),
+              ),
+            )}</ol>
+          </div>
         </div>
       </div>
     `;
@@ -788,8 +805,22 @@ export class CaffoldTaskConversation extends CaffoldElement {
     }
   }
 
-  // Draws the snapshot and keeps the reader's place.
-  private draw(previousScroll: ScrollSnapshot | null) {
+  // Draws the snapshot and keeps the reader's place. For a reader who was
+  // looking at the conversation's bottom, what a live change added slides into
+  // view once for the whole drawing: from where the bottom stood before it to
+  // where it stands after, whatever the drawing removed and added between.
+  private draw(previousScroll: ScrollSnapshot | null, wasOnScreen = false) {
+    this.drawAndKeepPlace(previousScroll);
+    if (
+      wasOnScreen &&
+      this.snapshot.updateKind === "live" &&
+      previousScroll?.atBottom
+    ) {
+      this.slideUpFrom(previousScroll.scrollTop);
+    }
+  }
+
+  private drawAndKeepPlace(previousScroll: ScrollSnapshot | null) {
     this.drawNow();
     const threadId = this.snapshot.threadId;
     if (!this.snapshot.task) {
@@ -1065,7 +1096,7 @@ export class CaffoldTaskConversation extends CaffoldElement {
     }
     const { before, nextScrollHeight } = event.detail;
     if (before?.atBottom) {
-      scroller.scrollTop = maxScrollTop(scroller);
+      this.followBottom(scroller, before.scrollTop);
     } else if (
       this.restoreAnchor(scroller, this.scrollByThread.get(threadId) ?? null)
     ) {
@@ -1154,7 +1185,7 @@ export class CaffoldTaskConversation extends CaffoldElement {
       (kind === "live" && previousScroll?.atBottom) ||
       (!kind && previousScroll?.atBottom);
     if (shouldStickToBottom) {
-      scroller.scrollTop = maxScrollTop(scroller);
+      this.followBottom(scroller, previousScroll?.scrollTop ?? null);
       return;
     }
     if (kind === "prepend" && previousScroll) {
@@ -1176,6 +1207,63 @@ export class CaffoldTaskConversation extends CaffoldElement {
         previousScroll.scrollTop,
         maxScrollTop(scroller),
       );
+    }
+  }
+
+  // Keeps a reader at the bottom there, at once. A conversation that got
+  // shorter has sent the scroll back from where it stood before the change:
+  // the lengthening a slide under way was showing is gone, so it ends there.
+  private followBottom(scroller: HTMLElement, before: number | null) {
+    if (before !== null && before - scroller.scrollTop >= 1) {
+      this.finishSlides();
+    }
+    scroller.scrollTop = maxScrollTop(scroller);
+  }
+
+  // The content the scroll moved past since `from` slides up into place over
+  // the time added text takes to fade in, so the view follows without
+  // jumping. The column clips the sliding contents, so a slide never
+  // lengthens the scroll and the bottom stays where the scroll is.
+  private slideUpFrom(from: number) {
+    const scroller = this.scroller();
+    const column = this.column.value;
+    const flow = this.flow.value;
+    const moved = scroller ? scroller.scrollTop - from : 0;
+    if (
+      moved <= 0 ||
+      !column ||
+      !flow ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return;
+    }
+    column.toggleAttribute("data-sliding", true);
+    const settle = () => {
+      if (!flow.getAnimations().length) {
+        column.removeAttribute("data-sliding");
+      }
+    };
+    flow
+      .animate(
+        [
+          { transform: `translateY(${moved}px)` },
+          { transform: "translateY(0)" },
+        ],
+        { duration: ARRIVING_MS, easing: "ease-out", composite: "add" },
+      )
+      .finished.then(settle, settle);
+  }
+
+  // A reader who takes hold of the conversation finds it where it already is.
+  // Passive, so the browser scrolls without waiting for it.
+  private readonly takeHold = {
+    handleEvent: () => this.finishSlides(),
+    passive: true,
+  };
+
+  private finishSlides() {
+    for (const slide of this.flow.value?.getAnimations() ?? []) {
+      slide.finish();
     }
   }
 
@@ -1331,7 +1419,7 @@ export class CaffoldTaskConversation extends CaffoldElement {
       if (this.restorePendingDisclosureAnchor(scroller, threadId)) {
         // A user-controlled disclosure owns this one layout change.
       } else if (previousScroll.atBottom) {
-        scroller.scrollTop = maxScrollTop(scroller);
+        this.followBottom(scroller, previousScroll.scrollTop);
       } else {
         this.restoreAnchor(scroller, previousScroll);
       }
