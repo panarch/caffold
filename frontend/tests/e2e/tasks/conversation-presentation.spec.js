@@ -542,9 +542,17 @@ test("owns final Markdown links without guessing fragments or stale bindings", {
   await revealActionHintControl(external);
   hint = await enterActionHints(page);
   await expect(hint.getByLabel(/Open External docs in a new tab$/)).toBeVisible();
-  // Markdown drawn again replaces its links, so the shown hint is withdrawn.
+  // Text written after a finished block leaves that block's links in place, so
+  // the shown hint stays.
   await markdown.evaluate((element, source) => {
-    element.markdown = `${source}\n`;
+    element.markdown = `${source}\n\nWritten after the links.`;
+  }, markdownSource);
+  await expect(markdown).toContainText("Written after the links.");
+  await expect(hint.getByLabel(/Open External docs in a new tab$/)).toBeVisible();
+  // Markdown drawn again from its start replaces its links, so the shown hint
+  // is withdrawn.
+  await markdown.evaluate((element, source) => {
+    element.markdown = `Rewritten.\n\n${source}`;
   }, markdownSource);
   await expect(actionHintDialog(page)).toBeVisible();
   await expect(hint.getByLabel(/Open External docs in a new tab$/))
@@ -1055,31 +1063,6 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       }),
     )
     .toBe(true);
-  await expect
-    .poll(() =>
-      tasksPage.evaluate(async () => {
-        const probe = document.createElement("caffold-task-markdown");
-        probe.markdown = "Fallback content";
-        document.body.append(probe);
-        await probe.updateComplete;
-        const loading = probe.shadowRoot.querySelector(".markdown-body > .markdown-loading");
-        const style = getComputedStyle(loading);
-        const result = {
-          backgroundColor: style.backgroundColor,
-          borderWidth: style.borderWidth,
-          margin: style.margin,
-          padding: style.padding,
-        };
-        probe.remove();
-        return result;
-      }),
-    )
-    .toEqual({
-      backgroundColor: "rgba(0, 0, 0, 0)",
-      borderWidth: "0px",
-      margin: "0px",
-      padding: "0px",
-    });
   await tasksPage.evaluate(() => {
     const probe = document.createElement("caffold-task-markdown");
     probe.id = "unsafe-markdown-probe";
@@ -1713,4 +1696,265 @@ test("shows the turn's time on an answer the provider did not time", { tag: "@se
   await expect(
     answer.locator(".task-assistant-message-header time"),
   ).not.toBeEmpty();
+});
+
+// Sends one agent message to an opened Task as its text grows, the way a
+// streamed answer arrives.
+async function streamAgentMessage(page, threadId) {
+  let revision = 1;
+  const write = async (text) => {
+    revision += 1;
+    await page.evaluate(({ threadId, revision, text }) => {
+      const source = window.__caffoldMockEventSources.find((candidate) =>
+        candidate.url.includes(`/api/tasks/${threadId}/stream`),
+      );
+      source.emit("task-event", {
+        threadId,
+        revision,
+        eventRevision: revision,
+        event: {
+          id: "event_growing_markdown",
+          threadId,
+          type: "assistant_message",
+          summary: "Live assistant response",
+          payload: { phase: "final", text },
+          position: { anchorMs: Date.now(), index: 0 },
+        },
+      });
+    }, { threadId, revision, text });
+  };
+  return { write };
+}
+
+// Opens a finished Task whose Markdown has drawn, and returns the Markdown of
+// the message streamAgentMessage writes, which starts "Growing answer".
+async function openTaskForStreaming(page, threadId) {
+  const scenario = await installTaskLoopFixture(page, { threadId });
+  await scenario.seedCompletedTask();
+  await page.goto(`/tasks/${threadId}`);
+  await expect(
+    page.locator('.task-assistant-message caffold-task-markdown').first(),
+  ).toHaveAttribute("data-render-state", "markdown");
+  const message = page
+    .locator("li.task-assistant-message")
+    .filter({ hasText: "Growing answer" });
+  return message.locator("caffold-task-markdown");
+}
+
+test("keeps the blocks an agent message has finished while the rest is still written", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const threadId = "thread_growing_markdown_blocks";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const finished = [
+    "Growing answer with [a kept link](https://example.com/kept).",
+    "",
+    "```rust",
+    "fn kept() {}",
+    "```",
+    "",
+  ].join("\n");
+  await write(`${finished}Still being writ`);
+  await expect(markdown).toContainText("Still being writ");
+  const drawnFirst = await markdown.evaluate((element) => {
+    const body = element.shadowRoot.querySelector(".markdown-body");
+    window.__growingMarkdownNodes = {
+      paragraph: body.querySelector("p"),
+      link: body.querySelector("a"),
+      codeBlock: body.querySelector("caffold-task-code-block"),
+    };
+    return Object.values(window.__growingMarkdownNodes).every(Boolean);
+  });
+  expect(drawnFirst).toBe(true);
+
+  await write(`${finished}Still being written.`);
+  await expect(markdown).toContainText("Still being written.");
+  const table = "\n\n| Kept | Drawn |\n| --- | --- |\n| yes | once |";
+  await write(`${finished}Still being written.${table}`);
+  await expect(markdown.locator("table")).toContainText("once");
+
+  expect(await markdown.evaluate((element) => {
+    const body = element.shadowRoot.querySelector(".markdown-body");
+    const nodes = window.__growingMarkdownNodes;
+    return {
+      paragraph: body.querySelector("p") === nodes.paragraph,
+      link: body.querySelector("a") === nodes.link,
+      codeBlock: body.querySelector("caffold-task-code-block") === nodes.codeBlock,
+    };
+  })).toEqual({ paragraph: true, link: true, codeBlock: true });
+  // What was drawn piece by piece is what the whole text draws at once.
+  expect(await markdown.evaluate(async (element, text) => {
+    const whole = document.createElement("caffold-task-markdown");
+    whole.setAttribute("thread-id", element.getAttribute("thread-id"));
+    whole.setAttribute("code-block-controls", "");
+    whole.markdown = text;
+    document.body.append(whole);
+    await whole.updateComplete;
+    const html = (markdown) =>
+      markdown.shadowRoot.querySelector(".markdown-body").innerHTML;
+    const same = html(whole) === html(element);
+    whole.remove();
+    return same;
+  }, `${finished}Still being written.${table}`)).toBe(true);
+});
+
+test("keeps writing into the same code block while its fence is open", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const threadId = "thread_growing_markdown_fence";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const opening = "Growing answer with code:\n\n```rust\nfn one() {}\n";
+  await write(opening);
+  const codeBlock = markdown.locator("caffold-task-code-block");
+  await expect(codeBlock).toHaveCount(1);
+  await expect(codeBlock.locator("pre code")).toHaveText("fn one() {}\n");
+  await codeBlock.locator('button[data-code-action="wrap"]').click();
+  await expect(codeBlock).toHaveAttribute("data-code-wrap", "on");
+  await codeBlock.evaluate((block) => {
+    window.__writingCodeBlock = block;
+  });
+
+  await write(`${opening}fn two() {}\n`);
+  await expect(codeBlock.locator("pre code")).toHaveText("fn one() {}\nfn two() {}\n");
+  await write(`${opening}fn two() {}\n\`\`\`\n\nAfter the fence.`);
+  await expect(markdown).toContainText("After the fence.");
+  await expect(codeBlock).toHaveCount(1);
+  await expect(codeBlock.locator("pre code")).toHaveText("fn one() {}\nfn two() {}\n");
+  await expect(codeBlock).toHaveAttribute("data-code-wrap", "on");
+  expect(await codeBlock.evaluate((block) => block === window.__writingCodeBlock))
+    .toBe(true);
+});
+
+test("draws a late link definition once it arrives", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const threadId = "thread_growing_markdown_definition";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const text = "Growing answer: see [the docs][docs] first.\n\nMore follows.";
+  await write(text);
+  await expect(markdown).toContainText("[the docs][docs]");
+  await expect(markdown.getByRole("link", { name: "the docs" })).toHaveCount(0);
+
+  await write(`${text}\n\n[docs]: https://example.com/docs\n`);
+  await expect(markdown.getByRole("link", { name: "the docs" })).toHaveAttribute(
+    "href",
+    "https://example.com/docs",
+  );
+  await expect(markdown).not.toContainText("[docs]:");
+});
+
+test("draws Korean emphasis and the unfinished emphasis that ends a message", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page, {
+    completedAssistantResponse: [
+      "**중요.**다음 문장이에요.",
+      "",
+      "**`cargo test`**를 실행했어요.",
+      "",
+      "앞 문단의 *별표 하나는 글자 그대로예요.",
+      "",
+      "마지막 문단에서 **참고",
+    ].join("\n"),
+    threadId: "thread_markdown_korean_emphasis",
+  });
+  await scenario.seedCompletedTask();
+  await page.goto(`/tasks/${scenario.threadId}`);
+  const markdown = page.locator(".task-assistant-message caffold-task-markdown");
+  await expect(markdown).toHaveAttribute("data-render-state", "markdown");
+
+  await expect(markdown.locator("strong")).toHaveText(["중요.", "cargo test", "참고"]);
+  await expect(markdown.locator("strong > code")).toHaveText("cargo test");
+  await expect(markdown.locator("em")).toHaveCount(0);
+  await expect(markdown).toContainText("앞 문단의 *별표 하나는 글자 그대로예요.");
+});
+
+test("passes only the raw HTML Task Markdown keeps", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page, {
+    completedAssistantResponse: [
+      "| 항목 | 설명 |",
+      "| --- | --- |",
+      "| A | 첫 줄<br>둘째 줄 |",
+      "",
+      "<script>window.__taskMarkdownScriptRan = true;</script>",
+      "",
+      "<style>body { display: none; }</style>",
+      "",
+      '<iframe src="https://example.com/frame"></iframe>',
+      "",
+      "<center>",
+      "가운데 글자",
+      "</center>",
+      "",
+      "<kbd>⌘</kbd>+<kbd>J</kbd>",
+      "",
+      "<pr-created>https://github.com/owner/repo/pull/7</pr-created>",
+      "",
+      "[unsafe](javascript:alert(1))",
+    ].join("\n"),
+    threadId: "thread_markdown_raw_html",
+  });
+  await scenario.seedCompletedTask();
+  await page.goto(`/tasks/${scenario.threadId}`);
+  const markdown = page.locator(".task-assistant-message caffold-task-markdown");
+  await expect(markdown).toHaveAttribute("data-render-state", "markdown");
+
+  await expect(markdown.locator("td br")).toHaveCount(1);
+  await expect(markdown.locator("script, style, iframe")).toHaveCount(0);
+  for (const hidden of ["<script", "__taskMarkdownScriptRan", "<style", "display: none", "<iframe"]) {
+    await expect(markdown).not.toContainText(hidden);
+  }
+  expect(await page.evaluate(() => window.__taskMarkdownScriptRan)).toBeUndefined();
+  await expect(markdown).toContainText("가운데 글자");
+  await expect(markdown).toContainText("⌘+J");
+  await expect(
+    markdown.getByRole("link", { name: "https://github.com/owner/repo/pull/7" }),
+  ).toHaveAttribute("href", "https://github.com/owner/repo/pull/7");
+  await expect(markdown.getByRole("link", { name: "unsafe" })).toHaveCount(0);
+  await expect(markdown).toContainText("unsafe");
+});
+
+test("shows the loading notice plainly until the Markdown renderer arrives", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page, {
+    threadId: "thread_markdown_loading_notice",
+  });
+  let releaseWords;
+  const wordsHeld = new Promise((resolve) => {
+    releaseWords = resolve;
+  });
+  await page.route("https://cdn.jsdelivr.net/npm/@pierre/words@**", async (route) => {
+    await wordsHeld;
+    await route.fallback();
+  });
+  await scenario.seedCompletedTask();
+  await page.goto(`/tasks/${scenario.threadId}`);
+  const markdown = page.locator(".task-assistant-message caffold-task-markdown");
+  await expect(markdown).toHaveAttribute("data-render-state", "loading");
+  expect(await markdown.evaluate((element) => {
+    const style = getComputedStyle(
+      element.shadowRoot.querySelector(".markdown-body > .markdown-loading"),
+    );
+    return {
+      backgroundColor: style.backgroundColor,
+      borderWidth: style.borderWidth,
+      margin: style.margin,
+      padding: style.padding,
+    };
+  })).toEqual({
+    backgroundColor: "rgba(0, 0, 0, 0)",
+    borderWidth: "0px",
+    margin: "0px",
+    padding: "0px",
+  });
+
+  releaseWords();
+  await expect(markdown).toHaveAttribute("data-render-state", "markdown");
+  await expect(markdown.locator(".markdown-loading")).toHaveCount(0);
 });

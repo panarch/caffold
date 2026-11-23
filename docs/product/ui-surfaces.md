@@ -547,6 +547,8 @@ viewer, Word document viewer, PowerPoint viewer, Excel viewer, and Hangul
 document viewer. In Source and Preview, the file's details offer Download,
 which saves the file itself, including a large or binary file
 that no viewer can show. The details of a diff or Visual offer no Download.
+A Markdown file's Preview leaves out a leading YAML frontmatter block, which
+Source shows.
 In Diff and Source, Wrap in the file's header fits long lines to the viewer's
 width instead of scrolling them sideways; a wrapped line goes on from the start
 of the code column. Each browser remembers the choice for every file view,

@@ -27,7 +27,8 @@ import { CaffoldTaskCodeBlock } from "#tasks/(detail)/(task)/components/code-blo
 
 import styles from "./markdown.css.js";
 
-const MARKED_IMPORT = "https://esm.sh/marked@15.0.12";
+const WORDS_IMPORT =
+  "https://cdn.jsdelivr.net/npm/@pierre/words@0.3.0/dist/no-math.js";
 
 type RenderState = "loading" | "plain" | "markdown";
 
@@ -66,15 +67,44 @@ export interface MarkdownRenderedDetail {
   nextScrollHeight: number | null;
 }
 
-type ParseMarkdown = (
-  source: string,
-  options: { gfm: boolean; breaks: boolean },
-) => string | Promise<string>;
+// The part of Words this element uses: a session handed the whole text at each
+// change, which answers with the blocks finished since its last answer and the
+// end that can still change.
+interface Words {
+  createHtmlSession(): WordsSession;
+}
 
-// marked's module export is the parser, which also carries `parse`.
-type MarkedParser = ParseMarkdown & { parse?: ParseMarkdown };
+interface WordsSession {
+  render(source: string, options: typeof SESSION_OPTIONS): WordsUpdate;
+}
 
-let parserPromise: Promise<MarkedParser> | null = null;
+interface WordsUpdate {
+  stable: string;
+  addition: string;
+  pending: string;
+  reset: boolean;
+  revision: number;
+}
+
+// The Markdown on screen: the session revision it shows and the blocks of its
+// unfinished end, each with the HTML it was drawn from. Finished blocks never
+// change, so only these are compared with the next answer.
+interface DrawnMarkdown {
+  body: HTMLElement;
+  revision: number;
+  tail: DrawnBlock[];
+}
+
+interface DrawnBlock {
+  html: string;
+  nodes: ChildNode[];
+  // The code block of a fence still open, which takes the fence's further code.
+  writing: CaffoldTaskCodeBlock | null;
+}
+
+let wordsPromise: Promise<Words> | null = null;
+// Words once loaded, so Markdown draws in the update that changed it.
+let words: Words | null = null;
 
 // What an agent wrote, drawn from its Markdown. The Task's file references
 // become links into the Task's files, and with `code-block-controls` each
@@ -94,49 +124,66 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
   accessor codeBlockControls = false;
   @state()
   accessor renderState: RenderState = "loading";
-  @state()
-  private accessor renderedContent: DocumentFragment | null = null;
 
   static override styles = styles;
 
-  private renderToken: symbol | null = null;
+  private loadToken: symbol | null = null;
+  // What the next update draws: the text's change, or every block, since each
+  // block's links and code blocks follow the other three properties.
+  private pendingDraw: "none" | "text" | "all" = "none";
+  private session: WordsSession | null = null;
+  private drawnMarkdown: DrawnMarkdown | null = null;
+  private readonly fenceLabels = new WeakMap<Element, string>();
   private actionHintLinks: LinkRecord[] = [];
   private scrollSurfaceRecords: ScrollSurfaceRecord[] = [];
   private scrollCodeBlocks: CaffoldTaskCodeBlock[] = [];
   private readonly bodyElement = new DrawnRef<HTMLElement>(this);
 
-  // Parsing reads all four, so a change to any of them reads the Markdown
-  // again, and the same values leave it as drawn.
   override willUpdate(changed: PropertyValues<this>) {
-    if (
-      changed.has("markdown") ||
+    const drawsAll =
       changed.has("threadId") ||
       changed.has("fileLinks") ||
-      changed.has("codeBlockControls")
-    ) {
-      this.startRender();
+      changed.has("codeBlockControls");
+    if (!drawsAll && !changed.has("markdown")) {
+      return;
+    }
+    this.pendingDraw = drawsAll || this.pendingDraw === "all" ? "all" : "text";
+    if (words) {
+      this.renderState = "markdown";
+    } else if (this.renderState !== "loading" || !this.loadToken) {
+      this.startLoading();
     }
   }
 
   override render() {
-    const content =
-      this.renderState === "markdown"
-        ? this.renderedContent
-        : this.renderState === "plain"
-          ? html`<pre class="markdown-fallback">${this.markdown}</pre>`
-          : html`<span
-              class="markdown-loading"
-              role="status"
-            >Rendering Markdown...</span>`;
+    // `draw` places the Markdown in this body, out of the template's reach.
+    if (this.renderState === "markdown") {
+      return html`<article
+        ${drawn(this.bodyElement)}
+        class="markdown-body"
+      ></article>`;
+    }
+    const status =
+      this.renderState === "plain"
+        ? html`<pre class="markdown-fallback">${this.markdown}</pre>`
+        : html`<span
+            class="markdown-loading"
+            role="status"
+          >Rendering Markdown...</span>`;
     return html`<article
       ${drawn(this.bodyElement)}
       class="markdown-body"
-    >${content}</article>`;
+    >${status}</article>`;
   }
 
   override updated(changed: PropertyValues<this>) {
     if (changed.has("renderState")) {
       this.dataset.renderState = this.renderState;
+    }
+    if (this.renderState === "markdown" && this.pendingDraw !== "none") {
+      const all = this.pendingDraw === "all";
+      this.pendingDraw = "none";
+      this.draw(all);
     }
   }
 
@@ -233,81 +280,174 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
     return mergeScrollSurfaceScopes(...nativeScopes, ...blockScopes);
   }
 
-  private startRender() {
-    const renderToken = Symbol("task-markdown");
-    this.renderToken = renderToken;
+  // Waits for Words the first time. Until it arrives the Markdown is loading,
+  // and if it cannot be loaded the text shows as it is written.
+  private startLoading() {
+    const loadToken = Symbol("task-markdown");
+    this.loadToken = loadToken;
     this.actionHintLinks = [];
     this.scrollSurfaceRecords = [];
     this.scrollCodeBlocks = [];
-    this.renderedContent = null;
     this.renderState = "loading";
-    void this.renderMarkdown(renderToken);
+    loadWords().then(
+      () => {
+        if (this.loadToken !== loadToken) {
+          return;
+        }
+        this.loadToken = null;
+        this.renderState = "markdown";
+        this.pendingDraw = "all";
+        this.performUpdate();
+      },
+      () => {
+        wordsPromise = null;
+        if (this.loadToken !== loadToken) {
+          return;
+        }
+        this.loadToken = null;
+        this.renderPlainText();
+      },
+    );
   }
 
-  private async renderMarkdown(renderToken: symbol) {
-    try {
-      const parser = await loadParser();
-      if (this.renderToken !== renderToken) {
-        return;
-      }
+  // Draws Words' answer for the current text. The blocks it has finished stay
+  // as drawn; the end still being written is compared and drawn again.
+  private draw(all: boolean) {
+    const body = this.body;
+    if (!body || !words) {
+      return;
+    }
+    this.session ??= words.createHtmlSession();
+    const update = this.session.render(
+      this.markdown.replace(/^[\u200B-\u200F\uFEFF]/, ""),
+      SESSION_OPTIONS,
+    );
+    const previous =
+      !all && this.drawnMarkdown?.body === body ? this.drawnMarkdown : null;
+    if (previous?.revision === update.revision) {
+      return;
+    }
+    const tail =
+      previous && !update.reset && update.revision === previous.revision + 1
+        ? previous.tail
+        : null;
+    const scrollContext = captureScrollContext(this);
+    if (!tail) {
+      body.replaceChildren();
+    }
+    const finished = wordsBlocks(tail ? update.addition : update.stable);
+    const blocks = this.drawBlocks(body, tail ?? [], [
+      ...finished,
+      ...wordsBlocks(update.pending),
+    ]);
+    this.drawnMarkdown = {
+      body,
+      revision: update.revision,
+      tail: blocks.slice(finished.length),
+    };
+    this.actionHintLinks = collectActionHintLinks(body);
+    this.scrollSurfaceRecords = collectNativeScrollSurfaceRecords(
+      body,
+      this.fenceLabels,
+    );
+    this.scrollCodeBlocks = [
+      ...body.querySelectorAll<CaffoldTaskCodeBlock>("caffold-task-code-block"),
+    ];
+    dispatchRendered(this, scrollContext);
+  }
 
-      const source = this.markdown.replace(/^[\u200B-\u200F\uFEFF]/, "");
-      const parse = parser.parse?.bind(parser) ?? parser;
-      const markup = await parse(source, { gfm: true, breaks: false });
-      if (this.renderToken !== renderToken) {
-        return;
-      }
-
-      const template = document.createElement("template");
-      template.innerHTML = `${markup ?? ""}`;
-      const codeBlocks = collectCodeBlocks(template.content);
-      const internalLinks = applyLocalFileLinks(
-        template.content,
-        this.threadId,
-        this.fileLinks,
-      );
-      sanitizeChildren(template.content, internalLinks);
-      decorateCodeElements(template.content);
-      wrapTables(template.content);
-      const blocks = mountCodeBlocks(
-        template.content,
-        this.codeBlockControls ? codeBlocks : [],
-      );
-      const scrollContext = captureScrollContext(this);
-      this.renderedContent = template.content;
-      this.renderState = "markdown";
-      this.performUpdate();
-      // A block draws into a shadow root, which it can only make once it is in
-      // this document rather than the template's.
-      for (const { block, text, label } of blocks) {
-        block.setContent(text, {
-          label,
-          preserveLayout: (mutation) => this.mutateLayout(mutation),
-        });
-      }
-      const body = this.body;
-      if (!body) {
-        return;
-      }
-      this.actionHintLinks = collectActionHintLinks(body);
-      this.scrollSurfaceRecords = collectNativeScrollSurfaceRecords(
-        body,
-        codeBlocks,
-      );
-      this.scrollCodeBlocks = blocks.map(({ block }) => block);
-      dispatchRendered(this, scrollContext);
-    } catch {
-      parserPromise = null;
-      if (this.renderToken === renderToken) {
-        this.renderPlainText();
+  // Keeps the leading blocks whose HTML is unchanged, lets the code block of a
+  // fence still open take that fence's further code, and draws the rest anew.
+  private drawBlocks(body: HTMLElement, tail: DrawnBlock[], next: ChildNode[]) {
+    const blocks: DrawnBlock[] = [];
+    while (
+      blocks.length < tail.length &&
+      blocks.length < next.length &&
+      tail[blocks.length].html === blockHtml(next[blocks.length])
+    ) {
+      blocks.push(tail[blocks.length]);
+    }
+    const continued =
+      blocks.length < tail.length && blocks.length < next.length
+        ? this.continueCodeBlock(tail[blocks.length], next[blocks.length])
+        : null;
+    if (continued) {
+      blocks.push(continued);
+    }
+    for (const block of tail.slice(blocks.length)) {
+      for (const node of block.nodes) {
+        node.remove();
       }
     }
+    for (const raw of next.slice(blocks.length)) {
+      blocks.push(this.drawBlock(body, raw));
+    }
+    return blocks;
+  }
+
+  private continueCodeBlock(block: DrawnBlock, raw: ChildNode) {
+    const code = raw instanceof HTMLPreElement ? raw.firstElementChild : null;
+    if (!block.writing || !code || code.localName !== "code") {
+      return null;
+    }
+    const label = fenceLabel(code);
+    if (label !== block.writing.label) {
+      return null;
+    }
+    block.writing.setContent(code.textContent ?? "", {
+      label,
+      preserveLayout: (mutation) => this.mutateLayout(mutation),
+    });
+    return {
+      html: blockHtml(raw),
+      nodes: block.nodes,
+      writing: isOpenFence(raw) ? block.writing : null,
+    };
+  }
+
+  // One block of Words HTML, given the Task's file links, sanitized, and with
+  // each fenced block drawn by a code block when the controls are on.
+  private drawBlock(body: HTMLElement, raw: ChildNode): DrawnBlock {
+    const html = blockHtml(raw);
+    const open = isOpenFence(raw);
+    const fragment = document.createDocumentFragment();
+    fragment.append(raw);
+    const codeBlocks = collectCodeBlocks(fragment);
+    const internalLinks = applyLocalFileLinks(
+      fragment,
+      this.threadId,
+      this.fileLinks,
+    );
+    sanitizeChildren(fragment, internalLinks);
+    decorateCodeElements(fragment);
+    wrapTables(fragment);
+    for (const { code, label } of codeBlocks) {
+      if (code.parentElement) {
+        this.fenceLabels.set(code.parentElement, label);
+      }
+    }
+    const mounted = mountCodeBlocks(
+      fragment,
+      this.codeBlockControls ? codeBlocks : [],
+    );
+    const nodes = [...fragment.childNodes];
+    body.append(fragment);
+    // A block draws into a shadow root, which it can only make once it is in
+    // this document.
+    for (const { block, text, label } of mounted) {
+      block.setContent(text, {
+        label,
+        preserveLayout: (mutation) => this.mutateLayout(mutation),
+      });
+    }
+    return { html, nodes, writing: open ? (mounted[0]?.block ?? null) : null };
   }
 
   private renderPlainText() {
     this.actionHintLinks = [];
     this.scrollSurfaceRecords = [];
     this.scrollCodeBlocks = [];
+    this.drawnMarkdown = null;
     const scrollContext = captureScrollContext(this);
     this.renderState = "plain";
     this.performUpdate();
@@ -340,11 +480,8 @@ function collectActionHintLinks(root: Element): LinkRecord[] {
 
 function collectNativeScrollSurfaceRecords(
   root: Element,
-  codeBlocks: CodeBlockSource[],
+  labels: WeakMap<Element, string>,
 ): ScrollSurfaceRecord[] {
-  const labels = new Map(
-    codeBlocks.map(({ code, label }) => [code.parentElement, label]),
-  );
   const ordinals = new Map<string, number>();
   return Array.from(
     root.querySelectorAll<HTMLElement>("pre, .markdown-table-scroll"),
@@ -366,11 +503,33 @@ function collectNativeScrollSurfaceRecords(
   });
 }
 
-function loadParser() {
-  parserPromise ??= import(MARKED_IMPORT).then(
-    (module) => module.marked ?? module.default ?? module,
+function loadWords() {
+  wordsPromise ??= import(WORDS_IMPORT).then((module: Words) => {
+    words = module;
+    return module;
+  });
+  return wordsPromise;
+}
+
+// The top-level blocks of HTML Words wrote, leaving out the line breaks
+// between them.
+function wordsBlocks(wordsHtml: string) {
+  const template = document.createElement("template");
+  template.innerHTML = wordsHtml;
+  return [...template.content.childNodes].filter(
+    (node) => node.nodeType !== Node.TEXT_NODE || node.textContent?.trim(),
   );
-  return parserPromise;
+}
+
+function blockHtml(block: ChildNode) {
+  return block instanceof Element ? block.outerHTML : (block.textContent ?? "");
+}
+
+function isOpenFence(block: ChildNode) {
+  return (
+    block instanceof HTMLPreElement &&
+    block.hasAttribute("data-markdown-incomplete")
+  );
 }
 
 function sanitizeChildren(
@@ -574,16 +733,18 @@ function decorateCodeElements(parent: DocumentFragment) {
 }
 
 function collectCodeBlocks(parent: DocumentFragment): CodeBlockSource[] {
-  return [...parent.querySelectorAll("pre > code")].map((code) => {
-    // Marked carries the fence label in a language-* class that sanitization removes.
-    const fenceClass = [...code.classList].find((value) =>
-      value.startsWith("language-"),
-    );
-    return {
-      code,
-      label: fenceClass?.slice("language-".length) || "Plain text",
-    };
-  });
+  return [...parent.querySelectorAll("pre > code")].map((code) => ({
+    code,
+    label: fenceLabel(code),
+  }));
+}
+
+// Words carries the fence label in a language-* class that sanitization removes.
+function fenceLabel(code: Element) {
+  const fenceClass = [...code.classList].find((value) =>
+    value.startsWith("language-"),
+  );
+  return fenceClass?.slice("language-".length) || "Plain text";
 }
 
 // Each fenced block gets a code block in its `<pre>`'s place, which draws the
@@ -694,6 +855,31 @@ const FORBIDDEN_ELEMENTS = new Set([
 ]);
 
 const VALID_INTEGER = /^-?[0-9]+$/;
+
+// The raw HTML Words keeps for `sanitizeChildren`: the elements it allows, with
+// the attributes `sanitizeAttributes` keeps, and elements it unwraps, whose
+// text would otherwise go with them.
+const RAW_HTML_TO_SANITIZE: Readonly<Record<string, readonly string[]>> = {
+  ...Object.fromEntries(
+    [
+      ...ALLOWED_ELEMENTS,
+      ..."abbr article b caption center col colgroup dd details div dl dt fieldset figcaption figure i ins kbd label legend mark picture s section small source span sub summary sup tfoot u".split(
+        " ",
+      ),
+    ].map((tag) => [tag, []]),
+  ),
+  a: ["href", "title"],
+  input: ["checked", "disabled", "type"],
+  ol: ["start"],
+};
+
+// Unfinished emphasis, code, and links at the end still being written draw as
+// if closed, and stay so when the text ends before they close.
+const SESSION_OPTIONS = {
+  cjk: true,
+  incomplete: true,
+  allowedHtml: RAW_HTML_TO_SANITIZE,
+};
 
 declare global {
   interface HTMLElementTagNameMap {

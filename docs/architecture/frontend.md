@@ -1422,6 +1422,26 @@ therefore retire only the replaced
 entry, approval card, or child owner while unaffected sibling, App Shell, and
 Composer codes remain frozen, without introducing a descendant-DOM scan.
 
+Markdown draws an agent message or a reasoning summary from its text with
+Words, the `@pierre/words` Markdown renderer, a pinned release imported from
+jsDelivr at first use. It shows its loading phrase until Words first arrives
+and the text as written when Words cannot be fetched. Each Markdown element
+keeps one Words session and hands it the whole text at every change. The
+session answers with the top-level blocks finished since its last answer and
+the end that can still change. Markdown appends the finished blocks, keeps each
+block of the previous end whose HTML is unchanged, and draws the rest anew, so
+a stream patch leaves a finished block's nodes, links, and code blocks in
+place. The code block of a fence still being written takes the fence's further
+code and stays the same element once the fence closes, so its Wrap and scroll
+survive. A text that does not continue the one drawn, a link reference or
+footnote definition, and a change of Task, file links, or code-block controls
+draw every block again. Emphasis, code, and links still open at the end of the
+text draw as if closed, and stay so if the text ends before they close.
+Emphasis also opens and closes next to Chinese, Japanese, and Korean text. Raw
+HTML reaches Markdown's sanitizer only as the elements it keeps or unwraps,
+with the attributes it keeps; Words drops other raw HTML elements, and the
+text of an HTML block made of them goes with them.
+
 Conversation mounts `conversation/components/approval.ts` for each pending
 normalized approval. Approval owns its card DOM, request-error presentation,
 styles, decision intents, Action Hint scope, and command/argument scroll
@@ -1593,7 +1613,10 @@ of its pair, so opening a PNG from Diff shows Visual and opening code from
 Visual shows Diff. The file viewer owns representation chrome and image
 rendering, and delegates Markdown rendering, sanitization, fallback, and local
 scroll to the shared `caffold-markdown-preview` component also used by the
-current-plan dialog.
+current-plan dialog. It draws a whole document with Task Markdown's pinned
+Words release, leaving unfinished syntax as written and a leading YAML
+frontmatter block out. Raw HTML reaches its sanitizer as it reaches Task
+Markdown's, with what drawing or describing an image reads.
 Both name the Markdown file's folder and the Task root, so the preview draws
 an image whose address names a file under the workspace root, read from that
 folder, or from the Task root when the address starts with `/`, without its
@@ -2853,8 +2876,8 @@ of both even though they come from `frontend/node_modules`, a TypeScript
 module is listed at the `.js` path it is served at, and a stylesheet a module
 imports is listed at the `.css.js` path of its module, and at its own path too
 only when the document also loads it. pdf.js,
-docx-preview, pptx-renderer, SheetJS, RHWP, Mermaid, and xterm.js with its fit
-addon are the exceptions:
+docx-preview, pptx-renderer, SheetJS, RHWP, Mermaid, Words, and xterm.js with
+its fit addon are the exceptions:
 their owners import pinned releases at first use, and the browser suite answers
 those URLs from the same versions in `node_modules`. SheetJS comes from its own
 CDN, which publishes its current releases there rather than on npm, and the

@@ -6,7 +6,7 @@ import { installTaskSseControllerInBrowser } from "./task-sse-fixture.js";
 // The suite runs the real libraries the app loads from jsDelivr rather than
 // stand-ins: a document or terminal that fails to render produces no fallback
 // content to assert against.
-const CDN_PACKAGES = ["pdfjs-dist", "@aiden0z/pptx-renderer", "@rhwp/core", "mermaid", "@xterm/xterm", "@xterm/addon-fit"].map(
+const CDN_PACKAGES = ["pdfjs-dist", "@aiden0z/pptx-renderer", "@rhwp/core", "mermaid", "@pierre/words", "@xterm/xterm", "@xterm/addon-fit"].map(
   (name) => ({
     root: installedPackageRoot(name),
     prefix: `${cdnPackageUrl(name)}/`,
@@ -341,116 +341,6 @@ export async function installExternalModuleDefaults(page) {
   });
 
   await page.route("https://esm.sh/**", (route) => {
-    if (route.request().url() === "https://esm.sh/marked@15.0.12") {
-      return route.fulfill({
-        contentType: "text/javascript",
-        body: `
-          const escapeHtml = (value) => value
-            .replaceAll("&", "&amp;")
-            .replaceAll("<", "&lt;")
-            .replaceAll(">", "&gt;");
-          const inline = (value) => value
-            .replace(/\\*\\*(.+?)\\*\\*/g, "<strong>$1</strong>")
-            .replace(/\\x60([^\\x60]+)\\x60/g, "<code>$1</code>")
-            .replace(/!\\[([^\\]]*)\\]\\(([^)]+)\\)/g, '<img src="$2" alt="$1">')
-            .replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2">$1</a>');
-          const unorderedItem = (line) => {
-            const content = line.slice(2);
-            const task = content.match(/^\\[([ xX])\\] (.*)$/);
-            if (!task) {
-              return '<li>' + inline(content) + '</li>';
-            }
-            const checked = task[1].toLowerCase() === "x" ? " checked" : "";
-            return '<li><input type="checkbox" disabled' + checked + '> ' + inline(task[2]) + '</li>';
-          };
-          const markdownBlocks = (source) => {
-            const blocks = [];
-            let current = [];
-            let fenced = false;
-            for (const line of source.split("\\n")) {
-              const fence = line.startsWith("\\x60\\x60\\x60");
-              if (fence && !fenced && current.length) {
-                blocks.push(current.join("\\n"));
-                current = [];
-              }
-              if (!fenced && !fence && line === "") {
-                if (current.length) {
-                  blocks.push(current.join("\\n"));
-                  current = [];
-                }
-                continue;
-              }
-              current.push(line);
-              if (fence) {
-                fenced = !fenced;
-                if (!fenced) {
-                  blocks.push(current.join("\\n"));
-                  current = [];
-                }
-              }
-            }
-            if (current.length) {
-              blocks.push(current.join("\\n"));
-            }
-            return blocks;
-          };
-          export const marked = {
-            parse(source) {
-              if (source === "[[caffold-test:markdown-error]]") {
-                throw new Error("fixture Markdown parse failure");
-              }
-              const blocks = markdownBlocks(source);
-              return blocks.map((sourceBlock) => {
-                if (sourceBlock.trimStart().startsWith("<")) {
-                  return sourceBlock;
-                }
-                const block = escapeHtml(sourceBlock);
-                if (block.startsWith("\\x60\\x60\\x60")) {
-                  const lines = block.split("\\n");
-                  const language = lines[0].slice(3).trim().split(/\\s+/, 1)[0];
-                  const languageClass = language
-                    ? ' class="language-' + language + '"'
-                    : '';
-                  const code = lines.slice(1, -1).join("\\n");
-                  return '<pre><code' + languageClass + '>' + code + (code ? "\\n" : "") + '</code></pre>';
-                }
-                const heading = block.match(/^(#{1,6}) (.+)$/);
-                if (heading) {
-                  const level = heading[1].length;
-                  return '<h' + level + '>' + inline(heading[2]) + '</h' + level + '>';
-                }
-                const lines = block.split("\\n");
-                const ordered = lines.map((line) => line.match(/^([0-9]{1,9})[.)] (.+)$/));
-                if (ordered.every(Boolean)) {
-                  const start = ordered[0][1];
-                  const startAttribute = start === "1" ? "" : ' start="' + start + '"';
-                  return '<ol' + startAttribute + '>' + ordered.map((item) => '<li>' + inline(item[2]) + '</li>').join("") + '</ol>';
-                }
-                if (
-                  lines.length > 1 &&
-                  lines[0].startsWith("- ") &&
-                  lines.slice(1).every((line) => line.startsWith("  - "))
-                ) {
-                  const nested = lines.slice(1).map((line) => unorderedItem(line.slice(2))).join("");
-                  return '<ul><li>' + inline(lines[0].slice(2)) + '<ul>' + nested + '</ul></li></ul>';
-                }
-                if (lines.every((line) => line.startsWith("- "))) {
-                  return '<ul>' + lines.map(unorderedItem).join("") + '</ul>';
-                }
-                if (lines.length >= 2 && lines[0].startsWith("|") && lines[1].includes("---")) {
-                  const cells = (line) => line.split("|").slice(1, -1).map((cell) => cell.trim());
-                  const header = cells(lines[0]);
-                  const rows = lines.slice(2).map(cells);
-                  return '<table><thead><tr>' + header.map((cell) => '<th>' + inline(cell) + '</th>').join("") + '</tr></thead><tbody>' + rows.map((row) => '<tr>' + row.map((cell) => '<td>' + inline(cell) + '</td>').join("") + '</tr>').join("") + '</tbody></table>';
-                }
-                return '<p>' + inline(lines.join(" ")) + '</p>';
-              }).join("");
-            },
-          };
-        `,
-      });
-    }
-
     if (route.request().url() !== "https://esm.sh/lucide@1.22.0") {
       return route.abort();
     }
