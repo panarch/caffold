@@ -224,9 +224,8 @@ refusals carry, which is how Caffold records it as blocked rather than as a
 rejected key. OpenAI can refuse one question while answering a request; that
 refusal is no judgement either.
 
-Every question asked about a permission request or a prompt leaves one line in
-the host's log, naming the Task, the provider, and, for a permission request,
-the approval. The line holds the answer, the model that gave it, and how long it
+Every question asked about a permission request leaves one line in the host's
+log, naming the Task, the provider, and the approval. The line holds the answer, the model that gave it, and how long it
 took, or why there was none: the HTTP status with the identifiers the provider
 and anything in front of it gave the response, or the connection error. The
 request itself is never written there.
@@ -239,20 +238,19 @@ Asking the question it answers well is what keeps ordinary work out of a
 person's way.
 
 Its baseline is the standard of a coding agent's automatic permission mode. What
-the person has said comes before that baseline, in the order the person said it:
-this turn's prompt, then this Task's record, then the rules from Settings. A
-person who wrote no rules still gets judgements, so a key for the chosen model is
+the person has said comes before that baseline: their recent prompts in this Task,
+then the rules from Settings. A person who wrote no rules still gets judgements, so a key for the chosen model is
 the whole requirement.
 
-The thresholds are not settings. Each question is written so that being sure is
-the answer that stops the agent, and each provider carries its own number for
-each question, because each model reads the questions on its own scale. Jev's
-model version is named on every request, because a later version would quietly
-move where its thresholds sit. OpenAI's Decisions API serves one model,
+The threshold is not a setting. The question is written so that being sure is
+the answer that stops the agent, and each provider carries its own number,
+because each model reads the question on its own scale. Jev's model version is
+named on every request, because a later version would quietly move where its
+threshold sits. OpenAI's Decisions API serves one model,
 `gpt-6-luna`, under a name with no version, so a change behind that name cannot
 be pinned and shows only when the calibration cases are run again. The
 [calibration cases](../development/testing.md#decision-model-checks) hold every
-provider's numbers to what a person expects; they are run when a provider or a
+provider's number to what a person expects; they are run when a provider or a
 model changes, never by the ordinary test run.
 
 Caffold asks before the request is shown. An allowed request records its arrival
@@ -270,8 +268,8 @@ mode, nothing configured, or a call that failed, which the host's log records.
 What reaches the provider is one request as the agent's driver already wrote it
 for a person to read — the command, the directory the driver named, the network
 destination, the requested access, the grant root, and the tool with its
-arguments — together with the rules from Settings, what this Task's own prompts
-permitted, and the prompt that began the turn the request came out of. The
+arguments — together with the rules from Settings and the person's recent
+prompts in the Task. The
 agent's own title and reason travel under a name that says the agent wrote them,
 and the model is told to read them as a claim about what is being asked rather
 than as a reason not to ask. Which agent asked is not sent: a request gets the
@@ -292,35 +290,31 @@ from still names the checkout it started in, and sending that row instead puts
 every file in the worktree outside the working directory, where rules that
 refuse anything outside it refuse everything.
 
-### What a Task's Prompts Permitted
+### The Person's Recent Prompts
 
-Rules written once cannot say "in this Task, this far". A Task keeps that
-separately, and only while its turns run under this mode.
+Rules written once cannot say "in this Task, this far"; what the person says in
+the Task can. Every text prompt the Task's agent takes through Caffold, whether
+it starts a turn or is steered into one and whatever mode that turn runs under,
+is kept on the Task's row with the turn that took it: the last ten, oldest
+first. A prompt that carries only pictures adds nothing. They are kept on the
+host so that a restart does not forget what was just said, and they are sent
+nowhere except beside a request judged under this mode.
 
-A prompt sent under it is asked about once, with what the Task already keeps
-beside it. One question decides whether it belongs in the record: it does when
-it says what the agent may or may not do, and it does not when it only gives
-work to carry out or only points at something said earlier. A prompt that
-cancels an entry is read against the entry it cancels, which is why the record
-travels with the question. A prompt that is both is kept whole, exactly as
-it was typed, at the end of that Task's record. The record is read oldest first
-and a later statement overrides an earlier one it contradicts; that order is the
-order of the entries, never a comparison of the times beside them.
+When a request is judged, the prompts go beside it exactly as the person wrote
+them, each marked with whether it was sent in the turn the request came out
+of. Work a prompt of that turn asks for is the work at hand, and the model
+reads it as permitted; work an earlier turn asked for was done in that turn and
+does not permit doing it again. What a prompt says the agent may or may not do
+holds until a later prompt changes it, and a later prompt overrides an earlier
+one it contradicts, by the order of the list. A request that names no turn
+marks none of them. The prompts settle what the standing rules would have
+settled otherwise: the rules are what the person set once for everything, and
+the prompts are the same person speaking about this Task.
 
-A statement in that record settles what the standing rules would have settled
-otherwise, however firmly those rules are written, and the prompt that began the
-turn settles it over both. Rules are what the person set once for everything;
-the record is the same person speaking about this Task, and the turn's prompt is
-the same person speaking now. Each only overrules an earlier one where the two
-speak to the same request. The record is bounded,
-and past the bound the oldest entries go. This runs beside the turn rather than
-in front of it, so a request that arrives before it finishes is simply one the
-person answers.
-
-The record is the person's own sentences and nothing else. It is read and
-forgotten from the Task's details, which is the only place it is presented,
-and forgetting it cannot be undone: it is rebuilt only from what a person says
-next. A prompt sent under any other mode is never sent anywhere.
+The prompts are not judged when they are sent. What a prompt points at, such
+as "Word edits and the like", is clear only beside the request it is about, so
+the model reads them together with that request. Nothing older than the last
+ten is read; a statement the person wants held for longer belongs in the rules.
 
 ### Decision Model Settings
 
@@ -484,9 +478,9 @@ then asks to interrupt. A terminal update for the exact wire tool-call ID
 withdraws its pending request. The agent's option warning is shown without
 broadening the native grant.
 
-The decision model reads the prompt only when the approval names its exact display turn.
-A reconstructed approval without a native association does not guess a prompt.
-Task-level permission instructions remain separate.
+The decision model marks the prompts of an approval's turn only when the approval names
+its exact display turn. A reconstructed approval without a native association marks
+none; it does not guess a turn.
 Structured questions are disabled through the native configuration; an
 unexpected reserved question callback receives clarification feedback as an
 unsupported-method error, not a user decision.

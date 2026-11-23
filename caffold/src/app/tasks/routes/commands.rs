@@ -1,5 +1,7 @@
 use super::codex::normalize_approval_decision;
-use super::store::{task_store_update_composer_settings, task_store_worktree_for_thread};
+use super::store::{
+    task_store_record_prompt, task_store_update_composer_settings, task_store_worktree_for_thread,
+};
 use super::uploads::uploaded_file;
 use super::{
     CancelledPromptResponse, CreateTaskRequest, CreatedTaskResponse, MAX_TASK_IMAGES,
@@ -7,7 +9,6 @@ use super::{
     TaskPromptResponse, TasksQuery,
 };
 use crate::agent::codex::{CodexConnection, CodexThreadClient, CodexThreadError};
-use crate::agent::driver::REVIEWED_PERMISSION_MODE;
 use crate::agent::{AgentError, PromptImage, TurnOptions, TurnRejected};
 use crate::app::error::ApiError;
 use crate::app::tasks::lifecycle::CreateTask;
@@ -23,11 +24,10 @@ use crate::app::tasks::{
 use crate::fs::MAX_IMAGE_BYTES;
 #[cfg(test)]
 use crate::task_store::RunBy;
-use crate::task_store::{ManagedThread, ManagedWorktree, ManagedWorktreeState};
+use crate::task_store::{ManagedThread, ManagedWorktree, ManagedWorktreeState, RecentPrompt};
 use axum::Json;
 use axum::extract::Path as AxumPath;
 use axum::extract::{Query, State};
-use serde::Serialize;
 use std::io::Read;
 use std::path::Path;
 
@@ -255,18 +255,18 @@ async fn task_prompt_owned(
         steered,
         started_turn,
     } = outcome;
-    // A turn under the reviewed mode keeps what the person's own words
-    // permitted, so a request judged later reads the same latitude they gave
-    // here. The composer says which mode this turn runs under; the Task's last
-    // one answers for a prompt that named none.
-    if requested_permission_mode
-        .as_deref()
-        .or(managed.permission_mode.as_deref())
-        == Some(REVIEWED_PERMISSION_MODE)
-    {
-        state
-            .task_runtime
-            .remember_permission_instruction(&thread_id, &prompt, prompt_observed_ms);
+    // What the person just said is kept whatever mode this turn runs under, so
+    // a request judged later under the reviewed mode reads the words they
+    // gave, including any sent before they chose it. A prompt that cannot be
+    // kept only leaves the requests it would have spoken for to the person.
+    if !prompt.is_empty() {
+        let sent = RecentPrompt {
+            turn_id: turn_id.clone(),
+            prompt: prompt.clone(),
+        };
+        if let Err(error) = task_store_record_prompt(&state, &thread_id, sent).await {
+            eprintln!("failed to keep the prompt sent to thread {thread_id}: {error:?}");
+        }
     }
     let session_revision = if let Some((turn, applied_options)) = started_turn {
         let revision = state
@@ -275,7 +275,6 @@ async fn task_prompt_owned(
                 agent.generation(),
                 &thread_id,
                 managed_cwd.as_deref(),
-                &prompt,
                 turn.clone(),
                 applied_options.clone(),
             )
@@ -453,48 +452,6 @@ pub(super) async fn task_interrupt(
             })
             .collect(),
     }))
-}
-
-/// What this Task's own prompts have settled, for a person to read.
-pub(super) async fn task_permission_instructions(
-    State(state): State<TaskState>,
-    AxumPath(thread_id): AxumPath<String>,
-) -> Result<Json<TaskPermissionInstructionsResponse>, ApiError> {
-    active_record(&state.task_store, &thread_id).await?;
-    let store = state.task_store.clone();
-    let wanted = thread_id.clone();
-    let instructions = tokio::task::spawn_blocking(move || store.permission_instructions(&wanted))
-        .await
-        .map_err(|error| ApiError::Internal(format!("task store worker failed: {error}")))?
-        .map_err(|error| ApiError::Internal(error.to_string()))?;
-    Ok(Json(TaskPermissionInstructionsResponse { instructions }))
-}
-
-/// Forget what this Task's prompts settled.
-///
-/// There is nothing to undo afterwards: the record is only ever rebuilt from
-/// what a person says next.
-pub(super) async fn task_forget_permission_instructions(
-    State(state): State<TaskState>,
-    AxumPath(thread_id): AxumPath<String>,
-) -> Result<Json<TaskPermissionInstructionsResponse>, ApiError> {
-    active_record(&state.task_store, &thread_id).await?;
-    let store = state.task_store.clone();
-    let wanted = thread_id.clone();
-    tokio::task::spawn_blocking(move || store.clear_permission_instructions(&wanted))
-        .await
-        .map_err(|error| ApiError::Internal(format!("task store worker failed: {error}")))?
-        .map_err(|error| ApiError::Internal(error.to_string()))?;
-    Ok(Json(TaskPermissionInstructionsResponse {
-        instructions: None,
-    }))
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct TaskPermissionInstructionsResponse {
-    /// Every entry in one block, oldest first, or nothing kept yet.
-    instructions: Option<String>,
 }
 
 pub(super) async fn task_approval(
@@ -3589,7 +3546,7 @@ mod grok_tests {
     use crate::app::tasks::runtime::{TaskRuntime, TaskRuntimeSignal};
     use crate::app::tasks::test_support::{task_state_with_agents, task_state_with_grok};
     use crate::fs::RootedFs;
-    use crate::task_store::RunBy;
+    use crate::task_store::{RecentPrompt, RunBy};
 
     use super::http_calls::{call, post};
 
@@ -3807,6 +3764,81 @@ mod grok_tests {
             "{interjected}"
         );
         assert_eq!(leader.requests("session/prompt").len(), 1);
+    }
+
+    /// What the person says is kept for the decision model under whichever
+    /// mode the turn runs, steering included, with the turn that took it. A
+    /// picture sent without words adds nothing to read.
+    #[tokio::test]
+    async fn every_prompt_the_agent_takes_is_kept_with_its_turn() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, leader, _memory, _host) = task_state_with_grok(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        let app = router(state.clone());
+        let thread_id = created_grok_task(&app, &leader).await;
+        let (status, first) = call(
+            &app,
+            post(
+                &format!("/api/tasks/{thread_id}/prompts"),
+                json!({ "prompt": "List the files here." }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{first}");
+        leader.wait_for("session/prompt").await;
+        let (status, uploaded) = call(
+            &app,
+            Request::put(format!(
+                "/api/tasks/{thread_id}/uploads/20260926-153012-a1b2/shot.png"
+            ))
+            .body(Body::from(
+                b"\x89PNG\r\n\x1a\nthe rest of the picture".to_vec(),
+            ))
+            .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{uploaded}");
+        let (status, picture) = call(
+            &app,
+            post(
+                &format!("/api/tasks/{thread_id}/prompts"),
+                json!({
+                    "prompt": "",
+                    "imagePaths": [".caffold/uploads/20260926-153012-a1b2/shot.png"],
+                }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{picture}");
+
+        let (status, second) = call(
+            &app,
+            post(
+                &format!("/api/tasks/{thread_id}/prompts"),
+                json!({ "prompt": "Only the Rust ones." }),
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{second}");
+        assert_eq!(second["steered"], true);
+        let turn_id = first["turnId"].as_str().unwrap().to_string();
+        assert_eq!(
+            state.task_store.recent_prompts(&thread_id).unwrap(),
+            vec![
+                RecentPrompt {
+                    turn_id: turn_id.clone(),
+                    prompt: "List the files here.".to_string(),
+                },
+                RecentPrompt {
+                    turn_id,
+                    prompt: "Only the Rust ones.".to_string(),
+                },
+            ]
+        );
     }
 
     #[tokio::test]

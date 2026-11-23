@@ -1823,18 +1823,6 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog/components/mermaid-diagram.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.css.js" => {
-            Some(js(include_str!(concat!(
-                env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.css.js"
-            ))))
-        }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.js" => {
-            Some(js(include_str!(concat!(
-                env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.js"
-            ))))
-        }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
@@ -3620,10 +3608,6 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/mermaid-preview-dialog/components/mermaid-diagram.js",
                 b"caffold-task-mermaid-diagram".as_slice(),
-            ),
-            (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.js",
-                b"caffold-task-permission-instructions-dialog".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.js",

@@ -715,10 +715,8 @@ test("draws its header the way the other title-and-X dialogs draw theirs", { tag
 }, testInfo) => {
   const tasks = switcherTasks();
   await installSwitcherFixture(page, tasks);
-  await page.route("**/permission-instructions", (route) =>
-    route.fulfill({ json: { instructions: null } }));
   await page.goto("/tasks/switcher_oldest");
-  // The Markdown and Mermaid previews and the settled prompts live in a loaded Task.
+  // The Markdown and Mermaid previews live in a loaded Task.
   await emitTaskDetailBootstrap(page, switcherTaskDetail(tasks[2]));
   await expect(page.locator(".task-conversation-pane")).toBeVisible();
 
@@ -756,25 +754,6 @@ test("draws its header the way the other title-and-X dialogs draw theirs", { tag
     .click();
   await expect(mermaidDialog).toBeHidden();
 
-  const settled = page.locator("caffold-task-permission-instructions-dialog");
-  await settled.evaluate(
-    (element, threadId) => element.open({ threadId }),
-    tasks[2].threadId,
-  );
-  const settledDialog = page.locator(
-    "caffold-task-permission-instructions-dialog > dialog",
-  );
-  await expect(settledDialog).toBeVisible();
-  const settledHeader = await dialogHeaderGeometry(settledDialog, {
-    header: ".task-permission-instructions-header",
-    title: ".task-permission-instructions-title",
-    close: ".task-permission-instructions-close",
-  });
-  await settledDialog
-    .getByRole("button", { name: "Close what this Task settled" })
-    .click();
-  await expect(settledDialog).toBeHidden();
-
   await switcherOpeners(page).click();
   const dialog = page.locator("caffold-task-switcher-dialog > dialog");
   await expect(dialog).toBeVisible();
@@ -785,7 +764,6 @@ test("draws its header the way the other title-and-X dialogs draw theirs", { tag
   });
 
   expect(mermaidHeader).toEqual(reference);
-  expect(settledHeader).toEqual(reference);
   expect(header).toEqual(reference);
   // The X sits in the header's corner as far from the top and bottom lines as
   // from the end.

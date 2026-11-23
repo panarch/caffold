@@ -279,24 +279,6 @@ for (const theme of ["light", "dark"]) {
       await captureReviewScreenshot(page, testInfo, `task-handoff-${theme}`);
     });
 
-    test("the prompts a Task settled open from its details", { tag: "@desktop" }, async ({ page }, testInfo) => {
-      await page.goto(`/tasks/${MANUAL_TASKS.pagination.threadId}`);
-
-      await page.getByRole("button", { name: /^Task details/ }).click();
-      await page.getByRole("button", { name: "What your prompts settled" }).click();
-      const dialog = page.locator("caffold-task-permission-instructions-dialog > dialog");
-      await expect(dialog).toBeVisible();
-      await expect(dialog.locator(".task-permission-instructions-text")).toContainText(
-        "never touch config/production.yml",
-      );
-      await expect(dialog.locator(".task-permission-instructions-text")).toContainText(
-        "reset the local database",
-      );
-      await expect(dialog.getByRole("button", { name: "Forget these" })).toBeEnabled();
-      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-      await captureReviewScreenshot(page, testInfo, `permission-instructions-${theme}`);
-    });
-
     test("a Section opens New Task in its directory", { tag: "@desktop" }, async ({ page }, testInfo) => {
       await page.goto(`/?section=${MANUAL_SECTION_ID}`);
 

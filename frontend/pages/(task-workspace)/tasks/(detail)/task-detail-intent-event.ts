@@ -13,18 +13,9 @@ export type BrokenTaskDeleteIntent =
   | { type: "task-deleted"; threadId: string }
   | { type: "broken-delete-error"; error: unknown };
 
-// What a request about the record tells the Task screen when it fails: the
-// conversation decides what the failure says about the Task itself.
-export interface TaskRequestFailedIntent {
-  type: "task-request-failed";
-  threadId: string;
-  error: unknown;
-}
-
 // What a Task's or Section's Detail tells the Tasks screen.
 export type TaskDetailIntent =
   | BrokenTaskDeleteIntent
-  | TaskRequestFailedIntent
   | { type: "task-archived"; task: ArchivedTask }
   | {
       type: "task-restored";

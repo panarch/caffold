@@ -246,7 +246,7 @@ can still change permission mode between turns. Every agent's list also offers
 **Caffold decides**, which runs that agent under whichever of its own modes asks
 about the most and has the decision model chosen in Settings hold back only what
 an automatic mode would stop for, plus whatever the extra rules in Settings
-name. Its description names that model. A Grok session fixes its mode when the conversation starts, so choosing
+or the person's last ten prompts in the Task name. Its description names that model. A Grok session fixes its mode when the conversation starts, so choosing
 it there changes who answers rather than what Grok asks about. A Grok Task's follow-up
 composer shows the session's approval mode and does not let it change,
 including on an empty Task. Until the empty Task is durably created, New Task
@@ -327,12 +327,7 @@ forking.** The follow-up Composer waits for Archive too: Send, Attach, voice
 input, and its options are unavailable and the same words show above it, while
 its draft stays editable. What a row reports, such as each
 language server's state or why its last request failed, sits under the row,
-with the button that answers it. A Task whose next turn runs under Caffold
-decides also offers **What your prompts settled** there, which
-opens a dialog holding those messages oldest first, each under the time it was
-sent in the reader's own time zone, and a **Forget these** action. The record
-is read when that dialog opens, and the dialog says so while the Task has kept
-nothing yet.
+with the button that answers it.
 
 Task actions offer **Pin task**, or **Unpin task** for a pinned Task, once the
 Task list has placed the Task in a Section. The button shows its progress until

@@ -39,20 +39,6 @@ mod server_requests;
 
 use server_requests::PendingApproval;
 
-/// One kept instruction, as it is stored and read.
-///
-/// The time is for the person who opens the record; the order is the order of
-/// the lines, because reading two dates and deciding which came later is the
-/// one thing the reviewer is documented to be bad at.
-fn permission_instruction_entry(recorded_ms: u64, prompt: &str) -> String {
-    let when = i64::try_from(recorded_ms)
-        .ok()
-        .and_then(chrono::DateTime::from_timestamp_millis)
-        .map(|when| when.format("%Y-%m-%d %H:%M UTC").to_string())
-        .unwrap_or_else(|| "unknown time".to_string());
-    format!("[{when}]\n{prompt}")
-}
-
 /// Everything a Task is run through, whichever agent runs it.
 ///
 /// It holds the native clients and selects the one that owns the Task. How each agent's process is
@@ -669,51 +655,6 @@ impl TaskRuntime {
             .map_or_else(ReviewerOffer::unconfigured, PermissionReviewer::offer)
     }
 
-    /// Keep what a person's own prompt permitted for this Task.
-    ///
-    /// It runs beside the turn rather than in front of it. The reviewer answers
-    /// in far less time than an agent takes to reach its first permission
-    /// request, and a request that does get ahead of it is simply one the
-    /// person answers. Under any other mode the prompt is never sent anywhere.
-    pub(in crate::app::tasks) fn remember_permission_instruction(
-        &self,
-        thread_id: &str,
-        prompt: &str,
-        recorded_ms: u64,
-    ) {
-        let Some(reviewer) = self.permission_reviewer.clone() else {
-            return;
-        };
-        let thread_id = thread_id.to_string();
-        let prompt = prompt.to_string();
-        let task_store = self.task_store.clone();
-        tokio::spawn(async move {
-            // What the Task already keeps goes with the message: a prompt that
-            // cancels an entry cannot be read without the entry it cancels.
-            let reading = task_store.clone();
-            let read = thread_id.clone();
-            let kept_already =
-                tokio::task::spawn_blocking(move || reading.permission_instructions(&read)).await;
-            let Ok(Ok(kept_already)) = kept_already else {
-                return;
-            };
-            if !reviewer
-                .is_permission_instruction(&thread_id, &prompt, kept_already.as_deref())
-                .await
-            {
-                return;
-            }
-            let entry = permission_instruction_entry(recorded_ms, &prompt);
-            let kept = tokio::task::spawn_blocking(move || {
-                task_store.append_permission_instructions(&thread_id, &entry)
-            })
-            .await;
-            if let Ok(Err(error)) = kept {
-                eprintln!("A Task's permission instructions could not be kept: {error}");
-            }
-        });
-    }
-
     pub(in crate::app::tasks) fn subscribe(&self) -> broadcast::Receiver<TaskRuntimeSignal> {
         self.signals.subscribe()
     }
@@ -845,24 +786,6 @@ impl TaskRuntime {
 
 #[cfg(test)]
 mod tests {
-    use super::permission_instruction_entry;
-
-    #[test]
-    fn a_kept_instruction_reads_as_a_time_and_then_the_person_s_own_words() {
-        let entry = permission_instruction_entry(1_750_000_000_000, "target 밑은 지워도 돼");
-
-        let (when, said) = entry.split_once('\n').expect("a time line and the message");
-        assert!(when.starts_with('[') && when.ends_with("UTC]"), "{when}");
-        assert_eq!(said, "target 밑은 지워도 돼");
-    }
-
-    #[test]
-    fn an_unreadable_time_still_keeps_what_was_said() {
-        let entry = permission_instruction_entry(u64::MAX, "커밋해도 돼");
-
-        assert_eq!(entry, "[unknown time]\n커밋해도 돼");
-    }
-
     use crate::agent;
     use serde_json::json;
 

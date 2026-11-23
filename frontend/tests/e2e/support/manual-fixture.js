@@ -318,10 +318,6 @@ export async function installManualTasks(page, { runningCheckout = false } = {})
       ? route.fulfill({ json: { ...task, unseen: false } })
       : route.fulfill({ status: 404, json: { error: { code: "task_not_found" } } });
   });
-  await page.route(
-    `**/api/tasks/${MANUAL_TASKS.pagination.threadId}/permission-instructions`,
-    (route) => route.fulfill({ json: { instructions: PAGINATION_SETTLED } }),
-  );
   await page.route(/\/api\/current-plan(?:\?|$)/, (route) => {
     const path = new URL(route.request().url()).searchParams.get("path");
     return route.fulfill({
@@ -994,7 +990,7 @@ function darkThemeDetail() {
 }
 
 // The pagination Task runs under Caffold decides, and both of its prompts say
-// what the agent may do, so the decision model kept each of them word for word.
+// what the agent may do.
 const PAGINATION_PROMPTS = [
   {
     atMs: MANUAL_TASKS.pagination.updatedMs - 25 * 60_000,
@@ -1007,11 +1003,6 @@ const PAGINATION_PROMPTS = [
     text: "You can also reset the local database if a migration fails.",
   },
 ];
-const PAGINATION_SETTLED = PAGINATION_PROMPTS.map(
-  ({ atMs, text }) =>
-    `[${new Date(atMs).toISOString().slice(0, 16).replace("T", " ")} UTC]\n${text}`,
-).join("\n\n");
-
 function paginationDetail() {
   const task = MANUAL_TASKS.pagination;
   const [first, second] = PAGINATION_PROMPTS;

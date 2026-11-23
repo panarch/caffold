@@ -34,8 +34,6 @@ import switchStyle from "#app/component-styles/switch.css.js";
 import busySpin from "#app/pages/component-styles/busy-spin.css.js";
 import styles from "./actions.css.js";
 
-/** The approval mode Caffold answers under, which its decision model judges for. */
-const REVIEWED_PERMISSION_MODE = "caffold:decides";
 /** The agents whose conversations Caffold can fork. */
 const FORKING_PROVIDERS = ["codex", "claude", "grok", "copilot"];
 const IDLE_ONLY = "Available when the Task is idle.";
@@ -60,7 +58,6 @@ export interface TaskInfoActionsSnapshot {
   archiveBlockedByActive: boolean;
   transportState: TaskTransportState;
   provider: string;
-  permissionMode: string;
   archiveState: TaskActionState;
   forkState: TaskActionState;
   pinned: boolean | null;
@@ -68,13 +65,7 @@ export interface TaskInfoActionsSnapshot {
   worktreePrepared: boolean;
 }
 
-type TaskInfoAction =
-  | "archive"
-  | "force-archive"
-  | "fork"
-  | "pin"
-  | "unpin"
-  | "permission-instructions";
+type TaskInfoAction = "archive" | "force-archive" | "fork" | "pin" | "unpin";
 
 export interface TaskInfoActionIntent {
   type: TaskInfoAction;
@@ -91,11 +82,10 @@ export interface LanguageServerInstallIntent {
 
 /**
  * What can be done with the Task from its details popover, as a list of rows:
- * read what its prompts settled, pin or unpin it, turn its repository's
- * language servers on or off, fork it, and archive it. Each row says what it
- * does, or why it cannot be done now; what a row reports, such as each
- * server's state or why the last request failed, and what can be done about
- * it, sits under the row. While the Task archives, every other row and the
+ * pin or unpin it, turn its repository's language servers on or off, fork it,
+ * and archive it. Each row says what it does, or why it cannot be done now;
+ * what a row reports, such as each server's state or why the last request
+ * failed, and what can be done about it, sits under the row. While the Task archives, every other row and the
  * buttons under it wait.
  *
  * The language servers are read once before the popover opens and then
@@ -235,33 +225,6 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
     const serverLines = serversKnown && serversOn;
     return html`
       <hr class="task-detail-actions-divider">
-      ${
-        this.keepsPermissionInstructions()
-          ? html`<button
-              ${this.hints.button({
-                id: `${threadId}:permission-instructions`,
-                label: "What your prompts settled",
-                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-                anchor: () => this.rowIcons.get("permission-instructions"),
-                badgeAt: "center",
-              })}
-              type="button"
-              class="task-detail-action"
-              data-task-info-action="permission-instructions"
-              ?disabled=${archiving}
-              @click=${this.requestAction}
-            >
-              ${actionIcon("ShieldCheck", this.rowIcons.of("permission-instructions"))}
-              <span class="task-detail-action-label">What your prompts settled</span>
-              <span class="task-detail-action-description"
-                >${
-                  archiveWait ||
-                  "What the decision model reads before it answers."
-                }</span
-              >
-            </button>`
-          : nothing
-      }
       ${
         pinned === null
           ? nothing
@@ -506,12 +469,6 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
           : nothing
       }
     `;
-  }
-
-  // The record is kept and read only under the reviewed mode, so the action
-  // that opens it is offered under that mode and no other.
-  private keepsPermissionInstructions() {
-    return this.snapshot?.permissionMode === REVIEWED_PERMISSION_MODE;
   }
 
   // Open, the section reads its repository and follows it; closed, it reads

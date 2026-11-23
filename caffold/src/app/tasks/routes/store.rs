@@ -3,7 +3,7 @@ use crate::app::error::ApiError;
 use crate::app::tasks::composer_settings;
 use crate::app::tasks::{TaskState, now_ms};
 use crate::task_store;
-use crate::task_store::{ManagedThread, ManagedWorktree, TaskStoreError};
+use crate::task_store::{ManagedThread, ManagedWorktree, RecentPrompt, TaskStoreError};
 
 pub(super) async fn task_store_list_archived(
     state: &TaskState,
@@ -62,6 +62,19 @@ pub(super) async fn task_store_claim(
 ) -> Result<ManagedThread, ApiError> {
     let store = state.task_store.clone();
     tokio::task::spawn_blocking(move || store.claim(thread, now_ms()))
+        .await
+        .map_err(task_store_join_error)?
+        .map_err(task_store_api_error)
+}
+
+pub(super) async fn task_store_record_prompt(
+    state: &TaskState,
+    thread_id: &str,
+    prompt: RecentPrompt,
+) -> Result<bool, ApiError> {
+    let store = state.task_store.clone();
+    let thread_id = thread_id.to_string();
+    tokio::task::spawn_blocking(move || store.record_prompt(&thread_id, prompt))
         .await
         .map_err(task_store_join_error)?
         .map_err(task_store_api_error)
