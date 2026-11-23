@@ -1428,14 +1428,22 @@ jsDelivr at first use. It shows its loading phrase until Words first arrives
 and the text as written when Words cannot be fetched. Each Markdown element
 keeps one Words session and hands it the whole text at every change. The
 session answers with the top-level blocks finished since its last answer and
-the end that can still change. Markdown appends the finished blocks, keeps each
-block of the previous end whose HTML is unchanged, and draws the rest anew, so
-a stream patch leaves a finished block's nodes, links, and code blocks in
-place. The code block of a fence still being written takes the fence's further
-code and stays the same element once the fence closes, so its Wrap and scroll
-survive. A text that does not continue the one drawn, a link reference or
-footnote definition, and a change of Task, file links, or code-block controls
-draw every block again. Emphasis, code, and links still open at the end of the
+the end that can still change. Markdown compares each block of the previous end
+with its next version. A block whose next version only grew keeps its nodes
+and takes what it added: text after its last text, inline elements, items, or
+rows after its last, or one table cell filling while the cells after it stay
+the same. Any other changed block is drawn anew in its place. A stream patch so
+leaves the nodes, links, selections, and code blocks of finished and growing
+blocks where they are. The code block of a fence still being written takes the
+fence's further code and stays the same element once the fence closes, so its
+Wrap and scroll survive. While a stream continues, added text arrives in a span
+of its own and fades in over 180 ms, and so does a block that begins, unless
+the reader asks for reduced motion. Code shows at once, and Markdown drawn
+whole does not fade. The mark of a fade comes off when it ends, so moving or
+showing the Markdown again does not fade it twice. A text that does not
+continue the one drawn, a link reference or footnote definition, and a change
+of Task, file links, or code-block controls draw every block again without
+fading. Emphasis, code, and links still open at the end of the
 text draw as if closed, and stay so if the text ends before they close.
 Emphasis also opens and closes next to Chinese, Japanese, and Korean text. Raw
 HTML reaches Markdown's sanitizer only as the elements it keeps or unwraps,

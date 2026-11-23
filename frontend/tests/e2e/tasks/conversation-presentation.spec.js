@@ -1783,7 +1783,8 @@ test("keeps the blocks an agent message has finished while the rest is still wri
       codeBlock: body.querySelector("caffold-task-code-block") === nodes.codeBlock,
     };
   })).toEqual({ paragraph: true, link: true, codeBlock: true });
-  // What was drawn piece by piece is what the whole text draws at once.
+  // What was drawn piece by piece is what the whole text draws at once, apart
+  // from the pieces added text arrives in and the line breaks between blocks.
   expect(await markdown.evaluate(async (element, text) => {
     const whole = document.createElement("caffold-task-markdown");
     whole.setAttribute("thread-id", element.getAttribute("thread-id"));
@@ -1791,12 +1792,203 @@ test("keeps the blocks an agent message has finished while the rest is still wri
     whole.markdown = text;
     document.body.append(whole);
     await whole.updateComplete;
-    const html = (markdown) =>
-      markdown.shadowRoot.querySelector(".markdown-body").innerHTML;
+    const html = (markdown) => {
+      const body = markdown.shadowRoot
+        .querySelector(".markdown-body")
+        .cloneNode(true);
+      for (const piece of body.querySelectorAll("span[data-piece]")) {
+        piece.replaceWith(...piece.childNodes);
+      }
+      for (const node of body.querySelectorAll("[data-arriving]")) {
+        node.removeAttribute("data-arriving");
+      }
+      body.normalize();
+      const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+      const breaks = [];
+      while (walker.nextNode()) {
+        const { data } = walker.currentNode;
+        if (!data.trim() && data.includes("\n")) {
+          breaks.push(walker.currentNode);
+        }
+      }
+      for (const node of breaks) {
+        node.remove();
+      }
+      return body.innerHTML;
+    };
     const same = html(whole) === html(element);
     whole.remove();
     return same;
   }, `${finished}Still being written.${table}`)).toBe(true);
+});
+
+// Records each element a stream marks as fading in, as Markdown marks it:
+// whether it holds added text, the animation it runs, and whether it is code.
+async function recordArrivals(markdown) {
+  await markdown.evaluate((element) => {
+    window.__arrivals = [];
+    new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (node.nodeType !== Node.ELEMENT_NODE) {
+            continue;
+          }
+          for (const arriving of [node, ...node.querySelectorAll("[data-arriving]")]) {
+            if (!arriving.hasAttribute("data-arriving")) {
+              continue;
+            }
+            window.__arrivals.push({
+              name: arriving.localName,
+              piece: arriving.hasAttribute("data-piece"),
+              text: arriving.textContent,
+              animation: getComputedStyle(arriving).animationName,
+              code: Boolean(
+                arriving.closest("pre, caffold-task-code-block")
+                  || arriving.querySelector("pre, caffold-task-code-block"),
+              ),
+            });
+          }
+        }
+      }
+    }).observe(element.shadowRoot, { childList: true, subtree: true });
+  });
+  return () => markdown.evaluate(() => window.__arrivals);
+}
+
+test("keeps writing into the paragraph an agent message is still writing", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const threadId = "thread_growing_markdown_paragraph";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const start = "Growing answer: the first words of a paragraph";
+  await write(start);
+  await expect(markdown).toContainText(start);
+  await markdown.evaluate((element) => {
+    const paragraph = element.shadowRoot.querySelector(".markdown-body > p");
+    const text = paragraph.firstChild;
+    getSelection().setBaseAndExtent(text, 0, text, 7);
+    window.__growingParagraph = paragraph;
+  });
+  const arrivals = await recordArrivals(markdown);
+
+  await write(`${start} keep coming, and **more** of them arrive.`);
+  await expect(markdown).toContainText("keep coming, and more of them arrive.");
+  expect(await markdown.evaluate((element) => {
+    const paragraph = element.shadowRoot.querySelector(".markdown-body > p");
+    return {
+      sameParagraph: paragraph === window.__growingParagraph,
+      selection: getSelection().toString(),
+    };
+  })).toEqual({ sameParagraph: true, selection: "Growing" });
+  // Only the added text fades in, each piece in a span of its own.
+  const arrived = await arrivals();
+  expect(arrived.length).toBeGreaterThan(0);
+  expect(arrived.map(({ text }) => text).join("")).toBe(
+    " keep coming, and more of them arrive.",
+  );
+  expect(new Set(arrived.map(({ animation }) => animation))).toEqual(
+    new Set(["markdown-arriving"]),
+  );
+  // The mark comes off once the fade ends.
+  await expect
+    .poll(() =>
+      markdown.evaluate(
+        (element) => element.shadowRoot.querySelectorAll("[data-arriving]").length,
+      ),
+    )
+    .toBe(0);
+  await expect(markdown.locator("strong")).toHaveText("more");
+});
+
+test("grows a table an agent message is still writing in place", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const threadId = "thread_growing_markdown_table";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const header = "Growing answer table:\n\n| Name | Note |\n| --- | --- |\n";
+  await write(`${header}| first | starts`);
+  const table = markdown.locator("table");
+  await expect(table).toContainText("starts");
+  await table.evaluate((element) => {
+    window.__growingTable = element;
+    window.__growingFirstRow = element.querySelector("tbody tr");
+  });
+  const arrivals = await recordArrivals(markdown);
+
+  await write(`${header}| first | starts and grows |\n| second | arrives`);
+  await expect(table).toContainText("arrives");
+  expect(await table.evaluate((element) => ({
+    sameTable: element === window.__growingTable,
+    sameFirstRow: element.querySelector("tbody tr") === window.__growingFirstRow,
+    rows: [...element.querySelectorAll("tbody tr")].map((row) =>
+      [...row.cells].map((cell) => cell.textContent),
+    ),
+  }))).toEqual({
+    sameTable: true,
+    sameFirstRow: true,
+    rows: [
+      ["first", "starts and grows"],
+      ["second", "arrives"],
+    ],
+  });
+  // The text added to the first row and the second row fade in.
+  expect(
+    (await arrivals()).map(({ name, text }) => [name, text.replaceAll("\n", "")]),
+  ).toEqual([
+    ["span", " and grows"],
+    ["tr", "secondarrives"],
+  ]);
+});
+
+test("keeps code and finished messages from fading", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const threadId = "thread_growing_markdown_code";
+  const markdown = await openTaskForStreaming(page, threadId);
+  // A finished message is drawn whole, without fading.
+  expect(await page
+    .locator(".task-assistant-message caffold-task-markdown")
+    .first()
+    .evaluate((element) => element.shadowRoot.querySelectorAll("[data-piece], [data-arriving]").length),
+  ).toBe(0);
+
+  const { write } = await streamAgentMessage(page, threadId);
+  const intro = "Growing answer with code:\n\n";
+  await write(intro);
+  await expect(markdown).toContainText("Growing answer with code:");
+  const arrivals = await recordArrivals(markdown);
+  await write(`${intro}\`\`\`rust\nfn one() {}\n`);
+  await expect(markdown.locator("caffold-task-code-block pre code")).toHaveText("fn one() {}\n");
+  await write(`${intro}\`\`\`rust\nfn one() {}\nfn two() {}\n\`\`\`\n\nAfter the code.`);
+  await expect(markdown).toContainText("After the code.");
+  const arrived = await arrivals();
+  expect(arrived.filter(({ code }) => code)).toEqual([]);
+  expect(arrived.map(({ text }) => text)).toEqual(["After the code."]);
+});
+
+test("draws arriving text without motion when motion is reduced", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const threadId = "thread_growing_markdown_reduced_motion";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  await write("Growing answer that keeps");
+  await expect(markdown).toContainText("Growing answer that keeps");
+  const arrivals = await recordArrivals(markdown);
+  await write("Growing answer that keeps going.");
+  await expect(markdown).toContainText("keeps going.");
+  expect(await arrivals()).toEqual([
+    {
+      name: "span",
+      piece: true,
+      text: " going.",
+      animation: "none",
+      code: false,
+    },
+  ]);
 });
 
 test("keeps writing into the same code block while its fence is open", { tag: "@server-changes" }, async ({

@@ -102,6 +102,23 @@ interface DrawnBlock {
   writing: CaffoldTaskCodeBlock | null;
 }
 
+interface ProcessedBlock {
+  html: string;
+  open: boolean;
+  nodes: ChildNode[];
+  mounted: { block: CaffoldTaskCodeBlock; text: string; label: string }[];
+}
+
+// What a run of nodes shows: text joined across the pieces appended to it, and
+// elements as they are.
+type Visible = { text: string; nodes: ChildNode[] } | { element: Element };
+
+// The code and name each code block of a processed block is about to draw.
+type NextCode = Map<Element, { text: string; label: string }>;
+
+// The length of `markdown-arriving` in markdown.css.
+const ARRIVING_MS = 180;
+
 let wordsPromise: Promise<Words> | null = null;
 // Words once loaded, so Markdown draws in the update that changed it.
 let words: Words | null = null;
@@ -134,10 +151,19 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
   private session: WordsSession | null = null;
   private drawnMarkdown: DrawnMarkdown | null = null;
   private readonly fenceLabels = new WeakMap<Element, string>();
+  // What is still fading in, oldest first. Its mark comes off when the fade
+  // ends, so moving or showing the Markdown again does not fade it twice.
+  private readonly arriving: { node: Element; until: number }[] = [];
+  private arrivingTimer: number | undefined;
   private actionHintLinks: LinkRecord[] = [];
   private scrollSurfaceRecords: ScrollSurfaceRecord[] = [];
   private scrollCodeBlocks: CaffoldTaskCodeBlock[] = [];
   private readonly bodyElement = new DrawnRef<HTMLElement>(this);
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    this.settleArriving(true);
+  }
 
   override willUpdate(changed: PropertyValues<this>) {
     const drawsAll =
@@ -336,10 +362,13 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
       body.replaceChildren();
     }
     const finished = wordsBlocks(tail ? update.addition : update.stable);
-    const blocks = this.drawBlocks(body, tail ?? [], [
-      ...finished,
-      ...wordsBlocks(update.pending),
-    ]);
+    // Only text arriving in a stream fades in, not Markdown drawn whole.
+    const blocks = this.drawBlocks(
+      body,
+      tail ?? [],
+      [...finished, ...wordsBlocks(update.pending)],
+      tail !== null,
+    );
     this.drawnMarkdown = {
       body,
       revision: update.revision,
@@ -356,31 +385,46 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
     dispatchRendered(this, scrollContext);
   }
 
-  // Keeps the leading blocks whose HTML is unchanged, lets the code block of a
-  // fence still open take that fence's further code, and draws the rest anew.
-  private drawBlocks(body: HTMLElement, tail: DrawnBlock[], next: ChildNode[]) {
-    const blocks: DrawnBlock[] = [];
-    while (
-      blocks.length < tail.length &&
-      blocks.length < next.length &&
-      tail[blocks.length].html === blockHtml(next[blocks.length])
-    ) {
-      blocks.push(tail[blocks.length]);
-    }
-    const continued =
-      blocks.length < tail.length && blocks.length < next.length
-        ? this.continueCodeBlock(tail[blocks.length], next[blocks.length])
-        : null;
-    if (continued) {
-      blocks.push(continued);
-    }
-    for (const block of tail.slice(blocks.length)) {
+  // Matches the next blocks with the drawn end in order. A block whose HTML is
+  // unchanged stays; the code block of a fence still open takes the fence's
+  // further code; a block that only grew keeps its nodes and takes what it
+  // added; any other block is drawn anew in its place. Blocks past the drawn
+  // end are added after it.
+  private drawBlocks(
+    body: HTMLElement,
+    tail: DrawnBlock[],
+    next: ChildNode[],
+    fade: boolean,
+  ) {
+    const blocks = next.map((raw, at): DrawnBlock => {
+      const drawn = tail[at];
+      if (!drawn) {
+        return this.placeBlock(body, this.processBlock(raw), null, null, fade);
+      }
+      if (drawn.html === blockHtml(raw)) {
+        return drawn;
+      }
+      const continued = this.continueCodeBlock(drawn, raw);
+      if (continued) {
+        return continued;
+      }
+      const processed = this.processBlock(raw);
+      const following = tail.slice(at + 1).find(({ nodes }) => nodes.length);
+      return (
+        (fade && this.growBlock(body, drawn, processed)) ||
+        this.placeBlock(
+          body,
+          processed,
+          drawn.nodes[0] ?? following?.nodes[0] ?? null,
+          drawn,
+          false,
+        )
+      );
+    });
+    for (const block of tail.slice(next.length)) {
       for (const node of block.nodes) {
         node.remove();
       }
-    }
-    for (const raw of next.slice(blocks.length)) {
-      blocks.push(this.drawBlock(body, raw));
     }
     return blocks;
   }
@@ -406,8 +450,8 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
   }
 
   // One block of Words HTML, given the Task's file links, sanitized, and with
-  // each fenced block drawn by a code block when the controls are on.
-  private drawBlock(body: HTMLElement, raw: ChildNode): DrawnBlock {
+  // each fenced block a code block when the controls are on, not yet drawn.
+  private processBlock(raw: ChildNode): ProcessedBlock {
     const html = blockHtml(raw);
     const open = isOpenFence(raw);
     const fragment = document.createDocumentFragment();
@@ -430,17 +474,193 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
       fragment,
       this.codeBlockControls ? codeBlocks : [],
     );
-    const nodes = [...fragment.childNodes];
-    body.append(fragment);
-    // A block draws into a shadow root, which it can only make once it is in
-    // this document.
-    for (const { block, text, label } of mounted) {
+    return { html, open, nodes: [...fragment.childNodes], mounted };
+  }
+
+  // Draws a processed block before `before`, or after everything without it,
+  // in place of the block it replaces.
+  private placeBlock(
+    body: HTMLElement,
+    block: ProcessedBlock,
+    before: ChildNode | null,
+    replacing: DrawnBlock | null,
+    fade: boolean,
+  ): DrawnBlock {
+    for (const node of block.nodes) {
+      body.insertBefore(node, before);
+    }
+    for (const node of replacing?.nodes ?? []) {
+      node.remove();
+    }
+    this.fillCodeBlocks(block.mounted);
+    if (fade) {
+      for (const node of block.nodes) {
+        if (node instanceof Element && fadesIn(node)) {
+          this.markArriving(node);
+        }
+      }
+    }
+    return {
+      html: block.html,
+      nodes: block.nodes,
+      writing: block.open ? (block.mounted[0]?.block ?? null) : null,
+    };
+  }
+
+  // Keeps a drawn block whose next version only grew, and moves what it added
+  // into it, fading in the added text and elements. Null when the next
+  // version changed something already drawn.
+  private growBlock(
+    body: HTMLElement,
+    drawn: DrawnBlock,
+    next: ProcessedBlock,
+  ): DrawnBlock | null {
+    const code = new Map(
+      next.mounted.map(({ block, text, label }) => [block, { text, label }]),
+    );
+    const before = visible(drawn.nodes);
+    const after = visible(next.nodes);
+    if (!before.length || growthAt(before, after, code) === null) {
+      return null;
+    }
+    const added = this.grow(body, before, after, code, true, null);
+    this.fillCodeBlocks(next.mounted.filter(({ block }) => block.isConnected));
+    return {
+      html: next.html,
+      nodes: [...drawn.nodes, ...added],
+      writing: null,
+    };
+  }
+
+  // Moves what `after` adds to `before` into `parent`, returning the nodes it
+  // added directly under `parent`. `before` must grow into `after`.
+  private grow(
+    parent: Node,
+    before: Visible[],
+    after: Visible[],
+    code: NextCode,
+    fade: boolean,
+    start: ChildNode | null,
+  ): ChildNode[] {
+    const last = before.at(-1);
+    const anchor = last ? lastNode(last).nextSibling : start;
+    const at = growthAt(before, after, code);
+    if (at !== null && at !== -1) {
+      this.growItem(parent, before[at], after[at], code, fade);
+    }
+    return after.slice(before.length).map((item) => {
+      if ("text" in item && isLineBreak(item.text)) {
+        return parent.insertBefore(document.createTextNode(item.text), anchor);
+      }
+      if ("text" in item) {
+        return this.addPiece(parent, item.text, anchor, fade);
+      }
+      parent.insertBefore(item.element, anchor);
+      if (fade && fadesIn(item.element)) {
+        this.markArriving(item.element);
+      }
+      return item.element;
+    });
+  }
+
+  // Grows one drawn item into its next version where it is.
+  private growItem(
+    parent: Node,
+    drawn: Visible,
+    next: Visible,
+    code: NextCode,
+    fade: boolean,
+  ) {
+    if ("text" in drawn) {
+      if ("text" in next) {
+        const rest = next.text.slice(drawn.text.length);
+        this.addPiece(parent, rest, lastNode(drawn).nextSibling, fade);
+      }
+      return;
+    }
+    if ("text" in next) {
+      return;
+    }
+    const element = drawn.element;
+    if (element instanceof CaffoldTaskCodeBlock) {
+      const nextCode = code.get(next.element);
+      if (nextCode) {
+        this.fillCodeBlocks([{ block: element, ...nextCode }]);
+      }
+      return;
+    }
+    this.grow(
+      element,
+      visible(element.childNodes),
+      visible(next.element.childNodes),
+      code,
+      fade && element.localName !== "pre",
+      element.firstChild,
+    );
+  }
+
+  // Text added to a drawn block, kept in its own piece so that the text drawn
+  // before it, and a selection in it, stay where they are.
+  private addPiece(
+    parent: Node,
+    text: string,
+    before: ChildNode | null,
+    fade: boolean,
+  ) {
+    const piece = document.createElement("span");
+    piece.dataset.piece = "";
+    piece.textContent = text;
+    parent.insertBefore(piece, before);
+    if (fade) {
+      this.markArriving(piece);
+    }
+    return piece;
+  }
+
+  // A code block draws into a shadow root, which it can only make once it is
+  // in this document.
+  private fillCodeBlocks(
+    blocks: { block: CaffoldTaskCodeBlock; text: string; label: string }[],
+  ) {
+    for (const { block, text, label } of blocks) {
       block.setContent(text, {
         label,
         preserveLayout: (mutation) => this.mutateLayout(mutation),
       });
     }
-    return { html, nodes, writing: open ? (mounted[0]?.block ?? null) : null };
+  }
+
+  private markArriving(node: Element) {
+    node.setAttribute("data-arriving", "");
+    this.arriving.push({ node, until: performance.now() + ARRIVING_MS });
+    this.armArriving();
+  }
+
+  private armArriving() {
+    if (this.arrivingTimer !== undefined || !this.arriving.length) {
+      return;
+    }
+    this.arrivingTimer = window.setTimeout(
+      () => {
+        this.arrivingTimer = undefined;
+        this.settleArriving(false);
+      },
+      Math.max(0, this.arriving[0].until - performance.now()),
+    );
+  }
+
+  // Takes the mark off what has finished fading in, or off everything.
+  private settleArriving(all: boolean) {
+    const now = performance.now();
+    while (this.arriving.length && (all || this.arriving[0].until <= now)) {
+      this.arriving.shift()?.node.removeAttribute("data-arriving");
+    }
+    if (all) {
+      window.clearTimeout(this.arrivingTimer);
+      this.arrivingTimer = undefined;
+    } else {
+      this.armArriving();
+    }
   }
 
   private renderPlainText() {
@@ -529,6 +749,147 @@ function isOpenFence(block: ChildNode) {
   return (
     block instanceof HTMLPreElement &&
     block.hasAttribute("data-markdown-incomplete")
+  );
+}
+
+// Code shows at once; prose fades in.
+function fadesIn(element: Element) {
+  return (
+    element.localName !== "pre" && !(element instanceof CaffoldTaskCodeBlock)
+  );
+}
+
+// The line break Words writes after the last block in a container is not
+// something it shows, so it does not count as content that changed.
+function visible(nodes: Iterable<ChildNode>): Visible[] {
+  const items: Visible[] = [];
+  for (const node of nodes) {
+    const piece =
+      node instanceof HTMLSpanElement && node.hasAttribute("data-piece");
+    if (node.nodeType === Node.TEXT_NODE || piece) {
+      const last = items.at(-1);
+      if (last && "text" in last) {
+        last.text += node.textContent ?? "";
+        last.nodes.push(node);
+      } else {
+        items.push({ text: node.textContent ?? "", nodes: [node] });
+      }
+    } else if (node instanceof Element) {
+      items.push({ element: node });
+    }
+  }
+  const last = items.at(-1);
+  if (last && "text" in last && isLineBreak(last.text)) {
+    items.pop();
+  }
+  return items;
+}
+
+// The line break Words writes between blocks, which shows nothing.
+function isLineBreak(text: string) {
+  return !text.trim() && text.includes("\n");
+}
+
+function lastNode(item: Visible) {
+  return "text" in item ? (item.nodes.at(-1) as ChildNode) : item.element;
+}
+
+// Where `after` grows from `before`: -1 when items only follow the drawn
+// ones, the index of the one item that grows, or null when `after` changes
+// what is drawn. Items may follow a growing item only when it is the last.
+// Otherwise every item after it stays the same, as the cells after the one a
+// table row is filling do.
+function growthAt(
+  before: Visible[],
+  after: Visible[],
+  code: NextCode,
+): number | null {
+  if (after.length < before.length) {
+    return null;
+  }
+  const at = before.findIndex((item, index) => !same(item, after[index], code));
+  if (at === -1) {
+    return -1;
+  }
+  if (!grows(before[at], after[at], code)) {
+    return null;
+  }
+  if (at === before.length - 1) {
+    return at;
+  }
+  return after.length === before.length &&
+    before
+      .slice(at + 1)
+      .every((item, index) => same(item, after[at + 1 + index], code))
+    ? at
+    : null;
+}
+
+function grows(before: Visible, after: Visible, code: NextCode): boolean {
+  if ("text" in before || "text" in after) {
+    return "text" in before && "text" in after
+      ? after.text.startsWith(before.text)
+      : false;
+  }
+  if (!sameShell(before.element, after.element)) {
+    return false;
+  }
+  if (before.element instanceof CaffoldTaskCodeBlock) {
+    const next = code.get(after.element);
+    return (
+      next?.label === before.element.label &&
+      next.text.startsWith(before.element.text)
+    );
+  }
+  return (
+    growthAt(
+      visible(before.element.childNodes),
+      visible(after.element.childNodes),
+      code,
+    ) !== null
+  );
+}
+
+function same(before: Visible, after: Visible, code: NextCode): boolean {
+  if ("text" in before || "text" in after) {
+    return "text" in before && "text" in after
+      ? before.text === after.text
+      : false;
+  }
+  if (!sameShell(before.element, after.element)) {
+    return false;
+  }
+  if (before.element instanceof CaffoldTaskCodeBlock) {
+    const next = code.get(after.element);
+    return (
+      next?.label === before.element.label && next.text === before.element.text
+    );
+  }
+  const drawn = visible(before.element.childNodes);
+  const next = visible(after.element.childNodes);
+  return (
+    drawn.length === next.length &&
+    drawn.every((item, index) => same(item, next[index], code))
+  );
+}
+
+// The same element with the same attributes, apart from the mark of a fade.
+// A code block's name and code are compared by its caller.
+function sameShell(before: Element, after: Element) {
+  if (before.localName !== after.localName) {
+    return false;
+  }
+  if (before instanceof CaffoldTaskCodeBlock) {
+    return true;
+  }
+  const names = (element: Element) =>
+    element.getAttributeNames().filter((name) => name !== "data-arriving");
+  const drawn = names(before);
+  return (
+    drawn.length === names(after).length &&
+    drawn.every(
+      (name) => before.getAttribute(name) === after.getAttribute(name),
+    )
   );
 }
 
