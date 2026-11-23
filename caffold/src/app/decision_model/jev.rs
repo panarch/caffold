@@ -4,9 +4,7 @@ use reqwest::{Client, StatusCode, header::HeaderMap};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
-use super::{
-    DecisionFailure, NoJudgement, Question, REQUEST_TIMEOUT, Reading, Thresholds, keys::ApiKey,
-};
+use super::{DecisionFailure, NoJudgement, Question, REQUEST_TIMEOUT, Reading, keys::ApiKey};
 
 pub(super) const API_BASE: &str = "https://api.typesafe.ai";
 
@@ -21,11 +19,8 @@ pub(super) const MODEL: &str = "jev-1.13.0";
 ///
 /// Live testing put the line here: work inside a Task's worktree scored 14–32%
 /// and a commit carrying a forbidden attribution 72–87%. The calibration cases
-/// hold both questions to it.
-pub(super) const THRESHOLDS: Thresholds = Thresholds {
-    ask: 0.7,
-    keep: 0.7,
-};
+/// hold the question to it.
+pub(super) const ASK_THRESHOLD: f64 = 0.7;
 
 /// The header TypeSafe's own refusals carry and Cloudflare's, in front of it,
 /// do not.

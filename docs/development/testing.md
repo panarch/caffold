@@ -517,14 +517,12 @@ cargo test -p caffold --lib live_grok_rejects_an_incorrect_key -- --ignored
 
 The decision model suite answers TypeSafe and OpenAI requests from local
 stand-in servers, so it needs no API key. Its ignored live checks ask a real
-model the calibration cases, one check for each provider and question, and fail
-when the provider's threshold for that question would let through a case a
-person must see: a request answered `yes` in
-[`ask.md`](../../caffold/src/app/decision_model/fixtures/calibration/ask.md)
-that is allowed, or a message answered `no` in
-[`keep.md`](../../caffold/src/app/decision_model/fixtures/calibration/keep.md)
-that is kept. Each case is asked once. Run them when a provider or a model is
-added, when a model version changes, and when a question's wording changes:
+model the calibration cases in
+[`ask.md`](../../caffold/src/app/decision_model/fixtures/calibration/ask.md),
+one check for each provider, and fail when the provider's threshold would allow
+a request answered `yes`, one a person must see. Each case is asked once. Run
+them when a provider or a model is added, when a model version changes, and
+when the question's wording or the state sent with it changes:
 
 ```sh
 CAFFOLD_TYPESAFE_API_KEY=... CAFFOLD_OPENAI_API_KEY=... \
@@ -532,16 +530,16 @@ CAFFOLD_TYPESAFE_API_KEY=... CAFFOLD_OPENAI_API_KEY=... \
   cargo test -p caffold --lib decision_model::tests::live_ -- --ignored --test-threads=1
 ```
 
-Each check asks every case of its question and spends that provider's usage.
+Each check asks every case and spends that provider's usage.
 `CAFFOLD_CALIBRATION_REPORTS` is optional; when it names a directory, each
-check writes `<provider>-<question>.md` there. A report lists the cases that
-fail the check, then the cases that cost the person a question, then every
-case in the case file's groups, with the reading and the verdict. A single
-check runs by its name, such as `live_openai_holds_its_ask_threshold`.
+check writes `<provider>-ask.md` there. A report lists the cases that fail the
+check, then the cases that cost the person a question, then every case in the
+case file's groups, with the reading and the verdict. A single check runs by
+its name, such as `live_openai_holds_its_ask_threshold`.
 
-Each case file starts with its question and the baseline its answers follow.
-A case lists only what differs from that baseline, its expected answer under
-the question's name, and why; keep only cases whose answer is not in doubt.
+The case file starts with the question and the baseline its answers follow.
+A case lists only what differs from that baseline, its expected answer, and
+why; keep only cases whose answer is not in doubt.
 
 ## macOS application tests
 

@@ -27,7 +27,9 @@ use crate::agent::{
     ApprovalDecision, ApprovalOutcome, ApprovalRequest, SessionEvent, SessionEventKind,
     ThreadStatus, TurnStatus,
 };
-use crate::app::decision_model::{Judgement, RequestedAccess, ReviewedRequest, ReviewedTool};
+use crate::app::decision_model::{
+    Judgement, RequestedAccess, ReviewedPrompt, ReviewedRequest, ReviewedTool,
+};
 use crate::app::notes;
 use crate::app::tasks::{
     events::{
@@ -36,7 +38,9 @@ use crate::app::tasks::{
     },
     worktrees::{IsolateOutcome, inspect_ready_worktree},
 };
-use crate::task_store::{ManagedThread, ManagedWorktreeState, RunBy, TaskProvider, TaskStoreError};
+use crate::task_store::{
+    ManagedThread, ManagedWorktreeState, RecentPrompt, RunBy, TaskProvider, TaskStoreError,
+};
 
 /// An approval waiting for an answer.
 ///
@@ -113,11 +117,15 @@ pub(super) enum AskedBy {
 /// rather than the agent's: only Caffold knows where it put the Task. Which
 /// agent asked is left out, because a request gets the same answer whoever
 /// asked it, and a model's answer can move with the agent's name alone.
+///
+/// Each of the person's recent prompts says whether it was sent in the turn
+/// the request came out of, which only the request's own turn can answer: work
+/// asked for in an earlier turn was done in that turn. A request that names no
+/// turn marks none of them.
 fn reviewed_request(
     request: &ApprovalRequest,
-    task_instructions: Option<String>,
+    recent_prompts: Vec<RecentPrompt>,
     working_directory: Option<String>,
-    turn_prompt: Option<String>,
 ) -> ReviewedRequest {
     let detail = &request.detail;
     ReviewedRequest {
@@ -147,9 +155,14 @@ fn reviewed_request(
                 .map(|argument| (argument.name.clone(), argument.value.clone()))
                 .collect(),
         }),
-        task_instructions,
+        recent_prompts: recent_prompts
+            .into_iter()
+            .map(|sent| ReviewedPrompt {
+                this_turn: request.turn_id.as_deref() == Some(sent.turn_id.as_str()),
+                prompt: sent.prompt,
+            })
+            .collect(),
         working_directory,
-        turn_prompt,
     }
 }
 
@@ -696,13 +709,13 @@ impl TaskRuntime {
         let wanted = thread_id.clone();
         let reviewed = tokio::task::spawn_blocking(move || {
             let managed = store.get(&wanted)?;
-            let instructions = store.permission_instructions(&wanted)?;
-            Ok::<_, TaskStoreError>((managed, instructions))
+            let recent_prompts = store.recent_prompts(&wanted)?;
+            Ok::<_, TaskStoreError>((managed, recent_prompts))
         })
         .await
         .ok()?
         .ok()?;
-        let (managed, instructions) = reviewed;
+        let (managed, recent_prompts) = reviewed;
         let managed = managed?;
         let reviewed_mode = match &asked_by {
             AskedBy::Antigravity => self
@@ -731,21 +744,11 @@ impl TaskRuntime {
             AskedBy::Codex { .. } => request.detail.cwd.clone(),
         }
         .or_else(|| managed.run_by.cwd().map(str::to_string));
-        // What the person asked for in the turn that raised this request. The
-        // session holds it beside that turn's directory, and it answers only
-        // for the turn it belongs to: a request from an older turn is not
-        // covered by what was asked for since.
-        let turn_prompt = self
-            .sessions
-            .snapshot(&thread_id)
-            .await
-            .filter(|session| session.active_turn_id == request.turn_id)
-            .and_then(|session| session.active_turn_prompt);
         reviewer
             .review(
                 &thread_id,
                 approval_id,
-                &reviewed_request(&request, instructions, working_directory, turn_prompt),
+                &reviewed_request(&request, recent_prompts, working_directory),
             )
             .await
     }
@@ -2516,6 +2519,67 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["approval_requested", "approval_resolved"]
         );
+    }
+
+    /// The person's recent prompts reach the decision model oldest first, and
+    /// only those sent in the turn the request came out of are marked as this
+    /// turn's. A request that names no turn marks none of them.
+    #[tokio::test]
+    async fn the_decision_model_reads_the_task_s_recent_prompts_beside_the_request() {
+        for (turn_id, marked) in [
+            (Some("turn_1"), [false, true, true]),
+            (None, [false, false, false]),
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let (base, asked) = jev_answering(1.0).await;
+            let store = TaskStore::memory().unwrap();
+            let task = uuid::Uuid::new_v4().to_string();
+            let mut managed = ManagedThread::new(
+                &task,
+                RunBy::Copilot { cwd: "/tmp".into() },
+                None,
+                None,
+                None,
+            );
+            managed.permission_mode = Some(REVIEWED_PERMISSION_MODE.into());
+            store.claim(managed, 1).unwrap();
+            for (turn, prompt) in [
+                ("turn_0", "push는 하지 마"),
+                ("turn_1", "테스트 돌려줘"),
+                ("turn_1", "아 그리고 lint도"),
+            ] {
+                let sent = RecentPrompt {
+                    turn_id: turn.to_string(),
+                    prompt: prompt.to_string(),
+                };
+                store.record_prompt(&task, sent).unwrap();
+            }
+            let runtime =
+                test_runtime_with_store(TaskEvents::default(), store).with_permission_reviewer(
+                    decision_model::test_reviewer(root.path(), base, "ts-test-key", ""),
+                );
+            let id = format!("copilot:{task}:permission-1");
+            let mut request = command_request(&id);
+            request.turn_id = turn_id.map(str::to_string);
+            let instance = {
+                let mut approvals = runtime.approvals.lock().await;
+                runtime.stage_approval(&mut approvals, &task, request, 1234, AskedBy::Copilot)
+            };
+
+            runtime.settle_approval(&id, &instance).await;
+
+            let asked = asked.lock().unwrap();
+            assert_eq!(asked.len(), 1);
+            assert_eq!(
+                asked[0]["state"]["recent_prompts"],
+                json!([
+                    { "prompt": "push는 하지 마", "this_turn": marked[0] },
+                    { "prompt": "테스트 돌려줘", "this_turn": marked[1] },
+                    { "prompt": "아 그리고 lint도", "this_turn": marked[2] },
+                ]),
+                "{turn_id:?}"
+            );
+        }
     }
 
     #[tokio::test]

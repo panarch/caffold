@@ -134,7 +134,6 @@ impl TaskSessions {
         generation: u64,
         thread_id: &str,
         cwd: Option<&str>,
-        prompt: &str,
         turn: TurnState,
         options: TurnOptions,
     ) -> Option<u64> {
@@ -155,7 +154,6 @@ impl TaskSessions {
         if !already_ended {
             state.active_turn_id = Some(turn.id.clone());
             state.active_turn_cwd = active_turn_cwd;
-            state.active_turn_prompt = Some(prompt.to_string());
             state.terminal_candidate_turn_id = Some(turn.id.clone());
             state.runtime_lease = true;
         }
@@ -287,7 +285,6 @@ mod tests {
                     1,
                     "thread-1",
                     None,
-                    "next",
                     turn("turn-1", TurnStatus::InProgress),
                     TurnOptions {
                         model: model.map(str::to_owned),
@@ -367,7 +364,6 @@ mod tests {
                 1,
                 "thread-1",
                 None,
-                "carry on",
                 turn("finished", TurnStatus::InProgress),
                 TurnOptions::default(),
             )
@@ -642,7 +638,6 @@ mod tests {
                 1,
                 "thread-1",
                 Some("/managed/worktree"),
-                "carry on",
                 turn("turn-new", TurnStatus::InProgress),
                 TurnOptions::default(),
             )

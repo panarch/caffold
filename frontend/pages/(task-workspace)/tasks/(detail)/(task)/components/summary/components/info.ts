@@ -64,7 +64,6 @@ export function taskInfoSnapshot(
     transportState: snapshot.transportState ?? "idle",
     contextPath: `${snapshot.contextPath ?? "."}`,
     provider: `${snapshot.provider ?? ""}`,
-    permissionMode: `${snapshot.permissionMode ?? ""}`,
     archiveState: {
       loading: Boolean(snapshot.archiveState?.loading),
       error: snapshot.archiveState?.error ?? null,

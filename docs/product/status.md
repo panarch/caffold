@@ -22,7 +22,8 @@ boundaries.
   a write-only API key for each, and optional extra rules, and a
   **Caffold decides** approval mode in every agent's composer that has the
   chosen model hold back only what an automatic mode would stop for, plus
-  whatever those rules name, and leaves the rest to a person;
+  whatever those rules or the person's last ten prompts in the Task name, and
+  leaves the rest to a person;
 - Tasks backed by Codex, Claude Code, Grok, Antigravity, or GitHub Copilot, with the agent selected by model
   when the Task is created and fixed for the Task's lifetime;
 - [Continue with another agent](workflows.md#continue-with-another-agent), starting

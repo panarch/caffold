@@ -2,9 +2,7 @@ use reqwest::{Client, StatusCode, header::HeaderMap};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::{
-    DecisionFailure, NoJudgement, Question, REQUEST_TIMEOUT, Reading, Thresholds, keys::ApiKey,
-};
+use super::{DecisionFailure, NoJudgement, Question, REQUEST_TIMEOUT, Reading, keys::ApiKey};
 
 pub(super) const API_BASE: &str = "https://api.openai.com";
 
@@ -17,10 +15,7 @@ pub(super) const MODEL: &str = "gpt-6-luna";
 
 /// Where gpt-6-luna's answers become decisions, measured on the calibration
 /// cases.
-pub(super) const THRESHOLDS: Thresholds = Thresholds {
-    ask: 0.75,
-    keep: 0.7,
-};
+pub(super) const ASK_THRESHOLD: f64 = 0.75;
 
 /// The headers worth keeping from an answer that was not a judgement.
 const TRACED_HEADERS: &[&str] = &["x-request-id", "cf-ray", "retry-after"];

@@ -145,14 +145,13 @@ test("offers the conversation, follow-up Composer, and Current Plan while the co
   assert.deepEqual(ids(), ["task:thread-a:absence"]);
 });
 
-test("merges composer popovers, Current Plan, Command, Tool call, Markdown preview, Mermaid preview, and permission instruction modals independently", () => {
+test("merges composer popovers, Current Plan, Command, Tool call, Markdown preview, and Mermaid preview modals independently", () => {
   const composerContext = { id: "composer-popover" };
   const planContext = { id: "current-plan" };
   const commandContext = { id: "command-output" };
   const toolCallContext = { id: "tool-call-details" };
   const markdownPreviewContext = { id: "markdown-preview" };
   const mermaidPreviewContext = { id: "mermaid-preview" };
-  const permissionInstructionsContext = { id: "permission-instructions" };
   const slot = {};
   const composer = {
     parentElement: slot,
@@ -186,11 +185,6 @@ test("merges composer popovers, Current Plan, Command, Tool call, Markdown previ
     mermaidPreviewDialog: {
       value: { keyboardNavigationContexts: () => [mermaidPreviewContext] },
     },
-    permissionInstructionsDialog: {
-      value: {
-        keyboardNavigationContexts: () => [permissionInstructionsContext],
-      },
-    },
   };
 
   assert.deepEqual(
@@ -204,7 +198,6 @@ test("merges composer popovers, Current Plan, Command, Tool call, Markdown previ
       toolCallContext,
       markdownPreviewContext,
       mermaidPreviewContext,
-      permissionInstructionsContext,
     ],
   );
   owner.currentPlanComponent = { value: undefined };
@@ -218,7 +211,6 @@ test("merges composer popovers, Current Plan, Command, Tool call, Markdown previ
       toolCallContext,
       markdownPreviewContext,
       mermaidPreviewContext,
-      permissionInstructionsContext,
     ],
   );
   owner.markdownPreviewDialog = { value: undefined };
@@ -231,48 +223,13 @@ test("merges composer popovers, Current Plan, Command, Tool call, Markdown previ
       commandContext,
       toolCallContext,
       mermaidPreviewContext,
-      permissionInstructionsContext,
     ],
   );
   owner.mermaidPreviewDialog = { value: undefined };
   assert.deepEqual(
     taskDetail.keyboardNavigationContexts.call(owner),
-    [
-      { id: "force-archive" },
-      { id: "handoff" },
-      composerContext,
-      commandContext,
-      toolCallContext,
-      permissionInstructionsContext,
-    ],
-  );
-  owner.permissionInstructionsDialog = { value: undefined };
-  assert.deepEqual(
-    taskDetail.keyboardNavigationContexts.call(owner),
     [{ id: "force-archive" }, { id: "handoff" }, composerContext, commandContext, toolCallContext],
   );
-});
-
-test("publishes the approval mode the follow-up Composer would send", () => {
-  const owner = {
-    selectedThreadId: "thread-a",
-    taskDetail: { provider: "codex", task: { threadId: "thread-a" } },
-    detailSession: { state: "ready" },
-    activeCwdPath: () => "src",
-    archiveStateValue: { loading: false, error: null },
-    forkStateValue: { loading: false, error: null },
-    followUpComposer: () => ({
-      selectedPermissionMode: () => "caffold:decides",
-    }),
-  };
-
-  assert.equal(
-    taskDetail.detailSnapshot.call(owner).permissionMode,
-    "caffold:decides",
-  );
-
-  owner.followUpComposer = () => null;
-  assert.equal(taskDetail.detailSnapshot.call(owner).permissionMode, "");
 });
 
 test("one phrase covers an opening conversation until its Task details and history are read", () => {
@@ -343,14 +300,10 @@ test("holds the Task's own requests while an archive runs", async () => {
     pinStateValue: { loading: false, error: null },
     followUpComposers: new Map([["thread-a", composer]]),
     activeFollowUpComposerThreadId: "thread-a",
-    permissionInstructionsDialog: {
-      value: { open() { assert.fail("the dialog waits for the archive"); } },
-    },
     emitSubjectSnapshot() { assert.fail("a held request must not start"); },
   });
   await owner.pinSelectedTask(true);
   assert.equal(owner.pinStateValue.loading, false);
-  owner.openPermissionInstructions(null);
   await owner.sendFollowUpSubmission(composer, {
     submissionId: "follow-up:1",
     threadId: "thread-a",

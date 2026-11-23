@@ -272,26 +272,6 @@ function drawnActions(snapshot, languageServers = {}) {
   return { markup, row, under };
 }
 
-test("offers what a Task's prompts settled only under the reviewed mode", () => {
-  const task = { threadId: "thread-a", threadStatus: IDLE };
-  assert.equal(
-    drawnActions({ task, permissionMode: "approveForMe" }).row(
-      "permission-instructions",
-    ),
-    null,
-  );
-  assert.deepEqual(
-    drawnActions({ task, permissionMode: "caffold:decides" }).row(
-      "permission-instructions",
-    ),
-    {
-      label: "What your prompts settled",
-      description: "What the decision model reads before it answers.",
-      disabled: false,
-    },
-  );
-});
-
 test("keeps Archive available through stale transport unless canonical status is active, and says why", () => {
   const task = {
     threadId: "thread-a",
@@ -486,7 +466,6 @@ test("lists the rows in the popover's order, with Archive set off by its own lin
       task: { threadId: "thread-a", threadStatus: IDLE },
       canonicalTaskAvailable: true,
       provider: "codex",
-      permissionMode: "caffold:decides",
       pinned: false,
     },
     {
@@ -496,7 +475,7 @@ test("lists the rows in the popover's order, with Archive set off by its own lin
   ).markup;
   assert.match(
     markup,
-    /^ ?<hr class="task-detail-actions-divider">.*"permission-instructions".*"pin".*"turn-on-language-servers".*"fork".*<hr class="task-detail-actions-divider">.*"archive"/,
+    /^ ?<hr class="task-detail-actions-divider">.*"pin".*"turn-on-language-servers".*"fork".*<hr class="task-detail-actions-divider">.*"archive"/,
   );
 });
 
@@ -742,7 +721,6 @@ test("holds every other action while the Task archives, and says why", () => {
     canonicalTaskAvailable: true,
     transportState: "ready",
     provider: "codex",
-    permissionMode: "caffold:decides",
     pinned: false,
     archiveState: { loading: true, error: null },
   };
@@ -755,11 +733,6 @@ test("holds every other action while the Task archives, and says why", () => {
     fresh: true,
   };
   const drawn = drawnActions(archiving, missingServer);
-  assert.deepEqual(drawn.row("permission-instructions"), {
-    label: "What your prompts settled",
-    description: ARCHIVING,
-    disabled: true,
-  });
   assert.deepEqual(drawn.row("pin"), {
     label: "Pin task",
     description: ARCHIVING,

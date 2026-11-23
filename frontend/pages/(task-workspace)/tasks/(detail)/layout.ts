@@ -854,7 +854,6 @@ export class CaffoldDetailLayout extends CaffoldElement {
         "idle") as TaskTransportState,
       contextPath: snapshot?.contextPath ?? this.selectedTaskContextPath(),
       provider: snapshot?.provider,
-      permissionMode: snapshot?.permissionMode,
       archiveState: snapshot?.archiveState,
       forkState: snapshot?.forkState,
       // The list says whether the Task is pinned; a Task it has not placed in
@@ -1258,12 +1257,6 @@ export class CaffoldDetailLayout extends CaffoldElement {
       void this.taskDetail.value?.forkSelectedTask();
     } else if (event.detail?.type === "pin" || event.detail?.type === "unpin") {
       void this.taskDetail.value?.pinSelectedTask(event.detail.type === "pin");
-    } else if (event.detail?.type === "permission-instructions") {
-      // Focus returns to the details button, because the popover the action
-      // came from closes as the dialog takes over.
-      this.taskDetail.value?.openPermissionInstructions(
-        this.taskSummary.value?.detailsButton(),
-      );
     }
   }
 

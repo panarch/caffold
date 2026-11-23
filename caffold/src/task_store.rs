@@ -22,7 +22,7 @@ mod push_vapid_key;
 mod schema_migration;
 
 pub(crate) use managed_section::{ManagedSection, SectionComposerSettings};
-pub(crate) use managed_thread::{ManagedThread, RunBy, TaskProvider};
+pub(crate) use managed_thread::{ManagedThread, RecentPrompt, RunBy, TaskProvider};
 pub(crate) use managed_worktree::{CheckoutAnchor, ManagedWorktree, ManagedWorktreeState};
 pub(crate) use migration::migrate_to_latest as migrate_task_store;
 pub(crate) use note::{Note, NoteContentUpdate, NoteSummary};
@@ -811,45 +811,23 @@ impl TaskStore {
         }
     }
 
-    /// What this Task's own prompts have settled, oldest first.
-    pub(crate) fn permission_instructions(&self, thread_id: &str) -> Result<Option<String>> {
+    /// The person's latest prompts to this Task, oldest first.
+    pub(crate) fn recent_prompts(&self, thread_id: &str) -> Result<Vec<RecentPrompt>> {
         match self {
-            Self::Memory(glue) => {
-                managed_thread::permission_instructions(&mut *lock_glue(glue)?, thread_id)
-            }
-            Self::Redb(glue) => {
-                managed_thread::permission_instructions(&mut *lock_glue(glue)?, thread_id)
-            }
+            Self::Memory(glue) => managed_thread::recent_prompts(&mut *lock_glue(glue)?, thread_id),
+            Self::Redb(glue) => managed_thread::recent_prompts(&mut *lock_glue(glue)?, thread_id),
         }
     }
 
-    /// Adds one entry to the end, returning what the Task now carries.
-    pub(crate) fn append_permission_instructions(
-        &self,
-        thread_id: &str,
-        entry: &str,
-    ) -> Result<Option<String>> {
-        match self {
-            Self::Memory(glue) => managed_thread::append_permission_instructions(
-                &mut *lock_glue(glue)?,
-                thread_id,
-                entry,
-            ),
-            Self::Redb(glue) => managed_thread::append_permission_instructions(
-                &mut *lock_glue(glue)?,
-                thread_id,
-                entry,
-            ),
-        }
-    }
-
-    pub(crate) fn clear_permission_instructions(&self, thread_id: &str) -> Result<bool> {
+    /// Keeps a prompt the Task's agent took, dropping the oldest past the
+    /// limit. `false` when there is no such active Task.
+    pub(crate) fn record_prompt(&self, thread_id: &str, prompt: RecentPrompt) -> Result<bool> {
         match self {
             Self::Memory(glue) => {
-                managed_thread::clear_permission_instructions(&mut *lock_glue(glue)?, thread_id)
+                managed_thread::record_prompt(&mut *lock_glue(glue)?, thread_id, prompt)
             }
             Self::Redb(glue) => {
-                managed_thread::clear_permission_instructions(&mut *lock_glue(glue)?, thread_id)
+                managed_thread::record_prompt(&mut *lock_glue(glue)?, thread_id, prompt)
             }
         }
     }
@@ -1094,6 +1072,37 @@ mod tests {
             "same"
         );
         assert!(reopened.worktree_for_thread("source").unwrap().is_none());
+    }
+
+    #[test]
+    fn recent_prompts_survive_a_redb_restart() {
+        let temp = tempfile::tempdir().unwrap();
+        let database = temp.path().join("tasks.redb");
+        let prompt = RecentPrompt {
+            turn_id: "turn-1".to_string(),
+            prompt: "워드 고치는 건 그냥 승인해".to_string(),
+        };
+        {
+            let store = TaskStore::redb(&database).unwrap();
+            store
+                .claim(
+                    ManagedThread::new(
+                        "task",
+                        RunBy::Grok {
+                            cwd: "/repo".into(),
+                        },
+                        Some(1),
+                        None,
+                        None,
+                    ),
+                    1,
+                )
+                .unwrap();
+            assert!(store.record_prompt("task", prompt.clone()).unwrap());
+        }
+
+        let reopened = TaskStore::redb(&database).unwrap();
+        assert_eq!(reopened.recent_prompts("task").unwrap(), vec![prompt]);
     }
 
     #[test]

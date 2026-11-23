@@ -41,39 +41,26 @@ any reason, the request comes to you exactly as it would without it.
 ## What the decision model goes by
 
 Its baseline is the standard of a coding agent's automatic permission mode.
-Your own instructions override that baseline, strongest first:
+What you said overrides that baseline, strongest first:
 
-1. the prompt that started the current turn;
-2. what your prompts in this Task settled (see below);
-3. the extra rules in **Settings → Decision Model**.
+1. the last ten prompts you sent in this Task, a later one over an earlier one;
+2. the extra rules in **Settings → Decision Model**.
 
-## What your prompts settled
-
-While a Task's turns run under **Caffold decides**, the decision model also
-reads each prompt you send there: does it say what the agent may or may not do
-in this Task? If it does, the prompt is kept, word for word, in that Task's
-record, and the model takes it into account from then on. A later prompt
-overrides an earlier one it contradicts.
-
-To see the record, choose **Task details** at the top right of the Task, then
-**What your prompts settled**, which appears while the Task uses
-**Caffold decides**. **Forget these** clears the record; this cannot be undone.
-
-![What this Task's prompts settled: two kept prompts, oldest first, and Forget these](../assets/screenshots/permission-instructions-light-desktop.png#only-light)
-![What this Task's prompts settled: two kept prompts, oldest first, and Forget these](../assets/screenshots/permission-instructions-dark-desktop.png#only-dark)
+You don't need special wording. The decision model reads your recent prompts
+beside each request, so a prompt such as "Word edits like these are fine, just
+approve them" is read against the next request that rewrites that Word file.
+Work you ask for in a turn counts as allowed during that turn, and something
+you allow or refuse counts until you say otherwise. Anything that should hold
+for longer than your last ten prompts belongs in the extra rules.
 
 ## What the decision model sees
 
 Choosing **Caffold decides** sends information to the chosen model's provider,
-TypeSafe for Jev or OpenAI:
+TypeSafe for Jev or OpenAI. For each approval request it sends the request as
+the agent wrote it for you, with the agent's own title and reason; the Task's
+working directory; your extra rules; and the last ten prompts you sent in the
+Task, each marked with whether it belongs to the turn the request came from.
 
-- for each approval request: the request as the agent wrote it for you, with
-  the agent's own title and reason; the Task's working directory; your extra
-  rules; what your prompts in the Task settled; and the prompt that started
-  the turn;
-- for each prompt you send in the Task: the prompt, with what the Task's
-  prompts settled so far.
-
-Under every other approval mode, nothing is sent to either provider. The keys
-and the rules are stored on the host; see
+Under every other approval mode, nothing is sent to either provider. The keys,
+the rules, and each Task's last ten prompts are stored on the host; see
 [Data and privacy](../reference/data-and-privacy.md).

@@ -721,8 +721,10 @@ recorded selection the agent of the Tasks that use its model; a Section whose
 model no single agent's Tasks use forgets its selection until its next turn
 records one. The v15-to-v16 migration changes no table; it renames the
 permission mode `caffold:ask-jev-first` to `caffold:decides` in Tasks and in
-Sections' recorded selections. While the
-store is being prepared, the HTTP server answers `GET /api/task-store/status`
+Sections' recorded selections. The v16-to-v17 migration replaces each Task's
+kept permission instructions with an empty list of recent prompts, which fills
+from the Task's next prompt; the instructions are dropped, not converted. While
+the store is being prepared, the HTTP server answers `GET /api/task-store/status`
 and the migration retry, and refuses every other request the Tasks app serves,
 agent status included, with 503 `task_store_migration_pending`, or
 `task_store_migration_failed` after a failed upgrade. Once Tasks run, the same

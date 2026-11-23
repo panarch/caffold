@@ -1,9 +1,4 @@
 import { expect, test } from "@playwright/test";
-import {
-  actionHintDialog,
-  activateActionHintIntoPopover,
-  popoverActionHintDialog,
-} from "../support/action-hints.js";
 import { installBrowserDefaults } from "./../support/browser-defaults.js";
 import {
   TASK_PERMISSION_FIXTURE,
@@ -34,7 +29,7 @@ function permissionsOffering(allowed, reviewer = "Jev") {
   return { ...TASK_PERMISSION_FIXTURE, options };
 }
 
-/** A Task whose turns run under the mode that keeps what its prompts settle. */
+/** A Task whose turns run under Caffold decides. */
 function reviewedTaskDetail() {
   return { ...taskDetailFixture(), permissionMode: REVIEWED_MODE };
 }
@@ -149,116 +144,28 @@ test("choosing a model and saving its key in Settings offers the mode under that
   await expect(picker).toContainText("Caffold decides");
 });
 
-test("a Task's kept permission instructions are read and forgotten from its details", { tag: "@server-steady" }, async ({
-  page,
-}) => {
-  let instructions = "[2026-09-21 03:14 UTC]\ntarget 밑은 지워도 돼";
-  const requests = [];
-  await installTaskApiFixture(page, { permissions: permissionsOffering(true) });
-  const detail = reviewedTaskDetail();
-  await page.route("**/api/tasks/thread-1", (route) =>
-    route.fulfill({ json: detail }),
-  );
-  await page.route("**/permission-instructions", (route) => {
-    const method = route.request().method();
-    requests.push(method);
-    if (method === "DELETE") {
-      instructions = null;
-    }
-    return route.fulfill({ json: { instructions } });
-  });
-  await page.goto("/tasks/thread-1?cwd=src");
-  await emitTaskDetailBootstrap(page, detail);
-
-  const summary = page.locator("caffold-task-detail-summary");
-  await summary.getByRole("button", { name: /Task details/ }).click();
-  const settled = summary.locator('[data-task-info-action="permission-instructions"]');
-  await expect(settled).toBeVisible();
-  await expect(settled.locator(".task-detail-action-label")).toHaveText(
-    "What your prompts settled",
-  );
-  // What the Lucide stub in browser-defaults draws for ShieldCheck.
-  await expect(settled.locator('svg path[d="m9 12 2 2 4-4"]')).toHaveCount(1);
-
-  await settled.click();
-  const dialog = page.locator("caffold-task-permission-instructions-dialog > dialog");
-  await expect(dialog).toBeVisible();
-  await expect(dialog.locator(".task-permission-instructions-text")).toContainText(
-    "target 밑은 지워도 돼",
-  );
-  await page.keyboard.press("f");
-  const hint = actionHintDialog(page);
-  await expect(
-    hint.getByRole("button", { name: / — Close what this Task settled$/ }),
-  ).toBeVisible();
-  await expect(
-    hint.getByRole("button", { name: / — Forget what this Task settled$/ }),
-  ).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(hint).toBeHidden();
-  await expect(dialog).toBeVisible();
-
-  await dialog.getByRole("button", { name: "Forget these" }).click();
-
-  await expect(dialog.locator(".task-permission-instructions-text")).toContainText(
-    "Nothing yet.",
-  );
-  await expect(dialog.getByRole("button", { name: "Forget these" })).toBeDisabled();
-  // The details read nothing to decide what to offer, so the record is asked
-  // for once: when the person opens it.
-  expect(requests).toEqual(["GET", "DELETE"]);
-});
-
-test("offers what the prompts settled to Action Hints as the details open", { tag: "@server-steady" }, async ({
+test("a Task under Caffold decides keeps no record to read from its details", { tag: "@server-steady" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page, { permissions: permissionsOffering(true) });
   const detail = reviewedTaskDetail();
-  await page.route("**/api/tasks/thread-1", (route) =>
-    route.fulfill({ json: detail }),
-  );
-  await page.goto("/tasks/thread-1?cwd=src");
-  await emitTaskDetailBootstrap(page, detail);
-  // The Composer answers which mode the next turn runs under, so the details
-  // offer the record once that list has settled.
-  await expect(
-    page
-      .locator("caffold-task-composer")
-      .getByRole("button", { name: "Choose approval mode" }),
-  ).toContainText("Caffold decides");
-
-  await activateActionHintIntoPopover(page, /Task details, idle$/);
-
-  await expect(
-    popoverActionHintDialog(page).getByRole("button", {
-      name: / — What your prompts settled$/,
-    }),
-  ).toBeVisible();
-});
-
-test("a Task under another approval mode offers nothing to read", { tag: "@server-steady" }, async ({
-  page,
-}) => {
-  await installTaskApiFixture(page, { permissions: permissionsOffering(true) });
-  const detail = taskDetailFixture();
   await page.route("**/api/tasks/thread-1", (route) =>
     route.fulfill({ json: detail }),
   );
   await page.goto("/tasks/thread-1?cwd=src");
   await emitTaskDetailBootstrap(page, detail);
   // The mode this Task would send has settled, so nothing is still on its way
-  // that could offer the record.
+  // that could change what the details offer.
   await expect(
     page
       .locator("caffold-task-composer")
       .getByRole("button", { name: "Choose approval mode" }),
-  ).toContainText("Auto review");
+  ).toContainText("Caffold decides");
 
   const summary = page.locator("caffold-task-detail-summary");
   await summary.getByRole("button", { name: /Task details/ }).click();
 
   await expect(summary.locator(".task-detail-popover")).toBeVisible();
-  await expect(
-    summary.locator('[data-task-info-action="permission-instructions"]'),
-  ).toHaveCount(0);
+  await expect(summary.locator(".task-detail-popover")).toContainText("Fork task");
+  await expect(summary.getByText("What your prompts settled")).toHaveCount(0);
 });

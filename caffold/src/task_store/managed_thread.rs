@@ -293,10 +293,10 @@ const COLUMN_DEFINITIONS: &[&str] = &[
     "provider TEXT NOT NULL DEFAULT 'codex'",
     "cwd TEXT NULL",
     "permission_mode TEXT NULL",
-    "permission_instructions TEXT NULL",
     "pin_position INTEGER NULL",
     "claude_config_dir TEXT NULL",
     "speed TEXT NOT NULL DEFAULT 'default'",
+    "recent_prompts TEXT NULL",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -407,11 +407,11 @@ pub(super) struct ManagedThreadRow {
     pub reasoning_effort: Option<String>,
     pub speed: String,
     pub permission_mode: Option<String>,
-    /// What this Task's own prompts have settled, oldest first.
+    /// The person's latest prompts, as JSON, oldest first.
     ///
     /// It stays off [`ManagedThread`] because it is read only when a
     /// permission request is being judged, and a Task list has no use for it.
-    pub permission_instructions: Option<String>,
+    pub recent_prompts: Option<String>,
     pub display_name: String,
     pub section_id: Option<String>,
     pub position_in_section: Option<i64>,
@@ -458,9 +458,10 @@ impl TryFrom<&ManagedThread> for ManagedThreadRow {
             reasoning_effort: thread.reasoning_effort.clone(),
             speed: thread.speed.clone(),
             permission_mode: thread.permission_mode.clone(),
-            // A Task permits nothing of its own when it is first written,
-            // and every later whole-thread write names the fields it changes.
-            permission_instructions: None,
+            // A Task has heard nothing from the person when it is first
+            // written, and every later whole-thread write names the fields it
+            // changes.
+            recent_prompts: None,
         })
     }
 }
@@ -950,70 +951,57 @@ where
     get(glue, thread_id)
 }
 
-/// How much of what a Task's own prompts settled is kept.
+/// How many of the person's latest prompts a Task keeps.
 ///
-/// The whole block is read whenever a permission request is judged, and both
-/// TypeSafe's guidance and the size of that block argue against letting it
-/// grow without end. Past the bound the oldest entries go, which is the same
-/// direction as the rule that a later statement overrides an earlier one.
-pub(super) const MAX_PERMISSION_INSTRUCTIONS_BYTES: usize = 8 * 1024;
+/// A permission request is judged against them. What the person wants held
+/// for longer than that belongs in the rules they write once in Settings.
+const RECENT_PROMPT_LIMIT: usize = 10;
 
-const PERMISSION_INSTRUCTION_SEPARATOR: &str = "\n\n";
-
-pub(super) fn permission_instructions<S>(
-    glue: &mut Glue<S>,
-    thread_id: &str,
-) -> Result<Option<String>>
-where
-    S: GStore + GStoreMut + Planner,
-{
-    Ok(read_permission_instructions(glue, thread_id)?.flatten())
+/// One prompt the person sent, with the turn that took it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub(crate) struct RecentPrompt {
+    pub(crate) turn_id: String,
+    pub(crate) prompt: String,
 }
 
-/// Adds one entry to the end, dropping the oldest entries while the whole
-/// block is over its bound. Returns what the Task now carries, or `None` when
-/// there is no such active Task.
-pub(super) fn append_permission_instructions<S>(
-    glue: &mut Glue<S>,
-    thread_id: &str,
-    entry: &str,
-) -> Result<Option<String>>
+/// The person's latest prompts to this Task, oldest first. Empty when there
+/// is no such active Task or it has heard nothing yet.
+pub(super) fn recent_prompts<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<Vec<RecentPrompt>>
 where
     S: GStore + GStoreMut + Planner,
 {
-    let Some(existing) = read_permission_instructions(glue, thread_id)? else {
-        return Ok(None);
-    };
-    let appended = match existing {
-        Some(existing) if !existing.is_empty() => {
-            format!("{existing}{PERMISSION_INSTRUCTION_SEPARATOR}{entry}")
-        }
-        _ => entry.to_string(),
-    };
-    let bounded = bound_permission_instructions(appended);
-    write_permission_instructions(glue, thread_id, Some(&bounded))?;
-    Ok(Some(bounded))
+    Ok(read_recent_prompts(glue, thread_id)?.unwrap_or_default())
 }
 
-/// Forgets what a Task's prompts granted. `false` when there is no such active
-/// Task.
-pub(super) fn clear_permission_instructions<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<bool>
+/// Adds one prompt to the end, dropping the oldest past
+/// [`RECENT_PROMPT_LIMIT`]. `false` when there is no such active Task.
+pub(super) fn record_prompt<S>(
+    glue: &mut Glue<S>,
+    thread_id: &str,
+    prompt: RecentPrompt,
+) -> Result<bool>
 where
     S: GStore + GStoreMut + Planner,
 {
-    if read_permission_instructions(glue, thread_id)?.is_none() {
+    let Some(mut prompts) = read_recent_prompts(glue, thread_id)? else {
         return Ok(false);
-    }
-    write_permission_instructions(glue, thread_id, None)?;
+    };
+    prompts.push(prompt);
+    let past_the_limit = prompts.len().saturating_sub(RECENT_PROMPT_LIMIT);
+    prompts.drain(..past_the_limit);
+    let stored = serde_json::to_string(&prompts)
+        .map_err(|_| TaskStoreError::InvalidRow("recent_prompts"))?;
+    table(TABLE_NAME)
+        .update()
+        .filter(col("thread_id").eq(text(thread_id.to_owned())))
+        .filter(Membership::Active.filter())
+        .set("recent_prompts", text(stored))
+        .execute(glue)?;
     Ok(true)
 }
 
-/// `None` when no active Task has this identifier; the inner `None` when it
-/// has one and no prompt of its own has permitted anything.
-fn read_permission_instructions<S>(
-    glue: &mut Glue<S>,
-    thread_id: &str,
-) -> Result<Option<Option<String>>>
+/// `None` when no active Task has this identifier.
+fn read_recent_prompts<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<Option<Vec<RecentPrompt>>>
 where
     S: GStore + GStoreMut + Planner,
 {
@@ -1024,61 +1012,23 @@ where
                 .eq(text(thread_id.to_owned()))
                 .and(Membership::Active.filter()),
         )
-        .project(vec![col("permission_instructions")])
+        .project(vec![col("recent_prompts")])
         .limit(1)
         .execute(glue)
-        .rows_as::<PermissionInstructionsRow>()?;
-    Ok(rows.into_iter().next().map(|row| {
-        row.permission_instructions
-            .filter(|instructions| !instructions.is_empty())
-    }))
-}
-
-fn write_permission_instructions<S>(
-    glue: &mut Glue<S>,
-    thread_id: &str,
-    instructions: Option<&str>,
-) -> Result<()>
-where
-    S: GStore + GStoreMut + Planner,
-{
-    table(TABLE_NAME)
-        .update()
-        .filter(col("thread_id").eq(text(thread_id.to_owned())))
-        .filter(Membership::Active.filter())
-        .set("permission_instructions", optional_text(instructions))
-        .execute(glue)?;
-    Ok(())
-}
-
-fn bound_permission_instructions(instructions: String) -> String {
-    if instructions.len() <= MAX_PERMISSION_INSTRUCTIONS_BYTES {
-        return instructions;
-    }
-    let mut entries: Vec<&str> = instructions
-        .split(PERMISSION_INSTRUCTION_SEPARATOR)
-        .collect();
-    while entries.len() > 1
-        && entries.join(PERMISSION_INSTRUCTION_SEPARATOR).len() > MAX_PERMISSION_INSTRUCTIONS_BYTES
-    {
-        entries.remove(0);
-    }
-    let bounded = entries.join(PERMISSION_INSTRUCTION_SEPARATOR);
-    if bounded.len() <= MAX_PERMISSION_INSTRUCTIONS_BYTES {
-        return bounded;
-    }
-    // One entry can be over the bound on its own. Its end is kept, because
-    // that is the side a later statement was added to.
-    let start = bounded.len() - MAX_PERMISSION_INSTRUCTIONS_BYTES;
-    let start = (start..=bounded.len())
-        .find(|index| bounded.is_char_boundary(*index))
-        .unwrap_or(bounded.len());
-    bounded[start..].to_string()
+        .rows_as::<RecentPromptsRow>()?;
+    rows.into_iter()
+        .next()
+        .map(|row| match row.recent_prompts {
+            Some(stored) => serde_json::from_str(&stored)
+                .map_err(|_| TaskStoreError::InvalidRow("recent_prompts")),
+            None => Ok(Vec::new()),
+        })
+        .transpose()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, FromGlueRow, ToGlueRow)]
-struct PermissionInstructionsRow {
-    permission_instructions: Option<String>,
+struct RecentPromptsRow {
+    recent_prompts: Option<String>,
 }
 
 pub(super) fn delete<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<bool>
@@ -1771,94 +1721,84 @@ mod tests {
     }
 
     #[test]
-    fn permission_instructions_accumulate_oldest_first_and_can_be_cleared() {
+    fn recent_prompts_keep_the_latest_ones_oldest_first() {
         let mut glue = memory();
         claim(&mut glue, thread("task-1", Some(1)), 1).unwrap();
+        let sent = |index: usize| RecentPrompt {
+            turn_id: format!("turn-{}", index / 2),
+            prompt: format!("prompt {index}"),
+        };
 
-        assert_eq!(permission_instructions(&mut glue, "task-1").unwrap(), None);
-
-        append_permission_instructions(&mut glue, "task-1", "target 디렉터리는 지워도 돼").unwrap();
-        let stored = append_permission_instructions(&mut glue, "task-1", "이제 아무것도 지우지 마")
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(
-            stored,
-            "target 디렉터리는 지워도 돼\n\n이제 아무것도 지우지 마"
-        );
-        assert_eq!(
-            permission_instructions(&mut glue, "task-1").unwrap(),
-            Some(stored)
-        );
-
-        assert!(clear_permission_instructions(&mut glue, "task-1").unwrap());
-        assert_eq!(permission_instructions(&mut glue, "task-1").unwrap(), None);
-    }
-
-    #[test]
-    fn a_task_that_is_not_active_has_nothing_to_read_append_or_clear() {
-        let mut glue = memory();
-
-        assert_eq!(permission_instructions(&mut glue, "missing").unwrap(), None);
-        assert_eq!(
-            append_permission_instructions(&mut glue, "missing", "anything").unwrap(),
-            None
-        );
-        assert!(!clear_permission_instructions(&mut glue, "missing").unwrap());
-    }
-
-    #[test]
-    fn instructions_past_the_bound_lose_their_oldest_entries_first() {
-        let mut glue = memory();
-        claim(&mut glue, thread("task-1", Some(1)), 1).unwrap();
-        let entry = |index: usize| format!("entry-{index:02} {}", "x".repeat(1000));
-
-        for index in 0..12 {
-            append_permission_instructions(&mut glue, "task-1", &entry(index)).unwrap();
+        assert_eq!(recent_prompts(&mut glue, "task-1").unwrap(), Vec::new());
+        for index in 0..=RECENT_PROMPT_LIMIT {
+            assert!(record_prompt(&mut glue, "task-1", sent(index)).unwrap());
         }
 
-        let stored = permission_instructions(&mut glue, "task-1")
-            .unwrap()
-            .unwrap();
-        assert!(
-            stored.len() <= MAX_PERMISSION_INSTRUCTIONS_BYTES,
-            "{}",
-            stored.len()
+        assert_eq!(
+            recent_prompts(&mut glue, "task-1").unwrap(),
+            (1..=RECENT_PROMPT_LIMIT).map(sent).collect::<Vec<_>>(),
+            "the oldest prompt goes once there are more than the limit"
         );
-        assert!(stored.ends_with(&entry(11)), "the newest entry is kept");
-        assert!(!stored.contains(&entry(0)), "the oldest entry is dropped");
     }
 
     #[test]
-    fn one_entry_larger_than_the_bound_keeps_its_end_on_a_character_boundary() {
+    fn each_task_keeps_only_its_own_prompts() {
         let mut glue = memory();
         claim(&mut glue, thread("task-1", Some(1)), 1).unwrap();
-        let huge = format!("{}끝", "가".repeat(MAX_PERMISSION_INSTRUCTIONS_BYTES));
+        claim(&mut glue, thread("task-2", Some(2)), 2).unwrap();
+        let first = RecentPrompt {
+            turn_id: "turn-1".to_string(),
+            prompt: "target 밑은 지워도 돼".to_string(),
+        };
 
-        let stored = append_permission_instructions(&mut glue, "task-1", &huge)
-            .unwrap()
-            .unwrap();
+        record_prompt(&mut glue, "task-1", first.clone()).unwrap();
 
-        assert!(
-            stored.len() <= MAX_PERMISSION_INSTRUCTIONS_BYTES,
-            "{}",
-            stored.len()
-        );
-        assert!(stored.ends_with("끝"));
+        assert_eq!(recent_prompts(&mut glue, "task-1").unwrap(), vec![first]);
+        assert_eq!(recent_prompts(&mut glue, "task-2").unwrap(), Vec::new());
     }
 
     #[test]
-    fn instructions_survive_a_whole_thread_update_that_does_not_name_them() {
+    fn a_task_that_is_not_active_has_no_prompts_and_takes_none() {
+        let mut glue = memory();
+        let prompt = RecentPrompt {
+            turn_id: "turn-1".to_string(),
+            prompt: "anything".to_string(),
+        };
+
+        assert!(!record_prompt(&mut glue, "missing", prompt).unwrap());
+        assert_eq!(recent_prompts(&mut glue, "missing").unwrap(), Vec::new());
+    }
+
+    #[test]
+    fn recent_prompts_survive_a_whole_thread_update_that_does_not_name_them() {
         let mut glue = memory();
         let managed = claim(&mut glue, thread("task-1", Some(1)), 1).unwrap();
-        append_permission_instructions(&mut glue, "task-1", "테스트 돌려도 돼").unwrap();
+        let prompt = RecentPrompt {
+            turn_id: "turn-1".to_string(),
+            prompt: "테스트 돌려도 돼".to_string(),
+        };
+        record_prompt(&mut glue, "task-1", prompt.clone()).unwrap();
 
         update_all(&mut glue, &managed).unwrap();
 
-        assert_eq!(
-            permission_instructions(&mut glue, "task-1").unwrap(),
-            Some("테스트 돌려도 돼".to_string())
-        );
+        assert_eq!(recent_prompts(&mut glue, "task-1").unwrap(), vec![prompt]);
+    }
+
+    #[test]
+    fn unreadable_recent_prompts_are_an_error_rather_than_none() {
+        let mut glue = memory();
+        claim(&mut glue, thread("task-1", Some(1)), 1).unwrap();
+        table(TABLE_NAME)
+            .update()
+            .filter(col("thread_id").eq(text("task-1")))
+            .set("recent_prompts", text("{ not json"))
+            .execute(&mut glue)
+            .unwrap();
+
+        assert!(matches!(
+            recent_prompts(&mut glue, "task-1"),
+            Err(TaskStoreError::InvalidRow("recent_prompts"))
+        ));
     }
 
     #[test]

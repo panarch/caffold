@@ -97,33 +97,27 @@ import type {
   MarkdownPreviewRequest,
 } from "./components/markdown-preview-dialog.js";
 import "./components/mermaid-preview-dialog.js";
-import type {
-  CaffoldTaskMermaidPreviewDialog,
-  MermaidPreviewRequest,
-} from "./components/mermaid-preview-dialog.js";
-import "./components/permission-instructions-dialog.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import { scopedStyle } from "#app/scoped-style.js";
 import { closestAcrossShadowRoots } from "#app/shadow-roots.js";
-import {
-  NORMAL_SPEED,
-  type TurnOptionsSnapshot,
-} from "../../components/task-turn-options.js";
+import { NORMAL_SPEED } from "../../components/task-turn-options.js";
 import type { TaskCreatedHandoff } from "../../layout.js";
 import type {
   BrokenTaskDeleteIntent,
   TaskDetailIntent,
-  TaskRequestFailedIntent,
 } from "../task-detail-intent-event.js";
 import { TASK_DETAIL_INTENT_EVENT } from "../task-detail-intent-event.js";
 import type { TaskDetailTransportChangeDetail } from "../task-detail-transport-change-event.js";
 import { TASK_DETAIL_TRANSPORT_CHANGE_EVENT } from "../task-detail-transport-change-event.js";
+import type {
+  CaffoldTaskMermaidPreviewDialog,
+  MermaidPreviewRequest,
+} from "./components/mermaid-preview-dialog.js";
 import "./components/force-archive-dialog.js";
 import type {
   CaffoldTaskForceArchiveDialog,
   ForceArchiveConfirmation,
 } from "./components/force-archive-dialog.js";
-import type { CaffoldTaskPermissionInstructionsDialog } from "./components/permission-instructions-dialog.js";
 import {
   ConversationProjection,
   projectionRevision,
@@ -185,7 +179,6 @@ export interface TaskSubjectSnapshot {
   absent: boolean;
   contextPath: string;
   provider: string;
-  permissionMode: string;
   archiveState: ActionState;
   forkState: ActionState;
   pinState: ActionState;
@@ -360,8 +353,6 @@ export class CaffoldTaskDetail extends CaffoldElement {
     new DrawnRef<CaffoldTaskMarkdownPreviewDialog>(this);
   private readonly mermaidPreviewDialog =
     new DrawnRef<CaffoldTaskMermaidPreviewDialog>(this);
-  private readonly permissionInstructionsDialog =
-    new DrawnRef<CaffoldTaskPermissionInstructionsDialog>(this);
   private readonly currentPlanComponent = new DrawnRef<CaffoldTaskCurrentPlan>(
     this,
   );
@@ -579,7 +570,6 @@ export class CaffoldTaskDetail extends CaffoldElement {
     this.toolCallDialog.value?.dismiss();
     this.markdownPreviewDialog.value?.dismiss();
     this.mermaidPreviewDialog.value?.dismiss();
-    this.permissionInstructionsDialog.value?.dismiss();
   }
 
   currentDetail() {
@@ -594,7 +584,6 @@ export class CaffoldTaskDetail extends CaffoldElement {
       absent: Boolean(this.detailSession.absence),
       contextPath: this.activeCwdPath(),
       provider: `${this.taskDetail?.provider ?? ""}`.trim(),
-      permissionMode: this.followUpComposer()?.selectedPermissionMode() ?? "",
       archiveState: this.archiveStateValue,
       workspaceAccess: this.taskDetail?.workspaceAccess,
       forkState: this.forkStateValue,
@@ -684,8 +673,6 @@ export class CaffoldTaskDetail extends CaffoldElement {
       this.toolCallDialog.value?.keyboardNavigationContexts() ?? [],
       this.markdownPreviewDialog.value?.keyboardNavigationContexts() ?? [],
       this.mermaidPreviewDialog.value?.keyboardNavigationContexts() ?? [],
-      this.permissionInstructionsDialog.value?.keyboardNavigationContexts() ??
-        [],
     );
   }
 
@@ -2008,7 +1995,6 @@ export class CaffoldTaskDetail extends CaffoldElement {
     this.toolCallDialog.value?.setThreadId(this.selectedThreadId);
     this.markdownPreviewDialog.value?.setThreadId(this.selectedThreadId);
     this.mermaidPreviewDialog.value?.setThreadId(this.selectedThreadId);
-    this.permissionInstructionsDialog.value?.setThreadId(this.selectedThreadId);
     const absence = this.detailSession.absence;
     if (absence) {
       this.absenceNotice.value?.setSnapshot({
@@ -2070,17 +2056,6 @@ export class CaffoldTaskDetail extends CaffoldElement {
       threadId: this.selectedThreadId,
       title: task?.title,
       error: this.detailLoadError,
-    });
-  }
-
-  /** Show what this Task's own prompts settled. */
-  openPermissionInstructions(opener?: Element | null) {
-    if (this.archiveStateValue.loading) {
-      return;
-    }
-    this.permissionInstructionsDialog.value?.open({
-      threadId: this.selectedThreadId,
-      opener,
     });
   }
 
@@ -2443,10 +2418,6 @@ export class CaffoldTaskDetail extends CaffoldElement {
           <caffold-task-mermaid-preview-dialog
             ${drawn(this.mermaidPreviewDialog)}
           ></caffold-task-mermaid-preview-dialog>
-          <caffold-task-permission-instructions-dialog
-            ${drawn(this.permissionInstructionsDialog)}
-            @caffold:task-detail-intent=${this.permissionIntent}
-          ></caffold-task-permission-instructions-dialog>
           <div class="task-follow-up-composer-dock">
             ${
               composerNotice
@@ -2462,7 +2433,6 @@ export class CaffoldTaskDetail extends CaffoldElement {
               @caffold:task-composer-submit=${this.composerSubmit}
               @caffold:task-composer-intent=${this.composerIntent}
               @caffold:task-composer-layout-change=${this.composerResized}
-              @caffold:task-turn-options-change=${this.turnOptionsChanged}
             ></div>
           </div>
         </section>
@@ -2692,14 +2662,6 @@ export class CaffoldTaskDetail extends CaffoldElement {
     this.mermaidPreviewDialog.value?.openMermaid(event.detail);
   }
 
-  private permissionIntent(event: CustomEvent<TaskRequestFailedIntent>) {
-    if (event.detail?.type !== "task-request-failed") {
-      return;
-    }
-    event.stopPropagation();
-    this.reportTaskAbsence(event.detail.threadId, event.detail.error);
-  }
-
   private brokenDeleteIntent(event: CustomEvent<BrokenTaskDeleteIntent>) {
     if (event.detail?.type !== "broken-delete-error") {
       return;
@@ -2757,16 +2719,6 @@ export class CaffoldTaskDetail extends CaffoldElement {
     }
     event.stopPropagation();
     this.conversationComponent.value?.reconcileViewportResize();
-  }
-
-  // Task actions show what the next turn's approval mode settles, so the
-  // subject snapshot is published again when that mode changes.
-  private turnOptionsChanged(event: CustomEvent<TurnOptionsSnapshot>) {
-    const composer = this.followUpComposer();
-    if (!composer || !this.fromComposer(event, composer)) {
-      return;
-    }
-    this.emitSubjectSnapshot();
   }
 
   // Whether an event comes from the Composer this Task shows, rather than one

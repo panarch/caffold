@@ -437,21 +437,6 @@ export async function removeDecisionModelKey(provider: string) {
   );
 }
 
-// What a Task's own prompts settled about what it may do, as one text.
-export async function getTaskPermissionInstructions(threadId: string) {
-  return requestJson<{ instructions?: string | null }>(
-    `/api/tasks/${encodeURIComponent(threadId)}/permission-instructions`,
-  );
-}
-
-export async function forgetTaskPermissionInstructions(threadId: string) {
-  return requestJson<{ instructions?: string | null }>(
-    `/api/tasks/${encodeURIComponent(threadId)}/permission-instructions`,
-    {},
-    { method: "DELETE" },
-  );
-}
-
 export async function transcribeVoice(recording: Blob, signal?: AbortSignal) {
   return requestJson<VoiceTranscript>(
     "/api/voice/transcribe",
