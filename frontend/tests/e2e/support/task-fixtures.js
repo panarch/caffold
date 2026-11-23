@@ -261,6 +261,39 @@ export async function isScrolledToBottom(locator) {
   });
 }
 
+// Records each slide the conversation starts, as it starts it. With
+// `window.__holdSlides` set, a slide stays paused where it starts.
+export async function recordSlides(page) {
+  await page.addInitScript(() => {
+    window.__slides = [];
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (keyframes, options) {
+      const animation = animate.call(this, keyframes, options);
+      if (this.classList?.contains("task-conversation-flow")) {
+        if (window.__holdSlides) {
+          animation.pause();
+        }
+        window.__slides.push({
+          animation,
+          from: keyframes[0].transform,
+          to: keyframes.at(-1).transform,
+          duration: options.duration,
+          easing: options.easing,
+          composite: options.composite,
+        });
+      }
+      return animation;
+    };
+  });
+  return () =>
+    page.evaluate(() =>
+      window.__slides.splice(0).map(({ animation, ...slide }) => ({
+        ...slide,
+        playState: animation.playState,
+      })),
+    );
+}
+
 export async function stabilizeDynamicText(page) {
   await page.addStyleTag({
     content: `

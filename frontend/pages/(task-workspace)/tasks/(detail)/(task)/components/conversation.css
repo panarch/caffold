@@ -50,11 +50,21 @@
 }
 
 .task-conversation-column {
-  display: grid;
-  gap: 1.25rem;
   width: min(100%, 980px);
   min-width: 0;
   margin: 0 auto;
+}
+
+/* While its contents slide to the bottom, the column cuts off what they
+   overhang, so the slide does not lengthen the scroll. */
+.task-conversation-column[data-sliding] {
+  overflow-y: clip;
+}
+
+.task-conversation-flow {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
 }
 
 .task-conversation-notices {

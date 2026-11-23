@@ -1716,6 +1716,15 @@ test("keeps task event chronology stable through approval, completion, and reloa
     element.dispatchEvent(new Event("scroll"));
   });
   await expect.poll(() => isScrolledToBottom(conversationScroller)).toBe(true);
+  // The sync lengthened the conversation under a reader at its bottom, which
+  // slides the view there; where the summary stands is read once it settles.
+  await expect
+    .poll(() =>
+      tasksPage
+        .locator(".task-conversation-flow")
+        .evaluate((element) => element.getAnimations().length),
+    )
+    .toBe(0);
   const summaryOffset = async () => completedWorkSummary.evaluate(
     (summary, scroller) => summary.getBoundingClientRect().top - scroller.getBoundingClientRect().top,
     await conversationScroller.elementHandle(),

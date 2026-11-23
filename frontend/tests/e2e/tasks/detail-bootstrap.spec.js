@@ -9,6 +9,7 @@ import {
   installEventSourceMock,
   isScrolledToBottom,
   mockAgentModels,
+  recordSlides,
 } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
@@ -762,6 +763,7 @@ test("keeps a conversation on screen through its first message and takes the pag
 test("a Task whose page follows its first message opens at the newest entry", { tag: "@server-changes" }, async ({
   page,
 }) => {
+  const slides = await recordSlides(page);
   await installEventSourceMock(page, { autoOpen: true });
   await mockAgentModels(page);
   const threadId = "thread_page_after_first_message";
@@ -790,4 +792,121 @@ test("a Task whose page follows its first message opens at the newest entry", { 
   await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
   expect(await scroller.evaluate((element) =>
     element.scrollHeight > element.clientHeight)).toBe(true);
+  // The page still opens the Task, so it stands at its end without sliding.
+  expect(await slides()).toEqual([]);
+
+  // The Task has opened: a message that follows slides in as it is followed.
+  await page.evaluate(({ id, event }) => {
+    window.__caffoldTaskSse.source(id).emit("task-event", {
+      threadId: id,
+      revision: 41,
+      eventRevision: 41,
+      event,
+    });
+  }, { id: threadId, event: assistantEvent(threadId, "Entry 41 arrives live.", 41) });
+  await expect(tasksPage).toContainText("Entry 41 arrives live.");
+  expect((await slides()).length).toBeGreaterThan(0);
+  await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
+});
+
+test("a Task opened again at its end shows it there without sliding", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const slides = await recordSlides(page);
+  await installEventSourceMock(page, { autoOpen: true });
+  await mockAgentModels(page);
+  const now = 1_767_400_700_000;
+  const viewed = taskRecord("thread_opened_again", "Opened again", now);
+  const other = taskRecord("thread_opened_between", "Opened between", now - 10);
+  const longDetail = {
+    ...taskDetail(viewed, "", 40),
+    events: Array.from({ length: 40 }, (_, index) => ({
+      ...assistantEvent(viewed.threadId, `Entry ${index + 1}. ${"Long conversation text. ".repeat(12)}`, index + 1),
+    })),
+  };
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([viewed, other]) }),
+  );
+  const tasksPage = page.locator("caffold-tasks-page");
+  const taskNavigator = page.locator("caffold-task-navigator");
+  const scroller = tasksPage.locator(".task-conversation-scroll");
+
+  await page.goto(`/tasks/${viewed.threadId}?cwd=src`);
+  await activeDetailSource(page, viewed.threadId);
+  await emitDetailSync(page, viewed.threadId, "stream-bootstrap", longDetail);
+  await expect(tasksPage).toContainText("Entry 40.");
+  await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
+
+  await taskNavigator.locator(`.task-row[data-thread-id="${other.threadId}"]`).click();
+  await activeDetailSource(page, other.threadId);
+  await emitDetailSync(
+    page,
+    other.threadId,
+    "stream-bootstrap",
+    taskDetail(other, "The conversation in between.", 2),
+  );
+  await expect(tasksPage).toContainText("The conversation in between.");
+  await slides();
+
+  // The conversation comes back at the end it was left at, placed there at
+  // once rather than slid in from where an empty conversation stood.
+  await taskNavigator.locator(`.task-row[data-thread-id="${viewed.threadId}"]`).click();
+  await activeDetailSource(page, viewed.threadId);
+  await emitDetailSync(
+    page,
+    viewed.threadId,
+    "stream-bootstrap",
+    withoutConversation({ ...longDetail, revision: 41 }),
+  );
+  await expect(tasksPage).toContainText("Entry 40.");
+  await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
+  expect(await slides()).toEqual([]);
+});
+
+test("a live answer that renames every entry slides only by what it adds", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const slides = await recordSlides(page);
+  await installEventSourceMock(page, { autoOpen: true });
+  await mockAgentModels(page);
+  const threadId = "thread_renamed_entries";
+  const task = taskRecord(threadId, "Renamed entries", 1_767_400_800_000);
+  const entries = (name, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      ...assistantEvent(threadId, `Entry ${index + 1}. ${"Long conversation text. ".repeat(12)}`, index + 1),
+      id: `${name}_${index + 1}`,
+    }));
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) }),
+  );
+  const tasksPage = page.locator("caffold-tasks-page");
+  const scroller = tasksPage.locator(".task-conversation-scroll");
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  await activeDetailSource(page, threadId);
+  await emitDetailSync(page, threadId, "stream-bootstrap", {
+    ...taskDetail(task, "", 20),
+    events: entries("first", 20),
+  });
+  await expect(tasksPage).toContainText("Entry 20.");
+  await expect(
+    tasksPage.locator('caffold-task-markdown[data-render-state="loading"]'),
+  ).toHaveCount(0);
+  await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
+  await slides();
+  const heightBefore = await scroller.evaluate((element) => element.scrollHeight);
+
+  // The agent's record comes back under new names with one entry more. Every
+  // entry is drawn anew, yet the view slides only by the one it adds.
+  await emitDetailSync(page, threadId, "app-server-notification", {
+    ...taskDetail(task, "", 22),
+    events: entries("second", 21),
+  });
+  await expect(tasksPage).toContainText("Entry 21.");
+  const heightAfter = await scroller.evaluate((element) => element.scrollHeight);
+  const started = await slides();
+  expect(started).toHaveLength(1);
+  const distance = Number.parseFloat(started[0].from.match(/translateY\(([-\d.]+)px\)/)[1]);
+  expect(Math.abs(distance - (heightAfter - heightBefore))).toBeLessThan(1);
+  expect(await isScrolledToBottom(scroller)).toBe(true);
 });

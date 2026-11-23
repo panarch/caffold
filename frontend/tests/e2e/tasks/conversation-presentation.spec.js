@@ -11,6 +11,7 @@ import {
 } from "../support/action-hints.js";
 import {
   captureReviewScreenshot,
+  recordSlides,
   stabilizeDynamicText,
 } from "../support/task-fixtures.js";
 
@@ -2149,4 +2150,214 @@ test("shows the loading notice plainly until the Markdown renderer arrives", { t
   releaseWords();
   await expect(markdown).toHaveAttribute("data-render-state", "markdown");
   await expect(markdown.locator(".markdown-loading")).toHaveCount(0);
+});
+
+// Streams a long answer into an opened Task until the conversation scrolls,
+// puts the reader at its end, and returns the answer written so far.
+async function fillConversation(page, markdown, write) {
+  const long = `Growing answer that fills the view.\n\n${"A paragraph that takes room. ".repeat(80)}`;
+  await write(long);
+  await expect(markdown).toContainText("Growing answer that fills the view.");
+  const scroller = page.locator(".task-conversation-scroll");
+  await expect
+    .poll(() => scroller.evaluate((element) => element.scrollHeight > element.clientHeight))
+    .toBe(true);
+  // An opened Task need not show its end, so the reader goes there.
+  await scroller.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  await expect
+    .poll(() =>
+      scroller.evaluate(
+        (element) => element.scrollHeight - element.clientHeight - element.scrollTop <= 2,
+      ),
+    )
+    .toBe(true);
+  return long;
+}
+
+test("slides the conversation up while its reader follows a stream", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const slides = await recordSlides(page);
+  const threadId = "thread_follow_slide";
+  const markdown = await openTaskForStreaming(page, threadId);
+  // Opening a Task puts it at its bottom at once.
+  expect(await slides()).toEqual([]);
+  const { write } = await streamAgentMessage(page, threadId);
+  const long = await fillConversation(page, markdown, write);
+  await slides();
+  const scroller = page.locator(".task-conversation-scroll");
+  const heightBefore = await scroller.evaluate((element) => element.scrollHeight);
+
+  await write(`${long}\n\nA new paragraph arrives at the end.`);
+  await expect(markdown).toContainText("A new paragraph arrives at the end.");
+  const after = await scroller.evaluate((element) => ({
+    atBottom: element.scrollHeight - element.clientHeight - element.scrollTop <= 2,
+    grew: element.scrollHeight,
+  }));
+  // The scroll is at the new bottom at once; the view slides the distance.
+  expect(after.atBottom).toBe(true);
+  const started = await slides();
+  expect(started.length).toBeGreaterThan(0);
+  for (const slide of started) {
+    expect(slide).toMatchObject({
+      to: "translateY(0)",
+      duration: 180,
+      easing: "ease-out",
+      composite: "add",
+    });
+  }
+  const distance = started.reduce(
+    (sum, { from }) => sum + Number.parseFloat(from.match(/translateY\(([-\d.]+)px\)/)[1]),
+    0,
+  );
+  expect(Math.abs(distance - (after.grew - heightBefore))).toBeLessThan(1);
+  await expect
+    .poll(() =>
+      page.locator(".task-conversation-flow").evaluate((element) => element.getAnimations().length),
+    )
+    .toBe(0);
+});
+
+test("keeps a reader who scrolled up from sliding", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const slides = await recordSlides(page);
+  const threadId = "thread_follow_scrolled_up";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const long = await fillConversation(page, markdown, write);
+  const scroller = page.locator(".task-conversation-scroll");
+  await scroller.evaluate((element) => {
+    element.scrollTop = 0;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  await slides();
+
+  await write(`${long}\n\nWritten while the reader looks above.`);
+  await expect(markdown).toContainText("Written while the reader looks above.");
+  expect(await slides()).toEqual([]);
+  expect(await scroller.evaluate((element) => element.scrollTop)).toBeLessThan(16);
+});
+
+test("ends a slide when the reader takes hold of the conversation", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const slides = await recordSlides(page);
+  const threadId = "thread_follow_take_hold";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const long = await fillConversation(page, markdown, write);
+  await slides();
+  await page.evaluate(() => {
+    window.__holdSlides = true;
+  });
+  const column = page.locator(".task-conversation-column");
+  let written = long;
+
+  for (const [type, init] of [
+    ["wheel", { deltaY: -40 }],
+    ["touchstart", {}],
+    ["pointerdown", {}],
+    ["keydown", { key: "ArrowUp" }],
+  ]) {
+    written = `${written}\n\nA paragraph to slide in before the ${type}.`;
+    await write(written);
+    await expect(markdown).toContainText(`A paragraph to slide in before the ${type}.`);
+    expect(
+      await page.evaluate(() => window.__slides.map(({ animation }) => animation.playState)),
+    ).toContain("paused");
+    await expect(column).toHaveAttribute("data-sliding", "");
+    await page.locator(".task-conversation-scroll").dispatchEvent(type, init);
+    expect(new Set((await slides()).map(({ playState }) => playState))).toEqual(
+      new Set(["finished"]),
+    );
+    await expect(column).not.toHaveAttribute("data-sliding");
+  }
+});
+
+test("keeps following while a slide is still under way", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const slides = await recordSlides(page);
+  const threadId = "thread_follow_during_slide";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const long = await fillConversation(page, markdown, write);
+  await slides();
+  await page.evaluate(() => {
+    window.__holdSlides = true;
+  });
+  const scroller = page.locator(".task-conversation-scroll");
+  const atBottom = () =>
+    scroller.evaluate(
+      (element) => element.scrollHeight - element.clientHeight - element.scrollTop <= 2,
+    );
+
+  await write(`${long}\n\nThe first new paragraph.`);
+  await expect(markdown).toContainText("The first new paragraph.");
+  // A slide under way neither lengthens the scroll nor moves its bottom.
+  expect(await atBottom()).toBe(true);
+  expect((await slides()).length).toBeGreaterThan(0);
+
+  await write(`${long}\n\nThe first new paragraph.\n\nThe second, while the first still slides.`);
+  await expect(markdown).toContainText("The second, while the first still slides.");
+  expect(await atBottom()).toBe(true);
+  expect((await slides()).length).toBeGreaterThan(0);
+});
+
+test("ends a slide when the conversation grows shorter under its reader", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  const slides = await recordSlides(page);
+  const threadId = "thread_follow_shorter";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const long = await fillConversation(page, markdown, write);
+  await slides();
+  await page.evaluate(() => {
+    window.__holdSlides = true;
+  });
+  const column = page.locator(".task-conversation-column");
+  const scroller = page.locator(".task-conversation-scroll");
+
+  await write(`${long}\n\nA paragraph that goes again.`);
+  await expect(markdown).toContainText("A paragraph that goes again.");
+  expect(
+    await page.evaluate(() => window.__slides.map(({ animation }) => animation.playState)),
+  ).toContain("paused");
+  await expect(column).toHaveAttribute("data-sliding", "");
+
+  // What the slide was showing is gone, so it ends where the view now stands
+  // rather than carrying on below it.
+  await write(long);
+  await expect(markdown).not.toContainText("A paragraph that goes again.");
+  expect(new Set((await slides()).map(({ playState }) => playState))).toEqual(
+    new Set(["finished"]),
+  );
+  await expect(column).not.toHaveAttribute("data-sliding");
+  expect(await scroller.evaluate(
+    (element) => element.scrollHeight - element.clientHeight - element.scrollTop <= 2,
+  )).toBe(true);
+});
+
+test("follows without sliding when motion is reduced", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const slides = await recordSlides(page);
+  const threadId = "thread_follow_reduced_motion";
+  const markdown = await openTaskForStreaming(page, threadId);
+  const { write } = await streamAgentMessage(page, threadId);
+  const long = await fillConversation(page, markdown, write);
+  await slides();
+
+  await write(`${long}\n\nArrives without motion.`);
+  await expect(markdown).toContainText("Arrives without motion.");
+  expect(await slides()).toEqual([]);
+  expect(await page.locator(".task-conversation-scroll").evaluate(
+    (element) => element.scrollHeight - element.clientHeight - element.scrollTop <= 2,
+  )).toBe(true);
 });

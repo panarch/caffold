@@ -116,8 +116,9 @@ type Visible = { text: string; nodes: ChildNode[] } | { element: Element };
 // The code and name each code block of a processed block is about to draw.
 type NextCode = Map<Element, { text: string; label: string }>;
 
-// The length of `markdown-arriving` in markdown.css.
-const ARRIVING_MS = 180;
+// How long added text takes to fade in: the length of `markdown-arriving` in
+// markdown.css, and of the slide that follows it to the bottom.
+export const ARRIVING_MS = 180;
 
 let wordsPromise: Promise<Words> | null = null;
 // Words once loaded, so Markdown draws in the update that changed it.

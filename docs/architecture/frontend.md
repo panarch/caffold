@@ -1355,6 +1355,21 @@ the Task subject and are preserved by Task identity through incremental shell
 updates. Moving from Tasks to Settings ends active editing and transport work
 without destroying a retained Composer draft.
 
+A reader at the bottom stays there as a live change or drawn Markdown lengthens
+the transcript. The scroll moves to the new bottom at once. When a live change
+is drawn for that reader, the column's contents then slide up over the distance
+the whole change added in 180 ms, the time added text takes to fade in, and
+successive slides add up, so the view follows without jumping. The column
+clips its contents vertically while they slide, so a slide never lengthens the
+scroll and the bottom stays where the scroll is. A wheel, touch, pointer press,
+or key on the conversation finishes any slide, and so does a transcript that
+grows shorter while one is under way, which sends the scroll back. Reduced
+motion leaves out the slide. Opening a Task, a prompt sent, older history, and
+a disclosure place the reader at once. A Task opened for the first time since
+Caffold loaded in the browser is still opening until its first page of history
+is drawn, even when that page follows its details. Only a conversation already
+on screen slides, so a Task opened again returns at once to where it was left.
+
 While a Task's details or its first page of history are still being read,
 Task Detail shows one retained loading phrase centered over the Task area. A
 conversation already on screen while its page is read goes without it.

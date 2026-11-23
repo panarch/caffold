@@ -707,7 +707,11 @@ export class CaffoldTaskDetail extends CaffoldElement {
       return null;
     }
     if (outcome.ok) {
-      this.finishInitialConversationLoad(threadId);
+      // A conversation whose page follows its Task's details is still opening
+      // until that page is drawn.
+      if (!this.taskDetail?.historyLoading) {
+        this.finishInitialConversationLoad(threadId);
+      }
       return outcome.detail ?? this.taskDetail;
     }
     if (outcome.absence) {
@@ -972,6 +976,9 @@ export class CaffoldTaskDetail extends CaffoldElement {
     }
     this.conversationUpdateKind = updateKind;
     this.draw();
+    if (!detail.historyLoading) {
+      this.finishInitialConversationLoad(threadId);
+    }
     this.markDisplayedTaskSeen(threadId, this.taskDetail?.task);
     return true;
   }
