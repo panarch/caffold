@@ -91,6 +91,8 @@ export class CaffoldTaskDetailFloatingConversation extends CaffoldElement {
   private accessor resizing = false;
 
   private subjectKey = "";
+  // Whether Detail was last told the card is open.
+  private announcedOpen = false;
   private drag:
     | (ResizeRange & {
         pointerId: number;
@@ -180,14 +182,14 @@ export class CaffoldTaskDetailFloatingConversation extends CaffoldElement {
     if (changed.has("size")) {
       this.applySize();
     }
-    if (!this.sheet) {
-      return;
-    }
-    for (const layer of [this.scrim.value, this.card.value]) {
-      if (layer && !layer.matches(":popover-open")) {
-        layer.showPopover();
+    if (this.sheet) {
+      for (const layer of [this.scrim.value, this.card.value]) {
+        if (layer && !layer.matches(":popover-open")) {
+          layer.showPopover();
+        }
       }
     }
+    this.announceOpen();
   }
 
   override render() {
@@ -470,10 +472,27 @@ export class CaffoldTaskDetailFloatingConversation extends CaffoldElement {
     this.expanded = next;
     this.drag = null;
     this.resizing = false;
+    // A fold is told at once, while the conversation still shows where it
+    // was; an opening once the card shows (`updated`).
+    if (!next) {
+      this.announceOpen();
+    }
+  }
+
+  // Told before the card shows, Task Detail would place the conversation in
+  // a hidden scrollport. WebKit drops a hidden scrollport's position and
+  // reports the drop as a scroll once it shows, which the conversation keeps
+  // as the reader's place, so the card would open at its top.
+  private announceOpen() {
+    const open = this.open;
+    if (open === this.announcedOpen) {
+      return;
+    }
+    this.announcedOpen = open;
     this.dispatchEvent(
       new CustomEvent<FloatingConversationChangeDetail>(
         FLOATING_CONVERSATION_CHANGE_EVENT,
-        { bubbles: true, composed: true, detail: { open: next } },
+        { bubbles: true, composed: true, detail: { open } },
       ),
     );
   }

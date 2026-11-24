@@ -5,6 +5,7 @@ import {
   enterActionHints,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { isScrolledToBottom } from "../support/task-fixtures.js";
 import {
   floatingConversationRoom,
   openCompletedTaskForReview,
@@ -183,6 +184,50 @@ test("opens the Task's own conversation over the file without moving the code", 
       body.height - 2 * inset,
     ))).toBeLessThanOrEqual(1);
   }
+});
+
+// Task Detail hears of an opening only once the card shows: WebKit drops a
+// hidden scrollport's position and reports the drop as a scroll. Drawn for the
+// first time in the card, the conversation then keeps following its end while
+// its Markdown lengthens it.
+test("opens at the end of the conversation, telling Task Detail once the card shows", { tag: ["@desktop", "@phone"] }, async ({
+  page,
+}) => {
+  // The smallest card, so the conversation scrolls in it.
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "caffold:floating-conversation-size",
+      JSON.stringify({ width: 340, height: 340 }),
+    );
+  });
+  const { openButton, card, header, viewer } = await openWorkingTreeFile(page);
+  // After a reload the conversation has never been on screen.
+  await page.reload();
+  await expect(viewer).toContainText("new planner behavior");
+  await page.evaluate(() => {
+    window.__toldWithCardShown = [];
+    document.addEventListener("caffold:floating-conversation-change", (event) => {
+      const floating = event.composedPath()[0];
+      window.__toldWithCardShown.push([
+        event.detail.open,
+        floating.shadowRoot.querySelector(".floating-conversation-card").checkVisibility(),
+      ]);
+    });
+  });
+  const scroller = page.locator("caffold-task-conversation .task-conversation-scroll");
+
+  await openButton.click();
+  await expect(card).toBeVisible();
+  await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
+  expect(await scroller.evaluate((element) => element.scrollHeight - element.clientHeight))
+    .toBeGreaterThan(100);
+  await header.click();
+  await expect(card).toBeHidden();
+  // A fold is told at once, while the conversation still shows its place.
+  expect(await page.evaluate(() => window.__toldWithCardShown)).toEqual([
+    [true, true],
+    [false, true],
+  ]);
 });
 
 test("folds from its header and with Escape", { tag: "@server-steady" }, async ({ page }) => {

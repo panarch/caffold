@@ -194,6 +194,9 @@ export class CaffoldTaskConversation extends CaffoldElement {
   // message drawn anew, as when its Task is opened again mid-upload.
   private uploadProgressByEvent = new Map<string, UploadProgress>();
   private resizeObserver: ResizeObserver | null = null;
+  // Where the conversation last put its scroll at its end itself, until the
+  // scroll moves from there.
+  private placedEndTop: number | null = null;
   // The entries last drawn, which the keyboard modes read their parts by.
   private shownEntries: ConversationEntry[] = [];
   private readonly scrollerElement = new DrawnRef<HTMLDivElement>(this);
@@ -251,7 +254,7 @@ export class CaffoldTaskConversation extends CaffoldElement {
       if (nextSnapshot.updateKind === "bottom") {
         const scroller = this.scroller();
         if (scroller) {
-          scroller.scrollTop = maxScrollTop(scroller);
+          this.placeScroll(scroller, maxScrollTop(scroller), true);
           this.rememberScroll();
         }
       }
@@ -1095,16 +1098,19 @@ export class CaffoldTaskConversation extends CaffoldElement {
       return;
     }
     const { before, nextScrollHeight } = event.detail;
-    if (before?.atBottom) {
-      this.followBottom(scroller, before.scrollTop);
+    if (before?.atBottom || this.atPlacedEnd(scroller)) {
+      this.followBottom(scroller, before?.scrollTop ?? null);
     } else if (
       this.restoreAnchor(scroller, this.scrollByThread.get(threadId) ?? null)
     ) {
       // Preserve the current event while Markdown replaces fallback text.
     } else if (before?.aboveViewport && nextScrollHeight !== null) {
-      scroller.scrollTop = Math.min(
-        before.scrollTop + (nextScrollHeight - before.scrollHeight),
-        maxScrollTop(scroller),
+      this.placeScroll(
+        scroller,
+        Math.min(
+          before.scrollTop + (nextScrollHeight - before.scrollHeight),
+          maxScrollTop(scroller),
+        ),
       );
     }
     this.rememberScroll();
@@ -1112,6 +1118,9 @@ export class CaffoldTaskConversation extends CaffoldElement {
 
   private handleScroll() {
     const scroller = this.scroller();
+    if (scroller && !this.atPlacedEnd(scroller)) {
+      this.placedEndTop = null;
+    }
     this.rememberScroll();
     if (
       !scroller ||
@@ -1156,7 +1165,7 @@ export class CaffoldTaskConversation extends CaffoldElement {
       scrollTop: scroller.scrollTop,
       scrollHeight: scroller.scrollHeight,
       clientHeight: scroller.clientHeight,
-      atBottom: isScrolledToBottom(scroller),
+      atBottom: isScrolledToBottom(scroller) || this.atPlacedEnd(scroller),
       anchorEventId: anchor?.dataset.eventId ?? "",
       anchorOffset: anchor
         ? anchor.getBoundingClientRect().top - scrollerRect.top
@@ -1192,10 +1201,13 @@ export class CaffoldTaskConversation extends CaffoldElement {
       if (this.restoreAnchor(scroller, previousScroll)) {
         return;
       }
-      scroller.scrollTop = Math.min(
-        previousScroll.scrollTop +
-          (scroller.scrollHeight - previousScroll.scrollHeight),
-        maxScrollTop(scroller),
+      this.placeScroll(
+        scroller,
+        Math.min(
+          previousScroll.scrollTop +
+            (scroller.scrollHeight - previousScroll.scrollHeight),
+          maxScrollTop(scroller),
+        ),
       );
       return;
     }
@@ -1203,9 +1215,9 @@ export class CaffoldTaskConversation extends CaffoldElement {
       return;
     }
     if (previousScroll) {
-      scroller.scrollTop = Math.min(
-        previousScroll.scrollTop,
-        maxScrollTop(scroller),
+      this.placeScroll(
+        scroller,
+        Math.min(previousScroll.scrollTop, maxScrollTop(scroller)),
       );
     }
   }
@@ -1217,7 +1229,23 @@ export class CaffoldTaskConversation extends CaffoldElement {
     if (before !== null && before - scroller.scrollTop >= 1) {
       this.finishSlides();
     }
-    scroller.scrollTop = maxScrollTop(scroller);
+    this.placeScroll(scroller, maxScrollTop(scroller), true);
+  }
+
+  private placeScroll(scroller: HTMLElement, top: number, end = false) {
+    scroller.scrollTop = top;
+    this.placedEndTop = end ? scroller.scrollTop : null;
+  }
+
+  // Whether the scroll still stands where the conversation put its end. What
+  // it shows can grow below before the conversation follows: Markdown drawn,
+  // an entry opened, a scrollport shown again. Until the reader scrolls, the
+  // conversation is still following its end, wherever that has moved.
+  private atPlacedEnd(scroller: HTMLElement) {
+    return (
+      this.placedEndTop !== null &&
+      Math.abs(scroller.scrollTop - this.placedEndTop) < 1
+    );
   }
 
   // The content the scroll moved past since `from` slides up into place over
@@ -1287,12 +1315,15 @@ export class CaffoldTaskConversation extends CaffoldElement {
     }
     const currentOffset =
       anchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-    scroller.scrollTop = Math.min(
-      Math.max(
-        0,
-        scroller.scrollTop + currentOffset - previousScroll.anchorOffset,
+    this.placeScroll(
+      scroller,
+      Math.min(
+        Math.max(
+          0,
+          scroller.scrollTop + currentOffset - previousScroll.anchorOffset,
+        ),
+        maxScrollTop(scroller),
       ),
-      maxScrollTop(scroller),
     );
     return true;
   }
@@ -1373,9 +1404,12 @@ export class CaffoldTaskConversation extends CaffoldElement {
       return false;
     }
     const currentOffset = disclosure.top - scroller.getBoundingClientRect().top;
-    scroller.scrollTop = Math.min(
-      Math.max(0, scroller.scrollTop + currentOffset - pending.offset),
-      maxScrollTop(scroller),
+    this.placeScroll(
+      scroller,
+      Math.min(
+        Math.max(0, scroller.scrollTop + currentOffset - pending.offset),
+        maxScrollTop(scroller),
+      ),
     );
     this.pendingDisclosureAnchorByThread.delete(threadId);
     return true;
