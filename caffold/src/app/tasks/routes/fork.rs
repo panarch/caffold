@@ -9,7 +9,7 @@ use axum::extract::Path as AxumPath;
 use crate::agent::{AgentError, ItemKind, ThreadStatus, TurnPage};
 use crate::app::error::ApiError;
 use crate::app::tasks::TaskState;
-use crate::app::tasks::lifecycle::{ForkTask, ForkTaskSource};
+use crate::app::tasks::lifecycle::{ForkTarget, ForkTask, ForkTaskSource};
 use crate::app::tasks::runtime::TaskAgent;
 use crate::task_store::{ManagedSection, ManagedThread, RunBy, TaskProvider};
 use axum::extract::State;
@@ -18,7 +18,7 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
 use super::CreatedTaskResponse;
-use super::commands::new_task_agent;
+use super::commands::{new_task_agent, task_cwd};
 use super::membership::task_store_join_error;
 use super::store::task_store_api_error;
 use crate::app::tasks::presence::moved_refusal;
@@ -32,6 +32,13 @@ const CODEX_THREAD_URI_PREFIX: &str = "codex://threads/";
 struct TaskForkSourceRequest {
     provider: String,
     source_id: String,
+}
+
+/// A fork of a Caffold Task names the directory its child works in, as a path
+/// below the server root like a new Task's.
+#[derive(Debug, Deserialize)]
+struct ForkTaskRequest {
+    cwd: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -72,8 +79,9 @@ pub(super) fn routes() -> Router<TaskState> {
 async fn fork_task(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
+    Json(request): Json<ForkTaskRequest>,
 ) -> Result<Json<CreatedTaskResponse>, ApiError> {
-    tokio::spawn(fork_task_owned(state, thread_id))
+    tokio::spawn(fork_task_owned(state, thread_id, request))
         .await
         .map_err(|error| ApiError::Internal(format!("Task fork failed: {error}")))?
 }
@@ -81,23 +89,16 @@ async fn fork_task(
 async fn fork_task_owned(
     state: TaskState,
     thread_id: String,
+    request: ForkTaskRequest,
 ) -> Result<Json<CreatedTaskResponse>, ApiError> {
-    let (source, section) = fork_source_context(&state, &thread_id).await?;
+    let source = fork_source_task(&state, &thread_id).await?;
     if matches!(source.run_by, RunBy::Antigravity { .. }) {
         return Err(ApiError::BadRequest {
             code: "task_fork_unsupported_provider",
             message: "Antigravity conversation fork is not supported".to_string(),
         });
     }
-    let cwd = state
-        .fs
-        .absolute_directory_path(&section.logical_path)
-        .map_err(|error| ApiError::Conflict {
-            code: "task_fork_project_unavailable",
-            message: format!("the source Task project root is unavailable: {error}"),
-        })?
-        .display()
-        .to_string();
+    let cwd = task_cwd(&state, Some(&request.cwd))?;
     let agent = fork_agent(
         &state,
         source.run_by.provider().as_str(),
@@ -111,7 +112,7 @@ async fn fork_task_owned(
             &agent,
             ForkTask {
                 source: ForkTaskSource::Managed(Box::new(source)),
-                section,
+                target: ForkTarget::Directory,
                 cwd,
             },
         )
@@ -179,7 +180,7 @@ async fn create_task_fork_owned(
             &agent,
             ForkTask {
                 source,
-                section,
+                target: ForkTarget::Section(section),
                 cwd,
             },
         )
@@ -401,43 +402,24 @@ fn task_fork_source_provider_mismatch() -> ApiError {
     }
 }
 
-async fn fork_source_context(
-    state: &TaskState,
-    thread_id: &str,
-) -> Result<(ManagedThread, ManagedSection), ApiError> {
+async fn fork_source_task(state: &TaskState, thread_id: &str) -> Result<ManagedThread, ApiError> {
     let store = state.task_store.clone();
     let wanted = thread_id.to_string();
-    let (source, section) = tokio::task::spawn_blocking(move || {
+    let source = tokio::task::spawn_blocking(move || {
         store.read(|tables| {
-            let source = tables
+            Ok(tables
                 .active_managed_threads()?
                 .into_iter()
-                .find(|thread| thread.thread_id == wanted);
-            let section_id = source
-                .as_ref()
-                .and_then(ManagedThread::section_id)
-                .map(str::to_string);
-            let section = match section_id {
-                Some(section_id) => tables
-                    .managed_sections()?
-                    .into_iter()
-                    .find(|section| section.section_id == section_id),
-                None => None,
-            };
-            Ok((source, section))
+                .find(|thread| thread.thread_id == wanted))
         })
     })
     .await
     .map_err(task_store_join_error)?
     .map_err(task_store_api_error)?;
-    let Some(source) = source else {
-        return Err(moved_refusal(&state.task_store, thread_id).await);
-    };
-    let section = section.ok_or_else(|| ApiError::Conflict {
-        code: "task_fork_source_unplaced",
-        message: "the source Task is not placed in an active Section".to_string(),
-    })?;
-    Ok((source, section))
+    match source {
+        Some(source) => Ok(source),
+        None => Err(moved_refusal(&state.task_store, thread_id).await),
+    }
 }
 
 #[cfg(test)]
@@ -627,7 +609,8 @@ mod tests {
                 axum::http::Request::builder()
                     .method("POST")
                     .uri(format!("/api/tasks/{source_thread_id}/fork"))
-                    .body(Body::empty())
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(json!({ "cwd": "" }).to_string()))
                     .unwrap(),
             )
             .await
@@ -705,6 +688,193 @@ mod tests {
                 "thread/name/set"
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn fork_route_starts_the_child_in_the_requested_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let project_root = root.path().canonicalize().unwrap();
+        let folder = project_root.join("other-project");
+        std::fs::create_dir(&folder).unwrap();
+        let source_thread_id = "thread-fork-directory-source";
+        let child_thread_id = "thread-fork-directory-child";
+        let cwd = folder.display().to_string();
+        let source = fork_thread(source_thread_id, &project_root, 2.0);
+        let child = json!({
+            "id": child_thread_id,
+            "preview": "Inherited conversation",
+            "status": { "type": "idle" },
+            "cwd": cwd,
+            "forkedFromId": source_thread_id,
+            "createdAt": 3.0,
+            "updatedAt": 3.0,
+            "turns": []
+        });
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok("thread/read", json!({ "thread": source.clone() })),
+            MockCodexResponse::ok_for(
+                "thread/fork",
+                json!({
+                    "threadId": source_thread_id,
+                    "cwd": cwd,
+                    "runtimeWorkspaceRoots": [cwd],
+                    "excludeTurns": true,
+                    "deferGoalContinuation": true
+                }),
+                json!({ "thread": child, "cwd": cwd }),
+            ),
+            MockCodexResponse::ok("thread/read", json!({ "thread": source })),
+            MockCodexResponse::ok("thread/turns/list", inherited_turns_page()),
+            MockCodexResponse::ok("thread/name/set", json!({})),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        claim_cached_active(
+            &state,
+            source_thread_id,
+            "Source task",
+            2_000,
+            "section-root",
+            "",
+        );
+
+        let response = router(state.clone())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/tasks/{source_thread_id}/fork"))
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(json!({ "cwd": "other-project" }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .expect("fork response");
+
+        let status = response.status();
+        let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("fork response body");
+        let created: JsonValue = serde_json::from_slice(&body).expect("fork response JSON");
+        assert_eq!(status, axum::http::StatusCode::OK, "{created}");
+        assert_eq!(created["detail"]["threadId"], child_thread_id);
+        assert_eq!(created["detail"]["task"]["cwdPath"], "other-project");
+        let section_id = created["activeTopPlacement"]["section"]["id"]
+            .as_str()
+            .expect("the child's Section");
+        assert_ne!(section_id, "section-root");
+        assert_eq!(
+            state
+                .task_store
+                .get(child_thread_id)
+                .unwrap()
+                .expect("claimed child")
+                .section_id(),
+            Some(section_id)
+        );
+    }
+
+    #[tokio::test]
+    async fn fork_route_refuses_a_directory_it_cannot_start_in_before_contacting_the_agent() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("a-file"), "not a folder").unwrap();
+        let source_thread_id = "thread-fork-refused-directory";
+        let client = CodexThreadClient::mock(Vec::new());
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        claim_cached_active(
+            &state,
+            source_thread_id,
+            "Source task",
+            2_000,
+            "section-root",
+            "",
+        );
+
+        for cwd in ["../outside", "missing-folder", "a-file"] {
+            let response = router(state.clone())
+                .oneshot(
+                    axum::http::Request::builder()
+                        .method("POST")
+                        .uri(format!("/api/tasks/{source_thread_id}/fork"))
+                        .header(axum::http::header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(json!({ "cwd": cwd }).to_string()))
+                        .unwrap(),
+                )
+                .await
+                .expect("refused fork response");
+
+            let status = response.status();
+            assert!(status.is_client_error(), "{cwd}: {status}");
+            if cwd == "../outside" {
+                let body = axum::body::to_bytes(response.into_body(), 4096)
+                    .await
+                    .expect("refused fork body");
+                let body: JsonValue = serde_json::from_slice(&body).expect("refused fork JSON");
+                assert_eq!(body["error"]["code"], "invalid_task_cwd");
+            }
+        }
+        assert!(client.mock_requests().await.is_empty());
+        assert_eq!(
+            state
+                .task_store
+                .read(|tables| tables.active_managed_threads())
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn fork_route_refuses_a_task_that_is_not_active_before_contacting_the_agent() {
+        let root = tempfile::tempdir().unwrap();
+        let client = CodexThreadClient::mock(Vec::new());
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        claim_cached_active(
+            &state,
+            "thread-fork-archived",
+            "Archived task",
+            2_000,
+            "section-root",
+            "",
+        );
+        state
+            .task_store
+            .archive("thread-fork-archived", 3_000)
+            .unwrap()
+            .expect("archived source");
+
+        for (thread_id, status, code) in [
+            (
+                "thread-fork-archived",
+                axum::http::StatusCode::CONFLICT,
+                "task_archived",
+            ),
+            (
+                "thread-fork-unknown",
+                axum::http::StatusCode::NOT_FOUND,
+                "task_not_found",
+            ),
+        ] {
+            let response = router(state.clone())
+                .oneshot(
+                    axum::http::Request::builder()
+                        .method("POST")
+                        .uri(format!("/api/tasks/{thread_id}/fork"))
+                        .header(axum::http::header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(json!({ "cwd": "" }).to_string()))
+                        .unwrap(),
+                )
+                .await
+                .expect("refused fork response");
+            assert_eq!(response.status(), status, "{thread_id}");
+            let body = axum::body::to_bytes(response.into_body(), 4096)
+                .await
+                .expect("refused fork body");
+            let body: JsonValue = serde_json::from_slice(&body).expect("refused fork JSON");
+            assert_eq!(body["error"]["code"], code, "{thread_id}");
+        }
+        assert!(client.mock_requests().await.is_empty());
     }
 
     #[tokio::test]
@@ -1296,9 +1466,13 @@ mod tests {
             })
             .unwrap();
 
-        let error = fork_task(State(state), AxumPath(source_thread_id.to_string()))
-            .await
-            .expect_err("Antigravity is excluded");
+        let error = fork_task(
+            State(state),
+            AxumPath(source_thread_id.to_string()),
+            Json(ForkTaskRequest { cwd: String::new() }),
+        )
+        .await
+        .expect_err("Antigravity is excluded");
 
         assert!(matches!(
             error,
@@ -1382,7 +1556,10 @@ mod tests {
                 managed_source
             );
             let (uri, body) = if managed_source {
-                (format!("/api/tasks/{}/fork", source.id), json!({}))
+                (
+                    format!("/api/tasks/{}/fork", source.id),
+                    json!({ "cwd": "" }),
+                )
             } else {
                 (
                     "/api/task-forks".into(),

@@ -18,6 +18,9 @@ import {
 // Invariants:
 // - Typed text and the highlighted row exist only while editing. A row is
 //   named by its key: the folder's path, or `..` for the parent row.
+// - A field kept open shows its list whenever it is not locked: once it has a
+//   context it browses, and only deactivation or a locked context closes it.
+//   Leaving it, Escape, and choosing a typed path end typing at most.
 // - A listing answer counts only for the request in flight. Closing forgets
 //   that request, so an answer arriving after it is ignored.
 // - The chosen directory changes only when a request made to choose a folder
@@ -49,6 +52,7 @@ export interface DirectoryFieldState {
   path: string;
   server: ServerPaths;
   locked: boolean;
+  keepOpen: boolean;
   listing: { path: string; entries: ListedFolder[] } | null;
   request: { generation: number; path: string; purpose: Purpose } | null;
   generation: number;
@@ -84,7 +88,13 @@ export type DirectoryFieldEvent =
   | { type: "submit" }
   | { type: "listing-loaded"; generation: number; directory: DirectoryListing }
   | { type: "listing-failed"; generation: number; message: string }
-  | { type: "context"; path: string; server: ServerPaths; locked: boolean };
+  | {
+      type: "context";
+      path: string;
+      server: ServerPaths;
+      locked: boolean;
+      keepOpen: boolean;
+    };
 
 // What the field does after a transition: ask for a listing, announce the
 // chosen directory, or move focus.
@@ -122,9 +132,9 @@ const TRANSITIONS: Readonly<Record<DirectoryFieldNode, Handlers>> =
       context: applyContext,
     }),
     [BROWSING]: Object.freeze({
-      "toggle-list": close,
-      escape: close,
-      leave: close,
+      "toggle-list": closeList,
+      escape: closeList,
+      leave: closeList,
       "toggle-edit": openEditing,
       "choose-row": chooseRow,
       "listing-loaded": acceptListing,
@@ -143,7 +153,7 @@ const TRANSITIONS: Readonly<Record<DirectoryFieldNode, Handlers>> =
       submit: submitTyped,
       "listing-loaded": acceptListing,
       "listing-failed": acceptFailure,
-      leave: close,
+      leave: leaveEditing,
       context: applyContext,
       deactivate: close,
     }),
@@ -155,6 +165,7 @@ export function initialDirectoryFieldState(): DirectoryFieldState {
     path: "",
     server: {},
     locked: false,
+    keepOpen: false,
     listing: null,
     request: null,
     generation: 0,
@@ -259,6 +270,29 @@ function returnToBrowsing(state: DirectoryFieldState) {
   return state.listing?.path === state.path
     ? { state: { ...next, request: null }, effects: [focus] }
     : request(next, state.path, PURPOSE.SHOW, [focus]);
+}
+
+// A field kept open stays open.
+function closeList(state: DirectoryFieldState) {
+  return state.keepOpen ? unchanged(state) : close(state);
+}
+
+// Leaving a field kept open drops the typed path and keeps the list; focus
+// has already gone elsewhere.
+function leaveEditing(state: DirectoryFieldState) {
+  return state.keepOpen
+    ? {
+        state: {
+          ...state,
+          node: BROWSING,
+          error: "",
+          text: "",
+          typed: null,
+          highlight: "",
+        },
+        effects: [],
+      }
+    : close(state);
 }
 
 function close(state: DirectoryFieldState): Transition {
@@ -395,6 +429,21 @@ function acceptListing(
       effects: [{ type: "choose", path: listing.path, returnFocus: false }],
     };
   }
+  if (state.keepOpen) {
+    return {
+      state: {
+        ...chosen,
+        node: BROWSING,
+        text: "",
+        typed: null,
+        highlight: "",
+      },
+      effects: [
+        { type: "choose", path: listing.path, returnFocus: false },
+        { type: "focus", target: "toggle" },
+      ],
+    };
+  }
   const closed = close(chosen).state;
   return {
     state: closed,
@@ -426,6 +475,7 @@ function applyContext(
     path: string;
     server: ServerPaths;
     locked: boolean;
+    keepOpen: boolean;
   },
 ) {
   const next = {
@@ -433,10 +483,25 @@ function applyContext(
     path: event.path,
     server: event.server,
     locked: event.locked,
+    keepOpen: event.keepOpen,
   };
   const changed =
     event.path !== state.path ||
     (next.server.root ?? "") !== (state.server.root ?? "");
+  if (next.keepOpen && !next.locked && (state.node === CLOSED || changed)) {
+    return request(
+      {
+        ...next,
+        node: BROWSING,
+        error: "",
+        text: "",
+        typed: null,
+        highlight: "",
+      },
+      next.path,
+      PURPOSE.SHOW,
+    );
+  }
   if (state.node !== CLOSED && (changed || next.locked)) {
     return close(next);
   }

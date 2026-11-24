@@ -855,7 +855,6 @@ export class CaffoldDetailLayout extends CaffoldElement {
       contextPath: snapshot?.contextPath ?? this.selectedTaskContextPath(),
       provider: snapshot?.provider,
       archiveState: snapshot?.archiveState,
-      forkState: snapshot?.forkState,
       // The list says whether the Task is pinned; a Task it has not placed in
       // a Section cannot be.
       pinned: this.listedTask() ? this.managedTaskPinned : null,
@@ -1254,7 +1253,10 @@ export class CaffoldDetailLayout extends CaffoldElement {
         this.taskSummary.value?.detailsButton(),
       );
     } else if (event.detail?.type === "fork") {
-      void this.taskDetail.value?.forkSelectedTask();
+      this.taskDetail.value?.openForkDialog(
+        this.taskSummary.value?.detailsButton(),
+        this.serverPaths,
+      );
     } else if (event.detail?.type === "pin" || event.detail?.type === "unpin") {
       void this.taskDetail.value?.pinSelectedTask(event.detail.type === "pin");
     }

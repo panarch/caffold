@@ -313,7 +313,6 @@ test("uses managed identity only as a header fallback and prefers canonical Deta
       task: null,
       transportState: "unavailable",
       archiveState: { loading: false, error: null },
-      forkState: { loading: false, error: null },
     },
     managedTask: managed,
     managedTaskRepository: true,

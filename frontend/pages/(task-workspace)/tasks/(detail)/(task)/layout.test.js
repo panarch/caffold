@@ -145,7 +145,7 @@ test("offers the conversation, follow-up Composer, and Current Plan while the co
   assert.deepEqual(ids(), ["task:thread-a:absence"]);
 });
 
-test("merges composer popovers, Current Plan, Command, Tool call, Markdown preview, and Mermaid preview modals independently", () => {
+test("merges composer popovers, the Task dialogs, Current Plan, Command, Tool call, Markdown preview, and Mermaid preview modals independently", () => {
   const composerContext = { id: "composer-popover" };
   const planContext = { id: "current-plan" };
   const commandContext = { id: "command-output" };
@@ -168,6 +168,7 @@ test("merges composer popovers, Current Plan, Command, Tool call, Markdown previ
     brokenDeleteDialog: { value: undefined },
     forceArchiveDialog: { value: { keyboardNavigationContexts: () => [{ id: "force-archive" }] } },
     handoffDialog: { value: { keyboardNavigationContexts: () => [{ id: "handoff" }] } },
+    forkDialog: { value: { keyboardNavigationContexts: () => [{ id: "task-fork" }] } },
     followUpComposer: () => composer,
     followUpComposerSlot: { value: slot },
     currentPlanComponent: {
@@ -192,6 +193,7 @@ test("merges composer popovers, Current Plan, Command, Tool call, Markdown previ
     [
       { id: "force-archive" },
       { id: "handoff" },
+      { id: "task-fork" },
       composerContext,
       planContext,
       commandContext,
@@ -206,6 +208,7 @@ test("merges composer popovers, Current Plan, Command, Tool call, Markdown previ
     [
       { id: "force-archive" },
       { id: "handoff" },
+      { id: "task-fork" },
       composerContext,
       commandContext,
       toolCallContext,
@@ -219,6 +222,7 @@ test("merges composer popovers, Current Plan, Command, Tool call, Markdown previ
     [
       { id: "force-archive" },
       { id: "handoff" },
+      { id: "task-fork" },
       composerContext,
       commandContext,
       toolCallContext,
@@ -228,7 +232,7 @@ test("merges composer popovers, Current Plan, Command, Tool call, Markdown previ
   owner.mermaidPreviewDialog = { value: undefined };
   assert.deepEqual(
     taskDetail.keyboardNavigationContexts.call(owner),
-    [{ id: "force-archive" }, { id: "handoff" }, composerContext, commandContext, toolCallContext],
+    [{ id: "force-archive" }, { id: "handoff" }, { id: "task-fork" }, composerContext, commandContext, toolCallContext],
   );
 });
 
@@ -280,7 +284,6 @@ test("one phrase covers an opening conversation until its Task details and histo
 test("force archive rejects a confirmation captured for another Task or worktree", async () => {
   const owner = screen({
     archiveStateValue: { loading: false, error: { allowedActions: ["forceArchive"], worktreeId: "current" } },
-    forkStateValue: { loading: false },
     emitSubjectSnapshot() { assert.fail("a stale confirmation must not start a request"); },
   });
   await owner.archiveSelectedTask({ threadId: "thread-b", worktreeId: "current" });

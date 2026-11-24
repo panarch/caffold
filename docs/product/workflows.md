@@ -72,7 +72,8 @@ implemented outer lifecycle.
 
 Both entry points use the same native conversation-fork lifecycle:
 
-1. From an idle managed Codex, Claude, Grok, or GitHub Copilot Task, choose **Fork task**. Its provider and
+1. From an idle managed Codex, Claude, Grok, or GitHub Copilot Task, choose **Fork task** and choose
+   the folder the child starts in, by default the Task's Section folder. Its provider and
    conversation ID are already known.
 2. From a managed Section, choose **Fork conversation**, choose the source agent, enter an ID,
    and explicitly request a preview. Caffold uses read-only provider APIs or native transcripts for
@@ -83,12 +84,14 @@ Both entry points use the same native conversation-fork lifecycle:
    presented as idle, but its persisted history can still be forked. Active,
    system-error, unrecognized, unresolved, and provider-mismatched sources
    cannot be forked.
-4. Choose **Fork task**. The backend resolves the target Section again, reads
-   the source again, and requires a managed source to be idle or an external
-   source to be idle or not loaded before asking its agent to fork it.
-5. Only the verified child ID is claimed as a managed Task. Its initial
-   cwd is the selected Section project root, its initial name is `Fork of ...`,
-   and the browser opens it immediately.
+4. Choose **Fork task**. The backend checks the chosen folder or resolves the
+   target Section again, reads the source again, and requires a managed source
+   to be idle or an external source to be idle or not loaded before asking its
+   agent to fork it.
+5. Only the verified child ID is claimed as a managed Task. Its initial cwd is
+   the chosen folder, placed in that folder's Section, which is made when there
+   is none, or the selected Section's project root. Its initial name is
+   `Fork of ...`, and the browser opens it immediately.
 
 The source conversation remains unchanged. Caffold neither imports the source
 nor persists a conversation lineage. Conversation history belongs to the agent and

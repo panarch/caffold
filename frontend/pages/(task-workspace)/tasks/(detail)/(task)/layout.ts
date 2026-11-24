@@ -8,10 +8,8 @@ import {
 } from "#app/action-hints.js";
 import {
   archiveTask,
-  type CreatedTask,
   discardTaskUploads,
   forceArchiveTask,
-  forkTask,
   getTask,
   interruptTask,
   markTaskSeen,
@@ -91,6 +89,11 @@ import "./components/current-plan.js";
 import "./components/handoff-dialog.js";
 import type { CaffoldTaskCurrentPlan } from "./components/current-plan.js";
 import type { CaffoldTaskHandoffDialog } from "./components/handoff-dialog.js";
+import "./components/task-fork-dialog.js";
+import type {
+  CaffoldTaskForkDialog,
+  TaskForkFailedDetail,
+} from "./components/task-fork-dialog.js";
 import "./components/markdown-preview-dialog.js";
 import type {
   CaffoldTaskMarkdownPreviewDialog,
@@ -100,8 +103,8 @@ import "./components/mermaid-preview-dialog.js";
 import { CaffoldElement } from "#app/caffold-element.js";
 import { scopedStyle } from "#app/scoped-style.js";
 import { closestAcrossShadowRoots } from "#app/shadow-roots.js";
+import type { ServerPaths } from "../../components/directory-path.js";
 import { NORMAL_SPEED } from "../../components/task-turn-options.js";
-import type { TaskCreatedHandoff } from "../../layout.js";
 import type {
   BrokenTaskDeleteIntent,
   TaskDetailIntent,
@@ -180,7 +183,6 @@ export interface TaskSubjectSnapshot {
   contextPath: string;
   provider: string;
   archiveState: ActionState;
-  forkState: ActionState;
   pinState: ActionState;
 }
 
@@ -314,14 +316,11 @@ export class CaffoldTaskDetail extends CaffoldElement {
   private interruptActionToken = 0;
   private interruptStateValue: ActionState = { loading: false, error: null };
   private archiveActionToken = 0;
-  private forkActionToken = 0;
-  private forkCreated: { sourceId: string; created: CreatedTask } | null = null;
   private pinActionToken = 0;
   private pinStateValue: ActionState = { loading: false, error: null };
   private approvalActionToken = 0;
   private promptSubmissionSequence = 0;
   private archiveStateValue: ActionState = { loading: false, error: null };
-  private forkStateValue: ActionState = { loading: false, error: null };
   private restoreActionToken = 0;
   private restoreStateValue: ActionState = { loading: false, error: null };
   private absentTaskTitle = "";
@@ -346,6 +345,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
     new DrawnRef<CaffoldTaskConversation>(this);
   private readonly commandDialog = new DrawnRef<CaffoldTaskCommandDialog>(this);
   private readonly handoffDialog = new DrawnRef<CaffoldTaskHandoffDialog>(this);
+  private readonly forkDialog = new DrawnRef<CaffoldTaskForkDialog>(this);
   private readonly toolCallDialog = new DrawnRef<CaffoldTaskToolCallDialog>(
     this,
   );
@@ -419,6 +419,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
 
     if (this.selectedThreadId !== targetThreadId) {
       this.handoffDialog.value?.deactivate();
+      this.forkDialog.value?.deactivate();
       this.brokenDeleteDialog.value?.reset();
       this.forceArchiveDialog.value?.reset();
       this.deactivateFollowUpComposer();
@@ -426,13 +427,10 @@ export class CaffoldTaskDetail extends CaffoldElement {
       this.interruptActionToken += 1;
       this.interruptStateValue = { loading: false, error: null };
       this.archiveActionToken += 1;
-      this.forkActionToken += 1;
-      this.forkCreated = null;
       this.pinActionToken += 1;
       this.pinStateValue = { loading: false, error: null };
       this.approvalActionToken += 1;
       this.archiveStateValue = { loading: false, error: null };
-      this.forkStateValue = { loading: false, error: null };
       this.restoreActionToken += 1;
       this.restoreStateValue = { loading: false, error: null };
       this.absentTaskTitle = "";
@@ -552,19 +550,17 @@ export class CaffoldTaskDetail extends CaffoldElement {
   // history, and the dialogs opened over its conversation.
   private endTaskRequests() {
     this.handoffDialog.value?.deactivate();
+    this.forkDialog.value?.deactivate();
     this.brokenDeleteDialog.value?.reset();
     this.forceArchiveDialog.value?.reset();
     this.history.deactivate();
     this.interruptActionToken += 1;
     this.interruptStateValue = { loading: false, error: null };
     this.archiveActionToken += 1;
-    this.forkActionToken += 1;
-    this.forkCreated = null;
     this.pinActionToken += 1;
     this.pinStateValue = { loading: false, error: null };
     this.approvalActionToken += 1;
     this.archiveStateValue = { loading: false, error: null };
-    this.forkStateValue = { loading: false, error: null };
     this.initialConversationLoad = null;
     this.commandDialog.value?.dismiss();
     this.toolCallDialog.value?.dismiss();
@@ -586,7 +582,6 @@ export class CaffoldTaskDetail extends CaffoldElement {
       provider: `${this.taskDetail?.provider ?? ""}`.trim(),
       archiveState: this.archiveStateValue,
       workspaceAccess: this.taskDetail?.workspaceAccess,
-      forkState: this.forkStateValue,
       pinState: this.pinStateValue,
     };
   }
@@ -651,6 +646,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       this.brokenDeleteDialog.value?.keyboardNavigationContexts() ?? [],
       this.forceArchiveDialog.value?.keyboardNavigationContexts() ?? [],
       this.handoffDialog.value?.keyboardNavigationContexts() ?? [],
+      this.forkDialog.value?.keyboardNavigationContexts() ?? [],
     );
     if (
       this.hidden ||
@@ -1688,7 +1684,6 @@ export class CaffoldTaskDetail extends CaffoldElement {
     if (
       !this.selectedThreadId ||
       this.archiveStateValue.loading ||
-      this.forkStateValue.loading ||
       !failure?.allowedActions?.includes("forceArchive") ||
       !failure.worktreeId
     ) {
@@ -1714,11 +1709,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
   }
 
   async archiveSelectedTask(confirmation?: ForceArchiveConfirmation) {
-    if (
-      !this.selectedThreadId ||
-      this.archiveStateValue.loading ||
-      this.forkStateValue.loading
-    ) {
+    if (!this.selectedThreadId || this.archiveStateValue.loading) {
       return;
     }
     const failure = this.archiveStateValue.error as TaskResponseError | null;
@@ -1784,12 +1775,13 @@ export class CaffoldTaskDetail extends CaffoldElement {
     }
   }
 
-  async forkSelectedTask() {
+  // Opens the fork dialog for an idle Task whose agent can fork, starting in
+  // the folder New Task would start in from this Task. A linked worktree is
+  // the Task's own; its repository's checkout is not.
+  openForkDialog(opener: Element | null | undefined, server: ServerPaths) {
     const task = this.taskDetail?.task ?? null;
     if (
       !this.selectedThreadId ||
-      this.forkStateValue.loading ||
-      (this.forkStateValue.error as TaskResponseError | null)?.createdTaskId ||
       this.archiveStateValue.loading ||
       !["codex", "claude", "grok", "copilot"].includes(
         this.taskDetail?.provider ?? "",
@@ -1799,56 +1791,26 @@ export class CaffoldTaskDetail extends CaffoldElement {
     ) {
       return;
     }
-    const actionToken = ++this.forkActionToken;
-    const threadId = this.selectedThreadId;
-    this.forkStateValue = { loading: true, error: null };
-    this.emitSubjectSnapshot();
-    try {
-      const created =
-        this.forkCreated?.sourceId === threadId
-          ? this.forkCreated.created
-          : await forkTask(threadId);
-      if (
-        actionToken !== this.forkActionToken ||
-        threadId !== this.selectedThreadId
-      ) {
-        return;
-      }
-      const childThreadId = taskDetailThreadId(created?.detail);
-      if (
-        !childThreadId ||
-        childThreadId === threadId ||
-        !created.detail.task
-      ) {
-        throw new Error("The agent did not return a distinct forked Task.");
-      }
-      this.forkCreated = { sourceId: threadId, created };
-      this.forkStateValue = { loading: false, error: null };
-      const handoff = { created, submission: null, adopted: false };
-      this.dispatchEvent(
-        new CustomEvent<TaskCreatedHandoff>("caffold:task-created", {
-          bubbles: true,
-          composed: true,
-          detail: handoff,
-        }),
-      );
-      if (!handoff.adopted) {
-        throw new Error(
-          "The forked Task was created but could not be opened. Retry to open the same Task.",
-        );
-      }
-    } catch (error) {
-      if (
-        actionToken !== this.forkActionToken ||
-        threadId !== this.selectedThreadId
-      ) {
-        return;
-      }
-      this.forkStateValue = { loading: false, error: error as Error };
-      if (this.reportTaskAbsence(threadId, error)) {
-        return;
-      }
-      this.emitSubjectSnapshot();
+    this.forkDialog.value?.open(
+      {
+        taskId: this.selectedThreadId,
+        folder: this.newTaskContextPath(),
+        worktree: Boolean(task?.worktree?.linked),
+        server,
+      },
+      opener,
+    );
+  }
+
+  // A fork that failed because its Task is gone shows that instead.
+  private forkFailed(event: CustomEvent<TaskForkFailedDetail>) {
+    event.stopPropagation();
+    const { taskId, error } = event.detail;
+    if (
+      taskId === this.selectedThreadId &&
+      this.reportTaskAbsence(taskId, error)
+    ) {
+      this.forkDialog.value?.deactivate();
     }
   }
 
@@ -2455,6 +2417,10 @@ export class CaffoldTaskDetail extends CaffoldElement {
         @caffold:task-force-archive-confirmed=${this.forceArchiveConfirmed}
       ></caffold-task-force-archive-dialog>
       <caffold-task-handoff-dialog ${drawn(this.handoffDialog)}></caffold-task-handoff-dialog>
+      <caffold-task-fork-dialog
+        ${drawn(this.forkDialog)}
+        @caffold:task-fork-failed=${this.forkFailed}
+      ></caffold-task-fork-dialog>
       <caffold-broken-task-delete-dialog
         ${drawn(this.brokenDeleteDialog)}
         @caffold:task-detail-intent=${this.brokenDeleteIntent}

@@ -1059,8 +1059,11 @@ may consume model usage. Commands and prerequisites are indexed in
 
 `agent/fork.rs` dispatches source snapshots and native child creation through
 the closed Driver set. `app/tasks/lifecycle/fork.rs` holds the managed source's
-mutation lease, checks source revisions and target Section around creation,
-and claims only a verified child. HTTP request ownership survives a browser
+mutation lease, checks source revisions and target around creation, and claims
+only a verified child. A Section fork names its target Section, which must
+still be the same at the claim. A Task fork names a folder below the server
+root, checked as a new Task's is, and the child is claimed into that folder's
+Section, made when there is none. HTTP request ownership survives a browser
 disconnect. A claimed child whose detail response fails is returned as
 `task_fork_created` with `createdTaskId`, so clients can open it without creating
 another child. Cleanup before claim deletes only the known child; cleanup

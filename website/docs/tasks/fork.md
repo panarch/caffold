@@ -4,11 +4,23 @@ Forking starts a new Task with the saved history of a Codex, Claude Code, Grok, 
 
 ## Fork a Task
 
-Open an idle Task, choose **Task details** at its top right, and choose
-**Fork task**. The new Task, named `Fork of …`, opens in the same Section.
+1. Open an idle Task, choose **Task details** at its top right, and choose
+   **Fork task**.
+2. Choose the folder the new Task starts in. The folder list starts at the
+   Task's Section folder and stays open: choose a folder in it, or choose ✎ to
+   type a path.
+3. Choose **Fork task**. The new Task, named `Fork of …`, opens in that
+   folder's Section. A folder without a Section gets a new one, as when you
+   start a Task there.
 
 ![Task details with Fork task](../assets/screenshots/task-details-light-desktop.png#only-light)
 ![Task details with Fork task](../assets/screenshots/task-details-dark-desktop.png#only-dark)
+
+![Fork task with its folder list](../assets/screenshots/task-fork-light-desktop.png#only-light)
+![Fork task with its folder list](../assets/screenshots/task-fork-dark-desktop.png#only-dark)
+
+The second line of the dialog says what the new Task will not have; see
+[What a fork copies](#what-a-fork-copies).
 
 ## Fork a conversation from outside Caffold
 
@@ -39,9 +51,10 @@ original Task ID. **Fork task** resolves the Task's current session for you.
 
 The agent copies its own conversation history. Files, uncommitted changes,
 branches, and worktrees are not copied; the child can
-[move into a worktree](worktrees.md) like any other Task. The source remains
-independent.
+[move into a worktree](worktrees.md) like any other Task. A Task that works
+in its own worktree keeps it, so a child forked from it starts in the folder
+you chose without that worktree's changes. The source remains independent.
 
 If the child was created but could not be opened, retry opening that child.
 If the connection failed before a creation result arrived, check the Task list
-before submitting another fork.
+before submitting another fork. While a fork runs, its dialog stays open.

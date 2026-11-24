@@ -247,6 +247,52 @@ for (const theme of ["light", "dark"]) {
       await captureReviewScreenshot(page, testInfo, `task-details-${theme}`);
     });
 
+    test("Fork task chooses the folder the new Task starts in", { tag: "@desktop" }, async ({ page }, testInfo) => {
+      const repository = MANUAL_TASKS.darkTheme.worktree.repositoryRootPath;
+      await page.route(/\/api\/list(?:\?|$)/, (route) => {
+        const path = new URL(route.request().url()).searchParams.get("path") ?? "";
+        const folders = path === repository ? [".github", "docs", "public", "src", "tests"] : [];
+        return route.fulfill({
+          json: {
+            root: "/",
+            path,
+            git: null,
+            entries: folders.map((name) => ({
+              name,
+              path: `${path}/${name}`,
+              kind: "directory",
+              isSymlink: false,
+              supported: true,
+              gitIgnored: false,
+              git: null,
+            })),
+          },
+        });
+      });
+      await page.goto(`/tasks/${MANUAL_TASKS.darkTheme.threadId}`);
+      await page.getByRole("button", { name: /^Task details/ }).click();
+      await page.locator(".task-detail-popover").getByRole("button", { name: "Fork task" }).click();
+      const dialog = page.getByRole("dialog", { name: "Fork task", exact: true });
+      await expect(dialog).toContainText(
+        "Copies this Task's conversation into a new Task in the folder you choose.",
+      );
+      await expect(dialog).toContainText("The new Task won't have the changes in this Task's worktree.");
+      await expect(
+        dialog.locator("caffold-task-directory-field .task-directory-field-path"),
+      ).toHaveText(repository);
+      await expect(dialog.locator("caffold-file-tree .file-tree-name")).toHaveText([
+        "..",
+        "docs",
+        "public",
+        "src",
+        "tests",
+        ".github",
+      ]);
+      await expect(dialog.getByRole("button", { name: "Fork task", exact: true })).toBeEnabled();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await captureReviewScreenshot(page, testInfo, `task-fork-${theme}`);
+    });
+
     test("Task handoff starts from another agent in the model picker", { tag: "@desktop" }, async ({ page }, testInfo) => {
       await page.goto(`/tasks/${MANUAL_TASKS.darkTheme.threadId}`);
       const composer = page.locator(".task-follow-up-form");

@@ -379,6 +379,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/force-archive-dialog.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/handoff-dialog.css.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/handoff-dialog.js",
+  "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/task-fork-dialog.css.js",
+  "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/task-fork-dialog.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/tool-call-dialog.css.js",

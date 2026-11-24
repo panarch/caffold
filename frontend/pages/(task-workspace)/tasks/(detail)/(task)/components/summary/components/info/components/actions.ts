@@ -38,7 +38,6 @@ import styles from "./actions.css.js";
 const FORKING_PROVIDERS = ["codex", "claude", "grok", "copilot"];
 const IDLE_ONLY = "Available when the Task is idle.";
 const ARCHIVING = "Unavailable while the Task is archiving.";
-const FORKING = "Unavailable while the Task is forking.";
 
 // A request the Task screen runs for the Task: whether it runs, and why the
 // last one failed.
@@ -50,8 +49,8 @@ export interface TaskActionState {
 // What the actions show: the Task, whether its details have been read, its
 // live connection, its agent and approval mode, whether it is pinned (null
 // while the list has not placed it in a Section), whether Caffold prepared the
-// worktree it runs in, and its Archive, Fork, and pin requests. Archive waits
-// while the agent is working on the Task.
+// worktree it runs in, and its Archive and pin requests. Archive waits while
+// the agent is working on the Task.
 export interface TaskInfoActionsSnapshot {
   task: ListedTask | null;
   canonicalTaskAvailable: boolean;
@@ -59,7 +58,6 @@ export interface TaskInfoActionsSnapshot {
   transportState: TaskTransportState;
   provider: string;
   archiveState: TaskActionState;
-  forkState: TaskActionState;
   pinned: boolean | null;
   pinState: TaskActionState;
   worktreePrepared: boolean;
@@ -173,22 +171,13 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
     const pinDescription = pinned
       ? "Return it to its Section."
       : "Keep it at the top of the Task list.";
-    const forking = snapshot.forkState.loading;
     // Until the Task's details name its agent, Fork waits dimmed for them.
     const forkOffered = snapshot.provider
       ? FORKING_PROVIDERS.includes(snapshot.provider)
       : !snapshot.canonicalTaskAvailable;
     const forkUnavailable = archiveWait || forkDisabledReason(snapshot);
-    const forkError = actionErrorMessage(snapshot.forkState.error);
-    const createdTaskId = (snapshot.forkState.error as TaskResponseError | null)
-      ?.createdTaskId;
-    const archiveUnavailable = archiving
-      ? ""
-      : forking
-        ? FORKING
-        : snapshot.archiveBlockedByActive
-          ? IDLE_ONLY
-          : "";
+    const archiveUnavailable =
+      !archiving && snapshot.archiveBlockedByActive ? IDLE_ONLY : "";
     const archiveError = actionErrorMessage(snapshot.archiveState.error);
     const archiveFailure = snapshot.archiveState
       .error as TaskResponseError | null;
@@ -359,56 +348,26 @@ export class CaffoldTaskDetailInfoActions extends CaffoldElement {
       ${
         forkOffered
           ? html`<button
-                ${this.hints.button({
-                  id: `${threadId}:fork`,
-                  label: "Fork task",
-                  action: ACTION_HINT_ACTION.TASK_FORK,
-                  anchor: () => this.rowIcons.get("fork"),
-                  badgeAt: "center",
-                })}
-                type="button"
-                class="task-detail-action"
-                data-task-info-action="fork"
-                ?disabled=${forking || Boolean(forkUnavailable) || Boolean(createdTaskId)}
-                @click=${this.requestAction}
-              >
-                ${actionIcon("Split", this.rowIcons.of("fork"), forking)}
-                <span class="task-detail-action-label">${
-                  forking ? "Forking..." : "Fork task"
-                }</span>
-                <span class="task-detail-action-description">${
-                  forking || createdTaskId || !forkUnavailable
-                    ? "Copies the conversation, not the files, into a new Task."
-                    : forkUnavailable
-                }</span>
-              </button>
-              ${
-                forkError || createdTaskId
-                  ? html`<div class="task-detail-action-under">
-                      ${
-                        forkError
-                          ? html`<p
-                              class="task-detail-action-error task-detail-fork-error"
-                              role="alert"
-                            >${forkError}</p>`
-                          : nothing
-                      }
-                      ${
-                        createdTaskId
-                          ? html`<a
-                              ${this.hints.link({
-                                id: `${threadId}:open-fork`,
-                                label: "Open forked task",
-                                action: ACTION_HINT_ACTION.LINK_OPEN,
-                              })}
-                              class="task-secondary-button task-detail-follow-up"
-                              href=${`/tasks/${encodeURIComponent(createdTaskId)}`}
-                            >${actionContent("ArrowRight", "Open forked task")}</a>`
-                          : nothing
-                      }
-                    </div>`
-                  : nothing
-              }`
+              ${this.hints.button({
+                id: `${threadId}:fork`,
+                label: "Fork task",
+                action: ACTION_HINT_ACTION.TASK_FORK,
+                anchor: () => this.rowIcons.get("fork"),
+                badgeAt: "center",
+              })}
+              type="button"
+              class="task-detail-action"
+              data-task-info-action="fork"
+              ?disabled=${Boolean(forkUnavailable)}
+              @click=${this.requestAction}
+            >
+              ${actionIcon("Split", this.rowIcons.of("fork"))}
+              <span class="task-detail-action-label">Fork task</span>
+              <span class="task-detail-action-description">${
+                forkUnavailable ||
+                "Copies the conversation, not the files, into a new Task."
+              }</span>
+            </button>`
           : nothing
       }
       <hr class="task-detail-actions-divider">

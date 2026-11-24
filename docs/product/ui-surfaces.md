@@ -319,11 +319,10 @@ Copy button. The Task keeps that directory for its life.
 
 Task actions follow as one list. Each row shows an icon, its name, and below
 the name what it does, or why it cannot be done now, such as **Available when
-the Task is idle.** While a row's request runs, such as **Forking...**, a
+the Task is idle.** While a row's request runs, such as **Archiving...**, a
 turning progress icon takes the icon's place. While Archive runs, every other
 row and the buttons under it wait, saying **Unavailable while the Task is
-archiving.**; while Fork runs, Archive says **Unavailable while the Task is
-forking.** The follow-up Composer waits for Archive too: Send, Attach, voice
+archiving.** The follow-up Composer waits for Archive too: Send, Attach, voice
 input, and its options are unavailable and the same words show above it, while
 its draft stays editable. What a row reports, such as each
 language server's state or why its last request failed, sits under the row,
@@ -350,12 +349,20 @@ on holds the switch
 until every server is ready; [Integrated Review](#integrated-review) then lets
 names be pressed.
 
-An idle Codex, Claude, Grok, or GitHub Copilot Task exposes **Fork task** in Task actions. It performs the same
-native fork without an ID lookup, places the child at the source Task's Section
-project root, and opens the distinct managed child. An active Task keeps the action disabled with an explicit reason; an Antigravity Task's actions have no Fork. When
-the child is made but its details cannot be read, **Fork task** stays disabled
-with that error and **Open forked task**, which opens the child, under it.
-Forking remains separate from worktree isolation.
+An idle Codex, Claude, Grok, or GitHub Copilot Task exposes **Fork task** in Task actions. An active Task keeps the action disabled with an explicit reason; an Antigravity Task's actions have no Fork. The action opens
+a **Fork task** dialog that performs the same native fork without an ID lookup.
+Its description's second line reads **Files are not copied.**, or, for a Task
+in its own linked worktree, **The new Task won't have the changes in this
+Task's worktree.** Its **Folder** is New Task's directory field with the folder
+list kept open at a fixed height, starting at the source Task's Section folder,
+so opening, browsing folders, or typing a path never resizes the dialog. **Fork task**
+starts the child in the chosen folder, places it at the top of that folder's
+Section, making the Section when there is none, and opens the distinct managed
+child. While the fork runs, the dialog cannot be dismissed. A failure stays in
+the dialog. When the child is made but its details cannot be read, the
+dialog's **Fork task** stays disabled with that error and **Open forked task**
+under it; a child made but not opened is opened again by the next press instead
+of forking again. Forking remains separate from worktree isolation.
 
 **Archive task** says it removes the worktree and keeps its branch when Caffold
 prepared the Task's worktree. Task details offers **Discard changes and archive**

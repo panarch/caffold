@@ -1,5 +1,14 @@
 :host {
   --task-directory-field-height: max(2.5rem, var(--interface-target-floor));
+  /* Smaller than the box by an even gap, so the edit button's pressed
+     background keeps clear of the border. */
+  --task-directory-field-edit-size: calc(
+    var(--task-directory-field-height) -
+    2px -
+    2 *
+    var(--interface-space-2)
+  );
+  --task-directory-field-list-height: 15rem;
   --task-directory-field-edge: var(--border);
   display: block;
   min-width: 0;
@@ -42,6 +51,25 @@
 
 :host([data-node="editing"]) .task-directory-field-box {
   cursor: text;
+}
+
+/* A list kept open has nothing to toggle, so the box ends at the edit button,
+   its glyph as far from the right edge as the folder glyph is from the left. */
+:host([data-keep-open]) .task-directory-field-box {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding-right: calc(
+    var(--interface-space-5) -
+    (var(--task-directory-field-edit-size) - var(--interface-icon-size)) /
+    2
+  );
+}
+
+:host([data-keep-open]:not([data-node="editing"])) .task-directory-field-box {
+  cursor: default;
+}
+
+:host([data-keep-open]) .task-directory-field-chevron {
+  display: none;
 }
 
 /* An open list joins the box into one card, parted by a light line. */
@@ -110,24 +138,12 @@
   font: inherit;
 }
 
-/* Smaller than the box by an even gap, so its pressed background keeps
-   clear of the border. */
 .task-directory-field-edit {
   position: relative;
   display: grid;
   place-items: center;
-  width: calc(
-    var(--task-directory-field-height) -
-    2px -
-    2 *
-    var(--interface-space-2)
-  );
-  height: calc(
-    var(--task-directory-field-height) -
-    2px -
-    2 *
-    var(--interface-space-2)
-  );
+  width: var(--task-directory-field-edit-size);
+  height: var(--task-directory-field-edit-size);
   padding: 0;
   border: 0;
   border-radius: 5px;
@@ -177,11 +193,31 @@
 
 .task-directory-field-panel > caffold-file-tree {
   --file-tree-height: auto;
-  --file-tree-max-height: 15rem;
+  --file-tree-max-height: var(--task-directory-field-list-height);
+}
+
+/* Kept open, the list is as tall as an open list may grow, whatever it holds:
+   a loading line, a few folders, many, or an error above it. */
+:host([data-keep-open]) .task-directory-field-panel:not([hidden]) {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: var(--task-directory-field-list-height);
+}
+
+:host([data-keep-open])
+  .task-directory-field-panel
+  > .task-directory-field-error {
+  grid-row: 1;
+}
+
+:host([data-keep-open]) .task-directory-field-panel > caffold-file-tree {
+  grid-row: 2;
+  --file-tree-height: 100%;
+  --file-tree-max-height: none;
 }
 
 @media (max-width: 620px) {
-  .task-directory-field-panel > caffold-file-tree {
-    --file-tree-max-height: 40dvh;
+  :host {
+    --task-directory-field-list-height: 40dvh;
   }
 }
