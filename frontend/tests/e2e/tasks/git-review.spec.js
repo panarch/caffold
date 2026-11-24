@@ -378,18 +378,14 @@ async function installTaskGitFixture(
   return counts;
 }
 
-async function chooseGitTool(page, kind) {
+async function chooseGitTool(page, name) {
   const detailHeader = page.locator(".detail-layout-summary");
   const popover = detailHeader.locator(
     "caffold-task-detail-git > .task-git-popover",
   );
-  await detailHeader.getByRole("button", { name: "Open Git workspace" }).click();
+  await detailHeader.getByRole("button", { name: "Open Git and GitHub" }).click();
   await expect(popover).toBeVisible();
-  await detailHeader
-    .locator(
-      `caffold-task-detail-git button[data-git-button-action][data-review-kind="${kind}"]`,
-    )
-    .click();
+  await popover.getByRole("button", { name, exact: true }).click();
   await expect(popover).toBeHidden();
 }
 
@@ -407,7 +403,7 @@ test("opens Git and selects its destination through declared keyboard contexts",
   await installTaskGitFixture(page);
   await page.goto(`/tasks/${THREAD_ID}`);
 
-  await activateActionHintIntoPopover(page, /Open Git workspace$/);
+  await activateActionHintIntoPopover(page, /Open Git and GitHub$/);
   const popover = page.locator(
     ".detail-layout-summary caffold-task-detail-git > .task-git-popover",
   );
@@ -1068,7 +1064,7 @@ test("reloads Task-scoped Compare and releases its refs watch while inactive", {
     )
     .toBe(true);
 
-  await chooseGitTool(page, "compare");
+  await chooseGitTool(page, "Compare");
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/compare`);
   await expect(layout).toHaveAttribute("data-test-identity", "retained");
   await expect.poll(() => counts.compare).toBe(2);
@@ -1353,7 +1349,7 @@ test("navigates Compare files and Log commits with deterministic domain Back", {
   await page.reload();
   await expect(page.locator("caffold-diff-viewer")).toContainText("new compare");
 
-  await chooseGitTool(page, "log");
+  await chooseGitTool(page, "Log");
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/log`);
   await page.reload();
   const logPage = page.locator("caffold-git-log-list-page");
@@ -1560,7 +1556,7 @@ test("fetches remote Log status only on explicit request and retains settled sta
   expect(counts.log).toBe(1);
 
   await page.getByRole("button", { name: "Conversation", exact: true }).click();
-  await chooseGitTool(page, "log");
+  await chooseGitTool(page, "Log");
   await expect(count).toHaveText("1 commit");
   await expect(branch).toHaveText("feature/review");
   await expect(relationship).toHaveText("3 ahead, 2 behind main");
@@ -1615,7 +1611,7 @@ test("keeps an in-flight Fetch isolated across Git route re-entry", { tag: "@all
   expect(animation.after).not.toBe(animation.before);
 
   await page.getByRole("button", { name: "Conversation", exact: true }).click();
-  await chooseGitTool(page, "log");
+  await chooseGitTool(page, "Log");
   await expect(relationship).toHaveText("3 ahead, 2 behind main");
   releaseFetch();
   await expect.poll(() => counts.fetchCompleted).toBe(2);
@@ -1843,7 +1839,7 @@ test("stops an older Compare activation before it opens a file after a Log route
     `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview&file=example.rs`,
   );
   await expect.poll(() => pendingCompare.length).toBe(1);
-  await chooseGitTool(page, "log");
+  await chooseGitTool(page, "Log");
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/log`);
   await expect(page.locator("caffold-git-log-list-page")).toContainText(COMMIT.subject);
 
@@ -2080,7 +2076,7 @@ test("wraps the Compare diff it keeps hidden when Wrap is turned on in a commit"
     compareViewer.locator(".viewer-actions > :last-child"),
   ).toHaveClass(/viewer-wrap-button/);
 
-  await chooseGitTool(page, "log");
+  await chooseGitTool(page, "Log");
   await page
     .getByRole("button", { name: new RegExp(`^Open commit diff for ${COMMIT.shortSha}`) })
     .click();
@@ -2095,7 +2091,7 @@ test("wraps the Compare diff it keeps hidden when Wrap is turned on in a commit"
   await expect(compareDiff).toHaveAttribute("wrap", "");
 
   // Compare opens without a file again, in the same viewer.
-  await chooseGitTool(page, "compare");
+  await chooseGitTool(page, "Compare");
   await page
     .locator('caffold-git-compare-page button[data-file-tree-path="src/example.rs"]')
     .click();

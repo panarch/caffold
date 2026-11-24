@@ -527,8 +527,8 @@ test("the terminal bar is as tall as the review file header, with its buttons un
     .toBeCloseTo(buttons.toggle.left - buttons.kill.right, 1);
 });
 
-// The phone moves GitHub to the second row, away from the terminal button.
-test("a Section's terminal bar has its buttons under Git, GitHub, and the terminal button", { tag: ["@desktop", "@foldable"] }, async ({
+// The phone moves the Git menu to the second row, away from the terminal button.
+test("a Section's terminal bar aligns its last two buttons with the Git menu and terminal button", { tag: ["@desktop", "@foldable"] }, async ({
   page,
 }, testInfo) => {
   await page.route("**/api/terminal", (route) => route.fulfill({ status: 204 }));
@@ -539,7 +539,7 @@ test("a Section's terminal bar has its buttons under Git, GitHub, and the termin
   const sectionId = terminalTaskId("section-bar");
   const projection = activeTaskProjection([terminalDetail(sectionId).task]);
   projection.sections[0].id = sectionId;
-  // Only a Section in a Git repository shows GitHub to line the bar up under.
+  // Only a Section in a Git repository shows the Git menu to line the bar up under.
   projection.sections[0].repository = true;
   await installTaskApiFixture(page);
   await page.route("**/api/tasks", (route) => route.fulfill({ json: projection }));
@@ -551,16 +551,12 @@ test("a Section's terminal bar has its buttons under Git, GitHub, and the termin
 
   const buttons = await drawnButtons(page, {
     git: ".task-git-button",
-    github: ".task-github-button",
     terminal: "caffold-task-detail-terminal button",
-    keyboard: '.terminal-page-bar > [data-terminal-action="special-keys"]',
     kill: '.terminal-page-bar > [data-terminal-action="kill"]',
     toggle: '.terminal-page-bar > [data-terminal-action="header"]',
   });
-  expect(buttons.keyboard.left).toBeCloseTo(buttons.git.left, 1);
-  expect(buttons.keyboard.right).toBeCloseTo(buttons.git.right, 1);
-  expect(buttons.kill.left).toBeCloseTo(buttons.github.left, 1);
-  expect(buttons.kill.right).toBeCloseTo(buttons.github.right, 1);
+  expect(buttons.kill.left).toBeCloseTo(buttons.git.left, 1);
+  expect(buttons.kill.right).toBeCloseTo(buttons.git.right, 1);
   expect(buttons.toggle.left).toBeCloseTo(buttons.terminal.left, 1);
   expect(buttons.toggle.right).toBeCloseTo(buttons.terminal.right, 1);
 });

@@ -28,6 +28,41 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
+test("opens each repository tool from the current Section's header", { tag: "@server-steady" }, async ({ page }) => {
+  await installEventSourceMock(page);
+  await mockAgentModels(page);
+  const section = {
+    id: "section-tools",
+    name: "src",
+    repository: true,
+    tasks: [activeListTask(taskDetailFixture().task)],
+  };
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: { sections: [section], unsectioned: [] } })
+  );
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({ json: { tasks: [], nextCursor: null } })
+  );
+  await page.goto("/?section=section-tools");
+
+  const header = page.locator(".detail-layout-summary");
+  for (const [surface, label, tool] of [
+    ["git", "Compare", "compare"],
+    ["git", "Log", "log"],
+    ["github", "Pull Requests", "pulls"],
+    ["github", "Issues", "issues"],
+  ]) {
+    await header.getByRole("button", { name: "Open Git and GitHub" }).click();
+    await header.getByRole("group", { name: "Git and GitHub actions" })
+      .getByRole("button", { name: label, exact: true }).click();
+    await expect(page).toHaveURL((url) =>
+      url.searchParams.get("section") === section.id &&
+      url.searchParams.get("surface") === surface &&
+      url.searchParams.get("tool") === tool
+    );
+  }
+});
+
 test("selects a Section and opens fixed-directory Task creation", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   await installEventSourceMock(page);
   await mockAgentModels(page);
@@ -122,7 +157,6 @@ test("selects a Section and opens fixed-directory Task creation", { tag: "@all-v
     detail.locator("caffold-segmented-control[data-detail-view-switch]"),
   ).toBeHidden();
   await expect(detail.locator("caffold-task-detail-git")).toBeHidden();
-  await expect(detail.locator("caffold-task-detail-github")).toBeHidden();
   // With nothing to switch or open, even a phone header keeps one row.
   const terminalInset = await detail.locator(".detail-layout-summary").evaluate((header) => {
     const headerBox = header.getBoundingClientRect();
@@ -948,7 +982,6 @@ test("keeps a repository Section draft while switching shared surfaces", { tag: 
     ).toHaveCount(1);
   }
   await expect(detail.locator("caffold-task-detail-git")).toBeVisible();
-  await expect(detail.locator("caffold-task-detail-github")).toBeVisible();
   if (await page.evaluate(() => window.innerWidth > 520)) {
     // The terminal button closes the Section header's controls; each control
     // draws its button in its own root.

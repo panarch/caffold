@@ -748,10 +748,6 @@ test("common chrome shares one icon slot and control geometry", () => {
       "pages/(task-workspace)/tasks/(detail)/components/git-menu.css",
       ".task-git-icon",
     ],
-    [
-      "pages/(task-workspace)/tasks/(detail)/components/github-menu.css",
-      ".task-github-icon",
-    ],
     ["components/file-viewer.css", ".viewer-info-icon"],
     ["pages/(task-workspace)/tasks/(detail)/(git)/layout.css", ".task-domain-back-icon"],
     ["pages/(task-workspace)/tasks/(detail)/(github)/layout.css", ".task-domain-back-icon"],
@@ -966,7 +962,6 @@ test("compact icon controls declare shared styles at their own component boundar
     ["pages/(task-workspace)/tasks/(detail)/(git)/components/controls", ".git-review-refresh"],
     ["pages/(task-workspace)/tasks/(detail)/components/terminal-button", ".task-terminal-button"],
     ["pages/(task-workspace)/tasks/(detail)/components/git-menu", ".task-git-button"],
-    ["pages/(task-workspace)/tasks/(detail)/components/github-menu", ".task-github-button"],
     ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info", ".task-detail-info-button"],
     ["pages/(task-workspace)/tasks/(detail)/terminal/page", ".terminal-page-bar > .terminal-page-button"],
   ]) {
@@ -1360,11 +1355,7 @@ test("text actions use the shared Interface metadata scale instead of root body 
     ],
     [
       "pages/(task-workspace)/tasks/(detail)/components/git-menu.css",
-      ".task-git-popover > button[data-git-button-action]",
-    ],
-    [
-      "pages/(task-workspace)/tasks/(detail)/components/github-menu.css",
-      ".task-github-popover > button[data-github-button-action]",
+      ".task-git-popover > button",
     ],
     ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css", ".task-detail-meta {"],
     ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css", ".task-detail-action {"],

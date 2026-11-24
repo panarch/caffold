@@ -292,11 +292,11 @@ fixed-context New Task. The view switch shows an icon before each view's name,
 and only the icons in a narrow window, such as a phone, a foldable, or a small
 desktop window; it keeps the same look on every view. The header names the
 subject: a Task by its title, a Section by its directory's name, with the full
-path on hover. Git and GitHub belong to a Task or Section in a Git repository;
-outside one, the header does not show them. Switching Task or Section context
-reloads repository data, while safe local state may survive surface switches
-within one context. If a Section loses repository capability, it returns to
-New Task.
+path on hover. For a Task or Section in a Git repository, the Git logo button
+opens one menu: Compare and Log, then, past a divider, Pull Requests and
+Issues. Switching Task or Section context reloads repository data, while safe
+local state may survive surface switches within one context. If a Section loses
+repository capability, it returns to New Task.
 
 ## Task Detail
 

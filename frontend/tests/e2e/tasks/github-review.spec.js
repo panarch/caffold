@@ -557,26 +557,22 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
   return { task, repository, github, counts, requests, controls, pull };
 }
 
-async function chooseLinkedWorktreeGithubList(page, kind) {
+async function chooseLinkedWorktreeGithubList(page, name) {
   const summary = page.locator("caffold-task-detail-summary");
   const detailHeader = page.locator(".detail-layout-summary");
   await expect(summary).toContainText("query-plan-limit-offset");
   const popover = detailHeader.locator(
-    "caffold-task-detail-github > .task-github-popover",
+    "caffold-task-detail-git > .task-git-popover",
   );
-  await detailHeader.getByRole("button", { name: "Open GitHub workspace" }).click();
+  await detailHeader.getByRole("button", { name: "Open Git and GitHub" }).click();
   await expect(popover).toBeVisible();
-  await detailHeader
-    .locator(
-      `caffold-task-detail-github button[data-github-button-action][data-review-kind="${kind}"]`,
-    )
-    .click();
+  await popover.getByRole("button", { name, exact: true }).click();
   await expect(popover).toBeHidden();
 }
 
 async function openLinkedWorktreePullRequests(page) {
   await page.goto(`/tasks/${THREAD_ID}`);
-  await chooseLinkedWorktreeGithubList(page, "pulls");
+  await chooseLinkedWorktreeGithubList(page, "Pull Requests");
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls`);
 }
 
@@ -597,7 +593,7 @@ async function rootPullTreeNames(tree) {
 
 async function openLinkedWorktreeIssue(page) {
   await page.goto(`/tasks/${THREAD_ID}`);
-  await chooseLinkedWorktreeGithubList(page, "issues");
+  await chooseLinkedWorktreeGithubList(page, "Issues");
   await activateActionHint(page, /Open issue #1984: Keep task GitHub lists fresh$/);
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/issues/1984`);
   return page.locator("caffold-github-issue-detail-page");
@@ -1458,13 +1454,13 @@ test("retains the same Task GitHub DOM and refreshes lists when reactivated", { 
   await page.waitForTimeout(150);
   expect(fixture.counts.pulls).toBe(1);
 
-  await chooseLinkedWorktreeGithubList(page, "pulls");
+  await chooseLinkedWorktreeGithubList(page, "Pull Requests");
   await expect.poll(() => fixture.counts.pulls).toBe(2);
   await expect(githubLayout).toHaveAttribute("data-test-identity", "retained");
 
   await page.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}`);
-  await chooseLinkedWorktreeGithubList(page, "issues");
+  await chooseLinkedWorktreeGithubList(page, "Issues");
   const issuesPage = page.locator("caffold-github-issues-list-page");
   const domainHeader = githubLayout.locator(
     ":scope > .task-github-surface > .task-domain-header",
@@ -1479,7 +1475,7 @@ test("retains the same Task GitHub DOM and refreshes lists when reactivated", { 
 
   await page.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}`);
-  await chooseLinkedWorktreeGithubList(page, "issues");
+  await chooseLinkedWorktreeGithubList(page, "Issues");
   await expect.poll(() => fixture.counts.issues).toBe(2);
 });
 
@@ -1488,7 +1484,7 @@ test("keeps loaded GitHub routes stable across unrelated Task stream updates", {
 }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
   await page.goto(`/tasks/${THREAD_ID}`);
-  await chooseLinkedWorktreeGithubList(page, "issues");
+  await chooseLinkedWorktreeGithubList(page, "Issues");
 
   const issuesPage = page.locator("caffold-github-issues-list-page");
   await expect(issuesPage).toContainText("Keep task GitHub lists fresh");
@@ -1512,7 +1508,7 @@ test("keeps loaded GitHub routes stable across unrelated Task stream updates", {
   await expect(issueDetail).toContainText("Fresh Task-owned Issue detail");
   expect(fixture.counts.issue).toBe(1);
 
-  await chooseLinkedWorktreeGithubList(page, "pulls");
+  await chooseLinkedWorktreeGithubList(page, "Pull Requests");
   const pullsPage = page.locator("caffold-github-pulls-list-page");
   await expect(pullsPage).toContainText("Reject unsupported table function arguments");
   expect(fixture.counts.pulls).toBe(1);
@@ -2521,9 +2517,9 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "
 }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
   await page.goto(`/tasks/${THREAD_ID}`);
-  await activateActionHintIntoPopover(page, /Open GitHub workspace$/);
+  await activateActionHintIntoPopover(page, /Open Git and GitHub$/);
   const githubPopover = page.locator(
-    ".detail-layout-summary caffold-task-detail-github > .task-github-popover",
+    ".detail-layout-summary caffold-task-detail-git > .task-git-popover",
   );
   await expect(githubPopover).toBeVisible();
   const githubHint = popoverActionHintDialog(page);
@@ -2532,7 +2528,7 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "
   await expect(githubHint).toBeHidden();
   await expect(githubPopover).toBeHidden();
   await page.locator(
-    ".detail-layout-summary caffold-task-detail-github > .task-github-button",
+    ".detail-layout-summary caffold-task-detail-git > .task-git-button",
   ).click();
   await expect(githubPopover).toBeVisible();
   await expect(githubHint).toBeHidden();
@@ -2580,7 +2576,7 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "
   await expect(issueDetail).toContainText("Fresh Task-owned Issue detail");
   expect(fixture.counts.issue).toBeGreaterThanOrEqual(3);
 
-  await chooseLinkedWorktreeGithubList(page, "pulls");
+  await chooseLinkedWorktreeGithubList(page, "Pull Requests");
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls`);
   await activateActionHint(page, /Older pull request page$/);
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls?page=2`);
@@ -2605,7 +2601,7 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "
   await expect(
     pullHints.getByLabel(/Start Task for pull request #1983$/),
   ).toBeVisible();
-  await expect(pullHints.getByLabel(/GitHub$/)).toHaveCount(0);
+  await expect(pullHints.getByLabel(/ — GitHub$/)).toHaveCount(0);
   await page.keyboard.press("Escape");
   await activateActionHint(page, /Open files for PR #1983$/);
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls/1983/files`);
@@ -2686,7 +2682,7 @@ test("rejects an inactive GitHub list response before the cached child is reacti
     json: githubPullsResponse("Stale pull request"),
   });
 
-  await chooseLinkedWorktreeGithubList(page, "pulls");
+  await chooseLinkedWorktreeGithubList(page, "Pull Requests");
   await expect.poll(() => pendingRoutes.length).toBe(2);
   await pendingRoutes[1].fulfill({
     json: githubPullsResponse("Fresh pull request"),
@@ -2708,7 +2704,7 @@ test("stops an older GitHub activation before it loads content for a replaced ro
 
   await page.goto(`/tasks/${THREAD_ID}/github/pulls`);
   await expect.poll(() => pendingStatus.length).toBe(1);
-  await chooseLinkedWorktreeGithubList(page, "issues");
+  await chooseLinkedWorktreeGithubList(page, "Issues");
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/issues`);
   await expect.poll(() => pendingStatus.length).toBe(2);
 
@@ -2783,7 +2779,7 @@ for (const list of [
     await page.clock.install();
     const shownPhrases = () => page.evaluate(() => window.listLoadingPhrases.length);
 
-    await chooseLinkedWorktreeGithubList(page, list.kind);
+    await chooseLinkedWorktreeGithubList(page, list.kind === "pulls" ? "Pull Requests" : "Issues");
     await expect.poll(() => pendingRoutes.length).toBe(1);
     const listPage = page.locator(list.element);
     const phrase = listPage.locator("caffold-loading-text");
@@ -2832,7 +2828,7 @@ test("Action Hints reach the issue list's page buttons in the pagination's shado
     });
   });
   await page.goto(`/tasks/${THREAD_ID}`);
-  await chooseLinkedWorktreeGithubList(page, "issues");
+  await chooseLinkedWorktreeGithubList(page, "Issues");
   const listPage = page.locator("caffold-github-issues-list-page");
   const firstRow = listPage.locator("button[data-issue-number]").first();
   await expect(firstRow).toContainText("on page 1");

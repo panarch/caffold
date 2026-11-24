@@ -1,9 +1,9 @@
 # GitHub
 
-The GitHub button, with the GitHub logo, at the top of a Task or a repository
-Section shows the repository's Issues and Pull Requests, and can start a Task
-from one of them. Caffold reads GitHub and does not post comments, reviews,
-or Pull Requests.
+In the header of a repository Task or Section, open the Git logo button.
+Choose **Pull Requests** or **Issues**. Open an item to inspect it or start a
+Task from it. Caffold reads GitHub and does not post comments, reviews, or Pull
+Requests.
 
 ![A Pull Request with Start Task](../assets/screenshots/github-pull-request-light-desktop.png#only-light)
 ![A Pull Request with Start Task](../assets/screenshots/github-pull-request-dark-desktop.png#only-dark)

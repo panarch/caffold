@@ -331,8 +331,6 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/components/git-menu.css.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/components/git-menu.js",
-  "/assets/pages/(task-workspace)/tasks/(detail)/components/github-menu.css.js",
-  "/assets/pages/(task-workspace)/tasks/(detail)/components/github-menu.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/components/terminal-button.css.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/components/terminal-button.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css.js",

@@ -1487,18 +1487,6 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/components/github-menu.css.js" => {
-            Some(js(include_str!(concat!(
-                env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/components/github-menu.css.js"
-            ))))
-        }
-        "pages/(task-workspace)/tasks/(detail)/components/github-menu.js" => {
-            Some(js(include_str!(concat!(
-                env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/components/github-menu.js"
-            ))))
-        }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
@@ -2864,6 +2852,7 @@ mod tests {
             "pages/(task-workspace)/tasks/(detail)/(task)/components/handoff-dialog.css",
             "pages/(task-workspace)/tasks/(detail)/(task)/components/task-fork-dialog.css",
             "pages/(task-workspace)/tasks/(detail)/(review)/components/places.css",
+            "pages/(task-workspace)/tasks/(detail)/components/git-menu.css",
             "pages/(task-workspace)/layout.css",
             "pages/(task-workspace)/notes/components/document.css",
             "pages/(task-workspace)/notes/components/info.css",
@@ -3008,7 +2997,6 @@ mod tests {
 
         for path in [
             "pages/(task-workspace)/tasks/(detail)/components/git-menu.js",
-            "pages/(task-workspace)/tasks/(detail)/components/github-menu.js",
             "pages/(task-workspace)/tasks/(detail)/components/terminal-button.js",
             "pages/(task-workspace)/tasks/(detail)/terminal/page.js",
         ] {

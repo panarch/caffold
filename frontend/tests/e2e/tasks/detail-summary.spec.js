@@ -589,8 +589,8 @@ test("keeps the task info leaf and popover stable across canonical sync", { tag:
   const detailHeader = page.locator(".detail-layout-summary");
   await expect(summary.locator(".task-detail-heading")).toBeVisible();
   await expect(
-    detailHeader.locator("caffold-task-detail-git, caffold-task-detail-github"),
-  ).toHaveCount(2);
+    detailHeader.getByRole("button", { name: "Open Git and GitHub" }),
+  ).toHaveCount(1);
   const taskDetailsButton = summary.getByRole("button", {
     name: /Task details/,
   });
@@ -729,9 +729,7 @@ test("offers Git and GitHub from the listed Section before Task details arrive",
   const heading = header.locator("caffold-task-detail-summary .task-detail-heading > h2");
   const viewSwitch = header.locator("caffold-segmented-control[data-detail-view-switch]");
   const git = header.locator("caffold-task-detail-git");
-  const github = header.locator("caffold-task-detail-github");
   const gitButton = git.locator(":scope > .task-git-button");
-  const githubButton = github.locator(":scope > .task-github-button");
   const headerHeight = () =>
     header.evaluate((element) => element.getBoundingClientRect().height);
 
@@ -740,14 +738,12 @@ test("offers Git and GitHub from the listed Section before Task details arrive",
   await expect(viewSwitch).toBeHidden();
   await expect(gitButton).toBeVisible();
   await expect(gitButton).toBeDisabled();
-  await expect(githubButton).toBeDisabled();
   const gitBoxBeforeDetails = await gitButton.boundingBox();
   const repositoryHeightBeforeDetails = await headerHeight();
   await captureReviewScreenshot(page, testInfo, "tasks-header-repository-before-details");
   await handOverDetails(repositoryTask);
   await expect(viewSwitch).toBeVisible();
   await expect(gitButton).toBeEnabled();
-  await expect(githubButton).toBeEnabled();
   expect(await gitButton.boundingBox()).toEqual(gitBoxBeforeDetails);
   expect(await headerHeight()).toBe(repositoryHeightBeforeDetails);
   await captureReviewScreenshot(page, testInfo, "tasks-header-repository");
@@ -756,13 +752,11 @@ test("offers Git and GitHub from the listed Section before Task details arrive",
   await expect(heading).toHaveText("Folder work");
   await expect(viewSwitch).toBeHidden();
   await expect(git).toBeHidden();
-  await expect(github).toBeHidden();
   const folderHeightBeforeDetails = await headerHeight();
   await captureReviewScreenshot(page, testInfo, "tasks-header-folder-before-details");
   await handOverDetails(folderTask);
   await expect(viewSwitch).toBeVisible();
   await expect(git).toBeHidden();
-  await expect(github).toBeHidden();
   // The view switch arrives with the details into a row already kept for it.
   expect(await headerHeight()).toBe(folderHeightBeforeDetails);
   await captureReviewScreenshot(page, testInfo, "tasks-header-folder");
@@ -1430,48 +1424,31 @@ test("uses light-dismiss review popovers and preserves them across same-Task syn
   const summary = page.locator("caffold-task-detail-summary");
   const detailHeader = page.locator(".detail-layout-summary");
   const gitTrigger = detailHeader.getByRole("button", {
-    name: "Open Git workspace",
-  });
-  const githubTrigger = detailHeader.getByRole("button", {
-    name: "Open GitHub workspace",
+    name: "Open Git and GitHub",
   });
   const infoTrigger = summary.getByRole("button", { name: /Task details/ });
   const gitPopover = detailHeader.locator(
     "caffold-task-detail-git > .task-git-popover",
   );
-  const githubPopover = detailHeader.locator(
-    "caffold-task-detail-github > .task-github-popover",
-  );
   const infoPopover = summary.locator(".task-detail-popover");
 
-  const [gitTarget, gitId, githubTarget, githubId] = await Promise.all([
+  const [gitTarget, gitId] = await Promise.all([
     gitTrigger.getAttribute("popovertarget"),
     gitPopover.getAttribute("id"),
-    githubTrigger.getAttribute("popovertarget"),
-    githubPopover.getAttribute("id"),
   ]);
   expect(gitTarget).toBe(gitId);
-  expect(githubTarget).toBe(githubId);
   await expect(gitPopover).toHaveAttribute("popover", "auto");
-  await expect(githubPopover).toHaveAttribute("popover", "auto");
   await expect(gitPopover).toHaveAttribute("role", "group");
-  await expect(githubPopover).toHaveAttribute("role", "group");
   await expect(detailHeader.getByRole("menuitem", { includeHidden: true })).toHaveCount(
     0,
   );
-  await expect(gitPopover.locator(":scope > button")).toHaveCount(2);
-  await expect(githubPopover.locator(":scope > button")).toHaveCount(2);
 
   await detailHeader.evaluate((element) => {
     const git = element.querySelector("caffold-task-detail-git");
-    const github = element.querySelector("caffold-task-detail-github");
     window.__taskReviewPopoverNodes = {
       git,
       gitTrigger: git.shadowRoot.querySelector(".task-git-button"),
       gitPopover: git.shadowRoot.querySelector(".task-git-popover"),
-      github,
-      githubTrigger: github.shadowRoot.querySelector(".task-github-button"),
-      githubPopover: github.shadowRoot.querySelector(".task-github-popover"),
     };
     window.__taskReviewSummaryIntents = [];
     element.addEventListener("caffold:task-detail-summary-intent", (event) => {
@@ -1481,11 +1458,11 @@ test("uses light-dismiss review popovers and preserves them across same-Task syn
 
   await gitTrigger.click();
   await expect(gitPopover).toBeVisible();
-  await githubTrigger.click();
-  await expect(gitPopover).toBeHidden();
-  await expect(githubPopover).toBeVisible();
+  await expect(gitPopover.getByRole("button")).toHaveText([
+    "Compare", "Log", "Pull Requests", "Issues",
+  ]);
   await infoTrigger.click();
-  await expect(githubPopover).toBeHidden();
+  await expect(gitPopover).toBeHidden();
   await expect(infoPopover).toBeVisible();
   // On a phone Task details spreads under its button over the actions row, so
   // it closes from its own button before Git opens.
@@ -1517,29 +1494,18 @@ test("uses light-dismiss review popovers and preserves them across same-Task syn
     await detailHeader.evaluate((element) => {
       const nodes = window.__taskReviewPopoverNodes;
       const git = element.querySelector("caffold-task-detail-git");
-      const github = element.querySelector("caffold-task-detail-github");
       return {
         git: nodes.git === git,
         gitTrigger:
           nodes.gitTrigger === git.shadowRoot.querySelector(".task-git-button"),
         gitPopover:
           nodes.gitPopover === git.shadowRoot.querySelector(".task-git-popover"),
-        github: nodes.github === github,
-        githubTrigger:
-          nodes.githubTrigger ===
-          github.shadowRoot.querySelector(".task-github-button"),
-        githubPopover:
-          nodes.githubPopover ===
-          github.shadowRoot.querySelector(".task-github-popover"),
       };
     }),
   ).toEqual({
     git: true,
     gitTrigger: true,
     gitPopover: true,
-    github: true,
-    githubTrigger: true,
-    githubPopover: true,
   });
 
   const taskUrl = page.url();
@@ -1563,6 +1529,14 @@ test("uses light-dismiss review popovers and preserves them across same-Task syn
   await expect(gitPopover).toBeHidden();
   await expect(gitTrigger).toBeFocused();
 
+  await gitTrigger.click();
+  await emitSummarySync(
+    page, threadId, summaryDetail({ ...renamedTask, worktree: null }, 3),
+    "repository-removed",
+  );
+  await expect(gitTrigger).toBeHidden();
+  await expect.poll(() => gitPopover.evaluate((element) => element.matches(":popover-open"))).toBe(false);
+
   await infoTrigger.click();
   await expect(infoPopover).toBeVisible();
   const settings = page.getByRole("button", { name: /^Settings/ });
@@ -1575,6 +1549,94 @@ test("uses light-dismiss review popovers and preserves them across same-Task syn
     await expect(page).toHaveURL(/\/settings(?:\/appearance)?$/);
   }
   await expect(infoPopover).toBeHidden();
+});
+
+test("closes the repository menu when the keyboard selects another Task in the same repository", { tag: "@server-changes" }, async ({ page }) => {
+  const first = summaryTask("thread_first", "First task", "shared-repo", 100);
+  const second = summaryTask("thread_second", "Second task", "shared-repo", 200);
+  await installSummaryFixture(page, [first, second]);
+  await page.goto(`/tasks/${first.threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(first));
+  const header = page.locator(".detail-layout-summary");
+  const trigger = header.getByRole("button", { name: "Open Git and GitHub" });
+  const menu = header.getByRole("group", { name: "Git and GitHub actions" });
+  await trigger.click();
+  await expect(menu).toBeVisible();
+  const otherTask = page.locator(`.task-row[data-thread-id="${second.threadId}"]`);
+  await otherTask.focus();
+  await expect(menu).toBeVisible();
+  await otherTask.press("Enter");
+  await expect(page).toHaveURL(`/tasks/${second.threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(second));
+  await expect(trigger).toBeEnabled();
+  await expect(menu).toBeHidden();
+});
+
+// The box of a menu of icon-and-name items, one item's placement inside it,
+// and the divider between groups, measured from the menu's own edges.
+function actionMenuGeometry(menu) {
+  const box = menu.getBoundingClientRect();
+  const style = getComputedStyle(menu);
+  const items = [...menu.children].filter((child) => child.localName === "button");
+  const rows = items.map((item) => {
+    const row = item.getBoundingClientRect();
+    const icon = item.querySelector("svg").getBoundingClientRect();
+    const name = item.querySelector(":scope > span:not(.sr-only)").getBoundingClientRect();
+    const itemStyle = getComputedStyle(item);
+    return JSON.stringify({
+      inset: row.left - box.left,
+      height: row.height,
+      icon: [icon.left - row.left, icon.top - row.top, icon.width, icon.height],
+      name: [name.left - row.left, name.top - row.top],
+      text: [itemStyle.fontSize, itemStyle.lineHeight, itemStyle.color],
+      radius: itemStyle.borderRadius,
+    });
+  });
+  const divider = menu.querySelector(":scope > hr");
+  const line = divider.getBoundingClientRect();
+  return {
+    box: [style.padding, style.borderTopWidth, style.borderTopColor, style.borderRadius],
+    surface: [style.backgroundColor, style.boxShadow],
+    ends: [
+      items[0].getBoundingClientRect().top - box.top,
+      box.bottom - items.at(-1).getBoundingClientRect().bottom,
+    ],
+    rows: [...new Set(rows)],
+    divider: [
+      line.top - divider.previousElementSibling.getBoundingClientRect().bottom,
+      divider.nextElementSibling.getBoundingClientRect().top - line.bottom,
+      line.left - box.left,
+      box.right - line.right,
+      line.height,
+      getComputedStyle(divider).backgroundColor,
+    ],
+  };
+}
+
+test("draws the repository menu as the Task list actions menu draws its items", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  const task = summaryTask("thread_summary_menu_parity", "Menu parity", "repo-menu-parity", 100);
+  await installSummaryFixture(page, [task]);
+
+  await page.goto("/tasks");
+  const navigator = page.locator("caffold-task-navigator");
+  await expect(navigator.locator(".task-row")).toHaveCount(1);
+  await navigator.getByRole("button", { name: "Task list actions" }).click();
+  const tasksMenu = navigator.locator(".task-list-actions-popover");
+  await expect(tasksMenu.locator("button svg")).toHaveCount(3);
+  const tasksGeometry = await tasksMenu.evaluate(actionMenuGeometry);
+  expect(tasksGeometry.rows).toHaveLength(1);
+  await page.keyboard.press("Escape");
+  await expect(tasksMenu).toBeHidden();
+
+  await page.goto(`/tasks/${task.threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(task));
+  const header = page.locator(".detail-layout-summary");
+  await header.getByRole("button", { name: "Open Git and GitHub" }).click();
+  const gitMenu = header.locator("caffold-task-detail-git > .task-git-popover");
+  await expect(gitMenu.locator("button svg")).toHaveCount(4);
+  expect(await gitMenu.evaluate(actionMenuGeometry)).toEqual(tasksGeometry);
 });
 
 test("keeps the task info spinner stable across equivalent detail activity", { tag: "@server-changes" }, async ({

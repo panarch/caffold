@@ -1113,12 +1113,12 @@ Active-list row to this layout, with whether the Section listing it is a Git
 repository. Canonical Detail remains preferred. When it is unavailable, the
 local row keeps only the common Task header identity and Archive action
 present; provider status is marked unavailable, provider cwd is omitted, and
-the view switch plus repository children remain canonical-Detail gated. The Git
-and GitHub menus show by the listed Section's repository capability but stay
-disabled until canonical Detail names the Task's own checkout, which a linked
-worktree places apart from the Section's repository root. Outside a Git
-repository they are absent, not disabled. On a phone, a Task header keeps the
-view switch's row while it waits. A Task switch, deactivation, successful
+the view switch plus repository children remain canonical-Detail gated. The
+shared Git and GitHub menu appears when the listed Section is a repository.
+Its button stays disabled until canonical Detail names the Task's checkout,
+which can be a linked worktree apart from the Section's repository root.
+Outside a Git repository the header hides the button. On a phone, a Task header keeps
+the view switch's row while it waits. A Task switch, deactivation, successful
 Archive, or an archived or missing Task clears that fallback identity.
 
 `caffold-task-detail` is the canonical owner of the selected Task
@@ -1976,7 +1976,7 @@ keyboard. The measurement counts nothing while the page is pinch-zoomed. Other
 screens keep the browser's default of panning to the focused input.
 
 The header button `caffold-task-detail-terminal` belongs to Detail, beside the
-Git and GitHub menus. It only reports a press; Detail decides whether that
+shared Git and GitHub menu. It only reports a press; Detail decides whether that
 enters or leaves the terminal. On a Task it is unavailable until the canonical
 Task supplies its working directory.
 
@@ -2562,7 +2562,6 @@ frontend/
 |               |-- layout.ts
 |               |-- components/
 |               |   |-- git-menu.ts
-|               |   |-- github-menu.ts
 |               |   `-- terminal-button.ts
 |               |-- terminal/
 |               |   |-- page.ts
