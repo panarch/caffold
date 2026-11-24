@@ -153,7 +153,7 @@ export class CaffoldTaskDetailGit extends CaffoldElement {
             intent.surface === "git"
               ? ACTION_HINT_ACTION.GIT_DESTINATION
               : ACTION_HINT_ACTION.GITHUB_DESTINATION,
-          badgeAt: "top-right",
+          badgeAt: "center-right",
         })}
         type="button"
         popovertarget=${this.popoverId}

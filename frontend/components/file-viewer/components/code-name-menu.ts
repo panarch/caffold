@@ -61,7 +61,7 @@ export class CaffoldCodeNameMenu extends CaffoldElement {
           label: "Go to definition",
           action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
           when: !starting,
-          badgeAt: "top-right",
+          badgeAt: "center-right",
         })}
         type="button"
         data-code-name-action="definition"
@@ -74,7 +74,7 @@ export class CaffoldCodeNameMenu extends CaffoldElement {
           label: "Find references",
           action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
           when: !starting,
-          badgeAt: "top-right",
+          badgeAt: "center-right",
         })}
         type="button"
         data-code-name-action="references"

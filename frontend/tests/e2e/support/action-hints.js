@@ -55,6 +55,21 @@ export async function waitForActionHintTarget(page, accessibleName) {
   }).toBe(true);
 }
 
+// Whether a badge ends where its row ends and is centred on the row's height.
+export async function badgeAtRowEndMiddle(badge, row) {
+  const [badgeBox, rowBox] = await Promise.all([
+    badge.boundingBox(),
+    row.boundingBox(),
+  ]);
+  if (!badgeBox || !rowBox) {
+    return null;
+  }
+  return {
+    atEnd: Math.abs(badgeBox.x + badgeBox.width - (rowBox.x + rowBox.width)) <= 0.5,
+    middle: Math.abs(badgeBox.y + badgeBox.height / 2 - (rowBox.y + rowBox.height / 2)) <= 0.5,
+  };
+}
+
 // The workspace's Action Hint targets whose id starts with `prefix`, by the
 // rest of the id and their label.
 export function workspaceTargets(page, prefix) {

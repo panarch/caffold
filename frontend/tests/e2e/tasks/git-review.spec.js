@@ -8,6 +8,7 @@ import {
   actionHintDialog,
   activateActionHint,
   activateActionHintIntoPopover,
+  badgeAtRowEndMiddle,
   enterActionHints,
   popoverActionHintDialog,
   waitForActionHintTarget,
@@ -431,6 +432,10 @@ test("opens Git and selects its destination through declared keyboard contexts",
   ).toBeVisible();
   const compare = hint.getByRole("button", { name: / — Compare$/ });
   await expect(compare).toBeVisible();
+  await expect.poll(() => badgeAtRowEndMiddle(
+    compare,
+    popover.getByRole("button", { name: "Compare", exact: true }),
+  )).toEqual({ atEnd: true, middle: true });
   await expect.poll(() => actionHintBadgePresentation(compare)).toEqual({
     backgroundMatches: true,
     borderVisible: true,
