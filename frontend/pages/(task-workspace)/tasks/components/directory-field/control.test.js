@@ -404,3 +404,111 @@ test("the field's own choice handed back is not a change of context", () => {
   assert.equal(echoed.state.node, "browsing");
   assert.deepEqual(echoed.effects, []);
 });
+
+function keptOpenAt(path, names) {
+  const opened = run(initialDirectoryFieldState(), {
+    type: "context",
+    path,
+    server: SERVER,
+    locked: false,
+    keepOpen: true,
+  });
+  return run(opened.state, {
+    type: "listing-loaded",
+    generation: lastRequest(opened.effects).generation,
+    directory: directory(path, names),
+  }).state;
+}
+
+test("a field kept open browses as soon as it has a context", () => {
+  const opened = run(initialDirectoryFieldState(), {
+    type: "context",
+    path: HOME,
+    server: SERVER,
+    locked: false,
+    keepOpen: true,
+  });
+  assert.equal(opened.state.node, DIRECTORY_FIELD_NODE.BROWSING);
+  assert.deepEqual(opened.effects, [
+    { type: "request", generation: 1, path: HOME },
+  ]);
+});
+
+test("a field kept open stays open on toggle, Escape, and leaving", () => {
+  const state = keptOpenAt(HOME, ["Workspace"]);
+  for (const type of ["toggle-list", "escape", "leave"]) {
+    const result = run(state, { type });
+    assert.equal(result.state, state, type);
+    assert.deepEqual(result.effects, [], type);
+  }
+});
+
+test("leaving a field kept open while typing drops the typed path and keeps the list", () => {
+  const typed = run(
+    keptOpenAt(HOME, ["Workspace"]),
+    { type: "toggle-edit" },
+    { type: "type", text: "~/Wor" },
+  );
+  const left = run(typed.state, { type: "leave" });
+  assert.equal(left.state.node, DIRECTORY_FIELD_NODE.BROWSING);
+  assert.equal(left.state.path, HOME);
+  assert.equal(left.state.text, "");
+  assert.equal(left.state.typed, null);
+  assert.deepEqual(left.effects, []);
+});
+
+test("Enter in a field kept open chooses the typed path and returns to its list", () => {
+  const submitted = run(
+    keptOpenAt(HOME, ["Workspace"]),
+    { type: "toggle-edit" },
+    { type: "type", text: "~/Workspace" },
+    { type: "submit" },
+  );
+  const chosen = run(submitted.state, {
+    type: "listing-loaded",
+    generation: lastRequest(submitted.effects).generation,
+    directory: directory(`${HOME}/Workspace`, ["rust"]),
+  });
+  assert.equal(chosen.state.node, DIRECTORY_FIELD_NODE.BROWSING);
+  assert.equal(chosen.state.path, `${HOME}/Workspace`);
+  assert.equal(chosen.state.text, "");
+  assert.deepEqual(chosen.effects, [
+    { type: "choose", path: `${HOME}/Workspace`, returnFocus: false },
+    { type: "focus", target: "toggle" },
+  ]);
+});
+
+test("a field kept open lists a directory handed down instead of closing", () => {
+  const moved = run(keptOpenAt(HOME, ["Workspace"]), {
+    type: "context",
+    path: RUST,
+    server: SERVER,
+    locked: false,
+    keepOpen: true,
+  });
+  assert.equal(moved.state.node, DIRECTORY_FIELD_NODE.BROWSING);
+  assert.equal(lastRequest(moved.effects).path, RUST);
+});
+
+test("only deactivation or a lock closes a field kept open, and its next context opens it", () => {
+  const state = keptOpenAt(HOME, ["Workspace"]);
+  const deactivated = run(state, { type: "deactivate" });
+  assert.equal(deactivated.state.node, DIRECTORY_FIELD_NODE.CLOSED);
+  const locked = run(state, {
+    type: "context",
+    path: HOME,
+    server: SERVER,
+    locked: true,
+    keepOpen: true,
+  });
+  assert.equal(locked.state.node, DIRECTORY_FIELD_NODE.CLOSED);
+  const reopened = run(deactivated.state, {
+    type: "context",
+    path: HOME,
+    server: SERVER,
+    locked: false,
+    keepOpen: true,
+  });
+  assert.equal(reopened.state.node, DIRECTORY_FIELD_NODE.BROWSING);
+  assert.equal(lastRequest(reopened.effects).path, HOME);
+});

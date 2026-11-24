@@ -773,11 +773,11 @@ do not enumerate or reach through descendant DOM. A retained pane with no
 layout box is omitted before merge, so its hidden mutation and scroll
 dependencies cannot invalidate the visible pane's session.
 
-The thirteen registered Task Workspace product dialogs follow the same
+The fourteen registered Task Workspace product dialogs follow the same
 owner-first contract: Codex restart, Codex update, Claude restart,
 archived-task deletion, Task switcher, image preview, Conversation fork,
-command output, tool call details, code-block Markdown preview, code-block
-Mermaid preview, Current Plan document, and GitHub Task Start. Every currently
+Task fork, command output, tool call details, code-block Markdown preview,
+code-block Mermaid preview, Current Plan document, and GitHub Task Start. Every currently
 visible and enabled button has
 an owner declaration, without semantic deduplication, and controls owned by a
 direct child compose through the same public scope interface. Fork additionally
@@ -1138,6 +1138,19 @@ notice already stands there, and hands it to the Composer, which holds its
 requests and titles Send and its locked turn options with it. Task actions
 hold their language-server requests on the same snapshot value.
 Leaving the Task resets the confirmation without returning focus to the old Task.
+
+Task Detail's `task-fork-dialog` owns forking the open Task: the chosen folder,
+the request and its generation, the created child, and focus return to the
+Task details button. Its closed, choosing, and forking phases change through
+one transition table; dismissal waits while forking, and deactivation rejects
+a later completion. The Fork task row only asks Task Detail to open it with
+the folder New Task would start in and whether the Task runs in its own linked
+worktree. The dialog hands the created child to the existing
+`caffold:task-created` owner and keeps a child that was not opened, so the next
+press opens it instead of forking again. A failure stays in the dialog and is
+published as `caffold:task-fork-failed`, through which Task Detail shows the
+Task's absence when the failure says the Task is gone. Leaving the Task
+deactivates the dialog.
 
 For keyboard navigation, each of these layout owners merges only the public
 scope of the child it currently presents. `caffold-tasks-page` composes Task
@@ -2055,7 +2068,13 @@ the app shell hands down the Tasks surfaces. It publishes its toggle, edit
 button, and folder rows as Action Hints and its list as a scroll surface
 through Task Create's scopes. Escape in its path input belongs to the field:
 the workspace gives that input no editing escape target, as it does for the
-terminal, and the field steps back to its list.
+terminal, and the field steps back to its list. An owner whose surface exists
+to choose the directory, such as the Task fork dialog, keeps the list open: the
+field then browses as soon as it has a context, draws no disclosure, keeps its
+list at a fixed height from before its first folders arrive, and closes only
+when deactivated or locked. Leaving it
+or Escape while typing ends only the typing, and Escape while browsing is left
+to the surrounding dialog.
 
 The directory field and path helpers live at the common Tasks component
 boundary. Section folder recovery reuses that field in the existing Section

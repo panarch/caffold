@@ -22,7 +22,6 @@ import { openCompletedTaskForReview } from "../support/task-review-test.js";
 const PIN_ICON = 'svg path[d^="M9 10.76"]';
 const PIN_OFF_ICON = 'svg path[d="m2 2 20 20"]';
 const SPLIT_ICON = 'svg path[d="M16 3h5v5"]';
-const ARROW_RIGHT_ICON = 'svg path[d="m12 5 7 7-7 7"]';
 const BUSY_ICON = '.task-detail-action-icon.is-busy svg path[d="M21 12a9 9 0 1 1-6.2-8.6"]';
 // And for the view switch's choices.
 const VIEW_ICONS = {
@@ -769,8 +768,66 @@ test("offers Git and GitHub from the listed Section before Task details arrive",
   await captureReviewScreenshot(page, testInfo, "tasks-header-folder");
 });
 
-for (const provider of ["codex", "claude", "grok"]) {
-test(`forks an idle ${provider} Task and opens the distinct child`, { tag: "@server-changes" }, async ({
+// Folders as the server lists them, below a server root of `/`. A path in
+// `hold` answers only once its promise settles.
+async function installFolders(page, listings, { hold = new Map() } = {}) {
+  const requests = [];
+  await page.route(/\/api\/list(?:\?|$)/, async (route) => {
+    const path = new URL(route.request().url()).searchParams.get("path") ?? "";
+    requests.push(path);
+    await hold.get(path);
+    if (!(path in listings)) {
+      return route.fulfill({
+        status: 404,
+        json: { error: { code: "not_found", message: `path not found: ${path}` } },
+      });
+    }
+    return route.fulfill({
+      json: {
+        root: "/",
+        path,
+        git: null,
+        entries: listings[path].map((name) => ({
+          name,
+          path: [path, name].filter(Boolean).join("/"),
+          kind: "directory",
+          isSymlink: false,
+          supported: true,
+          gitIgnored: false,
+          git: null,
+        })),
+      },
+    });
+  });
+  return requests;
+}
+
+function forkDialog(page) {
+  return page.getByRole("dialog", { name: "Fork task" });
+}
+
+function folderRow(dialog, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const exact = new RegExp(`^${escaped}$`);
+  return dialog.locator("caffold-file-tree button.file-tree-entry").filter({
+    has: dialog.page().locator(".file-tree-name", { hasText: exact }),
+  });
+}
+
+// Opens the fork dialog from the Task's details.
+async function openForkDialog(page) {
+  const summary = page.locator("caffold-task-detail-summary");
+  await summary.getByRole("button", { name: /Task details/ }).click();
+  await summary
+    .locator('.task-detail-popover [data-task-info-action="fork"]')
+    .click();
+  const dialog = forkDialog(page);
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+for (const provider of ["codex", "claude", "grok", "copilot"]) {
+test(`forks an idle ${provider} Task into a chosen folder and opens the distinct child`, { tag: "@server-changes" }, async ({
   page,
 }) => {
   const sourceThreadId = "thread_summary_fork_source";
@@ -781,18 +838,18 @@ test(`forks an idle ${provider} Task and opens the distinct child`, { tag: "@ser
     worktree: null,
   };
   const child = {
-    ...summaryTask(childThreadId, "Fork of Source task", rootPath, 101),
+    ...summaryTask(childThreadId, "Fork of Source task", `${rootPath}/other`, 101),
     worktree: null,
   };
   const childDetail = { ...summaryDetail(child), provider };
   const childFork = createdTaskResponse(childDetail, {
     section: {
-      id: "fixture-section-1",
-      name: rootPath,
+      id: "section-fork-other",
+      name: `${rootPath}/other`,
       repository: false,
     },
-    beforeSectionId: null,
-    beforeThreadId: sourceThreadId,
+    beforeSectionId: "fixture-section-1",
+    beforeThreadId: null,
   });
   let releaseFork;
   const forkGate = new Promise((resolve) => {
@@ -802,11 +859,15 @@ test(`forks an idle ${provider} Task and opens the distinct child`, { tag: "@ser
   const forkObserved = new Promise((resolve) => {
     observeFork = resolve;
   });
-  let requestCount = 0;
+  const forkBodies = [];
   await installSummaryFixture(page, [source]);
+  await installFolders(page, {
+    [rootPath]: ["docs", "other"],
+    [`${rootPath}/other`]: [],
+  });
   await page.route(`**/api/tasks/${sourceThreadId}/fork`, async (route) => {
-    requestCount += 1;
     expect(route.request().method()).toBe("POST");
+    forkBodies.push(route.request().postDataJSON());
     observeFork();
     await forkGate;
     await route.fulfill({ json: childFork });
@@ -827,37 +888,147 @@ test(`forks an idle ${provider} Task and opens the distinct child`, { tag: "@ser
 
   const hint = popoverActionHintDialog(page);
   await expect(hint).toBeVisible();
-  await expect(
-    hint.getByRole("button", { name: / — Archive task$/ }),
-  ).toBeVisible();
   const forkHint = hint.getByRole("button", { name: / — Fork task$/ });
   const forkCode = await forkHint.getAttribute("data-action-hint-code");
   expect(forkCode).toBeTruthy();
   await page.keyboard.type(forkCode.toLowerCase());
-  await forkObserved;
-  await expect(forkButton).toBeDisabled();
-  await expect(forkButton.locator(".task-detail-action-label")).toHaveText("Forking...");
-  await expect(forkButton.locator(BUSY_ICON)).toHaveCount(1);
-  await expect(forkButton.locator(".task-detail-action-icon")).toHaveCSS(
-    "animation-name",
-    "caffold-busy-spin",
+
+  // Opening the dialog forks nothing yet.
+  const dialog = forkDialog(page);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".description p")).toHaveText([
+    "Copies this Task's conversation into a new Task in the folder you choose.",
+    "Files are not copied.",
+  ]);
+  const field = dialog.locator("caffold-task-directory-field");
+  await expect(field).toHaveAttribute("data-node", "browsing");
+  await expect(field.locator(".task-directory-field-path")).toHaveText(rootPath);
+  await expect(field.locator(".task-directory-field-chevron")).toBeHidden();
+
+  await folderRow(dialog, "other").click();
+  await expect(field.locator(".task-directory-field-path")).toHaveText(
+    `${rootPath}/other`,
   );
-  await expect(
-    popover.locator('[data-task-info-action="archive"]'),
-  ).toBeDisabled();
+  await expect(field).toHaveAttribute("data-node", "browsing");
+
+  const submit = dialog.locator('[data-task-fork-action="fork"]');
+  await submit.click();
+  await forkObserved;
+  await expect(submit).toBeDisabled();
+  await expect(submit).toHaveText("Forking…");
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
   releaseFork();
 
   await expect(page).toHaveURL(new RegExp(`/tasks/${childThreadId}$`));
+  await expect(dialog).toBeHidden();
   await expect(page.locator("caffold-task-detail-summary h2")).toHaveText(
     "Fork of Source task",
   );
   await expect(
     page.locator("caffold-task-navigator .task-row-title"),
   ).toHaveText(["Fork of Source task", "Source task"]);
-  expect(requestCount).toBe(1);
+  expect(forkBodies).toEqual([{ cwd: `${rootPath}/other` }]);
 });
 
 }
+
+test("the fork dialog keeps its size from opening while folders are browsed and a path is typed", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const rootPath = "repo-fork-size";
+  const task = {
+    ...summaryTask("thread_fork_size", "Worktree task", `${rootPath}-worktree`, 100),
+    worktree: {
+      rootPath: `${rootPath}-worktree`,
+      repositoryRootPath: rootPath,
+      branch: "a-branch-name-long-enough-to-matter-in-a-sentence",
+      headSha: "0123456789abcdef",
+      relativeCwd: "",
+      linked: true,
+    },
+  };
+  await installSummaryFixture(page, [task]);
+  let releaseFirstFolders;
+  const firstFolders = new Promise((resolve) => {
+    releaseFirstFolders = resolve;
+  });
+  const listRequests = await installFolders(
+    page,
+    {
+      [rootPath]: Array.from({ length: 30 }, (_, index) => `folder-${index}`),
+      [`${rootPath}/folder-0`]: [],
+    },
+    { hold: new Map([[rootPath, firstFolders]]) },
+  );
+
+  await page.goto(`/tasks/${task.threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(task));
+  const dialog = await openForkDialog(page);
+  const size = () =>
+    dialog.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return [Math.round(box.width), Math.round(box.height)];
+    });
+  // Opened while its first folders are on their way, the dialog already has
+  // the size it keeps.
+  await expect.poll(() => listRequests.includes(rootPath)).toBe(true);
+  const waiting = await size();
+  releaseFirstFolders();
+  await expect(dialog.locator(".description p").nth(1)).toHaveText(
+    "The new Task won't have the changes in this Task's worktree.",
+  );
+  const field = dialog.locator("caffold-task-directory-field");
+  await expect(field.locator(".task-directory-field-path")).toHaveText(rootPath);
+  await expect(folderRow(dialog, "folder-29")).toHaveCount(1);
+  const opened = await size();
+  expect(opened).toEqual(waiting);
+  // With no list toggle, the edit glyph sits as far from the box's right edge
+  // as the folder glyph from its left.
+  const insets = await field.evaluate((element) => {
+    const root = element.shadowRoot;
+    const box = root.querySelector(".task-directory-field-box").getBoundingClientRect();
+    const folder = root.querySelector(".task-directory-field-icon svg").getBoundingClientRect();
+    const edit = root.querySelector(".task-directory-field-edit svg").getBoundingClientRect();
+    return { left: folder.left - box.left, right: box.right - edit.right };
+  });
+  expect(Math.abs(insets.left - insets.right)).toBeLessThanOrEqual(1);
+  // One row: the path, its glyphs, and the edit button share the box's middle.
+  const middles = await field.evaluate((element) => {
+    const root = element.shadowRoot;
+    const middle = (selector) => {
+      const box = root.querySelector(selector).getBoundingClientRect();
+      return Math.round((box.top + box.bottom) / 2);
+    };
+    return [
+      middle(".task-directory-field-box"),
+      middle(".task-directory-field-icon"),
+      middle(".task-directory-field-path"),
+      middle(".task-directory-field-edit"),
+    ];
+  });
+  expect(new Set(middles).size, `${middles}`).toBe(1);
+  await captureReviewScreenshot(page, testInfo, "task-fork-dialog");
+
+  // Into an empty folder: only the parent row where thirty folders were.
+  await folderRow(dialog, "folder-0").click();
+  await expect(field.locator(".task-directory-field-path")).toHaveText(
+    `${rootPath}/folder-0`,
+  );
+  await expect(field.locator("caffold-file-tree .file-tree-name")).toHaveText([".."]);
+  expect(await size()).toEqual(opened);
+
+  // Typing a path into a folder that cannot be listed.
+  await field.getByRole("button", { name: "Type a path" }).click();
+  await expect(field).toHaveAttribute("data-node", "editing");
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type("nowhere/missing");
+  await expect(field.locator(".task-directory-field-error")).toHaveText(
+    "path not found: nowhere",
+  );
+  expect(await size()).toEqual(opened);
+});
 
 test("pins and unpins the open Task, holding the button until the list reads it back", { tag: "@server-changes" }, async ({
   page,
@@ -1051,10 +1222,11 @@ test("leaves Fork out of an Antigravity Task's details", { tag: "@server-steady"
   await expect(popover.locator('[data-task-info-action="fork"]')).toHaveCount(0);
 });
 
-test("offers Open forked task under a dimmed Fork when the creation response reports unavailable details, and opens the claimed fork", { tag: "@server-steady" }, async ({ page }) => {
+test("offers Open forked task in the fork dialog when the creation response reports unavailable details, and opens the claimed fork", { tag: "@server-steady" }, async ({ page }) => {
   const task = summaryTask("fork_response_source", "Source", "repo", 100);
   const child = summaryTask("fork_response_child", "Fork of Source", "repo", 101);
   await installSummaryFixture(page, [task]);
+  await installFolders(page, { repo: [] });
   let requests = 0;
   await page.route(`**/api/tasks/${task.threadId}/fork`, route => {
     requests++;
@@ -1063,34 +1235,16 @@ test("offers Open forked task under a dimmed Fork when the creation response rep
   await page.route(`**/api/tasks/${child.threadId}`, route => route.fulfill({json:summaryDetail(child)}));
   await page.goto(`/tasks/${task.threadId}`);
   await emitTaskDetailBootstrap(page, summaryDetail(task));
-  const summary = page.locator("caffold-task-detail-summary");
-  await summary.getByRole("button", {name:/Task details/}).click();
-  const popover = summary.locator(".task-detail-popover");
-  const fork = popover.locator('[data-task-info-action="fork"]');
-  await fork.click();
-  const under = popover.locator('[data-task-info-action="fork"] + .task-detail-action-under');
-  const open = under.getByRole("link", { name: "Open forked task" });
-  await expect(open).toHaveAttribute("href", `/tasks/${child.threadId}`);
-  await expect(open.locator(ARROW_RIGHT_ICON)).toHaveCount(1);
-  // Fork stays in its place, dimmed, so the list does not move.
-  await expect(fork).toBeDisabled();
-  await expect(fork.locator(".task-detail-action-label")).toHaveText("Fork task");
-  const error = under.locator(".task-detail-fork-error");
+  const dialog = await openForkDialog(page);
+  const submit = dialog.locator('[data-task-fork-action="fork"]');
+  await submit.click();
+  const error = dialog.locator(".error");
   await expect(error).toHaveText("The fork was created; details are temporarily unavailable.");
-  expect(await error.evaluate(
-    (element, link) => Boolean(element.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING),
-    await open.elementHandle(),
-  )).toBe(true);
-  // The link is the small bordered button, not underlined.
-  const look = await open.evaluate((element) => {
-    const style = getComputedStyle(element);
-    const frame = getComputedStyle(element, "::before");
-    return {
-      textDecorationLine: style.textDecorationLine,
-      frame: [frame.borderTopWidth, frame.borderTopLeftRadius],
-    };
-  });
-  expect(look).toEqual({ textDecorationLine: "none", frame: ["1px", "5px"] });
+  const open = dialog.getByRole("link", { name: "Open forked task" });
+  await expect(open).toHaveAttribute("href", `/tasks/${child.threadId}`);
+  // Fork stays in its place, dimmed, so nothing forks again.
+  await expect(submit).toBeDisabled();
+  await expect(submit).toHaveText("Fork task");
   await open.click();
   await expect(page).toHaveURL(new RegExp(`/tasks/${child.threadId}$`));
   expect(requests).toBe(1);
@@ -1111,6 +1265,7 @@ test("opens the fork it made when the screen could not open it, without forking 
   const childDetail = summaryDetail(child);
   let requests = 0;
   await installSummaryFixture(page, [source]);
+  await installFolders(page, { [rootPath]: [] });
   await page.route(`**/api/tasks/${source.threadId}/fork`, (route) => {
     requests += 1;
     return route.fulfill({
@@ -1138,24 +1293,22 @@ test("opens the fork it made when the screen could not open it, without forking 
       }
     }, { capture: true });
   });
-  const summary = page.locator("caffold-task-detail-summary");
-  await summary.getByRole("button", { name: /Task details/ }).click();
-  const popover = summary.locator(".task-detail-popover");
-  const fork = popover.locator('[data-task-info-action="fork"]');
-  await fork.click();
+  const dialog = await openForkDialog(page);
+  const submit = dialog.locator('[data-task-fork-action="fork"]');
+  await submit.click();
 
-  await expect(popover.locator(".task-detail-fork-error")).toHaveText(
+  await expect(dialog.locator(".error")).toHaveText(
     "The forked Task was created but could not be opened. Retry to open the same Task.",
   );
-  await expect(fork.locator(".task-detail-action-label")).toHaveText("Fork task");
-  await expect(fork.locator(SPLIT_ICON)).toHaveCount(1);
-  await expect(fork).toBeEnabled();
+  await expect(submit).toHaveText("Open forked task");
+  await expect(submit).toBeEnabled();
 
   await page.evaluate(() => {
     window.holdTaskHandoff = false;
   });
-  await fork.click();
+  await submit.click();
   await expect(page).toHaveURL(new RegExp(`/tasks/${child.threadId}$`));
+  await expect(dialog).toBeHidden();
   expect(requests).toBe(1);
 });
 
@@ -1223,7 +1376,7 @@ test("Task details follow-up buttons place their icons as File details places Do
   }
 });
 
-test("keeps the source selected and shows a fork failure inline", { tag: "@server-steady" }, async ({
+test("keeps the source selected and shows a fork failure in the dialog", { tag: "@server-steady" }, async ({
   page,
 }) => {
   const threadId = "thread_summary_fork_failure";
@@ -1232,6 +1385,7 @@ test("keeps the source selected and shows a fork failure inline", { tag: "@serve
     worktree: null,
   };
   await installSummaryFixture(page, [task]);
+  await installFolders(page, { "repo-fork-failure": [] });
   await page.route(`**/api/tasks/${threadId}/fork`, (route) =>
     route.fulfill({
       status: 409,
@@ -1246,16 +1400,17 @@ test("keeps the source selected and shows a fork failure inline", { tag: "@serve
 
   await page.goto(`/tasks/${threadId}`);
   await emitTaskDetailBootstrap(page, summaryDetail(task));
-  const summary = page.locator("caffold-task-detail-summary");
-  await summary.getByRole("button", { name: /Task details/ }).click();
-  const popover = summary.locator(".task-detail-popover");
-  await popover.locator('[data-task-info-action="fork"]').click();
+  const dialog = await openForkDialog(page);
+  const submit = dialog.locator('[data-task-fork-action="fork"]');
+  await submit.click();
 
-  await expect(popover.locator(".task-detail-fork-error")).toHaveText(
+  await expect(dialog.locator(".error")).toHaveText(
     "The source Task changed while Codex was forking it.",
   );
   await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}$`));
-  await expect(popover.locator('[data-task-info-action="fork"]')).toBeEnabled();
+  await expect(submit).toBeEnabled();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
 });
 
 test("uses light-dismiss review popovers and preserves them across same-Task sync", { tag: "@all-viewports" }, async ({

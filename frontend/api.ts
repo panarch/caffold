@@ -545,13 +545,15 @@ export async function forceArchiveTask(
   );
 }
 
-// A new Task that starts from this one's conversation.
-export async function forkTask(threadId: string) {
+// A new Task that starts from this one's conversation in `cwd`, a directory
+// below the server root as a new Task's is.
+export async function forkTask(threadId: string, { cwd }: { cwd: string }) {
   return requestJson<CreatedTask>(
     `/api/tasks/${encodeURIComponent(threadId)}/fork`,
     {},
     {
       method: "POST",
+      body: { cwd },
     },
   );
 }

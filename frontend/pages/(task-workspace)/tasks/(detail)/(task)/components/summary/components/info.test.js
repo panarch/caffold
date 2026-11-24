@@ -297,16 +297,6 @@ test("keeps Archive available through stale transport unless canonical status is
       disabled: true,
     },
   );
-  assert.deepEqual(
-    drawnActions({ task, forkState: { loading: true, error: null } }).row(
-      "archive",
-    ),
-    {
-      label: "Archive task",
-      description: "Unavailable while the Task is forking.",
-      disabled: true,
-    },
-  );
   const archiving = drawnActions({
     task,
     archiveState: { loading: true, error: null },
@@ -390,30 +380,6 @@ test("leaves Fork out for an agent that cannot fork, and says why another cannot
     fork({ task: { threadId: "thread-a", threadStatus: { type: "active", activeFlags: [] } } })
       .description,
     "Available when the Task is idle.",
-  );
-  assert.deepEqual(fork({ forkState: { loading: true, error: null } }), {
-    label: "Forking...",
-    description: "Copies the conversation, not the files, into a new Task.",
-    disabled: true,
-  });
-});
-
-test("keeps Fork dimmed and offers Open forked task under it when the fork was made but could not be opened", () => {
-  const error = Object.assign(
-    new Error("The fork was created, but its details could not be opened: gone"),
-    { createdTaskId: "child-1" },
-  );
-  const drawn = drawnActions({
-    task: { threadId: "thread-a", threadStatus: IDLE },
-    canonicalTaskAvailable: true,
-    transportState: "ready",
-    provider: "claude",
-    forkState: { loading: false, error },
-  });
-  assert.equal(drawn.row("fork").disabled, true);
-  assert.match(
-    drawn.under("fork"),
-    /task-detail-fork-error" role="alert" >The fork was created, but its details could not be opened: gone<.*href="\/tasks\/child-1".*<span>Open forked task<\/span>/,
   );
 });
 

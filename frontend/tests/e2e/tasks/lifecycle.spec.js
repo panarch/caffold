@@ -2402,7 +2402,7 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
   const tasksPage = page.locator("caffold-tasks-page");
   await expect(taskWorkspace.locator("caffold-task-navigator")).toBeVisible();
   await expect(
-    tasksPage.locator("caffold-task-directory-field"),
+    tasksPage.locator("caffold-task-new caffold-task-directory-field"),
   ).toHaveAttribute("data-node", "closed");
 
   // A picker whose lists have settled has nothing to ask for when it returns.

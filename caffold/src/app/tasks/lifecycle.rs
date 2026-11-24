@@ -35,7 +35,7 @@ mod handoff;
 mod initial_request_name;
 
 use crate::git;
-pub(in crate::app::tasks) use fork::{ForkTask, ForkTaskSource};
+pub(in crate::app::tasks) use fork::{ForkTarget, ForkTask, ForkTaskSource};
 
 pub(in crate::app::tasks) struct CreateTask {
     pub(in crate::app::tasks) cwd: String,

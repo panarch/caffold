@@ -1,4 +1,4 @@
-import { html } from "lit";
+import { html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -68,7 +68,8 @@ interface FolderListView {
 
 /**
  * New Task's working directory: the chosen path, a folder list to browse, and
- * a path to type.
+ * a path to type. An owner whose surface exists to choose the directory keeps
+ * the list open instead, at a fixed height, so the surface keeps its size.
  *
  * Its states and what each event does are in `directory-field/control.ts`;
  * this element draws them and runs their effects. Each accepted event draws
@@ -129,14 +130,22 @@ export class CaffoldTaskDirectoryField extends CaffoldElement {
     server = {},
     locked = false,
     dismissOnLeave = true,
+    keepListOpen = false,
   }: {
     path?: string;
     server?: ServerPaths;
     locked?: boolean;
     dismissOnLeave?: boolean;
+    keepListOpen?: boolean;
   } = {}) {
     this.dismissOnLeave = dismissOnLeave;
-    this.dispatch({ type: "context", path, server, locked });
+    this.dispatch({
+      type: "context",
+      path,
+      server,
+      locked,
+      keepOpen: keepListOpen,
+    });
     this.performUpdate();
   }
 
@@ -184,12 +193,19 @@ export class CaffoldTaskDirectoryField extends CaffoldElement {
   }
 
   override render() {
-    const { node, path, server, locked, error } = this.state;
+    const { node, path, server, locked, error, keepOpen } = this.state;
     const open = node !== CLOSED;
     const editing = node === EDITING;
     const shown = directoryPathDisplay(path, server);
     const editLabel = editing ? "Stop typing" : "Type a path";
     const folders = `${this.fieldId}-folders`;
+    // The path toggles the list, unless the list is kept open.
+    let toggleLabel = open ? "Hide folders" : "Show folders";
+    let toggleExpanded: string | typeof nothing = open ? "true" : "false";
+    if (keepOpen) {
+      toggleLabel = "Folder";
+      toggleExpanded = nothing;
+    }
     return html`
       <div class="task-directory-field-frame">
         <div
@@ -208,15 +224,17 @@ export class CaffoldTaskDirectoryField extends CaffoldElement {
             ${drawn(this.toggle)}
             ${this.hints.button({
               id: "directory:toggle",
-              label: open ? "Hide folders" : "Show folders",
+              label: toggleLabel,
               action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              when: !keepOpen,
             })}
             type="button"
             class="task-directory-field-toggle"
-            aria-expanded=${open ? "true" : "false"}
+            aria-expanded=${toggleExpanded}
+            aria-disabled=${keepOpen ? "true" : nothing}
             aria-controls=${folders}
             aria-describedby=${`${this.fieldId}-path`}
-            aria-label=${open ? "Hide folders" : "Show folders"}
+            aria-label=${toggleLabel}
             title=${shown}
             ?hidden=${editing}
             ?disabled=${locked}
@@ -261,6 +279,7 @@ export class CaffoldTaskDirectoryField extends CaffoldElement {
           <span
             class="task-directory-field-chevron"
             aria-hidden="true"
+            ?hidden=${keepOpen}
           >${inlineIcon(
             open ? "ChevronUp" : "ChevronDown",
             "",
@@ -300,6 +319,7 @@ export class CaffoldTaskDirectoryField extends CaffoldElement {
     if (this.dataset.node !== node) {
       this.dataset.node = node;
     }
+    this.toggleAttribute("data-keep-open", this.state.keepOpen);
     this.listenOutside(node !== CLOSED && this.dismissOnLeave);
     const input = this.input.value;
     if (input && editing && input.value !== text) {
@@ -384,10 +404,13 @@ export class CaffoldTaskDirectoryField extends CaffoldElement {
   }
 
   // While another folder is on its way the list keeps what it shows until the
-  // wait is long enough for a loading phrase. A list with nothing to show says
-  // so, unless an error above the list already says why.
+  // wait is long enough for a loading phrase. A list kept open shows its empty
+  // place from the start instead, so its surface opens at its own size. A list
+  // with nothing to show says so, unless an error above the list already says
+  // why.
   private nextFolderList(): FolderListView {
-    const { node, listing, request, highlight, error, typed } = this.state;
+    const { node, listing, request, highlight, error, typed, keepOpen } =
+      this.state;
     if (node === CLOSED) {
       return { hidden: true, model: null, reveal: "" };
     }
@@ -400,7 +423,11 @@ export class CaffoldTaskDirectoryField extends CaffoldElement {
       };
     }
     if (pending) {
-      return { ...this.folderList, model: null, reveal: "" };
+      return {
+        hidden: this.folderList.hidden && !keepOpen,
+        model: null,
+        reveal: "",
+      };
     }
     const rows = directoryFieldRows(this.state);
     if (rows.length === 0) {
@@ -483,12 +510,14 @@ export class CaffoldTaskDirectoryField extends CaffoldElement {
       this.handleInputKeydown(event);
       return;
     }
+    // A list kept open leaves Escape to the surface around it.
     if (
       event.key === "Escape" &&
       !event.ctrlKey &&
       !event.altKey &&
       !event.metaKey &&
-      this.state.node === BROWSING
+      this.state.node === BROWSING &&
+      !this.state.keepOpen
     ) {
       event.preventDefault();
       event.stopPropagation();

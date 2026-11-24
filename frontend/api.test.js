@@ -324,18 +324,25 @@ test("publishes one complete live subscription snapshot to its connection", asyn
   );
 });
 
-test("forks the encoded managed Task id with an empty POST", async () => {
+test("forks the encoded managed Task id into the chosen directory", async () => {
   const requests = [];
   installBrowserHarness(async (url, options) => {
     requests.push({ url: `${url}`, options });
     return jsonResponse({ threadId: "child" });
   });
 
-  assert.deepEqual(await forkTask("source/thread"), { threadId: "child" });
+  assert.deepEqual(
+    await forkTask("source/thread", { cwd: "Users/me/other" }),
+    { threadId: "child" },
+  );
   assert.deepEqual(requests, [
     {
       url: "http://127.0.0.1/api/tasks/source%2Fthread/fork",
-      options: { method: "POST" },
+      options: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ cwd: "Users/me/other" }),
+      },
     },
   ]);
 });

@@ -68,10 +68,6 @@ export function taskInfoSnapshot(
       loading: Boolean(snapshot.archiveState?.loading),
       error: snapshot.archiveState?.error ?? null,
     },
-    forkState: {
-      loading: Boolean(snapshot.forkState?.loading),
-      error: snapshot.forkState?.error ?? null,
-    },
     pinned: snapshot.pinned ?? null,
     pinState: {
       loading: Boolean(snapshot.pinState?.loading),

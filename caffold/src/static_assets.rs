@@ -1763,6 +1763,18 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/handoff-dialog.js"
             ))))
         }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/task-fork-dialog.css.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/task-fork-dialog.css.js"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/task-fork-dialog.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/task-fork-dialog.js"
+            ))))
+        }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
@@ -2850,6 +2862,7 @@ mod tests {
             "pages/(task-workspace)/components/update-task-dialog.css",
             "pages/(task-workspace)/components/language-server-install-dialog.css",
             "pages/(task-workspace)/tasks/(detail)/(task)/components/handoff-dialog.css",
+            "pages/(task-workspace)/tasks/(detail)/(task)/components/task-fork-dialog.css",
             "pages/(task-workspace)/tasks/(detail)/(review)/components/places.css",
             "pages/(task-workspace)/layout.css",
             "pages/(task-workspace)/notes/components/document.css",

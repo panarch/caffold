@@ -25,8 +25,17 @@ use super::{
 
 pub(in crate::app::tasks) struct ForkTask {
     pub(in crate::app::tasks) source: ForkTaskSource,
-    pub(in crate::app::tasks) section: ManagedSection,
+    pub(in crate::app::tasks) target: ForkTarget,
     pub(in crate::app::tasks) cwd: String,
+}
+
+/// Where the claimed child is listed. A Section names its place up front and
+/// must still be the same Section when the child is claimed; a directory takes
+/// the Section of the child's working directory, made if there is none, as a
+/// new Task does.
+pub(in crate::app::tasks) enum ForkTarget {
+    Section(ManagedSection),
+    Directory,
 }
 
 pub(in crate::app::tasks) enum ForkTaskSource {
@@ -120,14 +129,14 @@ impl TaskLifecycle {
     ) -> Result<CreatedTask, ApiError> {
         let ForkTask {
             source,
-            section,
+            target,
             cwd,
         } = request;
         let _mutation = match source.owner() {
             Some(owner) => Some(self.sessions.reserve_mutation(&owner.thread_id).await),
             None => None,
         };
-        self.ensure_fork_target_is_current(&section).await?;
+        self.ensure_fork_target_is_current(&target).await?;
         if let Some(owner) = source.owner() {
             self.ensure_managed_fork_source_is_current(owner).await?;
         }
@@ -176,7 +185,7 @@ impl TaskLifecycle {
                 return Err(task_fork_source_changed());
             }
             driver.finish_fork(&mut forked, &title).await?;
-            self.ensure_fork_target_is_current(&section).await?;
+            self.ensure_fork_target_is_current(&target).await?;
             if let Some(owner) = source.owner() {
                 self.ensure_managed_fork_source_is_current(owner).await?;
             }
@@ -189,9 +198,13 @@ impl TaskLifecycle {
                 forked.settings.speed.clone(),
                 forked.settings.permission_mode.clone(),
             );
-            let placement = self
-                .claim_in_section_at_top(managed, &title, &task, &section)
-                .await?;
+            let placement = match &target {
+                ForkTarget::Section(section) => {
+                    self.claim_in_section_at_top(managed, &title, &task, section)
+                        .await?
+                }
+                ForkTarget::Directory => self.claim_at_top(managed, &title, &task).await?,
+            };
             Ok::<_, ApiError>((task, placement))
         }
         .await;
@@ -272,10 +285,10 @@ impl TaskLifecycle {
         Ok(())
     }
 
-    async fn ensure_fork_target_is_current(
-        &self,
-        section: &ManagedSection,
-    ) -> Result<(), ApiError> {
+    async fn ensure_fork_target_is_current(&self, target: &ForkTarget) -> Result<(), ApiError> {
+        let ForkTarget::Section(section) = target else {
+            return Ok(());
+        };
         let store = self.store.clone();
         let section_id = section.section_id.clone();
         let logical_path = section.logical_path.clone();
@@ -395,7 +408,7 @@ mod tests {
     async fn fork_managed_source(
         state: &TaskState,
         source: ManagedThread,
-        section: ManagedSection,
+        target: ForkTarget,
         cwd: &Path,
     ) -> Result<CreatedTask, ApiError> {
         let connection = state.detail.connection().await.expect("Codex connection");
@@ -405,7 +418,7 @@ mod tests {
                 &TaskAgent::Codex(connection),
                 ForkTask {
                     source: ForkTaskSource::Managed(Box::new(source)),
-                    section,
+                    target,
                     cwd: cwd.display().to_string(),
                 },
             )
@@ -429,6 +442,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_directory_fork_lists_the_child_in_a_section_made_for_its_folder() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().canonicalize().unwrap();
+        let folder = project.join("other-project");
+        std::fs::create_dir(&folder).unwrap();
+        let folder_wire = folder.display().to_string();
+        let source_thread_id = "thread-fork-directory-source";
+        let child_thread_id = "thread-fork-directory-child";
+        let source_wire = source_thread(source_thread_id, &project, 2.0);
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok("thread/read", json!({ "thread": source_wire.clone() })),
+            MockCodexResponse::ok(
+                "thread/fork",
+                child_fork(source_thread_id, child_thread_id, &folder_wire),
+            ),
+            MockCodexResponse::ok("thread/read", json!({ "thread": source_wire })),
+            MockCodexResponse::ok(
+                "thread/turns/list",
+                json!({ "data": [], "nextCursor": null, "backwardsCursor": null }),
+            ),
+            MockCodexResponse::ok("thread/name/set", json!({})),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        let (source, section) =
+            managed_source_context(&state, source_thread_id, "Directory source");
+
+        let created = fork_managed_source(&state, source, ForkTarget::Directory, &folder)
+            .await
+            .expect("a directory fork claims its child");
+
+        let sections = state
+            .task_store
+            .read(|tables| tables.managed_sections())
+            .unwrap();
+        let made = sections
+            .iter()
+            .find(|made| made.logical_path == "other-project")
+            .expect("a Section for the chosen folder");
+        assert_ne!(made.section_id, section.section_id);
+        assert_eq!(created.placement.section.id, made.section_id);
+        let child = state.task_store.get(child_thread_id).unwrap().unwrap();
+        assert_eq!(child.section_id(), Some(made.section_id.as_str()));
+        let source = state.task_store.get(source_thread_id).unwrap().unwrap();
+        assert_eq!(source.section_id(), Some(section.section_id.as_str()));
+    }
+
+    #[tokio::test]
     async fn managed_fork_rejects_an_active_source_before_creating_a_child() {
         let root = tempfile::tempdir().unwrap();
         let source_thread_id = "thread-fork-active";
@@ -441,10 +502,10 @@ mod tests {
         )]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        let (source, section) = managed_source_context(&state, source_thread_id, "Active source");
+        let (source, _) = managed_source_context(&state, source_thread_id, "Active source");
 
         let error = expect_fork_error(
-            fork_managed_source(&state, source, section, root.path()).await,
+            fork_managed_source(&state, source, ForkTarget::Directory, root.path()).await,
             "active source is rejected",
         );
 
@@ -479,11 +540,11 @@ mod tests {
         )]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        let (source, section) =
+        let (source, _) =
             managed_source_context(&state, source_thread_id, "Not-loaded managed source");
 
         let error = expect_fork_error(
-            fork_managed_source(&state, source, section, root.path()).await,
+            fork_managed_source(&state, source, ForkTarget::Directory, root.path()).await,
             "not-loaded managed source is rejected",
         );
 
@@ -505,7 +566,7 @@ mod tests {
         let client = CodexThreadClient::mock(Vec::new());
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        let (source, section) = managed_source_context(&state, source_thread_id, "Stale source");
+        let (source, _) = managed_source_context(&state, source_thread_id, "Stale source");
         state
             .task_store
             .archive(source_thread_id, 3_000)
@@ -513,7 +574,7 @@ mod tests {
             .expect("archive source after context read");
 
         let error = expect_fork_error(
-            fork_managed_source(&state, source, section, root.path()).await,
+            fork_managed_source(&state, source, ForkTarget::Directory, root.path()).await,
             "stale source context must not create a child",
         );
 
@@ -543,7 +604,7 @@ mod tests {
             .unwrap();
 
         let error = expect_fork_error(
-            fork_managed_source(&state, source, section, root.path()).await,
+            fork_managed_source(&state, source, ForkTarget::Section(section), root.path()).await,
             "stale target context must not create a child",
         );
 
@@ -581,10 +642,10 @@ mod tests {
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        let (source, section) = managed_source_context(&state, source_thread_id, "Changing source");
+        let (source, _) = managed_source_context(&state, source_thread_id, "Changing source");
 
         let error = expect_fork_error(
-            fork_managed_source(&state, source, section, &cwd).await,
+            fork_managed_source(&state, source, ForkTarget::Directory, &cwd).await,
             "a changed source invalidates its child",
         );
 
@@ -629,10 +690,10 @@ mod tests {
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        let (source, section) = managed_source_context(&state, source_thread_id, "Refresh source");
+        let (source, _) = managed_source_context(&state, source_thread_id, "Refresh source");
 
         let error = expect_fork_error(
-            fork_managed_source(&state, source, section, &cwd).await,
+            fork_managed_source(&state, source, ForkTarget::Directory, &cwd).await,
             "source refresh failure rejects the fork",
         );
 
@@ -672,10 +733,10 @@ mod tests {
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        let (source, section) = managed_source_context(&state, source_thread_id, "Source task");
+        let (source, _) = managed_source_context(&state, source_thread_id, "Source task");
 
         let error = expect_fork_error(
-            fork_managed_source(&state, source, section, &cwd).await,
+            fork_managed_source(&state, source, ForkTarget::Directory, &cwd).await,
             "history failure rejects the fork",
         );
 
