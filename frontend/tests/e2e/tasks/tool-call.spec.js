@@ -69,10 +69,20 @@ test("a tool call is one line that measures as a finished command's", { tag: "@a
   const codex = rows.nth(0);
   await expect(codex.locator(".task-tool-call-summary-status")).toHaveText("Completed");
   await expect(codex.locator(".task-tool-call-summary-label")).toHaveText("create_note");
-  // A narrow row drops its server and duration, as a command row drops its
-  // duration.
+  // In a conversation column 600px wide or narrower a row drops its server
+  // and duration, as a command row drops its duration.
   const meta = codex.locator(".task-tool-call-summary-meta");
-  if (page.viewportSize().width <= 620) {
+  const column = await conversation
+    .locator(".task-conversation-scroll")
+    .evaluate((scroll) => {
+      const style = getComputedStyle(scroll);
+      return (
+        scroll.clientWidth -
+        Number.parseFloat(style.paddingLeft) -
+        Number.parseFloat(style.paddingRight)
+      );
+    });
+  if (column <= 600) {
     await expect(meta).toBeHidden();
   } else {
     await expect(meta).toHaveText("caffold · 2s");

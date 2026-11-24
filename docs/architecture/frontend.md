@@ -620,7 +620,8 @@ covers the icon and leaves the label clear. Task actions do so for every row,
 the Language servers switch included, since the whole row toggles it. A menu
 item that leaves room for a badge at its end, as the Task list actions, the
 Git and GitHub menu, and a code name's menu do, asks for `center-right`, so the
-badge sits in that room at the row's middle. A container adds only
+badge sits in that room at the row's middle; so does the floating conversation
+card's header, a disclosure as wide as its row. A container adds only
 which direct children it merges, and reaches them through the `DrawnRef` it
 drew them with rather than by selector. Scroll surfaces are declared the same
 way with `ScrollSurfaces` (`scroll-scope.ts`), and modals and popovers with
@@ -797,7 +798,12 @@ Action Hint target and its shortcut list as its one Scroll surface.
 
 The controller validates every action and control kind against a closed central
 policy. Task selection in the navigator retains generated `T*` codes and New
-Task, Model, and Prompt retain `N`, `M`, and `P`. A Task switcher row is its
+Task, Model, and Prompt retain `N`, `M`, and `P`. Showing the floating
+conversation (its round button) and folding it (its card header) retain `C`,
+but only while one of them is shown, and the two never are together: the
+button sits at the bottom right, after every other target in visual order,
+and a long file list would otherwise give it a long code that changes with
+the list. A Task switcher row is its
 own action in the automatic pool: apart from its Close button, every target
 that surface offers is that one action, so a prefix would cost a keystroke on
 every jump only to set the rows apart from one button. Task suffixes and
@@ -806,7 +812,8 @@ actions in the automatic pool receive compact, balanced prefix-free codes in
 minimizes the longest code first and total code length second, assigns shorter
 codes to earlier targets, and expands the lowest-priority tail branches first,
 so code lengths within each generated allocation pool differ by at most one.
-Automatic first characters reserve the `N`, `M`, `P`, and `T` namespaces. The
+Automatic first characters reserve the `N`, `M`, `P`, and `T` namespaces, and
+`C` only in a capture that holds showing or folding the conversation. The
 full result must be unique and prefix-free. Initial capture freezes each
 visible, actionable target's identity, exact native binding, code, activation
 closure, and exact retained `invalidationOwner`. It intersects anchors directly
@@ -891,9 +898,11 @@ Composition and unregistered modal or popover owners keep their own key and
 Escape ownership.
 
 Task Workspace gives a Task or Settings editable the detail pane as its Editing
-escape destination, except a terminal's input: `Escape` there belongs to the
-program in the terminal. Tasks answers whether an element is that input
-through Detail and the terminal screen rather than by inspecting their DOM.
+escape destination, except a field in Detail's open floating conversation, which
+leaves editing for the card's header, and a terminal's input: `Escape` there
+belongs to the program in the terminal. Tasks answers whether an element is that
+input through Detail and the terminal screen rather than by inspecting their
+DOM.
 
 An editable inside a registered modal may publish one exact same-modal Editing
 escape destination. A non-composing `Escape` received by the coordinator ends
@@ -1107,6 +1116,8 @@ changing those parent-owned display choices.
 - the header terminal button and the terminal toggle, including the surface
   each subject returns to;
 - shared Integrated Review, Git, GitHub, and terminal child activation;
+- where the Task's conversation shows, as the Conversation screen or floating
+  over a Task screen that shows a file, and the room it takes there;
 - translation between shared child intents and Task or Section routes;
 - a bounded Integrated Review cache keyed by subject identity.
 
@@ -1129,6 +1140,21 @@ details dialog, code-block Markdown and Mermaid preview dialogs, current-plan
 strip,
 follow-up Composer, and Task mutations. It publishes a subject snapshot upward; it does not mount Integrated
 Review, Git, GitHub, or their Summary controls.
+
+Tasks hands Detail its code-or-reading presentation of each route, the one
+that puts a file tree in the Task list's place. On a Task screen it presents as
+code other than the terminal (Working Tree, Branch, a Git commit, Git Compare,
+GitHub Pull Files), the Task's conversation floats there, as
+[Floating conversation](#floating-conversation) describes. Task Detail is the
+one element in that component's slot on every screen, so the conversation,
+draft, and scroll carry over; only the frame around it changes. While the card
+is open Detail tells Task Detail its conversation shows
+(`setFloatingConversationShown`), which keeps the conversation, Current Plan,
+and follow-up Composer active as on the Conversation screen, and it merges the
+component's Action Hints and, while the card is open, Task Detail's Action
+Hints, keyboard contexts, and scroll surfaces with the file screen's. A field in
+the open card leaves editing for the card's header, and Tasks asks Detail for
+that destination.
 
 Task Detail's `force-archive-dialog` owns only native confirmation, the captured
 Task/worktree identity, and focus return to the stable Task details button.
@@ -1370,6 +1396,23 @@ the Task subject and are preserved by Task identity through incremental shell
 updates. Moving from Tasks to Settings ends active editing and transport work
 without destroying a retained Composer draft.
 
+What gets narrow reads the room it has, not the window, so the Conversation
+screen beside the Task list and the floating card read the same rules. Task
+Detail's conversation pane is the `task-conversation-pane` container, and from
+its width Task Detail sets the edge the conversation's text, the Current Plan
+strip, and the follow-up Composer's panel share: `--task-detail-column-inset`
+and the follow-up Composer's gutter are 0.875rem, or 0.625rem at 860px and
+narrower, the gutter also on a touch screen. In phone portrait the follow-up
+Composer becomes a bar along the screen's bottom edge, which Task Detail also
+sets, by the window. Conversation pads its scroller from those values and is
+the `task-conversation` container its rows read inside that padding: a user
+message takes up to 92% of its row at 840px and narrower, and at 600px command
+and tool-call summaries leave out their metadata and the working row takes two
+lines. The Composer's form is the `task-composer` container for its tools row,
+and the turn options measure the room their owner gives them, the
+`turn-options` container, to show only the approval-mode shield where the row
+has 20rem or less, in a Composer and in the dialogs that offer them alike.
+
 A reader at the bottom stays there as a live change or drawn Markdown lengthens
 the transcript. The scroll moves to the new bottom at once. When a live change
 is drawn for that reader, the column's contents then slide up over the distance
@@ -1569,6 +1612,63 @@ dialog names the plan's folder and the Task root for its images, as
 [Integrated Review](#integrated-review) describes. Neither component writes
 plan files. The product-level file convention belongs
 to [Product Workflows](../product/workflows.md#current-plan-documents).
+
+### Floating conversation
+
+`caffold-task-detail-floating-conversation` frames Task Detail in Detail's
+subject slot. As the Conversation screen it steps aside and Task Detail fills
+the body. Over a screen that shows a file, the slot becomes a layer over the
+Detail body that takes the pointer only on the component's button, card, and
+resize handle: a round button at the body's bottom right whose fill alone lets
+the code show through, which opens there into a card whose header folds it. The
+header carries the conversation's icon, takes the focus when the card opens, and
+shows that focus with its hover fill, which the card's rounded corners clip; its
+Action Hint badge sits at its end (`center-right`). The button and the header
+both take `C`. The card is a panel the
+person keeps open while reading and scrolling the file beside it, so it is not a
+light-dismiss popover, and not a modal dialog either. At the phone width where
+Review shows its list and file in turn, the card opens as a sheet over the whole
+screen: a manual popover in the top layer, above the Detail header and the
+workspace's corner controls. A popover's own backdrop lets taps through to what
+is under it, so a second manual popover shown just before the sheet dims the
+screen and folds the sheet when the sliver above it is tapped. The sheet has no
+grip and no resize handle, and with the focus on its header the keyboard stays
+down until the person taps the Composer.
+
+Outside the phone width the card's top left corner resizes it. The card opens at
+a third of the body's width and two thirds of its height, never smaller than
+Detail's `25rem` by `32.5rem`, and always within the body's insets. A frame of
+the card's size over it, outside the card's clipped corners, carries the handle:
+a `<button>` whose 5px mark runs along the middle of the 1px border, round the
+top left curve and 3px into each side, in the pane resizer's `--border-strong`.
+Under the pointer, in focus, or while dragged, the mark and a 3px line along the
+top and left sides, stopping where the far corners begin to curve, take the pane
+resizer's `--resizer-hover-bg`. Dragging changes the width and height together,
+from `20rem` up to the body less its insets; the arrow keys change them by 24px,
+or 72px with Shift, as the pane resizer's do, and its Action Hint is a
+separator's, which focuses it.
+
+The component owns whether the card is open and the size the person gave it. It
+reports each change of the first with `caffold:floating-conversation-change`.
+Detail's snapshot folds it when the screen no longer shows a file or the subject
+changes, and Detail folds a phone's sheet when the route moves under it, as a
+file link in the conversation does. Between screens and files that show one, the
+card stays as it was; whether it is open is not stored, so a reload starts
+folded. The size is kept on the device in `localStorage`
+(`caffold:floating-conversation-size`). `Escape` from the card's header or any
+other control in it folds the card and returns focus to the button, as does the
+header; a menu or dialog open in the card takes its own `Escape` first, and on
+the resize handle `Escape` returns focus to the header, so the next one folds
+the card.
+
+Detail's body sets the sizes and publishes the room the screens under it leave
+as `--task-detail-floating-clearance`, a registered length worked out where
+Detail sets it: the button's height and insets, with the card open or folded, so
+opening, folding, or resizing the card changes nothing in the screens under it.
+Review, the Git commit and Compare pages, and GitHub Pull Files pass it to the
+file viewer as `--file-viewer-scroll-end-clearance`, and at the phone width to
+their file trees as `--file-tree-scroll-end-clearance`; Review also keeps its
+find results above it there.
 
 ### Integrated Review
 
@@ -2137,7 +2237,14 @@ they end a short file at the viewer's bottom and a long one right after its last
 line, and a card in keyboard focus shows them wherever the code is. Without
 scroll-driven animations the leaf drops the copy and puts the cards in a row
 under the code. The cards keep 0.75rem of space below them, or 1.25rem on a
-phone held upright, which clears the screen's rounded corners. Choosing
+phone held upright, which clears the screen's rounded corners. An owner that
+floats controls over the viewer's bottom gives their height as
+`--file-viewer-scroll-end-clearance`: the `end` slot and its copy add it under
+the cards, which then rise above those controls, and is the room after the last
+line where there are no cards. Image at a percent, PDF, Word, PowerPoint, and
+Hangul leave that room after what they scroll without changing the size a page
+or picture fits, Markdown Preview takes it as its scroll-end clearance, and
+Excel leaves it at the end of its sheet tabs. Choosing
 one sends `caffold:file-viewer-open-adjacent` with its path. Integrated Review
 hands over the changed files around one opened from Changes, in the order the
 list shows them, a file in both Working Tree groups counted where it first

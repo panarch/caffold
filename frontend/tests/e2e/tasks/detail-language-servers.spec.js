@@ -561,6 +561,16 @@ test("asks an agent to install every missing server on the host from the home fo
     { useInnerText: true },
   );
   await expect(dialog.locator("caffold-task-turn-options")).toBeVisible();
+  // The row has the dialog's width: on a phone only the shield fits beside
+  // the model, on a desktop the approval mode's name does.
+  const permission = dialog.locator(".task-permission-button");
+  if (testInfo.project.name === "phone") {
+    await expect(permission.locator("svg.task-permission-icon")).toBeVisible();
+    await expect(permission.locator(".task-permission-label")).toBeHidden();
+  } else {
+    await expect(permission.locator("svg.task-permission-icon")).toBeHidden();
+    await expect(permission.locator(".task-permission-label")).toBeVisible();
+  }
 
   // The update Task dialog's geometry: 34rem wide, or the phone's width, with
   // every command inside it.

@@ -326,7 +326,7 @@
   --task-list-icon-size: 0.9375rem;
   /* The Composer's prompt inset and the follow-up Composer's place in the
      Task column; text placed above that Composer starts where its prompt
-     text does. */
+     text does. Task Detail narrows the follow-up values for its column. */
   --task-follow-up-composer-gutter: 0.875rem;
   --task-follow-up-composer-max-width: 980px;
   --task-follow-up-composer-panel-border-inline: 1px;
@@ -602,18 +602,15 @@ body {
 
 @media (max-width: 860px), (pointer: coarse) {
   :root {
-    --task-follow-up-composer-gutter: 0.625rem;
     --task-composer-prompt-padding-inline: 0.875rem;
   }
 }
 
-/* On a phone held upright the follow-up Composer is a bar across the bottom
-   edge: no gutter or side borders, and its padding keeps the text off the
-   screen edge. */
-@media (max-width: 520px) and (orientation: portrait) {
-  :root {
-    --task-follow-up-composer-gutter: 0px;
-    --task-follow-up-composer-panel-border-inline: 0px;
-    --task-follow-up-composer-panel-padding-inline: 0.75rem;
-  }
+/* How much room the floating conversation takes at the bottom of what scrolls
+   under it. Registered as a length so it is worked out where Detail sets it
+   and passed down as that length. */
+@property --task-detail-floating-clearance {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
 }

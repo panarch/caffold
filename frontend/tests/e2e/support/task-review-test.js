@@ -23,6 +23,16 @@ export async function selectTaskReviewScope(tasksPage, scope) {
   await option.click();
 }
 
+// The room, in pixels, Review leaves at the end of what scrolls for the Task's
+// floating conversation.
+export function floatingConversationRoom(taskReview) {
+  return taskReview.evaluate((review) =>
+    Number.parseFloat(
+      getComputedStyle(review).getPropertyValue("--task-detail-floating-clearance"),
+    ),
+  );
+}
+
 // While a file is open, the phone shows it alone and the drawer widths fold
 // the navigator into a strip. A person returns to the navigator through Back
 // on a phone and through the strip in the drawer widths.

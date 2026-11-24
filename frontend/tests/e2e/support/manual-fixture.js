@@ -427,8 +427,9 @@ function uploadScreenshotPng() {
   ]);
 }
 
-// The dark theme Task's repository: its uncommitted changes, the refs Git
-// Compare offers, and the Lumen repository on GitHub with one Pull Request.
+// The dark theme Task's repository: its uncommitted changes, the file Source
+// shows whole, the refs Git Compare offers, and the Lumen repository on GitHub
+// with one Pull Request.
 export async function installManualRepository(page) {
   const task = MANUAL_TASKS.darkTheme;
   const repository = {
@@ -471,6 +472,24 @@ export async function installManualRepository(page) {
         syntaxSpans: file.syntaxSpans ?? null,
       },
     });
+  });
+  await page.route(/\/api\/file(?:\?|$)/, (route) => {
+    const path = new URL(route.request().url()).searchParams.get("path");
+    const file = SOURCE_FILES.find((candidate) => candidate.path === path);
+    return file
+      ? route.fulfill({
+          json: {
+            path,
+            name: file.path.split("/").at(-1),
+            size: file.content.length,
+            modifiedMs: MANUAL_NOW - 3 * 60_000,
+            language: file.language,
+            content: file.content,
+            syntaxSpans: file.syntaxSpans,
+            lineChanges: file.lineChanges,
+          },
+        })
+      : route.fallback();
   });
   await page.route(/\/api\/git\/refs(?:\?|$)/, (route) =>
     route.fulfill({
@@ -1305,6 +1324,129 @@ const WORKING_TREE_FILES = [
       "",
       "test(\"follows the system setting by default\", async () => {",
     ]),
+  },
+];
+
+// The files Source shows whole, colored as the server colors them and marked
+// where they differ from HEAD. `theme.css` begins with the lines its diff
+// changes; the rest of it is the stylesheet those lines head.
+const SOURCE_FILES = [
+  {
+    path: "src/styles/theme.css",
+    language: "CSS",
+    content: [
+      ":root,",
+      ":root[data-theme=\"light\"] {",
+      "  --surface: #ffffff;",
+      "  --text: #1d1d1f;",
+      "}",
+      "",
+      "*,",
+      "*::before,",
+      "*::after {",
+      "  box-sizing: border-box;",
+      "}",
+      "",
+      "body {",
+      "  margin: 0;",
+      "  background: var(--surface);",
+      "  color: var(--text);",
+      "  font-family: system-ui, sans-serif;",
+      "  line-height: 1.5;",
+      "}",
+      "",
+      ".settings {",
+      "  display: grid;",
+      "  gap: 1.5rem;",
+      "  max-width: 40rem;",
+      "  margin: 0 auto;",
+      "  padding: 2rem 1.5rem;",
+      "}",
+      "",
+      ".settings h1 {",
+      "  margin: 0;",
+      "  font-size: 1.75rem;",
+      "}",
+      "",
+      ".settings section {",
+      "  display: grid;",
+      "  gap: 0.75rem;",
+      "  padding: 1rem 1.25rem;",
+      "  border: 1px solid color-mix(in srgb, var(--text) 15%, transparent);",
+      "  border-radius: 12px;",
+      "}",
+      "",
+      ".settings h2 {",
+      "  margin: 0;",
+      "  font-size: 1.125rem;",
+      "}",
+      "",
+      "button {",
+      "  padding: 0.375rem 0.875rem;",
+      "  border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);",
+      "  border-radius: 999px;",
+      "  background: transparent;",
+      "  color: inherit;",
+      "  font: inherit;",
+      "}",
+    ].join("\n") + "\n",
+    syntaxSpans: [
+      [],
+      [[6, 10, 2], [17, 7, 3]],
+      [[2, 9, 5], [13, 7, 2]],
+      [[2, 6, 5], [10, 7, 2]],
+      [],
+      [],
+      [[0, 1, 1]],
+      [[0, 1, 1]],
+      [[0, 1, 1]],
+      [[2, 10, 5]],
+      [],
+      [],
+      [[0, 4, 1]],
+      [[2, 6, 5], [10, 1, 2]],
+      [[2, 10, 5], [14, 3, 4], [18, 9, 5]],
+      [[2, 5, 5], [9, 3, 4], [13, 6, 5]],
+      [[2, 11, 5]],
+      [[2, 11, 5], [15, 3, 2]],
+      [],
+      [],
+      [[0, 9, 2]],
+      [[2, 7, 5]],
+      [[7, 6, 2]],
+      [[2, 9, 5], [13, 5, 2]],
+      [[2, 6, 5], [10, 1, 2]],
+      [[2, 7, 5], [11, 4, 2], [16, 6, 2]],
+      [],
+      [],
+      [[0, 9, 2], [10, 2, 1]],
+      [[2, 6, 5], [10, 1, 2]],
+      [[2, 9, 5], [13, 7, 2]],
+      [],
+      [],
+      [[0, 9, 2], [10, 7, 1]],
+      [[2, 7, 5]],
+      [[7, 7, 2]],
+      [[2, 7, 5], [11, 4, 2], [16, 7, 2]],
+      [[2, 6, 5], [10, 3, 2], [39, 3, 4], [43, 6, 5], [51, 3, 2]],
+      [[2, 13, 5], [17, 4, 2]],
+      [],
+      [],
+      [[0, 9, 2], [10, 2, 1]],
+      [[2, 6, 5], [10, 1, 2]],
+      [[2, 9, 5], [13, 8, 2]],
+      [],
+      [],
+      [[0, 6, 1]],
+      [[2, 7, 5], [11, 8, 2], [20, 8, 2]],
+      [[2, 6, 5], [10, 3, 2], [39, 3, 4], [43, 6, 5], [51, 3, 2]],
+      [[2, 13, 5], [17, 5, 2]],
+      [[2, 10, 5]],
+      [[2, 5, 5]],
+      [[2, 4, 5]],
+      [],
+    ],
+    lineChanges: { added: [[1, 2]], removedAfter: [0] },
   },
 ];
 

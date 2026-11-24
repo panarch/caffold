@@ -3,9 +3,11 @@
   line-height: var(--interface-line-height);
 }
 
+/* The tools row reads the form's own width, wherever the Composer sits. */
 .task-composer {
   margin: 0 auto;
   width: min(100%, 980px);
+  container: task-composer / inline-size;
 }
 
 .task-composer.task-follow-up-form {
@@ -124,7 +126,7 @@
 }
 
 .task-composer-tools > caffold-task-turn-options {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
 }
 
 .task-composer-actions {
@@ -355,7 +357,7 @@
   }
 }
 
-@media (max-width: 520px) and (orientation: portrait) {
+@container task-composer (max-width: 520px) {
   .task-composer-tools {
     gap: 0.1875rem;
   }
@@ -368,15 +370,17 @@
     .task-composer-attach-button {
     display: none;
   }
+}
 
+@media (max-width: 520px) and (orientation: portrait) {
   .task-composer.task-follow-up-form {
     padding-bottom: 0;
   }
 
   /* A floating panel's corners would meet a phone screen's rounded corners,
      so the follow-up panel becomes a bar along the bottom edge. Its gutter,
-     side borders, and side padding come from the follow-up Composer tokens
-     in styles.css. */
+     side borders, and side padding come from the follow-up Composer values
+     Task Detail sets for its column. */
   .task-follow-up-form .task-composer-panel {
     padding-bottom: max(0.625rem, env(safe-area-inset-bottom));
     border-bottom-width: 0;

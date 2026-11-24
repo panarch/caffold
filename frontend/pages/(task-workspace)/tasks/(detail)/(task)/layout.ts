@@ -255,6 +255,9 @@ export class CaffoldTaskDetail extends CaffoldElement {
   ];
 
   private reviewView: TaskDetailView = "conversation";
+  // Whether Detail shows this Task's conversation in its floating card over a
+  // screen that shows a file. The route's view stays what it is.
+  private floatingConversationShown = false;
   private taskDetail: TaskDetail | null = null;
   private readonly taskDetailRevisionByThread = new Map<string, number>();
   // The revision each Task's settings must reach before its Composer lets a
@@ -403,14 +406,11 @@ export class CaffoldTaskDetail extends CaffoldElement {
       this.selectedThreadId === targetThreadId &&
       taskDetailThreadId(this.taskDetail) === targetThreadId
     ) {
-      const nextReviewView = taskDetailSurface(options.route, targetThreadId);
-      if (
-        this.reviewView === "conversation" &&
-        nextReviewView !== "conversation"
-      ) {
+      const wasShown = this.shownView === "conversation";
+      this.reviewView = taskDetailSurface(options.route, targetThreadId);
+      if (wasShown && this.shownView !== "conversation") {
         this.conversationComponent.value?.setActive(false);
       }
-      this.reviewView = nextReviewView;
       this.detailLoadError = null;
       this.activateThreadEvents(targetThreadId);
       this.draw();
@@ -600,7 +600,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
       });
     }
     const pane = this.conversationPane.value;
-    if (this.notice !== null || this.reviewView !== "conversation" || !pane) {
+    if (this.notice !== null || this.shownView !== "conversation" || !pane) {
       return own;
     }
     const composer = this.followUpComposer();
@@ -629,7 +629,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
   scrollSurfaceScope() {
     if (
       this.hidden ||
-      this.reviewView !== "conversation" ||
+      this.shownView !== "conversation" ||
       !this.selectedThreadId ||
       !hasScrollLayoutBox(this)
     ) {
@@ -650,7 +650,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
     );
     if (
       this.hidden ||
-      this.reviewView !== "conversation" ||
+      this.shownView !== "conversation" ||
       !this.selectedThreadId
     ) {
       return deletionContexts;
@@ -1159,7 +1159,23 @@ export class CaffoldTaskDetail extends CaffoldElement {
   }
 
   reconcileVisibleSurface() {
-    if (this.reviewView === "conversation") {
+    if (this.shownView === "conversation") {
+      this.conversationComponent.value?.reconcileViewportResize();
+    }
+  }
+
+  /**
+   * Shows or hides this Task's conversation in Detail's floating card. While
+   * it shows there, the conversation, its Current Plan, and the Composer are
+   * as active as on the Conversation screen.
+   */
+  setFloatingConversationShown(shown: boolean) {
+    if (this.floatingConversationShown === shown) {
+      return;
+    }
+    this.floatingConversationShown = shown;
+    this.draw();
+    if (shown) {
       this.conversationComponent.value?.reconcileViewportResize();
     }
   }
@@ -1969,9 +1985,9 @@ export class CaffoldTaskDetail extends CaffoldElement {
     this.syncCurrentPlan();
     this.syncFollowUpComposer();
     this.conversationComponent.value?.setActive(
-      this.reviewView === "conversation",
+      this.shownView === "conversation",
     );
-    if (this.reviewView === "conversation") {
+    if (this.shownView === "conversation") {
       this.syncConversationSnapshot();
     }
     this.emitSubjectSnapshot();
@@ -1993,7 +2009,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
   // middle of Detail, so a conversation already on screen while its history
   // is read goes without it.
   private waitsForConversation() {
-    if (this.reviewView !== "conversation") {
+    if (this.shownView !== "conversation") {
       return false;
     }
     const shownDetail =
@@ -2220,7 +2236,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
     }
     currentPlan.setLiveUpdates(this.liveUpdates);
     if (
-      this.reviewView !== "conversation" ||
+      this.shownView !== "conversation" ||
       !task ||
       threadId !== this.selectedThreadId
     ) {
@@ -2315,6 +2331,12 @@ export class CaffoldTaskDetail extends CaffoldElement {
     return this.reviewView;
   }
 
+  // The view the Task area draws: the conversation wherever it shows, on the
+  // Conversation screen or in the floating card.
+  private get shownView(): TaskDetailView {
+    return this.floatingConversationShown ? "conversation" : this.reviewView;
+  }
+
   hasSelectedTaskDetail() {
     return Boolean(
       this.selectedThreadId &&
@@ -2326,7 +2348,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
     this.notice = this.regionNotice();
     const task = this.taskDetail?.task;
     if (this.notice === null && task) {
-      this.pane = { threadId: taskThreadId(task), view: this.reviewView };
+      this.pane = { threadId: taskThreadId(task), view: this.shownView };
     }
   }
 

@@ -28,10 +28,12 @@
 /* The stage is the size every picture is scaled against: a picture shrinks
    to fit it and never grows past its own size, and both sides share one
    scale, so a picture that changed size shows the change. */
-/* What the owner places after the pictures, under the stage. */
+/* What the owner places after the pictures, under the stage, above the
+   room for anything the owner floats over the viewer's bottom. */
 slot[name="end"] {
   display: block;
   grid-row: 3;
+  padding-bottom: var(--file-viewer-scroll-end-clearance, 0rem);
 }
 
 .visual-stage {

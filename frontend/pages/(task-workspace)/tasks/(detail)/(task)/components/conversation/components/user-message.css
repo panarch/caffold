@@ -76,7 +76,8 @@ caffold-task-message-attachments {
   content: "";
 }
 
-@media (max-width: 860px) {
+/* A narrow conversation column gives the bubble more of each row. */
+@container task-conversation (max-width: 840px) {
   caffold-task-message-attachments {
     width: min(92%, 760px);
   }

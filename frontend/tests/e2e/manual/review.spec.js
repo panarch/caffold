@@ -24,7 +24,7 @@ for (const theme of ["light", "dark"]) {
       await installManualRepository(page);
     });
 
-    test("Working Tree shows the Task's changed files and their diff", { tag: ["@desktop", "@foldable"] }, async ({ page }, testInfo) => {
+    test("Working Tree shows the Task's changed files and their diff", { tag: "@desktop" }, async ({ page }, testInfo) => {
       await page.goto(`/tasks/${MANUAL_TASKS.darkTheme.threadId}`);
       await page.getByRole("button", { name: "Working Tree", exact: true }).click();
 
@@ -45,6 +45,34 @@ for (const theme of ["light", "dark"]) {
         lines.scrollTop = lines.scrollHeight;
       });
       await captureReviewScreenshot(page, testInfo, `review-working-tree-${theme}`);
+    });
+
+    test("the conversation opens over the file being read", { tag: "@desktop" }, async ({ page }, testInfo) => {
+      await page.goto(`/tasks/${MANUAL_TASKS.darkTheme.threadId}`);
+      await page.getByRole("button", { name: "Working Tree", exact: true }).click();
+
+      const review = page.locator("caffold-task-review");
+      await review
+        .locator('button[data-file-tree-relative-path="src/styles/theme.css"]')
+        .click();
+      await review.getByRole("button", { name: "Source", exact: true }).click();
+      await expect(review.locator("caffold-code-viewer")).toContainText("box-sizing: border-box;");
+      const conversation = page.locator("caffold-task-detail-floating-conversation");
+      await conversation.getByRole("button", { name: "Show the conversation" }).click();
+      await expect(conversation.locator(".floating-conversation-card")).toBeVisible();
+      await expect(page.locator("caffold-task-detail caffold-task-conversation"))
+        .toContainText("Dark theme is ready to review");
+      await expect(review.locator("caffold-code-viewer")).toBeVisible();
+      const prompt = page.locator("caffold-task-detail .task-follow-up-form textarea");
+      await prompt.fill("Commit these changes with a message that explains why.");
+      await prompt.blur();
+      await page.mouse.move(0, 0);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      // The file cards below the file's end wait out of view, as they do for
+      // a person reading its top.
+      await captureReviewScreenshot(page, testInfo, `review-floating-conversation-${theme}`, {
+        animations: "allow",
+      });
     });
 
     test("Git Compare shows the changes between two refs", { tag: "@desktop" }, async ({ page }, testInfo) => {

@@ -89,9 +89,10 @@ header > h2 {
   display: none;
 }
 
+/* The row gets the dialog's width, which decides its narrow form. */
 caffold-task-turn-options {
-  justify-self: start;
-  max-width: 100%;
+  justify-self: stretch;
+  min-width: 0;
 }
 
 footer {

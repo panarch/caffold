@@ -1,6 +1,9 @@
+/* The Task column sets the edge its text shares with the Current Plan strip
+   and the Composer's panel; the scroller's padding follows it. */
 :host {
   --task-conversation-block-end-padding: calc(
-    1.125rem +
+    var(--task-detail-column-inset, 0.875rem) +
+    0.25rem +
     var(--interface-control-hit-size) +
     var(--interface-space-3)
   );
@@ -28,11 +31,19 @@
   color: var(--muted);
 }
 
+/* The rows inside read the column's width through this container, so a
+   row in a group changes with the rows around it. */
 .task-conversation-scroll {
   min-height: 0;
   overflow: auto;
   overflow-anchor: none;
-  padding: 1rem 0.875rem var(--task-conversation-block-end-padding);
+  padding: calc(var(--task-detail-column-inset, 0.875rem) + 0.125rem)
+    max(
+      var(--task-detail-column-inset, 0.875rem),
+      var(--task-follow-up-composer-panel-padding-inline, 0rem)
+    )
+    var(--task-conversation-block-end-padding);
+  container: task-conversation / inline-size;
 }
 
 /* Content reaching the bottom edge fades into the surface instead of being
@@ -298,26 +309,6 @@
 .task-file-change p {
   margin: 0;
   padding: 0.625rem 0.6875rem;
-}
-
-@media (max-width: 860px) {
-  :host {
-    --task-conversation-block-end-padding: calc(
-      0.875rem +
-      var(--interface-control-hit-size) +
-      var(--interface-space-3)
-    );
-  }
-
-  .task-conversation-scroll {
-    padding: 0.75rem 0.625rem var(--task-conversation-block-end-padding);
-  }
-}
-
-@media (max-width: 520px) and (orientation: portrait) {
-  .task-conversation-scroll {
-    padding-inline: 0.75rem;
-  }
 }
 
 :host {

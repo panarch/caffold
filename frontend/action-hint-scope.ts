@@ -188,7 +188,10 @@ export function disclosureActionHintTarget({
   control,
   anchor = control,
   clipRoots,
-}: ActionHintTargetOptions): ActionHintTarget {
+  badgeAt,
+}: ActionHintTargetOptions & {
+  badgeAt?: ActionHintBadgePlacement;
+}): ActionHintTarget {
   return focusAndClickActionHintTarget({
     id,
     actionId,
@@ -198,6 +201,7 @@ export function disclosureActionHintTarget({
     control,
     anchor,
     clipRoots,
+    badgeAt,
   });
 }
 

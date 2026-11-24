@@ -487,6 +487,19 @@ dd {
   max-width: none;
 }
 
+/* A picture at a percent can scroll, so it ends with the owner's room. The
+   picture keeps the whole stage to center in. */
+.image-stage[data-zoom="percent"] {
+  grid-template-rows:
+    minmax(100%, max-content)
+    var(--file-viewer-scroll-end-clearance, 0rem);
+  scroll-padding-bottom: var(--file-viewer-scroll-end-clearance, 0rem);
+}
+
+.image-stage > * {
+  grid-row: 1;
+}
+
 .image-stage > caffold-loading-text {
   font-size: var(--interface-meta-font-size);
   line-height: var(--interface-line-height);
@@ -678,4 +691,30 @@ dd {
   .viewer-adjacent-files {
     padding-bottom: max(var(--interface-space-10), env(safe-area-inset-bottom));
   }
+}
+
+/* An owner may float controls over the viewer's bottom; it gives their
+   height as --file-viewer-scroll-end-clearance, and each view leaves that much
+   room after what it scrolls, or under the cards a notice ends with. */
+.notice-panel > .viewer-adjacent-files {
+  padding-bottom: calc(
+    max(var(--interface-space-6), env(safe-area-inset-bottom)) +
+    var(--file-viewer-scroll-end-clearance, 0rem)
+  );
+}
+
+@media (max-width: 520px) and (orientation: portrait) {
+  .notice-panel > .viewer-adjacent-files {
+    padding-bottom: calc(
+      max(var(--interface-space-10), env(safe-area-inset-bottom)) +
+      var(--file-viewer-scroll-end-clearance, 0rem)
+    );
+  }
+}
+
+caffold-markdown-preview {
+  --markdown-preview-scroll-end-clearance: var(
+    --file-viewer-scroll-end-clearance,
+    0rem
+  );
 }

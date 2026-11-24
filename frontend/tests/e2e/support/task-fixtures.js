@@ -208,13 +208,21 @@ export function withAttachedFiles(prompt, paths) {
   return prompt ? `${prompt}\n\n${list}` : list;
 }
 
-export async function captureReviewScreenshot(page, testInfo, name, { clip } = {}) {
+// A scene whose scroll-driven parts must stay where the scroll puts them,
+// such as the file cards waiting below a long file's end, passes
+// `animations: "allow"`; finishing those animations would draw them in place.
+export async function captureReviewScreenshot(
+  page,
+  testInfo,
+  name,
+  { clip, animations = "disabled" } = {},
+) {
   const path = testInfo.outputPath(`${name}-${testInfo.project.name}.png`);
   await page.screenshot({
     path,
     fullPage: !clip,
     clip,
-    animations: "disabled",
+    animations,
   });
   await testInfo.attach(`${name}-${testInfo.project.name}`, {
     path,

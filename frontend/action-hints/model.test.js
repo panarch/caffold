@@ -114,6 +114,8 @@ test("accepts only the central semantic action and control-kind policy", () => {
     [ACTION_HINT_ACTION.CONTROL_TEXTBOX_FOCUS, "textbox"],
     [ACTION_HINT_ACTION.REORDER_HANDLE_FOCUS, "reorder-handle"],
     [ACTION_HINT_ACTION.DISCLOSURE_TOGGLE, "disclosure"],
+    [ACTION_HINT_ACTION.CONVERSATION_SHOW, "disclosure"],
+    [ACTION_HINT_ACTION.CONVERSATION_FOLD, "disclosure"],
     [ACTION_HINT_ACTION.LINK_OPEN, "link"],
   ]);
   for (const actionId of Object.values(ACTION_HINT_ACTION)) {
@@ -163,6 +165,28 @@ test("allocates owner-declared disclosures through the automatic pool", () => {
     ]),
     /Unsupported Action Hint action/,
   );
+});
+
+test("keeps C for showing and folding the conversation only while one is shown", () => {
+  const files = (count) =>
+    Array.from({ length: count }, (_, index) =>
+      target(`file-${index}`, ACTION_HINT_ACTION.FILE_OPEN)
+    );
+  const show = target("show", ACTION_HINT_ACTION.CONVERSATION_SHOW, "disclosure");
+  const fold = target("fold", ACTION_HINT_ACTION.CONVERSATION_FOLD, "disclosure");
+  const codes = (targets) =>
+    allocateActionHintCodes(targets).map(({ code }) => code);
+
+  // Without either, C stays in the automatic pool.
+  assert.ok(codes(files(21)).includes("C"));
+
+  // With one, C is its alone, after any number of targets.
+  const shown = codes([...files(21), show]);
+  assert.equal(shown.at(-1), "C");
+  assert.equal(shown.slice(0, -1).join(""), "ASDFGHJKLQWERYUIOZXVB");
+  const long = codes([...files(60), fold]);
+  assert.equal(long.at(-1), "C");
+  assert.ok(long.slice(0, -1).every((code) => !code.startsWith("C")));
 });
 
 test("allocates native controls through one automatic pool", () => {

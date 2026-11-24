@@ -7,6 +7,24 @@
   overflow: hidden;
 }
 
+/* Detail's floating conversation takes room over the file's end, and on a
+   phone, where the list and the file take turns, over the list's. */
+:host {
+  --file-viewer-scroll-end-clearance: var(
+    --task-detail-floating-clearance,
+    0rem
+  );
+}
+
+@media (max-width: 560px) {
+  :host {
+    --file-tree-scroll-end-clearance: var(
+      --task-detail-floating-clearance,
+      0rem
+    );
+  }
+}
+
 caffold-git-compare-browser {
   width: 100%;
   height: 100%;

@@ -298,6 +298,27 @@ Issues. Switching Task or Section context reloads repository data, while safe
 local state may survive surface switches within one context. If a Section loses
 repository capability, it returns to New Task.
 
+On a Task screen that shows a file (Working Tree, Branch, a Git commit, Git
+Compare, and GitHub Pull Files) the Task's conversation is a round button with
+the Conversation icon at the bottom right, whose fill alone lets the code show
+through; whether the Task is working shows in the header as everywhere. It opens
+there into a card with the conversation, Current Plan, and follow-up Composer as
+on the Conversation screen, over the file without changing its width. The focus
+goes to the card's header, which carries the same icon, not to the Composer. The
+card opens at a third of the screen's width and two thirds of its height, never
+smaller than 25rem by 32.5rem; its top left corner resizes it, and the device
+keeps the size. On a phone it opens as a sheet over the whole screen and leaves
+the keyboard down. The card's header folds it, as does `Escape` outside the
+Composer; in the Composer and on the resize handle, `Escape` first leaves for
+the header. A phone's sheet also folds when the dimmed space above it is tapped
+and when a link in it opens a file. The card stays open while the person moves
+between those screens and files, and starts folded on any other screen, for
+another Task, and after a reload. What scrolls under it ends with room for the
+round button, so the end of a file, the adjacent file cards, and on a phone the
+end of the file list come up above it; opening, folding, or resizing the card
+leaves that room as it is. The Conversation screen, a Section, Git Log, GitHub
+lists and details, and the terminal have no button.
+
 ## Task Detail
 
 Task Detail presents the selected conversation, command requests,
@@ -489,16 +510,18 @@ small pie immediately left of the microphone, in the agent's own count (see
 Choosing it opens the used and window token counts above it in the same form as
 Task details, or `Not reported yet.` until the agent has reported one. The pie
 keeps its place whatever the model label says and hides while voice input runs;
-in phone portrait **Attach files** and the approval-mode control hide with it.
+in a Composer 520px wide or narrower, as on a phone, **Attach files** hides with
+it, and so does the approval-mode control where it shows only a shield.
 New Task has no pie.
 
 In phone portrait a Task's follow-up Composer is a full-width bar along the
 bottom edge of the screen with a line across its top, and its prompt and
 controls keep the conversation's side margin.
 
-In phone portrait every Composer's approval-mode control shows only a shield,
-in a circle the microphone's size, so the model label keeps its room. The shield
-is the same for every mode and turns red for a mode that gives up a protection;
+Where its row has little room, as on a phone and in the floating conversation's
+card, a Composer's or dialog's approval-mode control shows only a shield, in a
+circle the microphone's size, so the model label keeps its room. The shield is
+the same for every mode and turns red for a mode that gives up a protection;
 choosing it opens the same mode list.
 
 When the selected Task's effective working directory contains the valid

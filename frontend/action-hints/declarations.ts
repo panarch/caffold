@@ -53,7 +53,9 @@ interface DeclarationFields<Kind extends ActionHintControlKind> {
   // Clip roots beyond the ones the parent passes.
   clipRoots?: () => Array<Element | null | undefined>;
   // Where its badge sits on the anchor. Left out, at the top left.
-  badgeAt?: Kind extends "button" | "switch" ? ActionHintBadgePlacement : never;
+  badgeAt?: Kind extends "button" | "switch" | "disclosure"
+    ? ActionHintBadgePlacement
+    : never;
 }
 
 export interface ActionHintPull {
@@ -238,7 +240,10 @@ function declaredTarget(
     case "link":
       return linkActionHintTarget(target);
     case "disclosure":
-      return disclosureActionHintTarget(target);
+      return disclosureActionHintTarget({
+        ...target,
+        badgeAt: declaration.badgeAt,
+      });
     case "radio":
       return radioActionHintTarget(target);
     case "switch":

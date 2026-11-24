@@ -28,6 +28,8 @@ export const ACTION_HINT_ACTION = Object.freeze({
   FILE_DETAILS_OPEN: "navigation.file-details.open",
   NOTE_DETAILS_OPEN: "navigation.note-details.open",
   PROMPT_FOCUS: "task.prompt.focus",
+  CONVERSATION_SHOW: "task.conversation.show",
+  CONVERSATION_FOLD: "task.conversation.fold",
   CURRENT_PLAN_DOCUMENT_OPEN: "task.current-plan.document.open",
   CURRENT_PLAN_STATUS_OPEN: "task.current-plan.status.open",
   WORKSPACE_SELECT: "navigation.workspace.select",
@@ -67,16 +69,20 @@ export type ActionHintAction =
 
 const ACTION_HINT_ALLOCATION = Object.freeze({
   FIXED: "fixed",
+  FIXED_WHILE_SHOWN: "fixed-while-shown",
   PREFIXED: "prefixed",
   AUTOMATIC: "automatic",
 });
 
-// How an action's code is chosen: one fixed key, a fixed prefix before a
-// generated suffix, or the automatic pool.
+// How an action's code is chosen: one fixed key, kept out of the automatic
+// pool everywhere or only while a target of that action is shown, a fixed
+// prefix before a generated suffix, or the automatic pool.
 type ActionHintPolicy =
   | {
       controlKind: ActionHintControlKind;
-      allocation: typeof ACTION_HINT_ALLOCATION.FIXED;
+      allocation:
+        | typeof ACTION_HINT_ALLOCATION.FIXED
+        | typeof ACTION_HINT_ALLOCATION.FIXED_WHILE_SHOWN;
       code: string;
     }
   | {
@@ -122,6 +128,21 @@ const ACTION_HINT_ACTION_POLICY = Object.freeze({
     allocation: ACTION_HINT_ALLOCATION.FIXED,
     code: "P",
   }),
+  // The button that shows the Task's conversation over a file sits at the
+  // screen's bottom right, after every other target, so a long file list
+  // would push it to a long code that changes with the list. The card header
+  // that folds it takes the same key; the two are never shown together.
+  ...samePolicy(
+    [
+      ACTION_HINT_ACTION.CONVERSATION_SHOW,
+      ACTION_HINT_ACTION.CONVERSATION_FOLD,
+    ],
+    Object.freeze({
+      controlKind: "disclosure",
+      allocation: ACTION_HINT_ALLOCATION.FIXED_WHILE_SHOWN,
+      code: "C",
+    }),
+  ),
   [ACTION_HINT_ACTION.DIALOG_TEXTBOX_FOCUS]: Object.freeze({
     controlKind: "textbox",
     allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
@@ -263,13 +284,21 @@ export function allocateActionHintCodes<
   const automaticCount = resolved.filter(
     ({ policy }) => policy.allocation === ACTION_HINT_ALLOCATION.AUTOMATIC,
   ).length;
+  const shownFixedCodes = resolved.flatMap(({ policy }) =>
+    policy.allocation === ACTION_HINT_ALLOCATION.FIXED_WHILE_SHOWN
+      ? [policy.code]
+      : [],
+  );
   const taskCodes = compactHintCodes(taskCount, TASK_HINT_ALPHABET);
-  const automaticCodes = automaticHintCodes(automaticCount, reserved);
+  const automaticCodes = automaticHintCodes(automaticCount, [
+    ...reserved,
+    ...shownFixedCodes,
+  ]);
   let taskIndex = 0;
   let automaticIndex = 0;
   const allocated = resolved.map(({ target, policy }) => {
     const code =
-      policy.allocation === ACTION_HINT_ALLOCATION.FIXED
+      "code" in policy
         ? policy.code
         : policy.allocation === ACTION_HINT_ALLOCATION.PREFIXED
           ? `${policy.prefix}${taskCodes[taskIndex++]}`

@@ -25,7 +25,10 @@ import {
   taskStoreBlocksTaskOperations,
 } from "../task-store-status.js";
 import "./(detail)/layout.js";
-import type { CaffoldDetailLayout } from "./(detail)/layout.js";
+import type {
+  CaffoldDetailLayout,
+  DetailPresentation,
+} from "./(detail)/layout.js";
 import { TERMINAL_PAGE_FOCUS_RELEASE_EVENT } from "./(detail)/terminal/page.js";
 import type { ComposerSubmission } from "./components/composer.js";
 import {
@@ -130,7 +133,7 @@ export class CaffoldTasksPage extends CaffoldElement {
   selectedThreadId = "";
   private view: TasksView = "home";
   private detailView = "conversation";
-  private detailPresentation = "reading";
+  private detailPresentation: DetailPresentation = "reading";
   private taskListState = "loading";
   private selectedSectionId = "";
   private adoptedThreadId = "";
@@ -435,7 +438,11 @@ export class CaffoldTasksPage extends CaffoldElement {
     if (nextView === "detail") {
       this.taskNew.value?.deactivate();
       if (nextThreadId) {
-        this.taskDetail()?.prepare(nextThreadId, { preserveLoadedTask, route });
+        this.taskDetail()?.prepare(nextThreadId, {
+          preserveLoadedTask,
+          route,
+          presentation: this.detailPresentation,
+        });
       } else {
         const section = this.taskNavigator()?.sectionFor(nextSectionId);
         if (section) {
@@ -507,6 +514,7 @@ export class CaffoldTasksPage extends CaffoldElement {
       const result = await this.taskDetail()?.open(route.threadId, {
         preserveLoadedTask: prepared.preserveLoadedTask,
         route,
+        presentation: this.detailPresentation,
       });
       if (this.adoptedThreadId === route.threadId) {
         this.adoptedThreadId = "";
@@ -575,6 +583,7 @@ export class CaffoldTasksPage extends CaffoldElement {
       void this.taskDetail()?.open(this.selectedThreadId, {
         preserveLoadedTask: true,
         route: this.currentRoute,
+        presentation: this.detailPresentation,
       });
     }
     this.draw();
@@ -652,9 +661,15 @@ export class CaffoldTasksPage extends CaffoldElement {
     });
   }
 
-  // Where Escape takes focus from a field being edited in Tasks.
-  editingEscapeTarget() {
-    return this.detailPane.value ?? null;
+  // Where Escape takes focus from a field being edited in Tasks: Detail's
+  // answer for a field in its floating conversation, the detail pane
+  // otherwise.
+  editingEscapeTarget(editable: Element | null) {
+    return (
+      this.detail.value?.editingEscapeTarget(editable) ??
+      this.detailPane.value ??
+      null
+    );
   }
 
   taskDetail() {

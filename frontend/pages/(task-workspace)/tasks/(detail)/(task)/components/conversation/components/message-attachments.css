@@ -1,12 +1,15 @@
+/* The pictures stack one under another at every width, each as wide as it
+   can be up to 360px, on the side its message sits on. */
 :host {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 0.625rem;
   min-width: 0;
 }
 
 :host([align-end]) {
-  justify-content: flex-end;
+  align-items: flex-end;
 }
 
 .task-message-attachment {

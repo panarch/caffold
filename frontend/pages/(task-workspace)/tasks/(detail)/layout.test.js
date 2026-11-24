@@ -89,6 +89,9 @@ test("merges the view switch with only the active direct-child surface", () => {
           return { targets: [terminalTarget] };
         },
       } },
+    floatingConversation: { value: null },
+    floatingConversationActionHints: detailLayout.floatingConversationActionHints,
+    openFloatingConversation: detailLayout.openFloatingConversation,
   };
 
   assert.deepEqual(detailLayout.actionHintScope.call(owner), {
@@ -177,6 +180,8 @@ test("delegates Scroll and keyboard contexts only to the active direct owner", (
     review: () => null,
     gitLayout: () => null,
     githubLayout: () => null,
+    floatingConversation: { value: null },
+    openFloatingConversation: detailLayout.openFloatingConversation,
   };
 
   assert.equal(detailLayout.scrollSurfaceScope.call(owner), surfaceScope);
@@ -232,6 +237,8 @@ test("delegates Scroll to each exact active Detail domain", () => {
     review: () => ({ scrollSurfaceScope: () => ({ surfaces: [surfaces.review] }) }),
     gitLayout: () => ({ scrollSurfaceScope: () => ({ surfaces: [surfaces.git] }) }),
     githubLayout: () => ({ scrollSurfaceScope: () => ({ surfaces: [surfaces.github] }) }),
+    floatingConversation: { value: null },
+    openFloatingConversation: detailLayout.openFloatingConversation,
   };
   for (const domain of ["review", "git", "github"]) {
     surface = domain;
@@ -239,6 +246,109 @@ test("delegates Scroll to each exact active Detail domain", () => {
   }
   owner.hidden = true;
   assert.deepEqual(detailLayout.scrollSurfaceScope.call(owner).surfaces, []);
+});
+
+test("shows the conversation floating only over a Task's screens that show a file", () => {
+  const owner = {
+    subjectKind: "task",
+    presentation: "code",
+    surface: "review",
+    presentedSurface() {
+      return this.surface;
+    },
+  };
+  const presentation = () => detailLayout.conversationPresentation.call(owner);
+
+  for (const surface of ["review", "git", "github"]) {
+    owner.surface = surface;
+    assert.equal(presentation(), "floating");
+  }
+  owner.surface = "terminal";
+  assert.equal(presentation(), "hidden");
+  owner.surface = "git";
+  owner.presentation = "reading";
+  assert.equal(presentation(), "hidden");
+  owner.surface = "conversation";
+  assert.equal(presentation(), "docked");
+  owner.subjectKind = "section";
+  owner.surface = "review";
+  owner.presentation = "code";
+  assert.equal(presentation(), "hidden");
+});
+
+test("merges the floating conversation beside a file, and its conversation only while open", () => {
+  const viewTarget = { id: "view-switch" };
+  const reviewTarget = { id: "review" };
+  const buttonTarget = { id: "floating-button" };
+  const conversationTarget = { id: "conversation" };
+  const reviewScroll = { id: "review-scroll" };
+  const conversationScroll = { id: "conversation-scroll" };
+  const modalContext = { id: "conversation-context" };
+  const floating = {
+    floating: true,
+    open: false,
+    actionHintScope(options) {
+      assert.equal(options.scopeId, "detail:task:thread-a:floating-conversation");
+      return { targets: [buttonTarget] };
+    },
+  };
+  const task = {
+    hidden: false,
+    loading: false,
+    actionHintScope: () => ({ targets: [conversationTarget] }),
+    scrollSurfaceScope: () => ({ surfaces: [conversationScroll] }),
+    keyboardNavigationContexts: () => [modalContext],
+  };
+  const owner = {
+    subjectKind: "task",
+    hidden: false,
+    performUpdate() {},
+    subjectIdentity: () => ({ kind: "task", id: "thread-a" }),
+    presentedSurface: () => "review",
+    summaryHeader: { value: {} },
+    viewSwitch: { value: { actionHintScope: () => ({ targets: [viewTarget] }) } },
+    gitMenu: { value: null },
+    terminalButton: { value: null },
+    taskSummary: { value: null },
+    taskDetail: { value: task },
+    review: () => ({
+      actionHintScope: () => ({ targets: [reviewTarget] }),
+      scrollSurfaceScope: () => ({ surfaces: [reviewScroll] }),
+      keyboardNavigationContexts: () => [],
+    }),
+    floatingConversation: { value: floating },
+    floatingConversationActionHints: detailLayout.floatingConversationActionHints,
+    openFloatingConversation: detailLayout.openFloatingConversation,
+  };
+
+  assert.deepEqual(detailLayout.actionHintScope.call(owner).targets, [
+    viewTarget,
+    reviewTarget,
+    buttonTarget,
+  ]);
+  assert.deepEqual(detailLayout.scrollSurfaceScope.call(owner).surfaces, [reviewScroll]);
+  assert.deepEqual(detailLayout.keyboardNavigationContexts.call(owner), []);
+
+  floating.open = true;
+  assert.deepEqual(detailLayout.actionHintScope.call(owner).targets, [
+    viewTarget,
+    reviewTarget,
+    buttonTarget,
+    conversationTarget,
+  ]);
+  assert.deepEqual(detailLayout.scrollSurfaceScope.call(owner).surfaces, [
+    reviewScroll,
+    conversationScroll,
+  ]);
+  assert.deepEqual(detailLayout.keyboardNavigationContexts.call(owner), [modalContext]);
+
+  // A conversation still loading in the card offers nothing yet.
+  task.loading = true;
+  assert.deepEqual(detailLayout.actionHintScope.call(owner).targets, [
+    viewTarget,
+    reviewTarget,
+    buttonTarget,
+  ]);
 });
 
 // A Task Detail owner whose header draws into `menus` and `flags`: the
@@ -277,6 +387,8 @@ function headerOwner(state, { menus = [], flags = [], summaries = [], choices = 
     syncHeaderVisibility() {},
     selectedTaskContextPath: () => "",
     taskDetail: { value: { reconcileVisibleSurface() {} } },
+    presentation: "reading",
+    floatingConversation: { value: null },
     ...state,
   }));
   return owner;

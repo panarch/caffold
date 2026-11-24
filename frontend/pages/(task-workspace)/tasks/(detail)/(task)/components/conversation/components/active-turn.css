@@ -33,7 +33,8 @@
   white-space: nowrap;
 }
 
-@media (max-width: 620px) {
+/* In a narrow conversation column the state takes its own line. */
+@container task-conversation (max-width: 600px) {
   :host {
     grid-template-columns: var(--interface-icon-small-size) minmax(0, 1fr);
   }

@@ -329,6 +329,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js",
+  "/assets/pages/(task-workspace)/tasks/(detail)/components/floating-conversation.css.js",
+  "/assets/pages/(task-workspace)/tasks/(detail)/components/floating-conversation.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/components/git-menu.css.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/components/git-menu.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/components/terminal-button.css.js",

@@ -4,13 +4,19 @@ import { elementHandles } from "../support/element-handles.js";
 import { focusLook, pointerHovers } from "../support/focus-look.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import { installTaskReviewFixture } from "../support/task-review-fixture.js";
+import { openCompletedTaskForReview } from "../support/task-review-test.js";
 import {
   actionHintDialog,
   activateActionHint,
   enterActionHints,
 } from "../support/action-hints.js";
 import {
+  activeTaskProjection,
+  canonicalTaskState,
   captureReviewScreenshot,
+  emitTaskDetailBootstrap,
+  installEventSourceMock,
+  mockAgentModels,
   recordSlides,
   stabilizeDynamicText,
 } from "../support/task-fixtures.js";
@@ -2360,4 +2366,198 @@ test("follows without sliding when motion is reduced", { tag: "@server-changes" 
   expect(await page.locator(".task-conversation-scroll").evaluate(
     (element) => element.scrollHeight - element.clientHeight - element.scrollTop <= 2,
   )).toBe(true);
+});
+
+test("narrows its rows by the conversation column's width, not the window's", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page, {
+    registryKey: "__narrowRowSources",
+    autoOpen: true,
+  });
+  await mockAgentModels(page);
+  const threadId = "thread_narrow_rows";
+  const doneTurnId = "turn_done";
+  const activeTurnId = "turn_active";
+  const now = Date.now() - 60_000;
+  const task = {
+    id: threadId,
+    threadId,
+    ...canonicalTaskState("active", {
+      turnId: activeTurnId,
+      startedAtMs: now + 10_000,
+      latestTurnStatus: "inProgress",
+    }),
+    title: "Narrow rows",
+    preview: "Run the tests again",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now + 11_000,
+    recencyMs: now + 11_000,
+    lastEventSummary: "Running the tests",
+  };
+  const event = (id, type, anchorMs, turnId, payload = {}) => ({
+    id,
+    threadId,
+    type,
+    summary: type,
+    payload: { threadId, turnId, ...payload },
+    position: { anchorMs, index: 0 },
+  });
+  const command = (id, anchorMs, turnId) =>
+    event(id, "command_execution", anchorMs, turnId, {
+      itemId: id,
+      command: "cargo test --workspace",
+      cwd: "src",
+      status: "completed",
+      exitCode: 0,
+      durationMs: 1_250,
+      output: "test result: ok",
+    });
+  // The finished turn folds its two commands into a group; the running
+  // turn's command keeps its own row.
+  const detail = {
+    revision: 1,
+    eventRevision: 1,
+    task,
+    events: [
+      event("done_user", "user_message", now, doneTurnId, {
+        text: "Run the tests.",
+      }),
+      command("done_first", now + 1_000, doneTurnId),
+      command("done_second", now + 2_000, doneTurnId),
+      event("done_final", "assistant_message", now + 3_000, doneTurnId, {
+        itemId: "done_final",
+        phase: "final",
+        text: "The tests pass.",
+      }),
+      event("done_marker", "turn_completed", now + 4_000, doneTurnId, {
+        status: "completed",
+      }),
+      event("active_user", "user_message", now + 10_000, activeTurnId, {
+        text: "Run the tests again.",
+      }),
+      command("active_command", now + 11_000, activeTurnId),
+    ],
+    eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
+    pendingApprovals: [],
+  };
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({ json: detail }),
+  );
+  await page.setViewportSize({ width: 1400, height: 800 });
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  await emitTaskDetailBootstrap(page, detail);
+
+  const conversation = page.locator("caffold-task-conversation");
+  const workDetails = conversation.locator(
+    `.task-turn-work[data-turn-id="${doneTurnId}"] caffold-task-work-details > details`,
+  );
+  await workDetails.locator(":scope > summary").click();
+  const group = workDetails.locator(
+    ".task-work-details-run-group > caffold-task-run-group > details",
+  );
+  await group.locator(":scope > summary").click();
+  const rowMeta = conversation
+    .locator(".task-command > caffold-task-command")
+    .locator(".task-command-summary-meta");
+  const groupMeta = group
+    .locator(".task-run-group-item caffold-task-command")
+    .first()
+    .locator(".task-command-summary-meta");
+  const working = conversation.locator("caffold-task-active-turn");
+  await expect(rowMeta).toBeVisible();
+  await expect(groupMeta).toBeVisible();
+  await expect(working).toBeVisible();
+  const rows = async () => ({
+    column: await conversation
+      .locator(".task-conversation-scroll")
+      .evaluate((scroll) => {
+        const style = getComputedStyle(scroll);
+        return (
+          scroll.clientWidth -
+          Number.parseFloat(style.paddingLeft) -
+          Number.parseFloat(style.paddingRight)
+        );
+      }),
+    bubble: await conversation
+      .locator("caffold-task-user-message .task-user-message-content")
+      .first()
+      .evaluate((content) => getComputedStyle(content).maxWidth),
+    rowMeta: await rowMeta.isVisible(),
+    groupMeta: await groupMeta.isVisible(),
+    workingLines: await working.evaluate((row) => {
+      const duration = row.shadowRoot.querySelector(".task-turn-active-duration");
+      const state = row.shadowRoot.querySelector(".task-turn-active-state");
+      return state.getBoundingClientRect().top >=
+        duration.getBoundingClientRect().bottom
+        ? 2
+        : 1;
+    }),
+  });
+
+  const wide = await rows();
+  expect(wide.column).toBeGreaterThan(840);
+  expect(wide).toMatchObject({
+    bubble: "min(76%, 700px)",
+    rowMeta: true,
+    groupMeta: true,
+    workingLines: 1,
+  });
+
+  // Beside the Task list a 1,100px window leaves a column under 840px.
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await expect.poll(rows).toMatchObject({
+    bubble: "min(92%, 760px)",
+    rowMeta: true,
+    groupMeta: true,
+    workingLines: 1,
+  });
+  expect((await rows()).column).toBeLessThanOrEqual(840);
+
+  // A 900px window, wider than a phone, leaves a column under 600px, and the
+  // rows inside the group change with the rows around it.
+  await page.setViewportSize({ width: 900, height: 800 });
+  await expect.poll(rows).toMatchObject({
+    bubble: "min(92%, 760px)",
+    rowMeta: false,
+    groupMeta: false,
+    workingLines: 2,
+  });
+  expect((await rows()).column).toBeLessThanOrEqual(600);
+});
+
+test("stacks a prompt's pictures one under another at every column width", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await openCompletedTaskForReview(page);
+  const pictures = page
+    .locator("caffold-task-conversation caffold-task-user-message caffold-task-message-attachments")
+    .first();
+  await expect(pictures.locator(".task-message-attachment")).toHaveCount(2);
+  const layout = () => pictures.evaluate((host) => {
+    const figures = [...host.shadowRoot.querySelectorAll(".task-message-attachment")]
+      .map((figure) => figure.getBoundingClientRect());
+    const captions = [...host.shadowRoot.querySelectorAll(".task-message-attachment > figcaption")]
+      .map((caption) => Math.round(caption.getBoundingClientRect().height));
+    return {
+      stacked: figures[1].top >= figures[0].bottom,
+      sameEnd: Math.abs(figures[1].right - figures[0].right) < 1,
+      captionsEven: new Set(captions).size === 1,
+    };
+  });
+
+  // Beside the Task list these windows give columns from wide to narrow,
+  // through the widths where two pictures would fit side by side.
+  for (const width of [1400, 1300, 1250, 1225, 1200, 1175, 1150, 1100]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect.poll(layout, { message: `${width}px window` })
+      .toEqual({ stacked: true, sameEnd: true, captionsEven: true });
+  }
 });

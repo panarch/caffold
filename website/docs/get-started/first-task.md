@@ -48,9 +48,10 @@ see the changed files and their diffs.
 
 ## 4. Continue
 
-Go back to **Conversation** and write what should happen next: a correction, a
-follow-up, or a request to commit. Each message continues the same
-conversation with the same agent.
+Open the conversation with the button at the bottom right, or go back to
+**Conversation**, and write what should happen next: a correction, a follow-up,
+or a request to commit. Each message continues the same conversation with the
+same agent.
 
 From here:
 

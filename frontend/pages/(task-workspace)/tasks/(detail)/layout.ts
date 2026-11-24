@@ -16,7 +16,10 @@ import {
 } from "#app/navigation-routes.js";
 import type { WorkspaceLiveUpdates } from "#app/pages/(task-workspace)/live-updates.js";
 import type { TaskStoreStatusSnapshot } from "#app/pages/(task-workspace)/task-store-status.js";
-import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
+import {
+  emptyScrollSurfaceScope,
+  mergeScrollSurfaceScopes,
+} from "#app/scroll-scope.js";
 import "#components/segmented-control.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import type { CaffoldSegmentedControl } from "#components/segmented-control.js";
@@ -51,6 +54,12 @@ import type {
   CaffoldTaskDetail,
   TaskSubjectSnapshot,
 } from "./(task)/layout.js";
+import "./components/floating-conversation.js";
+import type {
+  CaffoldTaskDetailFloatingConversation,
+  FloatingConversationChangeDetail,
+  FloatingConversationPresentation,
+} from "./components/floating-conversation.js";
 import "./components/git-menu.js";
 import type {
   CaffoldTaskDetailGit,
@@ -82,6 +91,16 @@ import type {
 import styles from "./layout.css.js";
 
 const CLEAN_REVIEW_CACHE_LIMIT = 6;
+
+// How Tasks presents the route: a screen that shows a file, or one to read.
+export type DetailPresentation = "code" | "reading";
+
+// What Tasks hands a Task's Detail with its route.
+interface TaskOpenOptions {
+  preserveLoadedTask?: boolean;
+  route?: TaskRoute | null;
+  presentation?: DetailPresentation;
+}
 
 // A route a Task's Detail shows, with the fields its surfaces read.
 type TaskRoute = {
@@ -137,6 +156,7 @@ export class CaffoldDetailLayout extends CaffoldElement {
   private sectionRoute: SectionDetailRoute | null = null;
   private taskRoute: TaskRoute | null = null;
   private taskSnapshot: TaskSubjectSnapshot | null = null;
+  private presentation: DetailPresentation = "reading";
   private managedTask: ListedTask | null = null;
   private managedTaskRepository = false;
   private managedTaskPinned = false;
@@ -169,6 +189,8 @@ export class CaffoldDetailLayout extends CaffoldElement {
     this,
   );
   private readonly taskDetail = new DrawnRef<CaffoldTaskDetail>(this);
+  private readonly floatingConversation =
+    new DrawnRef<CaffoldTaskDetailFloatingConversation>(this);
   private readonly sectionDetail = new DrawnRef<CaffoldSectionDetail>(this);
   private readonly reviewSlot = new DrawnRef<HTMLDivElement>(this);
   private readonly gitSlot = new DrawnRef<HTMLDivElement>(this);
@@ -198,18 +220,17 @@ export class CaffoldDetailLayout extends CaffoldElement {
     }
   }
 
-  prepare(
-    threadId: string,
-    options: { preserveLoadedTask?: boolean; route?: TaskRoute | null } = {},
-  ) {
+  prepare(threadId: string, options: TaskOpenOptions = {}) {
     this.performUpdate();
     if (taskThreadId(this.managedTask) !== `${threadId ?? ""}`) {
       this.managedTask = null;
       this.managedTaskRepository = false;
       this.managedTaskPinned = false;
     }
-    this.taskRoute = { ...(options.route ?? { kind: "tasks", threadId }) };
-    this.keepTerminalTakeFor(this.taskRoute.terminal ? `task:${threadId}` : "");
+    this.applyTaskRoute(threadId, options);
+    this.keepTerminalTakeFor(
+      this.taskRoute?.terminal ? `task:${threadId}` : "",
+    );
     this.activateSubject("task");
     const prepared = this.taskDetail.value?.prepare(threadId, options);
     this.captureTaskSnapshot();
@@ -217,12 +238,9 @@ export class CaffoldDetailLayout extends CaffoldElement {
     return prepared;
   }
 
-  async open(
-    threadId: string,
-    options: { preserveLoadedTask?: boolean; route?: TaskRoute | null } = {},
-  ) {
+  async open(threadId: string, options: TaskOpenOptions = {}) {
     this.performUpdate();
-    this.taskRoute = { ...(options.route ?? { kind: "tasks", threadId }) };
+    this.applyTaskRoute(threadId, options);
     this.activateSubject("task");
     const result = await this.taskDetail.value?.open(threadId, options);
     this.captureTaskSnapshot();
@@ -367,6 +385,7 @@ export class CaffoldDetailLayout extends CaffoldElement {
     }
     this.terminalPage.value?.deactivate();
     if (this.subjectKind === "task") {
+      this.floatingConversation.value?.fold();
       this.taskDetail.value?.deactivate(options);
       this.deactivateSharedChildren();
     } else {
@@ -496,6 +515,15 @@ export class CaffoldDetailLayout extends CaffoldElement {
     return null;
   }
 
+  // Where Escape takes focus from a field being edited in Detail. The open
+  // floating card keeps it on its header, so a second Escape folds the card;
+  // anywhere else Tasks decides.
+  editingEscapeTarget(editable: Element | null) {
+    return (
+      this.floatingConversation.value?.editingEscapeTarget(editable) ?? null
+    );
+  }
+
   actionHintScope(): ActionHintScope {
     const identityKey = detailIdentityKey(this.subjectIdentity());
     if (!identityKey || this.hidden) {
@@ -547,6 +575,7 @@ export class CaffoldDetailLayout extends CaffoldElement {
         ? this.taskSummary.value?.actionHintScope(headerScope)
         : null,
       activeChildScope,
+      this.floatingConversationActionHints(identityKey),
     );
   }
 
@@ -584,6 +613,7 @@ export class CaffoldDetailLayout extends CaffoldElement {
             [])
         : [],
       activeChild,
+      this.openFloatingConversation()?.keyboardNavigationContexts() ?? [],
     );
   }
 
@@ -604,20 +634,88 @@ export class CaffoldDetailLayout extends CaffoldElement {
         ? sectionDetail.scrollSurfaceScope()
         : emptyScrollSurfaceScope();
     }
+    const conversation = this.openFloatingConversation()?.scrollSurfaceScope();
     if (surface === "review") {
-      return this.review()?.scrollSurfaceScope() ?? emptyScrollSurfaceScope();
+      return mergeScrollSurfaceScopes(
+        this.review()?.scrollSurfaceScope(),
+        conversation,
+      );
     }
     if (surface === "git") {
-      return (
-        this.gitLayout()?.scrollSurfaceScope() ?? emptyScrollSurfaceScope()
+      return mergeScrollSurfaceScopes(
+        this.gitLayout()?.scrollSurfaceScope(),
+        conversation,
       );
     }
     if (surface === "github") {
-      return (
-        this.githubLayout()?.scrollSurfaceScope() ?? emptyScrollSurfaceScope()
+      return mergeScrollSurfaceScopes(
+        this.githubLayout()?.scrollSurfaceScope(),
+        conversation,
       );
     }
     return emptyScrollSurfaceScope();
+  }
+
+  // The floating conversation's controls next to the screen that shows a
+  // file, with the conversation itself while its card is open.
+  private floatingConversationActionHints(identityKey: string) {
+    const floating = this.floatingConversation.value;
+    if (!floating?.floating) {
+      return null;
+    }
+    return mergeActionHintScopes(
+      floating.actionHintScope({
+        scopeId: `detail:${identityKey}:floating-conversation`,
+        clipRoots: [this],
+      }),
+      this.openFloatingConversation()?.actionHintScope(),
+    );
+  }
+
+  // Task Detail while its conversation is open in the floating card.
+  private openFloatingConversation() {
+    const taskDetail = this.taskDetail.value;
+    return this.floatingConversation.value?.open &&
+      taskDetail &&
+      !taskDetail.loading
+      ? taskDetail
+      : null;
+  }
+
+  // Where the Task's conversation shows: as the Conversation screen, floating
+  // over a screen that shows a file other than the terminal, or nowhere.
+  private conversationPresentation(): FloatingConversationPresentation {
+    if (this.subjectKind !== "task") {
+      return "hidden";
+    }
+    const surface = this.presentedSurface();
+    if (surface === "conversation") {
+      return "docked";
+    }
+    return this.presentation === "code" && surface !== "terminal"
+      ? "floating"
+      : "hidden";
+  }
+
+  private readonly floatingConversationChange = (
+    event: CustomEvent<FloatingConversationChangeDetail>,
+  ) => {
+    this.taskDetail.value?.setFloatingConversationShown(
+      Boolean(event.detail?.open),
+    );
+  };
+
+  // Takes the route Tasks opens the Task at. An open phone sheet covers the
+  // whole screen, so a route that moves under it, such as a file link in the
+  // conversation, folds the sheet to show where the route went.
+  private applyTaskRoute(threadId: string, options: TaskOpenOptions) {
+    const previous = JSON.stringify(this.taskRoute);
+    this.taskRoute = { ...(options.route ?? { kind: "tasks", threadId }) };
+    this.presentation = options.presentation ?? this.presentation;
+    const floating = this.floatingConversation.value;
+    if (floating?.sheet && previous !== JSON.stringify(this.taskRoute)) {
+      floating.fold();
+    }
   }
 
   /**
@@ -699,6 +797,7 @@ export class CaffoldDetailLayout extends CaffoldElement {
     const headerHidden =
       kind === "task" ? !(canonicalTask ?? listedTask) : !this.section;
     const subjectSurface = kind === "task" ? "conversation" : "new";
+    const floating = this.conversationPresentation() === "floating";
     return html`
       <div class="common-detail-shell">
         <header
@@ -733,17 +832,25 @@ export class CaffoldDetailLayout extends CaffoldElement {
             @caffold:task-detail-terminal-intent=${this.terminalButtonIntent}
           ></caffold-task-detail-terminal>
         </header>
-        <div class="detail-layout-body">
+        <div
+          class="detail-layout-body"
+          ?data-floating-conversation=${floating}
+        >
           <div
             class="detail-subject-slot"
-            ?hidden=${surface !== subjectSurface}
+            ?hidden=${surface !== subjectSurface && !floating}
           >
-            <caffold-task-detail
-              ${drawn(this.taskDetail)}
-              ?hidden=${kind !== "task" || surface !== subjectSurface}
-              @caffold:task-subject-snapshot=${this.taskSubjectSnapshot}
-              @caffold:task-detail-transport-change=${this.taskTransportChange}
-            ></caffold-task-detail>
+            <caffold-task-detail-floating-conversation
+              ${drawn(this.floatingConversation)}
+              @caffold:floating-conversation-change=${this.floatingConversationChange}
+            >
+              <caffold-task-detail
+                ${drawn(this.taskDetail)}
+                ?hidden=${kind !== "task" || (surface !== subjectSurface && !floating)}
+                @caffold:task-subject-snapshot=${this.taskSubjectSnapshot}
+                @caffold:task-detail-transport-change=${this.taskTransportChange}
+              ></caffold-task-detail>
+            </caffold-task-detail-floating-conversation>
             <caffold-section-detail
               ${drawn(this.sectionDetail)}
               ?hidden=${kind !== "section" || surface !== subjectSurface}
@@ -888,6 +995,10 @@ export class CaffoldDetailLayout extends CaffoldElement {
       pressed: surface === "terminal",
     });
     this.syncHeaderVisibility(surface);
+    this.floatingConversation.value?.setSnapshot({
+      presentation: this.conversationPresentation(),
+      subjectKey: detailIdentityKey(this.subjectIdentity()),
+    });
     this.taskDetail.value?.reconcileVisibleSurface();
   }
 
@@ -901,6 +1012,10 @@ export class CaffoldDetailLayout extends CaffoldElement {
     const surface = this.sectionRoute?.sectionSurface ?? "new";
     this.draw();
     this.sectionSummary.value?.setSnapshot({ section });
+    this.floatingConversation.value?.setSnapshot({
+      presentation: "hidden",
+      subjectKey: "",
+    });
     this.viewSwitch.value?.setSnapshot({
       label: "Section view",
       actionVerb: "Open",

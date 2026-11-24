@@ -156,10 +156,16 @@
 
 /* The tabs take the height of their control and scroll sideways when the
    workbook has more sheets than fit. */
+/* The last tabs can scroll out from under what the file viewer's owner floats
+   over the viewer's bottom right. */
 .xlsx-viewer-tabs {
   display: flex;
   overflow-x: auto;
   padding: var(--interface-space-2) var(--interface-space-3);
+  padding-inline-end: calc(
+    var(--interface-space-3) +
+    var(--file-viewer-scroll-end-clearance, 0rem)
+  );
   border-top: 1px solid var(--border);
   background: var(--surface);
 
