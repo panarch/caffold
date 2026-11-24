@@ -617,8 +617,10 @@ declaration gets when it leaves `badgeAt` out, `top-right`, `center-left`,
 `center-right`, or `center`. Only that value places the badge. A row that
 starts with an icon names that icon as its `anchor` with `center`, so the badge
 covers the icon and leaves the label clear. Task actions do so for every row,
-the Language servers switch included, since the whole row toggles it. A
-container adds only
+the Language servers switch included, since the whole row toggles it. A menu
+item that leaves room for a badge at its end, as the Task list actions, the
+Git and GitHub menu, and a code name's menu do, asks for `center-right`, so the
+badge sits in that room at the row's middle. A container adds only
 which direct children it merges, and reaches them through the `DrawnRef` it
 drew them with rather than by selector. Scroll surfaces are declared the same
 way with `ScrollSurfaces` (`scroll-scope.ts`), and modals and popovers with
@@ -852,10 +854,10 @@ rendering keeps the popover root, its presentation host, and each option
 button, keyed by what the option chooses, so a refreshed list patches a renamed
 option's label onto its retained badge. The selected Model and Permission
 options carry native `autofocus`, so the popover's initial focus is settled
-before any keyboard session is captured. Permission options declare
-`badgeAt: "top-right"`, so their badges sit at the top right of each row
-instead of covering the label, and the Model menu's providers ask for
-`center-right`. The Model menu's model, reasoning-level, and speed options draw
+before any keyboard session is captured. Permission options and the Model
+menu's providers ask for `center-right`, so each badge sits at the middle of
+its row's end, clear of the label; on the selected Permission option it covers
+the check. The Model menu's model, reasoning-level, and speed options draw
 their check in a leading column and ask for `center-left`, so each badge covers
 that check, directly before the name the option chooses. A long model list
 scrolls by itself under its heading while the reasoning level and speed stay in

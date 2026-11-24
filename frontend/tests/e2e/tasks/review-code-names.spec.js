@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import {
   actionHintDialog,
+  badgeAtRowEndMiddle,
+  popoverActionHintDialog,
   waitForActionHintTarget,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
@@ -130,6 +132,24 @@ test("a pressed name opens its menu, and one definition opens at its line in Sou
   expect(asked).toEqual([
     { kind: "definition", path: "src/example.rs", ...SAMPLE },
   ]);
+});
+
+test("puts each menu badge at the middle of its item's end", { tag: "@server-steady" }, async ({ page }) => {
+  await installLanguageServers(page);
+  const { taskReview } = await openSource(page);
+  await codeName(taskReview, 1, "sample").click();
+  const menu = taskReview.locator("caffold-code-name-menu");
+  await expect(menu.getByRole("button", { name: "Go to definition" })).toBeEnabled();
+
+  await page.keyboard.press("f");
+  const hint = popoverActionHintDialog(page);
+  await expect(hint).toBeVisible();
+  for (const name of ["Go to definition", "Find references"]) {
+    await expect.poll(() => badgeAtRowEndMiddle(
+      hint.getByRole("button", { name: new RegExp(` — ${name}$`) }),
+      menu.getByRole("button", { name, exact: true }),
+    )).toEqual({ atEnd: true, middle: true });
+  }
 });
 
 test("Cmd or Ctrl and a click go straight to the definition", { tag: "@server-steady" }, async ({

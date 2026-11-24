@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { actionHintBadgePresentation, workspaceOcclusionTargets } from "../support/action-hints.js";
+import {
+  actionHintBadgePresentation,
+  badgeAtRowEndMiddle,
+  workspaceOcclusionTargets,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { focusLook, pointerHovers } from "../support/focus-look.js";
 import { TASK_PERMISSION_FIXTURE } from "../support/task-api-fixture.js";
@@ -643,10 +647,10 @@ test("hands create M to the native model popover and P to prompt editing", { tag
       '[data-turn-options-action="select-model"][aria-pressed="true"]',
     ),
   );
-  await expectBadgeAtRowEndMiddle(
+  await expect.poll(() => badgeAtRowEndMiddle(
     popoverHint.getByRole("button", { name: / — Codex$/ }),
     modelPopover.locator('[data-turn-options-action="browse-provider"][data-provider="codex"]'),
-  );
+  )).toEqual({ atEnd: true, middle: true });
   await page.keyboard.press("Escape");
   await expect(popoverHint).toBeHidden();
   await expect(modelPopover).toBeHidden();
@@ -973,6 +977,21 @@ test("uses a mouse-open Permission context and preserves its existing confirmati
     hint.getByRole("button", { name: / — Approve for me.*Selected$/ }),
   ).toBeVisible();
   let fullAccess = hint.getByRole("button", { name: / — Full access/ });
+  // Each badge sits at the middle of its option's end, past the option's text;
+  // on the selected option it covers the check.
+  for (const [badge, mode] of [
+    [hint.getByRole("button", { name: / — Approve for me.*Selected$/ }), "approveForMe"],
+    [fullAccess, "fullAccess"],
+  ]) {
+    const option = permissionPopover.locator(`[data-permission-mode="${mode}"]`);
+    await expect.poll(() => badgeAtRowEndMiddle(badge, option))
+      .toEqual({ atEnd: true, middle: true });
+    const [badgeBox, textBox] = await Promise.all([
+      badge.boundingBox(),
+      option.locator(":scope > span:not(.sr-only)").boundingBox(),
+    ]);
+    expect(badgeBox.x).toBeGreaterThanOrEqual(textBox.x + textBox.width);
+  }
   let fullAccessCode = await fullAccess.getAttribute("data-action-hint-code");
   expect(fullAccessCode).toBeTruthy();
   page.once("dialog", async (dialog) => {
@@ -1048,10 +1067,10 @@ test("selects Reorder through its declared popover and entered-mode contexts", {
     testInfo,
     "action-hints-reorder-popover",
   );
-  await expectBadgeAtRowEnd(
+  await expect.poll(() => badgeAtRowEndMiddle(
     tasks,
     popover.getByRole("button", { name: "Reorder Tasks", exact: true }),
-  );
+  )).toEqual({ atEnd: true, middle: true });
   const tasksCode = await tasks.getAttribute("data-action-hint-code");
   expect(tasksCode).toBeTruthy();
   await page.keyboard.type(tasksCode.toLowerCase());
@@ -1825,19 +1844,6 @@ function manyAgentModels(count) {
   };
 }
 
-async function expectBadgeAtRowEnd(badge, row) {
-  const [badgeBox, rowBox] = await Promise.all([
-    badge.boundingBox(),
-    row.boundingBox(),
-  ]);
-  expect(badgeBox).not.toBeNull();
-  expect(rowBox).not.toBeNull();
-  expect(badgeBox.x + badgeBox.width).toBeLessThanOrEqual(
-    rowBox.x + rowBox.width + 1,
-  );
-  expect(badgeBox.x).toBeGreaterThanOrEqual(rowBox.x + rowBox.width / 2);
-}
-
 // The badge covers the option's check, centered on the row, and stops before
 // its name, so it reads as that name's key.
 async function expectBadgeBeforeName(badge, option) {
@@ -1856,22 +1862,6 @@ async function expectBadgeBeforeName(badge, option) {
       clearOfName: badgeBox.x + badgeBox.width <= nameBox.x + 0.5,
     };
   }).toEqual({ atStart: true, middle: true, clearOfName: true });
-}
-
-async function expectBadgeAtRowEndMiddle(badge, row) {
-  await expect.poll(async () => {
-    const [badgeBox, rowBox] = await Promise.all([
-      badge.boundingBox(),
-      row.boundingBox(),
-    ]);
-    if (!badgeBox || !rowBox) {
-      return null;
-    }
-    return {
-      atEnd: Math.abs(badgeBox.x + badgeBox.width - (rowBox.x + rowBox.width)) <= 0.5,
-      middle: Math.abs(badgeBox.y + badgeBox.height / 2 - (rowBox.y + rowBox.height / 2)) <= 0.5,
-    };
-  }).toEqual({ atEnd: true, middle: true });
 }
 
 async function enterActionHints(page) {

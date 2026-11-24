@@ -410,7 +410,7 @@ export class CaffoldTaskNavigator extends CaffoldElement {
                 id: "new-task",
                 label: "New Task",
                 action: ACTION_HINT_ACTION.TASK_CREATE,
-                badgeAt: "top-right",
+                badgeAt: "center-right",
               })}
               type="button"
               data-task-action="open-new"
@@ -426,7 +426,7 @@ export class CaffoldTaskNavigator extends CaffoldElement {
                 id: "tasks",
                 label: "Reorder Tasks",
                 action: ACTION_HINT_ACTION.REORDER_SELECT,
-                badgeAt: "top-right",
+                badgeAt: "center-right",
               })}
               type="button"
               data-task-action="select-reorder-mode"
@@ -442,7 +442,7 @@ export class CaffoldTaskNavigator extends CaffoldElement {
                 id: "sections",
                 label: "Reorder Sections",
                 action: ACTION_HINT_ACTION.REORDER_SELECT,
-                badgeAt: "top-right",
+                badgeAt: "center-right",
               })}
               type="button"
               data-task-action="select-reorder-mode"

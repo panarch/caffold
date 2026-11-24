@@ -1631,7 +1631,7 @@ function permissionOption(
       id: `permission:${encodeURIComponent(option.mode)}`,
       label: optionLabel(`${option.label} ${description}`, selected),
       action: ACTION_HINT_ACTION.PERMISSION_SELECT,
-      badgeAt: "top-right",
+      badgeAt: "center-right",
     })}
     type="button"
     class=${`task-model-option task-permission-option${
