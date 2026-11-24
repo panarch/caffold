@@ -392,6 +392,80 @@ test("keeps the end of a phone's file list clear of the button", { tag: "@phone"
   expect(lastBox.y + lastBox.height).toBeLessThanOrEqual(buttonBox.y);
 });
 
+// Whether the middle of `box` shows the open card rather than the file screen:
+// what Detail shows there is the component or the Task Detail held in it.
+async function cardOnTop(page, box) {
+  const tags = await hitTags(page, box.x + box.width / 2, box.y + box.height / 2);
+  const inDetail = tags[tags.indexOf("CAFFOLD-DETAIL-LAYOUT") + 1];
+  return [
+    "CAFFOLD-TASK-DETAIL-FLOATING-CONVERSATION",
+    "CAFFOLD-TASK-DETAIL",
+  ].includes(inDetail);
+}
+
+test("draws the card over the controls the file screen raises", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  // As large as the body allows, over the list, its switch, and the pane
+  // resizer beside it.
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "caffold:floating-conversation-size",
+      JSON.stringify({ width: 4000, height: 4000 }),
+    );
+  });
+  const { openButton, card, taskReview } = await openWorkingTreeFile(page);
+  await openButton.click();
+  await expect(card).toBeVisible();
+
+  const axis = taskReview.locator(".task-review-navigator-axis");
+  const resizer = taskReview.locator("caffold-split-view caffold-pane-resizer");
+  for (const control of [axis, resizer]) {
+    await expect(control).toBeVisible();
+    expect(await cardOnTop(page, await control.boundingBox())).toBe(true);
+  }
+});
+
+test("draws the card over a foldable's list drawer and its shade", { tag: "@foldable" }, async ({
+  page,
+}) => {
+  // Wide enough to reach over the drawer, short of the strip that opens it.
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "caffold:floating-conversation-size",
+      JSON.stringify({ width: 700, height: 4000 }),
+    );
+  });
+  const { openButton, card, taskReview } = await openWorkingTreeFile(page);
+  await openButton.click();
+  await expect(card).toBeVisible();
+  await taskReview.locator("caffold-split-view .split-view-strip").click();
+  const drawer = taskReview.locator("caffold-split-view .split-view-list");
+  await expect(taskReview.locator(".task-review-navigator-pane")).toBeVisible();
+  await settled(drawer);
+
+  const [drawerBox, cardBox] = await Promise.all([
+    drawer.boundingBox(),
+    card.boundingBox(),
+  ]);
+  const overlap = {
+    x: cardBox.x,
+    y: Math.max(drawerBox.y, cardBox.y),
+    width: drawerBox.x + drawerBox.width - cardBox.x,
+    height: Math.min(drawerBox.y + drawerBox.height, cardBox.y + cardBox.height) -
+      Math.max(drawerBox.y, cardBox.y),
+  };
+  expect(overlap.width).toBeGreaterThan(20);
+  expect(await cardOnTop(page, overlap)).toBe(true);
+  // The shade over the file stops at the card too.
+  expect(await cardOnTop(page, {
+    x: cardBox.x + cardBox.width - 40,
+    y: cardBox.y + cardBox.height - 40,
+    width: 0,
+    height: 0,
+  })).toBe(true);
+});
+
 test("draws the folded button see-through and the open card opaque", { tag: "@server-steady" }, async ({
   page,
 }) => {
