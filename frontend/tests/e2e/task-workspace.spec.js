@@ -325,6 +325,10 @@ test("shares navigation pane resizing across Tasks and Settings", { tag: "@all-v
     `${maximumWidth}`,
   );
   await separator.press("Home");
+  // Escape leaves the separator, moving the focus nowhere else.
+  await separator.press("Escape");
+  await expect(separator).not.toBeFocused();
+  await expect(separator).toHaveAttribute("aria-valuenow", "280");
 
   const tasksSeparatorBox = await separator.boundingBox();
   expect(tasksSeparatorBox).not.toBeNull();

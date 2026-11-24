@@ -537,6 +537,11 @@ test("hands Compare ref and separator Hints to their native controls", { tag: "@
   await expect.poll(async () =>
     Number(await separator.getAttribute("aria-valuenow"))
   ).toBeGreaterThan(before);
+  const resized = await separator.getAttribute("aria-valuenow");
+  // Escape leaves the separator, moving the focus nowhere else.
+  await separator.press("Escape");
+  await expect(separator).not.toBeFocused();
+  await expect(separator).toHaveAttribute("aria-valuenow", resized);
 });
 
 test("clamps the Compare tree when the window narrows so the viewer keeps its minimum width", { tag: "@desktop" }, async ({

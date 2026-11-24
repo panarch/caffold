@@ -2973,7 +2973,10 @@ start pane width and of the person's choice to collapse the start pane. It
 keeps the width last chosen by pointer or keyboard apart from the applied
 width: a narrower container clamps the applied width, and a wider one returns
 to the chosen width. The container is its parent, or the host when it sits at
-the top of a shadow root, as in the split view.
+the top of a shadow root, as in the split view. With the keyboard, the arrow
+keys change the width by 24px, or 72px with Shift, Home and End take it to its
+limits, and `Escape` leaves the separator without moving the focus anywhere
+else.
 Its host sets `start-default`, `start-min`, `start-max`,
 and `end-min` where it needs them, `end-min="0"` for a start pane that covers
 the end pane, names a `storage-key` and a

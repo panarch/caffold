@@ -40,6 +40,8 @@ for each kind of pane: the navigation pane shared by Tasks, Notes, and Settings,
 Integrated Review for every Task and Section, Git Compare, Git Log commits, and
 GitHub Pull Request files. A window too narrow for that width narrows the pane,
 and the chosen width returns when the window widens again.
+A divider in keyboard focus takes the arrow keys, Home, and End to change the
+width, and `Escape` leaves it.
 
 Wherever a split pane's list sits beside its detail, a button in the
 workspace's top-left corner hides the list so the detail takes the full width,
