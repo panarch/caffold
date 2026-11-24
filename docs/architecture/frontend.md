@@ -798,7 +798,12 @@ Action Hint target and its shortcut list as its one Scroll surface.
 
 The controller validates every action and control kind against a closed central
 policy. Task selection in the navigator retains generated `T*` codes and New
-Task, Model, and Prompt retain `N`, `M`, and `P`. A Task switcher row is its
+Task, Model, and Prompt retain `N`, `M`, and `P`. Showing the floating
+conversation (its round button) and folding it (its card header) retain `C`,
+but only while one of them is shown, and the two never are together: the
+button sits at the bottom right, after every other target in visual order,
+and a long file list would otherwise give it a long code that changes with
+the list. A Task switcher row is its
 own action in the automatic pool: apart from its Close button, every target
 that surface offers is that one action, so a prefix would cost a keystroke on
 every jump only to set the rows apart from one button. Task suffixes and
@@ -807,7 +812,8 @@ actions in the automatic pool receive compact, balanced prefix-free codes in
 minimizes the longest code first and total code length second, assigns shorter
 codes to earlier targets, and expands the lowest-priority tail branches first,
 so code lengths within each generated allocation pool differ by at most one.
-Automatic first characters reserve the `N`, `M`, `P`, and `T` namespaces. The
+Automatic first characters reserve the `N`, `M`, `P`, and `T` namespaces, and
+`C` only in a capture that holds showing or folding the conversation. The
 full result must be unique and prefix-free. Initial capture freezes each
 visible, actionable target's identity, exact native binding, code, activation
 closure, and exact retained `invalidationOwner`. It intersects anchors directly
@@ -1617,7 +1623,8 @@ resize handle: a round button at the body's bottom right whose fill alone lets
 the code show through, which opens there into a card whose header folds it. The
 header carries the conversation's icon, takes the focus when the card opens, and
 shows that focus with its hover fill, which the card's rounded corners clip; its
-Action Hint badge sits at its end (`center-right`). The card is a panel the
+Action Hint badge sits at its end (`center-right`). The button and the header
+both take `C`. The card is a panel the
 person keeps open while reading and scrolling the file beside it, so it is not a
 light-dismiss popover, and not a modal dialog either. At the phone width where
 Review shows its list and file in turn, the card opens as a sheet over the whole

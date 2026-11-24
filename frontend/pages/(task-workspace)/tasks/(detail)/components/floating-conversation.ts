@@ -199,7 +199,7 @@ export class CaffoldTaskDetailFloatingConversation extends CaffoldElement {
         ${this.hints.disclosure({
           id: "floating-conversation:open",
           label: "Show the conversation",
-          action: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+          action: ACTION_HINT_ACTION.CONVERSATION_SHOW,
           when: floating && !open,
         })}
         type="button"
@@ -234,7 +234,7 @@ export class CaffoldTaskDetailFloatingConversation extends CaffoldElement {
           ${this.hints.disclosure({
             id: "floating-conversation:fold",
             label: "Fold the conversation",
-            action: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+            action: ACTION_HINT_ACTION.CONVERSATION_FOLD,
             when: open,
             badgeAt: "center-right",
           })}

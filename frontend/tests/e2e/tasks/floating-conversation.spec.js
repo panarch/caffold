@@ -391,6 +391,31 @@ test("reaches the button, the card's header, and its resize handle with Action H
   await expect(card).toBeHidden();
 });
 
+test("keeps C on the button and the header however long the file list", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const { openButton, card } = await openWorkingTreeFile(page, {
+    configureReview: (review) => {
+      review.largeChangeSet = true;
+    },
+  });
+  await expect(openButton).toBeVisible();
+  const codeOf = async (label) => {
+    const dialog = await enterActionHints(page);
+    const code = await dialog
+      .getByRole("button", { name: new RegExp(` — ${label}$`) })
+      .getAttribute("data-action-hint-code");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    return code;
+  };
+
+  expect(await codeOf("Show the conversation")).toBe("C");
+  await openButton.click();
+  await expect(card).toBeVisible();
+  expect(await codeOf("Fold the conversation")).toBe("C");
+});
+
 test("resizes from its top left corner within the body and keeps the size on this device", { tag: "@desktop" }, async ({
   page,
 }) => {
