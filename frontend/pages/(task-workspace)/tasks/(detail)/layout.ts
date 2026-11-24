@@ -56,11 +56,6 @@ import type {
   CaffoldTaskDetailGit,
   GitMenuIntent,
 } from "./components/git-menu.js";
-import "./components/github-menu.js";
-import type {
-  CaffoldTaskDetailGithub,
-  GitHubMenuIntent,
-} from "./components/github-menu.js";
 import "./components/terminal-button.js";
 import type { CaffoldTaskDetailTerminal } from "./components/terminal-button.js";
 import "./terminal/page.js";
@@ -170,7 +165,6 @@ export class CaffoldDetailLayout extends CaffoldElement {
   );
   private readonly viewSwitch = new DrawnRef<CaffoldSegmentedControl>(this);
   private readonly gitMenu = new DrawnRef<CaffoldTaskDetailGit>(this);
-  private readonly githubMenu = new DrawnRef<CaffoldTaskDetailGithub>(this);
   private readonly terminalButton = new DrawnRef<CaffoldTaskDetailTerminal>(
     this,
   );
@@ -548,7 +542,6 @@ export class CaffoldDetailLayout extends CaffoldElement {
       { blocked, targets: [], mutationRoots: [], scrollRoots: [] },
       viewSwitchScope,
       this.gitMenu.value?.actionHintScope(headerScope),
-      this.githubMenu.value?.actionHintScope(headerScope),
       this.terminalButton.value?.actionHintScope(headerScope),
       this.subjectKind === "task"
         ? this.taskSummary.value?.actionHintScope(headerScope)
@@ -586,7 +579,6 @@ export class CaffoldDetailLayout extends CaffoldElement {
     }
     return mergeKeyboardNavigationContexts(
       this.gitMenu.value?.keyboardNavigationContexts({ scopeId }) ?? [],
-      this.githubMenu.value?.keyboardNavigationContexts({ scopeId }) ?? [],
       this.subjectKind === "task"
         ? (this.taskSummary.value?.keyboardNavigationContexts({ scopeId }) ??
             [])
@@ -735,11 +727,6 @@ export class CaffoldDetailLayout extends CaffoldElement {
               ?hidden=${!inRepository}
               @caffold:task-detail-git-intent=${this.handleGitMenuIntent}
             ></caffold-task-detail-git>
-            <caffold-task-detail-github
-              ${drawn(this.githubMenu)}
-              ?hidden=${!inRepository}
-              @caffold:task-detail-github-intent=${this.handleGithubMenuIntent}
-            ></caffold-task-detail-github>
           </div>
           <caffold-task-detail-terminal
             ${drawn(this.terminalButton)}
@@ -896,7 +883,6 @@ export class CaffoldDetailLayout extends CaffoldElement {
           ],
     });
     this.gitMenu.value?.setSnapshot({ available: repository });
-    this.githubMenu.value?.setSnapshot({ available: repository });
     this.terminalButton.value?.setSnapshot({
       available: Boolean(this.terminalDirectory()),
       pressed: surface === "terminal",
@@ -938,7 +924,6 @@ export class CaffoldDetailLayout extends CaffoldElement {
         : [{ value: "new", label: "New Task", icon: "Plus" }],
     });
     this.gitMenu.value?.setSnapshot({ available: repository });
-    this.githubMenu.value?.setSnapshot({ available: repository });
     this.terminalButton.value?.setSnapshot({
       available: Boolean(this.terminalDirectory()),
       pressed: surface === "terminal",
@@ -1121,7 +1106,6 @@ export class CaffoldDetailLayout extends CaffoldElement {
     this.gitLayout()?.reset();
     this.githubLayout()?.reset();
     this.gitMenu.value?.deactivate();
-    this.githubMenu.value?.deactivate();
     this.sharedDomainContextKey = key;
     this.sectionActivationKey = "";
     this.domainActivationPromise = null;
@@ -1193,7 +1177,6 @@ export class CaffoldDetailLayout extends CaffoldElement {
     this.gitLayout()?.deactivate();
     this.githubLayout()?.deactivate();
     this.gitMenu.value?.deactivate();
-    this.githubMenu.value?.deactivate();
     this.sectionActivationKey = "";
     this.domainActivationPromise = null;
   }
@@ -1205,7 +1188,6 @@ export class CaffoldDetailLayout extends CaffoldElement {
     this.gitLayout()?.deactivate();
     this.githubLayout()?.deactivate();
     this.gitMenu.value?.deactivate();
-    this.githubMenu.value?.deactivate();
     this.sectionActivationKey = "";
     this.domainActivationPromise = null;
   }
@@ -1312,48 +1294,17 @@ export class CaffoldDetailLayout extends CaffoldElement {
       return;
     }
     event.stopPropagation();
-    const reviewKind = `${event.detail?.reviewKind ?? ""}`;
+    const { surface, kind } = event.detail;
     if (this.subjectKind === "section") {
       this.requestSectionRoute({
         sectionId: `${this.section?.id ?? ""}`,
-        sectionSurface: "git",
-        sectionTool: reviewKind,
+        sectionSurface: surface,
+        sectionTool: kind,
       });
-    } else {
-      this.requestTaskRoute({
-        kind: reviewKind,
-        threadId: this.subjectIdentity().id,
-        baseRef: "",
-        headRef: "",
-        page: 1,
-        sha: "",
-        path: "",
-      });
-    }
-  }
-
-  private handleGithubMenuIntent(event: CustomEvent<GitHubMenuIntent>) {
-    if (event.target !== this.githubMenu.value) {
       return;
     }
-    event.stopPropagation();
-    const reviewKind = `${event.detail?.reviewKind ?? ""}`;
-    if (this.subjectKind === "section") {
-      this.requestSectionRoute({
-        sectionId: `${this.section?.id ?? ""}`,
-        sectionSurface: "github",
-        sectionTool: reviewKind,
-      });
-    } else {
-      this.requestTaskRoute({
-        kind: reviewKind,
-        threadId: this.subjectIdentity().id,
-        page: 1,
-        number: null,
-        files: false,
-        path: "",
-      });
-    }
+
+    this.requestTaskRoute({ kind, threadId: this.subjectIdentity().id });
   }
 
   private handleReviewRouteIntent(

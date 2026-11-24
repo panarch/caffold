@@ -357,7 +357,7 @@ test("product dialog CSS does not style nested keyboard presentation dialogs", (
   }
 });
 
-test("Git and GitHub detail components independently own their native auto popovers", () => {
+test("the Detail header owns one native popover for Git and GitHub", () => {
   const detailLayout = readFrontend(
     "pages/(task-workspace)/tasks/(detail)/layout.ts",
   );
@@ -367,22 +367,10 @@ test("Git and GitHub detail components independently own their native auto popov
   const git = readFrontend(
     "pages/(task-workspace)/tasks/(detail)/components/git-menu.ts",
   );
-  const github = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/components/github-menu.ts",
-  );
-
   assert.match(detailLayout, /import "\.\/components\/git-menu\.js"/);
-  assert.match(detailLayout, /import "\.\/components\/github-menu\.js"/);
-  assert.match(
-    detailLayout,
-    /<caffold-task-detail-git\b/,
-  );
-  assert.match(
-    detailLayout,
-    /<caffold-task-detail-github\b/,
-  );
+  assert.match(detailLayout, /<caffold-task-detail-git\b/);
   assert.match(detailLayout, /caffold:task-detail-git-intent/);
-  assert.match(detailLayout, /caffold:task-detail-github-intent/);
+  assert.doesNotMatch(detailLayout, /<caffold-task-detail-github\b/);
   assert.doesNotMatch(taskSummary, /git-menu|github-menu|caffold-task-detail-git/);
   assert.doesNotMatch(
     detailLayout,
@@ -395,37 +383,7 @@ test("Git and GitHub detail components independently own their native auto popov
   assert.match(git, /popover="auto"/);
   assert.match(git, /popovertarget=\$\{this\.popoverId\}/);
   assert.match(git, /popovertargetaction="hide"/);
-  assert.match(git, /data-git-button-action/);
-  assert.match(git, /type: "open-git-tool"/);
-  assert.match(
-    git,
-    /@customElement\("caffold-task-detail-git"\)/,
-  );
-  assert.doesNotMatch(git, /CaffoldTaskDetailGithub|caffold-task-detail-github/);
-
-  assert.match(github, /class CaffoldTaskDetailGithub/);
-  assert.match(github, /class="task-github-button"/);
-  assert.match(github, /class="task-github-popover"/);
-  assert.match(github, /popover="auto"/);
-  assert.match(github, /popovertarget=\$\{this\.popoverId\}/);
-  assert.match(github, /popovertargetaction="hide"/);
-  assert.match(github, /data-github-button-action/);
-  assert.match(github, /type: "open-github-tool"/);
-  assert.match(
-    github,
-    /@customElement\("caffold-task-detail-github"\)/,
-  );
-  assert.doesNotMatch(
-    github,
-    /CaffoldTaskDetailGit(?!hub)|caffold-task-detail-git(?!hub)/,
-  );
-
-  for (const component of [git, github]) {
-    assert.doesNotMatch(
-      component,
-      /CaffoldTaskReviewButton|REVIEW_BUTTON_CONFIG|<details|<summary|role="menu(?:item)?"/,
-    );
-  }
+  assert.doesNotMatch(git, /<details|<summary|role="menu(?:item)?"/);
 });
 
 test("common Detail owns shared surfaces while Task and Section keep subject work", () => {

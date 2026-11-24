@@ -146,7 +146,6 @@ const shadowRootStyles = new Map([
   ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/copy-value.css", "caffold-task-detail-info-copy-value"],
   ["pages/(task-workspace)/tasks/(detail)/(task)/layout.css", "caffold-task-detail"],
   ["pages/(task-workspace)/tasks/(detail)/components/git-menu.css", "caffold-task-detail-git"],
-  ["pages/(task-workspace)/tasks/(detail)/components/github-menu.css", "caffold-task-detail-github"],
   ["pages/(task-workspace)/tasks/(detail)/components/terminal-button.css", "caffold-task-detail-terminal"],
   ["pages/(task-workspace)/tasks/(detail)/layout.css", "caffold-detail-layout"],
   ["pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.css", "caffold-terminal-special-keys"],

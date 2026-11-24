@@ -145,13 +145,9 @@ test("scales visible Task controls without shrinking their touch targets", { tag
 
   for (const metrics of [compact, spacious]) {
     expect(metrics.horizontalOverflow).toBe(false);
-    expect(metrics.headerActionGaps.gitToGithub).toBeCloseTo(
-      metrics.headerActionGap,
-      1,
-    );
-    // On the phone the terminal button leaves GitHub's row for the title's.
-    if (metrics.headerActionGaps.githubToTerminal !== null) {
-      expect(metrics.headerActionGaps.githubToTerminal).toBeCloseTo(
+    // On the phone the terminal button leaves the Git menu's row for the title's.
+    if (metrics.headerActionGaps.gitToTerminal !== null) {
+      expect(metrics.headerActionGaps.gitToTerminal).toBeCloseTo(
         metrics.headerActionGap,
         1,
       );
@@ -264,7 +260,6 @@ async function taskInterfaceMetrics(page) {
     activeComposer,
     info,
     git,
-    github,
     terminal,
     archive,
     popoverTerm,
@@ -287,7 +282,6 @@ async function taskInterfaceMetrics(page) {
       info,
       taskListActions: navigator.shadowRoot.querySelector(".task-list-actions"),
       git,
-      github,
       terminal,
       archive,
       model: turnOptions.querySelector(".task-model-button"),
@@ -437,8 +431,7 @@ async function taskInterfaceMetrics(page) {
         compactInset * 2,
       ),
       headerActionGaps: {
-        gitToGithub: horizontalGap(controls.git, controls.github),
-        githubToTerminal: horizontalGap(controls.github, controls.terminal),
+        gitToTerminal: horizontalGap(controls.git, controls.terminal),
         terminalToInfo: horizontalGap(controls.terminal, controls.info),
       },
       hitTargets: {
@@ -446,7 +439,6 @@ async function taskInterfaceMetrics(page) {
         info: squareHitTarget(controls.info),
         taskListActions: squareHitTarget(controls.taskListActions),
         git: squareHitTarget(controls.git),
-        github: squareHitTarget(controls.github),
         terminal: squareHitTarget(controls.terminal),
         archive: archiveHitTarget,
         model: verticalHitTarget(controls.model),
@@ -466,7 +458,6 @@ async function taskInterfaceMetrics(page) {
     "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])",
     ".task-detail-info-button",
     ".task-git-button",
-    ".task-github-button",
     ".task-terminal-button",
     '.task-detail-popover:popover-open [data-task-info-action="archive"]',
     ".task-detail-popover .task-detail-meta-name",

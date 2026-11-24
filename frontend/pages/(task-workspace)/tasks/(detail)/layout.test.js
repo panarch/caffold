@@ -60,7 +60,6 @@ test("merges the view switch with only the active direct-child surface", () => {
     },
     summaryHeader: { value: {} },
     gitMenu: { value: null },
-    githubMenu: { value: null },
     taskSummary: { value: null },
     viewSwitch: { value: {
         actionHintScope(options) {
@@ -174,7 +173,6 @@ test("delegates Scroll and keyboard contexts only to the active direct owner", (
     presentedSurface: () => surface,
     taskDetail: { value: task },
     gitMenu: { value: null },
-    githubMenu: { value: null },
     taskSummary: { value: null },
     review: () => null,
     gitLayout: () => null,
@@ -201,7 +199,6 @@ test("deactivation closes the persistent Task summary interaction owner", () => 
     gitLayout: () => ({ deactivate: () => calls.push("git") }),
     githubLayout: () => ({ deactivate: () => calls.push("github") }),
     gitMenu: { value: { deactivate: () => calls.push("git-menu") } },
-    githubMenu: { value: { deactivate: () => calls.push("github-menu") } },
     sectionActivationKey: "section",
     domainActivationPromise: Promise.resolve(),
   };
@@ -215,7 +212,6 @@ test("deactivation closes the persistent Task summary interaction owner", () => 
     "git",
     "github",
     "git-menu",
-    "github-menu",
   ]);
   assert.equal(owner.sectionActivationKey, "");
   assert.equal(owner.domainActivationPromise, null);
@@ -264,8 +260,7 @@ function headerOwner(state, { menus = [], flags = [], summaries = [], choices = 
         header: hidden(/task-detail-summary" \?hidden="(\w+)"/),
         viewSwitch: hidden(/data-detail-view-switch \?hidden="(\w+)"/),
       });
-      menus.push(["git", "hidden", hidden(/<caffold-task-detail-git \?hidden="(\w+)"/)]);
-      menus.push(["github", "hidden", hidden(/<caffold-task-detail-github \?hidden="(\w+)"/)]);
+      menus.push(["hidden", hidden(/<caffold-task-detail-git \?hidden="(\w+)"/)]);
     },
     taskSummary: { value: { setSnapshot: (snapshot) => summaries.push(snapshot) } },
     viewSwitch: { value: ({
@@ -275,8 +270,7 @@ function headerOwner(state, { menus = [], flags = [], summaries = [], choices = 
         assert.ok(snapshot.choices.some(({ value }) => value === snapshot.selected));
       },
     }) },
-    gitMenu: { value: repositoryMenu("git", menus) },
-    githubMenu: { value: repositoryMenu("github", menus) },
+    gitMenu: { value: { setSnapshot: ({ available }) => menus.push(["available", available]) } },
     terminalButton: { value: ({
       setSnapshot: (snapshot) => terminalButtons.push(snapshot),
     }) },
@@ -327,17 +321,12 @@ test("uses managed identity only as a header fallback and prefers canonical Deta
   owner.taskSnapshot = { ...owner.taskSnapshot, task: canonical };
   detailLayout.syncTaskPresentation.call(owner);
 
-  // The listed Section shows Git and GitHub before the details make them
-  // usable.
+  // The listed Section shows the menu before the Task can open it.
   assert.deepEqual(menus, [
-    ["git", "hidden", false],
-    ["github", "hidden", false],
-    ["git", "available", false],
-    ["github", "available", false],
-    ["git", "hidden", false],
-    ["github", "hidden", false],
-    ["git", "available", true],
-    ["github", "available", true],
+    ["hidden", false],
+    ["available", false],
+    ["hidden", false],
+    ["available", true],
   ]);
 
   assert.equal(flags[0].header, false);
@@ -379,14 +368,14 @@ test("keeps Git and GitHub out of a Task header outside Git from the start", () 
   detailLayout.syncTaskPresentation.call(owner);
 
   assert.deepEqual(
-    menus.filter(([name]) => name === "git"),
+    menus,
     [
-      ["git", "hidden", true],
-      ["git", "available", false],
-      ["git", "hidden", true],
-      ["git", "available", false],
-      ["git", "hidden", true],
-      ["git", "available", false],
+      ["hidden", true],
+      ["available", false],
+      ["hidden", true],
+      ["available", false],
+      ["hidden", true],
+      ["available", false],
     ],
   );
 });
@@ -411,14 +400,6 @@ test("selects the view switch choice that names the Review a Task shows", () => 
 
   assert.deepEqual(selected, ["review", "working", "branch"]);
 });
-
-function repositoryMenu(name, calls) {
-  return {
-    setSnapshot({ available }) {
-      calls.push([name, "available", available]);
-    },
-  };
-}
 
 test("the terminal toggle enters from any screen and returns to where it was", () => {
   const requested = [];

@@ -9,36 +9,22 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("keeps Task tool menus above active Review controls", { tag: "@all-viewports" }, async ({ page }) => {
+test("keeps the repository menu above active Review controls", { tag: "@all-viewports" }, async ({ page }) => {
   const { tasksPage } = await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
 
   const summary = tasksPage.locator(".detail-layout-summary");
-  for (const [workspace, action] of [
-    ["Git", "Compare"],
-    ["GitHub", "Pull Requests"],
-  ]) {
-    const trigger = summary.getByRole("button", {
-      name: `Open ${workspace} workspace`,
-    });
-    await trigger.click();
-    const menuAction = summary.getByRole("button", { name: action, exact: true });
-    const popover = menuAction.locator("..");
-    await expect(menuAction).toBeVisible();
-    await menuAction.click({ trial: true });
-    const [triggerBox, popoverBox] = await Promise.all([
-      trigger.boundingBox(),
-      popover.boundingBox(),
-    ]);
-    expect(triggerBox).not.toBeNull();
-    expect(popoverBox).not.toBeNull();
-    expect(popoverBox.x).toBeGreaterThanOrEqual(7);
-    expect(popoverBox.x + popoverBox.width).toBeLessThanOrEqual(
-      page.viewportSize().width - 7,
-    );
-    await page.keyboard.press("Escape");
-    await expect(popover).toBeHidden();
+  await summary.getByRole("button", { name: "Open Git and GitHub" }).click();
+  const popover = summary.getByRole("group", { name: "Git and GitHub actions" });
+  for (const name of ["Compare", "Log", "Pull Requests", "Issues"]) {
+    await popover.getByRole("button", { name, exact: true }).click({ trial: true });
   }
+  const box = await popover.boundingBox();
+  expect(box.x).toBeGreaterThanOrEqual(7);
+  expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize().width - 7);
+  expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize().height);
+  await page.keyboard.press("Escape");
+  await expect(popover).toBeHidden();
 });
 
 test("uses two panes off phone and a semantic navigator/viewer split on phone", { tag: "@all-viewports" }, async ({
@@ -196,7 +182,7 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
   if (testInfo.project.name !== "desktop") {
     await expect(taskReview.locator(".task-review-navigator-pane")).toBeHidden();
   }
-  const after = await taskReview.evaluate((review, [git, github, summary, summaryInfo]) => {
+  const after = await taskReview.evaluate((review, [terminal, summary, summaryInfo]) => {
     const navigator = review.shadowRoot.querySelector(".task-review-navigator-pane");
     const viewer = review.shadowRoot.querySelector(".task-review-viewer-pane");
     const viewerHeader = review
@@ -235,17 +221,16 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
       wrapWidth: viewerWrapBounds.right - viewerWrapBounds.left,
       infoWidth: viewerInfoBounds.right - viewerInfoBounds.left,
       // The file header's buttons and the Review viewer axis after them
-      // stand as far apart as the Detail header's Git and GitHub buttons.
+      // stand as far apart as the Detail header's terminal and Task details buttons.
       viewerButtonGap: viewerWrapBounds.left - viewerInfoBounds.right,
       viewerAxisGap:
         viewerAxis.getBoundingClientRect().left - viewerWrapBounds.right,
       headerButtonGap:
-        visualBounds(github, "::before").left -
-          visualBounds(git, "::before").right,
+        visualBounds(summaryInfo, "::before").left -
+          visualBounds(terminal, "::before").right,
     };
   }, await elementHandles(page.locator("caffold-detail-layout"), [
-    ".task-git-button",
-    ".task-github-button",
+    ".task-terminal-button",
     ".detail-layout-summary",
     ".task-detail-info-button",
   ]));
@@ -272,7 +257,7 @@ test("puts a picture's Zoom between its details and the file view as the header'
   const zoomButton = fileViewer.getByRole("button", { name: "Zoom", exact: true });
   await expect(zoomButton).toBeVisible();
 
-  const header = await taskReview.evaluate((review, [git, github]) => {
+  const header = await taskReview.evaluate((review, [terminal, summaryInfo]) => {
     const viewerHeader = review
       .shadowRoot.querySelector("caffold-review-selected-file")
       .shadowRoot.querySelector("caffold-review-file-viewer")
@@ -300,11 +285,11 @@ test("puts a picture's Zoom between its details and the file view as the header'
       buttonGap: zoomBounds.left - infoBounds.right,
       axisGap: axis.getBoundingClientRect().left - zoomBounds.right,
       headerButtonGap:
-        visualBounds(github, "::before").left - visualBounds(git, "::before").right,
+        visualBounds(summaryInfo, "::before").left - visualBounds(terminal, "::before").right,
     };
   }, await elementHandles(page.locator("caffold-detail-layout"), [
-    ".task-git-button",
-    ".task-github-button",
+    ".task-terminal-button",
+    ".task-detail-info-button",
   ]));
   expect(header.titleClear).toBe(true);
   expect(header.zoomWidth).toBeCloseTo(header.infoWidth, 1);

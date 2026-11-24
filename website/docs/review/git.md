@@ -1,8 +1,7 @@
 # Git
 
-The Git button, with the Git logo, at the top of a Task or a repository
-Section opens a menu with **Compare** and **Log**. Everything there is
-read-only.
+In the header of a repository Task or Section, open the Git logo button.
+Choose **Compare** or **Log** to inspect the repository.
 
 ![Git Compare between two refs, with one file's diff](../assets/screenshots/git-compare-light-desktop.png#only-light)
 ![Git Compare between two refs, with one file's diff](../assets/screenshots/git-compare-dark-desktop.png#only-dark)

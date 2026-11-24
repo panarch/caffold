@@ -1403,12 +1403,12 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   );
   const detailActionGeometry = await tasksPage
     .locator(
-      ".detail-layout-actions > caffold-task-detail-git > .task-git-button, .detail-layout-actions > caffold-task-detail-github > .task-github-button, .task-detail-info-button",
+      ".detail-layout-actions > caffold-task-detail-git > .task-git-button, .task-detail-info-button",
     )
     .evaluateAll((controls) =>
       controls.map((control) => {
         const icon = control.querySelector(
-          "svg, img, .task-git-icon, .task-github-icon",
+          "svg, img, .task-git-icon",
         );
         const chip = control.querySelector(".task-status-chip");
         const controlBox = control.getBoundingClientRect();
@@ -1421,7 +1421,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
             control.className,
           iconOnly:
             control.matches(
-              ".task-git-button, .task-github-button, .task-detail-info-button",
+              ".task-git-button, .task-detail-info-button",
             ) ||
             control.classList.contains("task-icon-button"),
           iconWidth: iconBox.width,
@@ -1443,7 +1443,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
         };
       }),
     );
-  expect(detailActionGeometry.length).toBeGreaterThan(2);
+  expect(detailActionGeometry).toHaveLength(2);
   for (const geometry of detailActionGeometry) {
     expect(geometry.iconWidth).toBeCloseTo(geometry.iconHeight, 1);
     if (geometry.iconOnly) {

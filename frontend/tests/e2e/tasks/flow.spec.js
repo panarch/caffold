@@ -332,7 +332,6 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
   const openReview = tasksPage.getByRole("button", { name: "Review", exact: true });
   await expect(openReview).toBeEnabled();
   await expect(tasksPage.locator("caffold-task-detail-git")).toBeHidden();
-  await expect(tasksPage.locator("caffold-task-detail-github")).toBeHidden();
   await openReview.click();
   await expect(page).toHaveURL(
     `/tasks/${threadId}/review?nav=files&view=source`,
@@ -353,13 +352,10 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
   await expect(
     tasksPage.locator('[data-task-info-field="location"] .task-detail-location-branch'),
   ).toHaveText("main");
-  await expect(
-    tasksPage.locator("caffold-task-detail-git, caffold-task-detail-github"),
-  ).toHaveCount(2);
 
   const gitReviewMenu = tasksPage.locator("caffold-task-detail-git");
   const gitReviewMenuButton = gitReviewMenu.getByRole("button", {
-    name: "Open Git workspace",
+    name: "Open Git and GitHub",
   });
   await gitReviewMenuButton.click();
   const gitReviewMenuPopover = gitReviewMenu.locator(".task-git-popover");
@@ -385,55 +381,59 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
   ).toBeLessThanOrEqual(
     gitReviewMenuPopoverBox.x + gitReviewMenuPopoverBox.width + 1,
   );
-  await captureReviewScreenshot(page, testInfo, "tasks-global-git-menu");
-  await expect(
-    gitReviewMenu.locator('button[data-review-kind="compare"]'),
-  ).toBeVisible();
-  await expect(
-    gitReviewMenu.locator('button[data-review-kind="log"]'),
-  ).toBeVisible();
-  await expect(gitReviewMenu.locator('button[data-review-kind="diff"]')).toHaveCount(0);
-  await gitReviewMenuButton.click();
-
-  await tasksPage
-    .getByRole("button", { name: "Open GitHub workspace" })
-    .click();
-  const githubMenuMetrics = await tasksPage
-    .locator("caffold-task-detail-github")
-    .evaluate((menu) => {
-      const probe = document.createElement("div");
-      probe.style.cssText = [
-        "position:fixed",
-        "height:var(--interface-compact-control-size)",
-        "font-size:var(--interface-meta-font-size)",
-      ].join(";");
-      document.body.append(probe);
-      const expected = {
-        fontSize: getComputedStyle(probe).fontSize,
-        height: probe.getBoundingClientRect().height,
-      };
-      probe.remove();
-      return {
-        expected,
-        items: [...menu.shadowRoot.querySelectorAll(".task-github-popover button")].map(
-          (button) => ({
-            fontSize: getComputedStyle(button).fontSize,
-            height: button.getBoundingClientRect().height,
-          }),
-        ),
-      };
-    });
-  expect(githubMenuMetrics.items).toHaveLength(2);
-  for (const item of githubMenuMetrics.items) {
-    expect(item.fontSize).toBe(githubMenuMetrics.expected.fontSize);
-    expect(item.height).toBeCloseTo(githubMenuMetrics.expected.height, 1);
+  // Each item is an icon and its name, and a divider parts the Git items from
+  // the GitHub ones.
+  await expect(gitReviewMenuPopover.locator("button svg")).toHaveCount(4);
+  expect(await gitReviewMenuPopover.evaluate((popover) => {
+    const shape = (node) => node.localName === "circle"
+      ? ["cx", "cy", "r"].map((name) => node.getAttribute(name)).join(" ")
+      : node.getAttribute("d");
+    return [...popover.children]
+      .filter((child) => child.localName === "button" || child.localName === "hr")
+      .map((child) => child.localName === "hr"
+        ? "—"
+        : [shape(child.querySelector("svg > :first-child")), child.textContent.trim()]);
+  })).toEqual([
+    ["5 6 3", "Compare"],
+    ["M3 5h1", "Log"],
+    "—",
+    ["18 18 3", "Pull Requests"],
+    ["12 12 10", "Issues"],
+  ]);
+  for (const theme of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await captureReviewScreenshot(page, testInfo, `tasks-repository-menu-${theme}`);
   }
-  await captureReviewScreenshot(page, testInfo, "tasks-global-github-menu");
-  await tasksPage
-    .locator(
-      'caffold-task-detail-github button[data-github-button-action][data-review-kind="issues"]',
-    )
-    .click();
+  const menuMetrics = await gitReviewMenu.evaluate((menu) => {
+    const probe = document.createElement("div");
+    probe.style.cssText = [
+      "position:fixed",
+      "height:var(--interface-compact-control-size)",
+      "font-size:var(--interface-meta-font-size)",
+    ].join(";");
+    document.body.append(probe);
+    const expected = {
+      fontSize: getComputedStyle(probe).fontSize,
+      height: probe.getBoundingClientRect().height,
+    };
+    probe.remove();
+    return {
+      expected,
+      items: [...menu.shadowRoot.querySelectorAll(".task-git-popover > button")].map(
+        (button) => ({
+          fontSize: getComputedStyle(button).fontSize,
+          height: button.getBoundingClientRect().height,
+        }),
+      ),
+    };
+  });
+  expect(menuMetrics.items).toHaveLength(4);
+  for (const item of menuMetrics.items) {
+    expect(item.fontSize).toBe(menuMetrics.expected.fontSize);
+    expect(item.height).toBeCloseTo(menuMetrics.expected.height, 1);
+  }
+  await gitReviewMenuPopover.getByRole("button", { name: "Issues" }).click();
   await expect(page).toHaveURL(`/tasks/${threadId}/github/issues`);
   await expect(page.locator("caffold-task-github-layout")).toHaveAttribute(
     "data-github-mode",

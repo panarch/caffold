@@ -39,7 +39,8 @@
   z-index: 8;
   inset: auto;
   position-anchor: --task-review-git;
-  position-area: block-end center;
+  position-area: block-end span-inline-start;
+  justify-self: end;
   position-try-fallbacks: flip-block;
   width: max-content;
   margin: var(--interface-space-3) var(--interface-space-5);
@@ -55,8 +56,15 @@
   align-content: start;
 }
 
-.task-git-popover > button[data-git-button-action] {
+/* Drawn as the Task list actions menu draws its items: an icon in one column
+   and its name in the next, with a divider between Git and GitHub. */
+.task-git-popover > button {
   box-sizing: border-box;
+  display: grid;
+  grid-template-columns: var(--interface-icon-small-size) max-content;
+  align-items: center;
+  justify-content: start;
+  gap: var(--interface-control-gap);
   height: var(--interface-compact-control-size);
   min-height: var(--interface-compact-control-size);
   padding: 0 calc(var(--interface-space-5) + var(--keyboard-choice-slot-size)) 0
@@ -71,14 +79,26 @@
   cursor: pointer;
 }
 
-.task-git-popover > button[data-git-button-action]:focus-visible {
+.task-git-popover > button:focus-visible {
   background: var(--control-hover-bg);
   outline: none;
 }
 
 @media (hover: hover) {
-  .task-git-popover > button[data-git-button-action]:hover {
+  .task-git-popover > button:hover {
     background: var(--control-hover-bg);
     outline: none;
   }
+}
+
+.task-git-action-icon {
+  width: var(--interface-icon-small-size);
+  height: var(--interface-icon-small-size);
+}
+
+.task-git-divider {
+  height: 1px;
+  margin: 0.375rem;
+  border: 0;
+  background: var(--border-subtle);
 }

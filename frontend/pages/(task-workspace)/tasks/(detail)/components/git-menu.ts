@@ -11,21 +11,21 @@ import { CaffoldElement } from "#app/caffold-element.js";
 import { returnPopoverFocus } from "#app/popover-focus.js";
 import { scopedStyle } from "#app/scoped-style.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
+import actionIcon from "#tasks/component-styles/action-icon.css.js";
 import styles from "./git-menu.css.js";
 
 // What the menu asks the Detail layout to open.
-export interface GitMenuIntent {
-  type: "open-git-tool";
-  reviewKind: string | null;
-}
+export type GitMenuIntent =
+  | { surface: "git"; kind: "compare" | "log" }
+  | { surface: "github"; kind: "pulls" | "issues" };
 
 let taskDetailGitInstanceId = 0;
 
 /**
- * The Detail header's Git button, and the popover of Git work it opens:
- * Compare and Log.
+ * The Detail header's entry point for Git and GitHub in a repository.
  */
 @customElement("caffold-task-detail-git")
 export class CaffoldTaskDetailGit extends CaffoldElement {
@@ -34,6 +34,7 @@ export class CaffoldTaskDetailGit extends CaffoldElement {
 
   static override styles = [
     scopedStyle(compactIconButton, ".task-git-button"),
+    scopedStyle(actionIcon, ".task-action-icon"),
     styles,
   ];
 
@@ -41,9 +42,17 @@ export class CaffoldTaskDetailGit extends CaffoldElement {
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly gitPopover = new DrawnRef<HTMLDivElement>(this);
+  private readonly iconsReady = () => this.requestUpdate();
+
+  override connectedCallback() {
+    super.connectedCallback();
+    window.addEventListener("caffold:icons-ready", this.iconsReady);
+    void warmIcons();
+  }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
+    window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.deactivate();
   }
 
@@ -86,14 +95,14 @@ export class CaffoldTaskDetailGit extends CaffoldElement {
       <button
         ${this.hints.button({
           id: "git:open",
-          label: "Open Git workspace",
+          label: "Open Git and GitHub",
           action: ACTION_HINT_ACTION.GIT_OPEN,
         })}
         type="button"
         class="task-git-button"
         popovertarget=${this.popoverId}
-        aria-label="Open Git workspace"
-        title="Open Git workspace"
+        aria-label="Open Git and GitHub"
+        title="Open Git and GitHub"
         ?disabled=${!this.available}
       >
         <span class="task-git-icon" aria-hidden="true"></span>
@@ -102,7 +111,7 @@ export class CaffoldTaskDetailGit extends CaffoldElement {
         ${drawn(this.gitPopover)}
         ${this.keyboard.popover({
           id: "git",
-          label: "Git workspace actions",
+          label: "Git and GitHub actions",
           sessionBound: true,
         })}
         id=${this.popoverId}
@@ -111,40 +120,46 @@ export class CaffoldTaskDetailGit extends CaffoldElement {
         @beforetoggle=${returnPopoverFocus}
         @caffold:keyboard-session-dismiss=${this.handleDismiss}
         role="group"
-        aria-label="Git workspace actions"
+        aria-label="Git and GitHub actions"
       >
-        <button
-          ${this.hints.button({
-            id: "compare",
-            label: "Compare",
-            action: ACTION_HINT_ACTION.GIT_DESTINATION,
-            badgeAt: "top-right",
-          })}
-          type="button"
-          popovertarget=${this.popoverId}
-          popovertargetaction="hide"
-          data-git-button-action
-          data-review-kind="compare"
-          @click=${this.openTool}
-        >Compare</button>
-        <button
-          ${this.hints.button({
-            id: "log",
-            label: "Log",
-            action: ACTION_HINT_ACTION.GIT_DESTINATION,
-            badgeAt: "top-right",
-          })}
-          type="button"
-          popovertarget=${this.popoverId}
-          popovertargetaction="hide"
-          data-git-button-action
-          data-review-kind="log"
-          @click=${this.openTool}
-        >Log</button>
+        ${this.destination("Compare", "GitCompareArrows", {
+          surface: "git",
+          kind: "compare",
+        })}
+        ${this.destination("Log", "Logs", { surface: "git", kind: "log" })}
+        <hr class="task-git-divider">
+        ${this.destination("Pull Requests", "GitPullRequest", {
+          surface: "github",
+          kind: "pulls",
+        })}
+        ${this.destination("Issues", "CircleDot", {
+          surface: "github",
+          kind: "issues",
+        })}
         <caffold-keyboard-navigation-presentation
           ${this.keyboard.presentation()}
         ></caffold-keyboard-navigation-presentation>
       </div>
+    `;
+  }
+
+  private destination(label: string, icon: string, intent: GitMenuIntent) {
+    return html`
+      <button
+        ${this.hints.button({
+          id: intent.kind,
+          label,
+          action:
+            intent.surface === "git"
+              ? ACTION_HINT_ACTION.GIT_DESTINATION
+              : ACTION_HINT_ACTION.GITHUB_DESTINATION,
+          badgeAt: "top-right",
+        })}
+        type="button"
+        popovertarget=${this.popoverId}
+        popovertargetaction="hide"
+        @click=${() => this.openTool(intent)}
+      >${inlineIcon(icon, "", "task-action-icon task-git-action-icon")}<span>${label}</span></button>
     `;
   }
 
@@ -154,17 +169,12 @@ export class CaffoldTaskDetailGit extends CaffoldElement {
     }
   }
 
-  private openTool(event: Event) {
+  private openTool(intent: GitMenuIntent) {
     this.dispatchEvent(
       new CustomEvent<GitMenuIntent>("caffold:task-detail-git-intent", {
         bubbles: true,
         composed: true,
-        detail: {
-          type: "open-git-tool",
-          reviewKind:
-            (event.currentTarget as HTMLButtonElement).dataset.reviewKind ??
-            null,
-        },
+        detail: intent,
       }),
     );
   }
