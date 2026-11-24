@@ -622,7 +622,7 @@ export class CaffoldTaskWorkspace extends CaffoldElement {
       return null;
     }
     if (containsAcrossShadowRoots(this.tasksPage, editable)) {
-      return this.tasksPage.editingEscapeTarget();
+      return this.tasksPage.editingEscapeTarget(editable);
     }
     if (containsAcrossShadowRoots(this.settingsWorkspace, editable)) {
       return this.settingsWorkspace.editingEscapeTarget();

@@ -173,7 +173,8 @@ details[open] .task-command-disclosure-chevron-expanded {
   background: var(--control-active-bg);
 }
 
-@media (max-width: 620px) {
+/* A narrow conversation column leaves out the duration and exit code. */
+@container task-conversation (max-width: 600px) {
   .task-command-summary {
     grid-template-columns: auto minmax(0, 1fr) auto;
   }

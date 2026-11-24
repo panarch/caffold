@@ -136,8 +136,15 @@ turns one off.
 
 ## Act on what you found
 
-Go back to **Conversation** and tell the agent what comes next: a fix for what
-you found, or a commit. For example:
+Open the conversation with the button at the bottom right and tell the agent
+what comes next: a fix for what you found, or a commit. It opens over the file,
+so you stay where you were. Drag its top left corner to resize it; this device
+keeps the size.
+
+![The conversation open over a file in Working Tree, with a prompt to commit](../assets/screenshots/review-floating-conversation-light-desktop.png#only-light)
+![The conversation open over a file in Working Tree, with a prompt to commit](../assets/screenshots/review-floating-conversation-dark-desktop.png#only-dark)
+
+For example:
 
 ```{ .text .cf-prompt }
 Commit these changes with a message that explains why.

@@ -1,0 +1,311 @@
+/* On the Conversation screen the frame steps aside and the Task area fills
+   the Detail body. Detail sets the sizes the floating form uses, because the
+   room it leaves under the file follows from them. */
+:host {
+  /* The card's corner; the resize handle's mark in the template draws this
+     curve. */
+  --floating-conversation-radius: 14px;
+  display: block;
+  min-height: 0;
+  height: 100%;
+}
+
+:host([data-presentation="hidden"]) {
+  display: none;
+}
+
+.floating-conversation-card,
+.floating-conversation-body {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.floating-conversation-open,
+.floating-conversation-scrim {
+  display: none;
+}
+
+/* Over a screen that shows a file, the conversation floats at the bottom
+   right of the Detail body without taking any of the file's width. */
+:host([data-presentation="floating"]) {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+:host([data-presentation="floating"]:not([data-open]))
+  .floating-conversation-open {
+  position: absolute;
+  right: var(--task-detail-floating-inset);
+  bottom: calc(var(--task-detail-floating-inset) + env(safe-area-inset-bottom));
+  display: grid;
+  place-items: center;
+  width: var(--task-detail-floating-button-size);
+  height: var(--task-detail-floating-button-size);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  /* Only the fill lets the code behind show; the edge and the icon stay
+     whole, so the button never reads as disabled. */
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  box-shadow: var(--floating-shadow-panel);
+  color: var(--control-fg);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.floating-conversation-open:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .floating-conversation-open:hover {
+    border-color: var(--border-strong);
+  }
+}
+
+.floating-conversation-icon {
+  display: block;
+  width: var(--interface-icon-large-size);
+  height: var(--interface-icon-large-size);
+}
+
+:host([data-presentation="floating"]:not([data-open]))
+  .floating-conversation-card {
+  display: none;
+}
+
+/* The open card and the frame over it share one place and size: the size the
+   person chose on this device, or a third of the body's width and two thirds
+   of its height, never smaller than Detail's card size; either way within
+   the body's insets. */
+:host([data-presentation="floating"][data-open])
+  :is(.floating-conversation-card, .floating-conversation-frame) {
+  position: absolute;
+  right: var(--task-detail-floating-inset);
+  bottom: calc(var(--task-detail-floating-inset) + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  width: min(
+    var(
+      --floating-conversation-chosen-width,
+      max(var(--task-detail-floating-card-width), 100% / 3)
+    ),
+    100% -
+    2 *
+    var(--task-detail-floating-inset)
+  );
+  height: min(
+    var(
+      --floating-conversation-chosen-height,
+      max(var(--task-detail-floating-card-height), 100% * 2 / 3)
+    ),
+    100% -
+    2 *
+    var(--task-detail-floating-inset) -
+    env(safe-area-inset-bottom)
+  );
+}
+
+:host([data-presentation="floating"][data-open]) .floating-conversation-card {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--floating-conversation-radius);
+  background: var(--surface);
+  box-shadow: var(--floating-shadow-panel);
+  pointer-events: auto;
+}
+
+/* The header folds the card wherever it is pressed. Its focus is the same
+   fill as its hover, which the card's corners clip like everything in it. */
+.floating-conversation-header {
+  display: none;
+  align-items: center;
+  gap: var(--interface-space-4);
+  width: 100%;
+  min-height: var(--interface-control-size);
+  padding: 0 var(--interface-space-5) 0 var(--interface-space-7);
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--interface-meta-font-size);
+  font-weight: 650;
+  line-height: var(--interface-line-height);
+  text-align: start;
+  cursor: pointer;
+}
+
+:host([data-presentation="floating"]) .floating-conversation-header {
+  display: flex;
+}
+
+.floating-conversation-header:focus-visible {
+  outline: none;
+  background: var(--row-hover-bg);
+}
+
+@media (hover: hover) {
+  .floating-conversation-header:hover {
+    background: var(--row-hover-bg);
+  }
+}
+
+.floating-conversation-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.floating-conversation-title-icon,
+.floating-conversation-fold-icon {
+  display: block;
+  flex: none;
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
+}
+
+.floating-conversation-body {
+  overflow: hidden;
+}
+
+/* The resize handle and the two sides it moves are drawn as the pane
+   resizer's are: a 5px mark in --border-strong, and under the pointer, in
+   focus, or while dragged, the mark and a 3px line along each side in
+   --resizer-hover-bg. Both run along the middle of the card's 1px border, so
+   the mark follows the top left curve and the lines stop where the far
+   corners start to curve. */
+.floating-conversation-frame {
+  pointer-events: none;
+}
+
+.floating-conversation-resize {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--border-strong);
+  cursor: nwse-resize;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+/* On a touch screen the handle takes a finger's room, as the pane resizer's
+   does. */
+.floating-conversation-resize::before {
+  position: absolute;
+  inset: min(0px, calc(50% - var(--interface-target-floor) / 2));
+  content: "";
+}
+
+.floating-conversation-resize:focus-visible {
+  outline: none;
+}
+
+.floating-conversation-resize-mark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 30px;
+  height: 30px;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.floating-conversation-resize-side {
+  position: absolute;
+  display: none;
+  border-radius: 999px;
+  background: var(--resizer-hover-bg);
+}
+
+.floating-conversation-resize-side[data-side="top"] {
+  top: -1px;
+  right: var(--floating-conversation-radius);
+  left: var(--floating-conversation-radius);
+  height: 3px;
+}
+
+.floating-conversation-resize-side[data-side="left"] {
+  top: var(--floating-conversation-radius);
+  bottom: var(--floating-conversation-radius);
+  left: -1px;
+  width: 3px;
+}
+
+:host([data-resizing]) .floating-conversation-resize,
+.floating-conversation-resize:focus-visible {
+  color: var(--resizer-hover-bg);
+}
+
+:host([data-resizing]) .floating-conversation-resize-side,
+.floating-conversation-resize:focus-visible
+  ~ .floating-conversation-resize-side {
+  display: block;
+}
+
+/* Touch keeps :hover after a tap, so only a hover-capable pointer lights the
+   handle up before it is dragged. */
+@media (hover: hover) {
+  .floating-conversation-resize:hover {
+    color: var(--resizer-hover-bg);
+  }
+
+  .floating-conversation-resize:hover ~ .floating-conversation-resize-side {
+    display: block;
+  }
+}
+
+/* On a phone the card is a sheet over the whole screen, Detail header and
+   corner controls included, shown in the top layer. A dimmed sliver of the
+   screen stays above it and folds it when tapped. */
+.floating-conversation-scrim:popover-open {
+  display: block;
+  position: fixed;
+  inset: 0;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: rgb(var(--overlay-rgb) / 35%);
+  pointer-events: auto;
+}
+
+:host([data-presentation="floating"][data-open])
+  .floating-conversation-card:popover-open {
+  position: fixed;
+  inset: calc(env(safe-area-inset-top) + var(--interface-space-5)) 0 0;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border-bottom-width: 0;
+  border-radius: 16px 16px 0 0;
+  color: var(--text);
+  animation: floating-conversation-sheet 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes floating-conversation-sheet {
+  from {
+    translate: 0 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :host([data-presentation="floating"][data-open])
+    .floating-conversation-card:popover-open {
+    animation: none;
+  }
+}

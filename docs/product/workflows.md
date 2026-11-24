@@ -296,9 +296,9 @@ decides the prepared Task's next bounded action.
    agent conversation or runtime state.
 4. Open the same subject's Git child for arbitrary Compare or bounded Log, or
    its GitHub child for Issues and Pull Requests.
-5. When the subject is a Task, return to Conversation and send the selected
-   agent a follow-up prompt. From a Section, start a fixed-directory or
-   GitHub-derived Task.
+5. When the subject is a Task, send the selected agent a follow-up prompt from
+   the conversation that opens over the file, or return to Conversation. From
+   a Section, start a fixed-directory or GitHub-derived Task.
 6. Run and inspect tests through the Task's agent, the subject's terminal, or
    another development tool.
 

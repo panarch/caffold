@@ -98,7 +98,8 @@
   background: var(--control-active-bg);
 }
 
-@media (max-width: 620px) {
+/* A narrow conversation column leaves out the server and duration. */
+@container task-conversation (max-width: 600px) {
   .task-tool-call-summary {
     grid-template-columns: auto minmax(0, 1fr) auto;
   }

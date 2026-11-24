@@ -68,6 +68,23 @@ slot[name="end-room"] {
   display: none;
 }
 
+/* Room for what the owner floats over the viewer's bottom, under the cards
+   and their copy alike, so the copy still holds the cards' place. With no
+   cards it is the room after the last line. The visible slot lets the
+   pointer through to the lines under its empty part. */
+slot[name="end"],
+slot[name="end-room"] {
+  padding-bottom: var(--file-viewer-scroll-end-clearance, 0rem);
+}
+
+slot[name="end"] {
+  pointer-events: none;
+}
+
+slot[name="end"]::slotted(*) {
+  pointer-events: auto;
+}
+
 /* With them, it lies over the viewer's bottom. The owner's hidden copy of
    it holds its room after the last line, as wide as the viewer however far
    the lines scroll sideways, and it rises with that room into view: it

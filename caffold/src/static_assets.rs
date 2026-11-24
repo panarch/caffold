@@ -1415,6 +1415,18 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js"
             ))))
         }
+        "pages/(task-workspace)/tasks/(detail)/components/floating-conversation.css.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/components/floating-conversation.css.js"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/components/floating-conversation.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/components/floating-conversation.js"
+            ))))
+        }
         "pages/(task-workspace)/tasks/(detail)/components/git-menu.css.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
@@ -2996,6 +3008,7 @@ mod tests {
         assert!(codex_status_lifecycle.body.starts_with(b"import "));
 
         for path in [
+            "pages/(task-workspace)/tasks/(detail)/components/floating-conversation.js",
             "pages/(task-workspace)/tasks/(detail)/components/git-menu.js",
             "pages/(task-workspace)/tasks/(detail)/components/terminal-button.js",
             "pages/(task-workspace)/tasks/(detail)/terminal/page.js",

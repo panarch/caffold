@@ -176,6 +176,21 @@ test("a button or a switch may sit its badge at the center of the icon it names 
   );
 });
 
+test("a disclosure that spans a row may sit its badge at the row's end", () => {
+  const owner = control();
+  const header = control();
+  const scope = declaredActionHintScope(owner, [
+    declared(header, "disclosure", {
+      id: "fold",
+      label: "Fold the conversation",
+      action: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+      badgeAt: "center-right",
+    }),
+  ], {});
+
+  assert.equal(scope.targets[0].badgeAt, "center-right");
+});
+
 test("a change in any declaration's owner revalidates, the component's own included", () => {
   const owner = control();
   const row = control();

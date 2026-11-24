@@ -12,7 +12,11 @@
   display: none;
 }
 
+/* Room after the last page for what the file viewer's owner floats over its
+   bottom. It sits in the pages' box, so the viewer's own size, which a page
+   fits to, stays as it is. */
 .pptx-viewer-body {
+  padding-bottom: var(--file-viewer-scroll-end-clearance, 0rem);
   display: grid;
   min-width: 0;
 }

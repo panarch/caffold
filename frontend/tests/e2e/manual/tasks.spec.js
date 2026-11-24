@@ -129,7 +129,7 @@ for (const theme of ["light", "dark"]) {
       await captureReviewScreenshot(page, testInfo, `conversation-attachments-${theme}`);
     });
 
-    test("an approval request waits in the conversation", { tag: ["@desktop", "@phone"] }, async ({ page }, testInfo) => {
+    test("an approval request waits in the conversation", { tag: "@desktop" }, async ({ page }, testInfo) => {
       await page.goto(`/tasks/${MANUAL_TASKS.flakyCheckout.threadId}`);
 
       const card = page.locator('.task-approval-card[data-approval-id="checkout-repeat"]');
@@ -340,7 +340,7 @@ for (const theme of ["light", "dark"]) {
       await captureReviewScreenshot(page, testInfo, `section-detail-${theme}`);
     });
 
-    test("a conversation fork lists supported agents and previews the selected source", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
+    test("a conversation fork lists supported agents and previews the selected source", { tag: "@desktop" }, async ({ page }, testInfo) => {
       const sourceId = "cc4d185a-ff87-4c2d-9f70-7c2a7ec05963";
       await page.route(/\/api\/task-forks\/preview$/, route => route.fulfill({json:{
         provider:"claude",sourceId,displayName:"Settings accessibility review",

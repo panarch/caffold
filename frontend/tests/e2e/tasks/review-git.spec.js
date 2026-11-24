@@ -9,6 +9,7 @@ import {
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { elementHandles } from "../support/element-handles.js";
 import {
+  floatingConversationRoom,
   openCompletedTaskForReview,
   selectTaskReviewScope,
 } from "../support/task-review-test.js";
@@ -2249,12 +2250,14 @@ test("ends a changed file with the files before and after it in the list's order
   await files.nth(1).click();
   await expect(previous).toContainText(`Previous ${name(order[0])}`);
   await expect(next).toContainText(`Next ${name(order[2])}`);
-  // A diff shorter than the viewer ends at the viewer's bottom with the cards.
-  const [cardsBox, viewerBox] = await Promise.all([
+  // A diff shorter than the viewer ends at the viewer's bottom with the cards,
+  // above the room left for the conversation's button.
+  const [cardsBox, viewerBox, room] = await Promise.all([
     cards.boundingBox(),
     taskReview.locator("caffold-diff-viewer").boundingBox(),
+    floatingConversationRoom(taskReview),
   ]);
-  expect(Math.abs(cardsBox.y + cardsBox.height - (viewerBox.y + viewerBox.height)))
+  expect(Math.abs(cardsBox.y + cardsBox.height + room - (viewerBox.y + viewerBox.height)))
     .toBeLessThanOrEqual(1);
 
   await next.click();
@@ -2338,13 +2341,15 @@ test("stops the adjacent files higher above a phone's bottom edge", { tag: ["@de
     .locator(".viewer-adjacent-previous");
   await expect(previous).toContainText("Previous planner.rs");
 
-  // The short diff ends at the viewer's bottom with the cards.
-  const [previousBox, viewerBox, rootFontSize] = await Promise.all([
+  // The short diff ends at the viewer's bottom with the cards, above the room
+  // left for the conversation's button.
+  const [previousBox, viewerBox, room, rootFontSize] = await Promise.all([
     previous.boundingBox(),
     taskReview.locator("caffold-diff-viewer").boundingBox(),
+    floatingConversationRoom(taskReview),
     page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).fontSize)),
   ]);
-  const space = viewerBox.y + viewerBox.height - (previousBox.y + previousBox.height);
+  const space = viewerBox.y + viewerBox.height - room - (previousBox.y + previousBox.height);
   expect(space).toBeCloseTo((testInfo.project.name === "phone" ? 1.25 : 0.75) * rootFontSize, 0);
 });
 

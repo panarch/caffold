@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { activateActionHint } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { pngBytes } from "../support/png-fixture.js";
+import { floatingConversationRoom } from "../support/task-review-test.js";
 import {
   openVisualReview,
   VISUAL_PICTURES,
@@ -281,11 +282,13 @@ test("ends an image's comparison with the files around it", { tag: "@server-stea
   const cards = taskReview.locator(".viewer-adjacent-files");
   await expect(visual.locator("figure").first()).toBeVisible();
   await expect(cards).toBeVisible();
-  // The cards sit under the pictures, at the bottom of the viewer.
-  const [cardsBox, visualBox] = await Promise.all([
+  // The cards sit under the pictures, at the bottom of the viewer, above the
+  // room left for the conversation's button.
+  const [cardsBox, visualBox, room] = await Promise.all([
     cards.boundingBox(),
     visual.boundingBox(),
+    floatingConversationRoom(taskReview),
   ]);
-  expect(Math.abs(cardsBox.y + cardsBox.height - (visualBox.y + visualBox.height)))
+  expect(Math.abs(cardsBox.y + cardsBox.height + room - (visualBox.y + visualBox.height)))
     .toBeLessThanOrEqual(1);
 });

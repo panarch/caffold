@@ -1,10 +1,15 @@
+/* The strip's edge is the follow-up Composer panel's, which the Task column
+   sets. */
 :host {
   box-sizing: border-box;
   display: grid;
   grid-template-columns: minmax(0, 980px);
   justify-content: center;
   min-width: 0;
-  padding-inline: 0.875rem;
+  padding-inline: calc(
+    var(--task-follow-up-composer-gutter) +
+    var(--task-follow-up-composer-panel-padding-inline)
+  );
   font-size: var(--interface-meta-font-size);
   line-height: var(--interface-line-height);
 }
@@ -208,12 +213,6 @@
   }
 }
 
-@media (max-width: 860px), (pointer: coarse) {
-  :host {
-    padding-inline: 0.625rem;
-  }
-}
-
 @media (max-width: 520px) {
   .task-current-plan-popover {
     position-area: none;
@@ -240,10 +239,6 @@
 }
 
 @media (max-width: 520px) and (orientation: portrait) {
-  :host {
-    padding-inline: 0.75rem;
-  }
-
   .task-current-plan-strip {
     width: 100%;
     max-width: 100%;

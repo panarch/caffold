@@ -308,7 +308,10 @@ test("structural shadows separate fixed regions from floating elevation", () => 
   );
   assert.deepEqual(
     tokenConsumers(sources, /var\(--floating-shadow-panel\)/),
-    ["pages/(task-workspace)/components/navigation.css"],
+    [
+      "pages/(task-workspace)/components/navigation.css",
+      "pages/(task-workspace)/tasks/(detail)/components/floating-conversation.css",
+    ],
   );
   assert.deepEqual(
     tokenConsumers(sources, /var\(--structural-shadow-block-end\)/),
@@ -1397,11 +1400,11 @@ test("mixed surfaces keep content and controls on separate axes", () => {
   );
   assert.doesNotMatch(turnOptions, /\.task-(?:model-(?:icon|caret)|permission-caret)/);
   // The permission shield never sits beside its label: it stands in for the
-  // label at phone width and is hidden everywhere else.
+  // label where the row has little room and is hidden everywhere else.
   assert.match(turnOptions, /\.task-permission-icon \{\s*display: none;/);
   assert.match(
     turnOptions,
-    /@media \(max-width: 520px\) and \(orientation: portrait\) \{[\s\S]*\.task-permission-icon \{\s*display: block;\s*\}\s*\.task-permission-label \{\s*display: none;/,
+    /@container turn-options \(max-width: [^)]+\) \{[\s\S]*\.task-permission-icon \{\s*display: block;\s*\}\s*\.task-permission-label \{\s*display: none;/,
   );
   assert.match(
     turnOptions,

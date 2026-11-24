@@ -92,6 +92,38 @@ caffold-loading-text {
   grid-template-rows: minmax(0, 1fr) auto;
   min-height: 0;
   overflow: hidden;
+  container: task-conversation-pane / inline-size;
+}
+
+/* The conversation's text, the Current Plan strip, and the Composer's panel
+   line up on one edge. The Task column sets that edge once from its own
+   width, and the three read it. */
+.task-conversation-pane > * {
+  --task-detail-column-inset: 0.875rem;
+}
+
+@container task-conversation-pane (max-width: 860px) {
+  .task-conversation-pane > * {
+    --task-detail-column-inset: 0.625rem;
+    --task-follow-up-composer-gutter: 0.625rem;
+  }
+}
+
+@media (pointer: coarse) {
+  .task-conversation-pane > * {
+    --task-follow-up-composer-gutter: 0.625rem;
+  }
+}
+
+/* On a phone held upright the follow-up Composer is a bar across the bottom
+   edge: no gutter or side borders, and its padding keeps the text off the
+   screen edge. */
+@media (max-width: 520px) and (orientation: portrait) {
+  .task-conversation-pane > * {
+    --task-follow-up-composer-gutter: 0px;
+    --task-follow-up-composer-panel-border-inline: 0px;
+    --task-follow-up-composer-panel-padding-inline: 0.75rem;
+  }
 }
 
 .task-follow-up-composer-dock {

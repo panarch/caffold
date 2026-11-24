@@ -123,6 +123,40 @@ caffold-segmented-control[data-detail-view-switch] {
   overflow: hidden;
 }
 
+/* The floating conversation's sizes: its card opens at a third of the body's
+   width and two thirds of its height, never smaller than these, until the
+   person resizes it. The room the screens under it leave at their end
+   follows from the button's. */
+.detail-layout-body {
+  --task-detail-floating-inset: var(--interface-space-6);
+  --task-detail-floating-button-size: 2.75rem;
+  --task-detail-floating-card-width: 25rem;
+  --task-detail-floating-card-height: 32.5rem;
+  position: relative;
+}
+
+/* Over a screen that shows a file, the conversation's slot is a layer over
+   the whole body; only its button and its card take the pointer. */
+.detail-layout-body[data-floating-conversation] > .detail-subject-slot {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* The screens under it leave the button's room at the end of what scrolls,
+   with the card open or folded, so opening, folding, or resizing the card
+   changes nothing in them. */
+.detail-layout-body[data-floating-conversation] > div > * {
+  --task-detail-floating-clearance: calc(
+    var(--task-detail-floating-button-size) +
+    2 *
+    var(--task-detail-floating-inset) +
+    env(safe-area-inset-bottom)
+  );
+}
+
 /* The terminal bar ends where the header does and spaces its buttons as the
    header does. */
 .detail-layout-body > div > caffold-terminal-page {

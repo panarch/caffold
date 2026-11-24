@@ -7,6 +7,7 @@ import {
   captureReviewScreenshot,
   emitTaskDetailBootstrap,
 } from "../support/task-fixtures.js";
+import { openCompletedTaskForReview } from "../support/task-review-test.js";
 
 test("keeps conversation position stable while the follow-up composer grows", { tag: "@all-viewports" }, async ({
   page,
@@ -130,8 +131,12 @@ for (const themeMode of ["light", "dark"]) {
       `tasks-follow-up-composer-fade-${themeMode}`,
     );
     const edge = await bottomEdgeContrast(page, screenshot);
-    expect(edge.borderAtEdge).toBeLessThan(3);
+    // The table's divider shows above the fade and keeps under 15% of that
+    // contrast at the bottom edge. The row read there lies a pixel or two
+    // inside the fade's end, so a few percent remains, and the gradient's
+    // dithering adds a level either way.
     expect(edge.borderAboveFade).toBeGreaterThan(20);
+    expect(edge.borderAtEdge / edge.borderAboveFade).toBeLessThan(0.15);
     for (const [index, channel] of edge.shadowAtEdge.entries()) {
       expect(channel, `shadow channel ${index}`).toBeLessThan(edge.surface[index]);
     }
@@ -395,3 +400,99 @@ function anchorOffsetDelta(scroller, anchor) {
     );
   }, anchor);
 }
+
+// The Task column's shared edge and the Composer's narrow form, read through
+// every open shadow root.
+function taskColumn(page) {
+  return page.evaluate(() => {
+    const find = (root, matches) => {
+      for (const element of root.querySelectorAll("*")) {
+        if (matches(element)) {
+          return element;
+        }
+        const inner = element.shadowRoot && find(element.shadowRoot, matches);
+        if (inner) {
+          return inner;
+        }
+      }
+      return null;
+    };
+    const conversation = find(document, (element) =>
+      element.matches("caffold-task-conversation"),
+    );
+    const form = find(document, (element) =>
+      element.matches(".task-follow-up-form"),
+    );
+    const permission = form
+      ?.querySelector("caffold-task-turn-options")
+      ?.shadowRoot?.querySelector(".task-permission-label");
+    // The Composer draws its turn options once the Task's settings arrive.
+    if (!conversation || !permission) {
+      return null;
+    }
+    const panel = form.querySelector(".task-composer-panel");
+    const style = (element) => getComputedStyle(element);
+    return {
+      conversationEdge: style(
+        conversation.shadowRoot.querySelector(".task-conversation-scroll"),
+      ).paddingLeft,
+      composerGutter: style(form).paddingLeft,
+      panelRadius: style(panel).borderBottomLeftRadius,
+      panelBottomBorder: style(panel).borderBottomWidth,
+      toolsGap: style(form.querySelector(".task-composer-tools")).columnGap,
+      permissionNamed: style(permission).display !== "none",
+    };
+  });
+}
+
+test("sets the Task column's edge from the column's width", { tag: "@desktop" }, async ({ page }) => {
+  await openCompletedTaskForReview(page);
+  await expect(page.locator("caffold-task-conversation")).toBeVisible();
+
+  await page.setViewportSize({ width: 1400, height: 800 });
+  await expect.poll(() => taskColumn(page)).toMatchObject({
+    conversationEdge: "14px",
+    composerGutter: "14px",
+    permissionNamed: true,
+  });
+
+  // Beside the Task list a 1,100px window leaves a column under 860px.
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await expect.poll(() => taskColumn(page)).toMatchObject({
+    conversationEdge: "10px",
+    composerGutter: "10px",
+    permissionNamed: true,
+  });
+});
+
+test("draws the floating card's Composer as a narrow panel and a phone's sheet as a bar", { tag: ["@desktop", "@phone"] }, async ({
+  page,
+}, testInfo) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await taskReview
+    .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="planner.rs"]')
+    .click();
+  const floating = page.locator("caffold-task-detail-floating-conversation");
+  await floating.getByRole("button", { name: "Show the conversation" }).click();
+  await expect(floating.locator(".floating-conversation-card")).toBeVisible();
+
+  if (testInfo.project.name === "phone") {
+    await expect.poll(() => taskColumn(page)).toMatchObject({
+      conversationEdge: "12.75px",
+      composerGutter: "0px",
+      panelRadius: "0px",
+      panelBottomBorder: "0px",
+      permissionNamed: false,
+    });
+    return;
+  }
+  await expect.poll(() => taskColumn(page)).toMatchObject({
+    conversationEdge: "10px",
+    composerGutter: "10px",
+    panelRadius: "14px",
+    panelBottomBorder: "1px",
+    toolsGap: "3px",
+    permissionNamed: false,
+  });
+});

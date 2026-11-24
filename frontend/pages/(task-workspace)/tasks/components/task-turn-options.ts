@@ -466,112 +466,114 @@ export class CaffoldTaskTurnOptions extends CaffoldElement {
     const selected = this.selectedModel();
     const settled = this.settledPermissionList();
     return html`
-      <div class="task-turn-options" @click=${this.handleClick}>
-        <div class="task-model-picker">
-          <button
-            ${drawn(this.modelButton)}
-            ${this.hints.button({
-              id: "model",
-              label: model.label,
-              action: ACTION_HINT_ACTION.MODEL_CHOOSE,
-            })}
-            type="button"
-            class=${buttonClasses("task-model-button", {
-              "has-speed": Boolean(model.speed),
-              "has-effort": Boolean(model.effort),
-              "is-unavailable": model.unavailable,
-              "is-deferred": model.deferred,
-            })}
-            popovertarget=${this.modelPopoverId}
-            popovertargetaction="toggle"
-            aria-label=${model.label}
-            title=${model.title}
-            aria-busy=${model.busy ? "true" : nothing}
-            ?disabled=${model.disabled}
-          >${model.pending ? LOADING_SLOT : modelSummary(model)}</button>
-          <div
-            ${drawn(this.modelPopover)}
-            ${this.keyboard.popover({
-              id: "model-options",
-              label: "Model options",
-              sessionBound: true,
-            })}
-            id=${this.modelPopoverId}
-            class="task-model-popover"
-            popover="auto"
-            role="menu"
-            aria-label=${model.popoverLabel}
-            @beforetoggle=${this.handleBeforeToggle}
-            @caffold:keyboard-session-dismiss=${this.dismissed}
-          >
-            <div class="task-model-popover-content">${
-              offered.length
-                ? this.modelBrowser(offered, selected)
-                : html`<section>
-                    <p>Model</p>
-                    ${modelFallback(
-                      this.modelLoaded ? this.modelUnavailableReason() : "",
-                    )}
-                  </section>`
-            }</div>
-            <caffold-keyboard-navigation-presentation
-              ${this.keyboard.presentation()}
-            ></caffold-keyboard-navigation-presentation>
-          </div>
-        </div>
-        <div class="task-permission-picker" ?hidden=${permission.hidden}>
-          <button
-            ${drawn(this.permissionButton)}
-            ${this.hints.button({
-              id: "permission",
-              label: "Choose approval mode",
-              action: ACTION_HINT_ACTION.PERMISSION_OPEN,
-            })}
-            type="button"
-            class=${buttonClasses("task-permission-button", {
-              "is-dangerous": permission.dangerous,
-              "is-unavailable": permission.unavailable,
-              "is-deferred": permission.deferred,
-            })}
-            popovertarget=${this.permissionPopoverId}
-            popovertargetaction="toggle"
-            aria-label="Choose approval mode"
-            title=${permission.title}
-            aria-busy=${permission.busy ? "true" : nothing}
-            ?disabled=${permission.disabled}
-          >${
-            permission.pending
-              ? LOADING_SLOT
-              : html`${inlineIcon(
-                  "Shield",
-                  "",
-                  "task-permission-icon",
-                )}<span class="task-permission-label"
-                  >${permission.label}</span
-                >`
-          }</button>
-          <div
-            ${drawn(this.permissionPopover)}
-            ${this.keyboard.popover({
-              id: "permission-options",
-              label: "Permission options",
-              sessionBound: true,
-            })}
-            id=${this.permissionPopoverId}
-            class="task-permission-popover"
-            popover="auto"
-            role="menu"
-            aria-label="Approval modes"
-            @beforetoggle=${this.handleBeforeToggle}
-            @caffold:keyboard-session-dismiss=${this.dismissed}
-          >
-            <div class="task-permission-popover-content">
-              <p class="task-permission-heading">Permissions</p>
-              ${permissionBody(settled, this.selectedPermission(), this.hints)}
+      <div class="task-turn-options-room">
+        <div class="task-turn-options" @click=${this.handleClick}>
+          <div class="task-model-picker">
+            <button
+              ${drawn(this.modelButton)}
+              ${this.hints.button({
+                id: "model",
+                label: model.label,
+                action: ACTION_HINT_ACTION.MODEL_CHOOSE,
+              })}
+              type="button"
+              class=${buttonClasses("task-model-button", {
+                "has-speed": Boolean(model.speed),
+                "has-effort": Boolean(model.effort),
+                "is-unavailable": model.unavailable,
+                "is-deferred": model.deferred,
+              })}
+              popovertarget=${this.modelPopoverId}
+              popovertargetaction="toggle"
+              aria-label=${model.label}
+              title=${model.title}
+              aria-busy=${model.busy ? "true" : nothing}
+              ?disabled=${model.disabled}
+            >${model.pending ? LOADING_SLOT : modelSummary(model)}</button>
+            <div
+              ${drawn(this.modelPopover)}
+              ${this.keyboard.popover({
+                id: "model-options",
+                label: "Model options",
+                sessionBound: true,
+              })}
+              id=${this.modelPopoverId}
+              class="task-model-popover"
+              popover="auto"
+              role="menu"
+              aria-label=${model.popoverLabel}
+              @beforetoggle=${this.handleBeforeToggle}
+              @caffold:keyboard-session-dismiss=${this.dismissed}
+            >
+              <div class="task-model-popover-content">${
+                offered.length
+                  ? this.modelBrowser(offered, selected)
+                  : html`<section>
+                      <p>Model</p>
+                      ${modelFallback(
+                        this.modelLoaded ? this.modelUnavailableReason() : "",
+                      )}
+                    </section>`
+              }</div>
+              <caffold-keyboard-navigation-presentation
+                ${this.keyboard.presentation()}
+              ></caffold-keyboard-navigation-presentation>
             </div>
-            <caffold-keyboard-navigation-presentation
-              ${this.keyboard.presentation()}
-            ></caffold-keyboard-navigation-presentation>
+          </div>
+          <div class="task-permission-picker" ?hidden=${permission.hidden}>
+            <button
+              ${drawn(this.permissionButton)}
+              ${this.hints.button({
+                id: "permission",
+                label: "Choose approval mode",
+                action: ACTION_HINT_ACTION.PERMISSION_OPEN,
+              })}
+              type="button"
+              class=${buttonClasses("task-permission-button", {
+                "is-dangerous": permission.dangerous,
+                "is-unavailable": permission.unavailable,
+                "is-deferred": permission.deferred,
+              })}
+              popovertarget=${this.permissionPopoverId}
+              popovertargetaction="toggle"
+              aria-label="Choose approval mode"
+              title=${permission.title}
+              aria-busy=${permission.busy ? "true" : nothing}
+              ?disabled=${permission.disabled}
+            >${
+              permission.pending
+                ? LOADING_SLOT
+                : html`${inlineIcon(
+                    "Shield",
+                    "",
+                    "task-permission-icon",
+                  )}<span class="task-permission-label"
+                    >${permission.label}</span
+                  >`
+            }</button>
+            <div
+              ${drawn(this.permissionPopover)}
+              ${this.keyboard.popover({
+                id: "permission-options",
+                label: "Permission options",
+                sessionBound: true,
+              })}
+              id=${this.permissionPopoverId}
+              class="task-permission-popover"
+              popover="auto"
+              role="menu"
+              aria-label="Approval modes"
+              @beforetoggle=${this.handleBeforeToggle}
+              @caffold:keyboard-session-dismiss=${this.dismissed}
+            >
+              <div class="task-permission-popover-content">
+                <p class="task-permission-heading">Permissions</p>
+                ${permissionBody(settled, this.selectedPermission(), this.hints)}
+              </div>
+              <caffold-keyboard-navigation-presentation
+                ${this.keyboard.presentation()}
+              ></caffold-keyboard-navigation-presentation>
+            </div>
           </div>
         </div>
       </div>

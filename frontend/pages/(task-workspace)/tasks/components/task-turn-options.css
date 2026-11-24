@@ -5,6 +5,14 @@
   line-height: var(--interface-line-height);
 }
 
+/* The room the owner gives the row, measured for the narrow form below. The
+   owner gives the row the space it has, not the row's own width. */
+.task-turn-options-room {
+  flex: 1 1 auto;
+  min-width: 0;
+  container: turn-options / inline-size;
+}
+
 .task-turn-options {
   display: flex;
   align-items: center;
@@ -462,13 +470,14 @@
   }
 }
 
-@media (max-width: 520px) and (orientation: portrait) {
+/* Where the row has little room, as in a phone's Composer and dialogs or the
+   floating card, only the shield, in a circle the microphone's size, so the
+   model keeps the room its name needs. */
+@container turn-options (max-width: 20rem) {
   .task-turn-options {
     gap: 0.1875rem;
   }
 
-  /* Only the shield, in a circle the microphone's size, so the model keeps
-     the room its name needs. */
   .task-permission-button {
     width: var(--interface-compact-visual-size);
     padding-inline: 0;

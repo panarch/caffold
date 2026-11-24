@@ -162,7 +162,7 @@ test("merges composer popovers, the Task dialogs, Current Plan, Command, Tool ca
   };
   const owner = {
     hidden: false,
-    reviewView: "conversation",
+    shownView: "conversation",
     selectedThreadId: "thread-a",
     performUpdate() {},
     brokenDeleteDialog: { value: undefined },
