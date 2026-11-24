@@ -1414,7 +1414,12 @@ and the turn options measure the room their owner gives them, the
 has 20rem or less, in a Composer and in the dialogs that offer them alike.
 
 A reader at the bottom stays there as a live change or drawn Markdown lengthens
-the transcript. The scroll moves to the new bottom at once. When a live change
+the transcript. The scroll moves to the new bottom at once. The conversation
+counts a reader as at the bottom while the scroll still stands where it last
+put the bottom itself, until a scroll moves it from there: what it shows can
+grow below in the frame before it follows, and the scroll event its own move
+sets off arrives only then. Judged from the scroll alone, either would leave a
+reader at the old bottom as one who had scrolled up. When a live change
 is drawn for that reader, the column's contents then slide up over the distance
 the whole change added in 180 ms, the time added text takes to fade in, and
 successive slides add up, so the view follows without jumping. The column
@@ -1649,7 +1654,12 @@ or 72px with Shift, as the pane resizer's do, and its Action Hint is a
 separator's, which focuses it.
 
 The component owns whether the card is open and the size the person gave it. It
-reports each change of the first with `caffold:floating-conversation-change`.
+reports each change of the first with `caffold:floating-conversation-change`: a
+fold at once, while the conversation still shows where it was, and an opening
+only once the card shows, so Task Detail places the conversation in a laid-out
+scrollport. WebKit drops the position of a scrollport that was hidden and
+reports the drop as a scroll when it shows again; told before the card showed,
+the conversation would keep that drop as the reader's place and open at its top.
 Detail's snapshot folds it when the screen no longer shows a file or the subject
 changes, and Detail folds a phone's sheet when the route moves under it, as a
 file link in the conversation does. Between screens and files that show one, the
