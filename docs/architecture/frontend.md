@@ -1625,7 +1625,10 @@ subject slot. As the Conversation screen it steps aside and Task Detail fills
 the body. Over a screen that shows a file, the slot becomes a layer over the
 Detail body that takes the pointer only on the component's button, card, and
 resize handle: a round button at the body's bottom right whose fill alone lets
-the code show through, which opens there into a card whose header folds it. The
+the code show through, which opens there into a card whose header folds it.
+Each slot of the screen under it isolates its own stacking, so what that screen
+raises, such as Review's Changes and Files switch, the pane resizer, and a
+foldable's list drawer and its shade, stays under the button and the card. The
 header carries the conversation's icon, takes the focus when the card opens, and
 shows that focus with its hover fill, which the card's rounded corners clip; its
 Action Hint badge sits at its end (`center-right`). The button and the header

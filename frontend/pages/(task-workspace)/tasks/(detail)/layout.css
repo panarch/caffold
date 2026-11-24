@@ -145,6 +145,13 @@ caffold-segmented-control[data-detail-view-switch] {
   pointer-events: none;
 }
 
+/* What the screen under it raises, such as Review's switch, the pane
+   resizer, and a foldable's list drawer and its shade, stays under it. */
+.detail-layout-body[data-floating-conversation]
+  > div:not(.detail-subject-slot) {
+  isolation: isolate;
+}
+
 /* The screens under it leave the button's room at the end of what scrolls,
    with the card open or folded, so opening, folding, or resizing the card
    changes nothing in them. */

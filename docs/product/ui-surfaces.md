@@ -303,7 +303,8 @@ Compare, and GitHub Pull Files) the Task's conversation is a round button with
 the Conversation icon at the bottom right, whose fill alone lets the code show
 through; whether the Task is working shows in the header as everywhere. It opens
 there into a card with the conversation, Current Plan, and follow-up Composer as
-on the Conversation screen, over the file without changing its width. The focus
+on the Conversation screen, over the file without changing its width and over
+everything on that screen, a foldable's list drawer included. The focus
 goes to the card's header, which carries the same icon, not to the Composer. The
 card opens at a third of the screen's width and two thirds of its height, never
 smaller than 25rem by 32.5rem; its top left corner resizes it, and the device
