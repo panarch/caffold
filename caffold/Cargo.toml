@@ -36,7 +36,7 @@ chrono = "0.4.45"
 clap = { version = "4.5.40", features = ["derive"] }
 copilot-sdk = { version = "=2.0.0", default-features = false, features = ["local-runtime"] }
 futures-util = "0.3.32"
-gluesql = { git = "https://github.com/gluesql/gluesql.git", branch = "main", default-features = false, features = ["gluesql_memory_storage", "gluesql-redb-storage"] }
+gluesql = { version = "0.21.0", default-features = false, features = ["gluesql_memory_storage", "gluesql-redb-storage"] }
 hmac = "0.12.1"
 hound = "3.5.1"
 libc = "0.2.186"
@@ -76,4 +76,5 @@ whisper-rs = { version = "0.16.0", features = ["metal"] }
 serde_json = "1.0.140"
 
 [dev-dependencies]
+flate2 = "1"
 tokio = { version = "1.45.1", features = ["test-util"] }

@@ -1,4 +1,5 @@
 mod schema;
+mod storage_format;
 mod v10_to_v11;
 mod v11_to_v12;
 mod v12_to_v13;
@@ -65,8 +66,8 @@ enum DetectedSchemaVersion {
 /// Upgrades an existing database to the latest schema.
 ///
 /// Every supported schema is migrated in a disposable staged copy that
-/// replaces the source only after final validation. A schema older than
-/// `OLDEST_SUPPORTED_SCHEMA_VERSION` is refused before anything is staged.
+/// replaces the source only after final validation. Older GlueSQL formats
+/// must be converted on the copy before the application schema can be read.
 pub(crate) fn migrate_to_latest(path: &Path) -> Result<()> {
     if !path.exists() {
         return Err(TaskStoreError::MigrationPathMissing(
@@ -79,7 +80,13 @@ pub(crate) fn migrate_to_latest(path: &Path) -> Result<()> {
         ));
     }
 
-    match detect_redb_schema(path)? {
+    let detected = match detect_redb_schema(path) {
+        Err(error) if storage_format::migration_required(&error) => {
+            return storage_format::migrate(path);
+        }
+        result => result?,
+    };
+    match detected {
         DetectedSchemaVersion::Fresh | DetectedSchemaVersion::V17 => Ok(()),
         DetectedSchemaVersion::V5 => prepare_v5(path),
         DetectedSchemaVersion::V6 => prepare_v6(path),
@@ -233,6 +240,12 @@ where
 {
     let staged = StagedDatabase::new(path);
     std::fs::copy(path, staged.path())?;
+    migrate_staged_schema(&staged, detected)?;
+    validate_staged(staged.path())?;
+    staged.publish(path)
+}
+
+fn migrate_staged_schema(staged: &StagedDatabase, detected: DetectedSchemaVersion) -> Result<()> {
     match detected {
         DetectedSchemaVersion::V5 => {
             v5_to_v6::migrate(staged.path())?;
@@ -338,8 +351,7 @@ where
         }
         _ => return Err(TaskStoreError::IncompleteSchema),
     }
-    validate_staged(staged.path())?;
-    staged.publish(path)
+    Ok(())
 }
 
 struct StagedDatabase {

@@ -704,11 +704,13 @@ order, commit the transaction, and then request a fresh Task-list projection;
 they do not call app-server or infer another placement from Codex state.
 
 Upgrading an older Task store at startup does not call app-server or any other
-agent either. The
-startup coordinator applies the local migrations to a staged copy and replaces
-the source only with a fully validated staging database; a store older than the
-[supported start version](../review/backend.md#storage-migration-review) is
-refused and left unchanged. The v6-to-v7 migration initializes durable Section
+agent either. The startup coordinator applies the local migrations to a staged
+copy and replaces the source only after validation. It refuses a store below the
+[supported start version](../review/backend.md#storage-migration-review).
+When GlueSQL requires a storage-format upgrade, it runs on that same copy
+before Caffold reads the application schema. Caffold saves the pre-upgrade
+database, including any normal redb recovery, before publishing the copy.
+The v6-to-v7 migration initializes durable Section
 positions from the previous active navigator's recency-derived order and
 deterministically places Sections without active Tasks afterward. The v7-to-v8
 migration adds nullable Section composer fields without backfilling historical selections; Sections

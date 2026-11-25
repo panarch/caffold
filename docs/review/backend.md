@@ -175,10 +175,6 @@ start version. Treat every released storage schema from that version on, and
 every transition between them, as an immutable historical contract. Schema
 snapshots and transitions below the supported start version are not kept.
 
-A store older than the supported start version is refused before anything is
-staged. The source stays byte-for-byte unchanged, and the diagnostic names a
-release that can still upgrade it.
-
 - Migration orchestration owns version detection, refusal of unsupported
   versions, ordered execution, staged replacement, final validation, and
   publication. A version transition owns only its fixed input and output
@@ -206,9 +202,10 @@ release that can still upgrade it.
 Review every migration with exact input-version, output-version, data
 preservation, wrong-version rollback, migration-history, and supported
 start-version coverage, including the refusal of each version below the
-supported start version. Replacement migrations must also prove that
-intermediate and final-validation failures preserve the original database and
-remove staged state.
+supported start version. Verify that the refusal message explains the reason
+and identifies a release that can upgrade the store. Replacement migrations
+must also prove that intermediate and final-validation failures preserve the
+original database and remove staged state.
 
 ## Backend Verification
 
