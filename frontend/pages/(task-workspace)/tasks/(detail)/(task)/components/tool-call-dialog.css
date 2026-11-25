@@ -150,6 +150,7 @@ dialog::backdrop {
   overflow-wrap: anywhere;
   font-size: var(--code-font-size);
   line-height: var(--code-line-height);
+  -webkit-user-select: text;
   user-select: text;
 }
 
@@ -179,6 +180,7 @@ dialog::backdrop {
   font-size: var(--code-font-size);
   line-height: var(--code-line-height);
   white-space: pre;
+  -webkit-user-select: text;
   user-select: text;
 }
 

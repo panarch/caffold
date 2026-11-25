@@ -131,6 +131,7 @@
 
 :host(.is-resizing-navigation-pane) {
   cursor: col-resize;
+  -webkit-user-select: none;
   user-select: none;
 }
 

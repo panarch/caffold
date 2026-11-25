@@ -22,6 +22,7 @@
     width: max-content;
     margin-inline: auto;
     padding: clamp(1rem, 3vw, 2rem);
+    -webkit-user-select: text;
     user-select: text;
 
     & > svg {
