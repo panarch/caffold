@@ -21,7 +21,27 @@ export const VIEWPORT_COVERAGE_TAGS = Object.freeze([
   ...VIEWPORT_PROJECTS.map((project) => `@${project}`),
 ]);
 
+// A test that can break by engine, as where a scrollport keeps its place or
+// what a top-layer element covers, also carries `@webkit` beside its coverage
+// tag. The WebKit project runs it once more in WebKit, in the desktop browser,
+// so only coverage the desktop browser runs selects it there.
+export const WEBKIT_TAG = "@webkit";
+
+export const WEBKIT_PROJECT = "webkit";
+
+export const DESKTOP_BROWSER_TAGS = Object.freeze([
+  ALL_VIEWPORTS_TAG,
+  "@desktop",
+  ...SINGLE_RUN_TAGS,
+]);
+
 export function viewportCoveragePattern(project) {
+  if (project === WEBKIT_PROJECT) {
+    const desktopBrowser = DESKTOP_BROWSER_TAGS.map((tag) => tag.slice(1));
+    return new RegExp(
+      `^(?=.*${WEBKIT_TAG}\\b)(?=.*@(?:${desktopBrowser.join("|")})\\b)`,
+    );
+  }
   if (SINGLE_RUN_PROJECTS.includes(project)) {
     return new RegExp(`@${project}\\b`);
   }

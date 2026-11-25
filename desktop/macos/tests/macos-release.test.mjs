@@ -204,6 +204,8 @@ test("release checks the source before versioning and packaging on macOS", () =>
   const browser = workflowJob(readWorkflow("browser-tests.yml"), "browser");
   assert.match(browser, /fail-fast: false/);
   assert.match(browser, /project: \[desktop, server-changes, server-steady, foldable, phone\]/);
+  assert.match(browser, /- project: webkit\n\s+browser: webkit/);
+  assert.match(browser, /if: matrix\.browser == 'webkit'\n\s+run: npx playwright install --with-deps webkit/);
   assert.match(browser, /npm run test:e2e -- --project=\$\{\{ matrix\.project \}\}/);
   assert.ok(browser.indexOf("cargo build --locked") < browser.indexOf("npm run test:e2e"));
   assert.match(browser, /name: playwright-results-\$\{\{ matrix\.project \}\}/);

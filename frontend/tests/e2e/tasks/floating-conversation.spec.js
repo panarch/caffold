@@ -190,7 +190,7 @@ test("opens the Task's own conversation over the file without moving the code", 
 // hidden scrollport's position and reports the drop as a scroll. Drawn for the
 // first time in the card, the conversation then keeps following its end while
 // its Markdown lengthens it.
-test("opens at the end of the conversation, telling Task Detail once the card shows", { tag: ["@desktop", "@phone"] }, async ({
+test("opens at the end of the conversation, telling Task Detail once the card shows", { tag: ["@desktop", "@phone", "@webkit"] }, async ({
   page,
 }) => {
   // The smallest card, so the conversation scrolls in it.

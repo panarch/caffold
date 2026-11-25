@@ -203,8 +203,9 @@ npm run test:e2e
 
 Each regular Playwright invocation selects an available loopback port, starts
 its own Caffold server with `reuseExistingServer: false`, and uses isolated
-fixture data. It runs the desktop, foldable, and phone viewport projects and
-the server-changes and server-steady projects. Its Codex responses are
+fixture data. It runs the desktop, foldable, and phone viewport projects, the
+server-changes and server-steady projects, and the webkit project. Its Codex
+responses are
 deterministic fixtures, so it does not prove compatibility with the installed
 Codex app-server. Set `CAFFOLD_E2E_PORT` to an available port only for
 targeted diagnostics; an occupied override fails instead of attaching to that
@@ -215,14 +216,18 @@ frontend review policy's
 [Browser Test Ownership](../review/frontend.md#browser-test-ownership) section
 decides which. `@server-changes` and `@server-steady` tests run once, in the
 desktop browser. When touch-only behavior needs one touch viewport, use
-foldable unless the phone's single-pane contract is relevant. Tags are
-Playwright test details, not title suffixes, and a runtime project-name skip is
-not a coverage declaration.
+foldable unless the phone's single-pane contract is relevant. A test that can
+break by browser engine also carries `@webkit` beside a tag the desktop browser
+runs, and the webkit project runs it once more in Playwright's WebKit at the
+desktop viewport; install that browser locally with
+`npx playwright install webkit`. Tags are Playwright test details, not title
+suffixes, and a runtime project-name skip is not a coverage declaration.
 
-Pull-request, `main`, and release checks run the five projects in the same
-independent Ubuntu matrix jobs. Each job starts its own server, selects only
-its coverage tags, and uses one worker against its own fixture workspace. All
-five jobs must pass. Tests have no retries, and each project uploads its
+Pull-request, `main`, and release checks run the six projects in the same
+independent Ubuntu matrix jobs; only the webkit job installs WebKit and its
+Linux dependencies. Each job starts its own server, selects only its coverage
+tags, and uses one worker against its own fixture workspace. All six jobs must
+pass. Tests have no retries, and each project uploads its
 failure artifacts. Tracing keeps the existing `on-first-retry` setting, so
 ordinary runs with zero retries do not record traces. For a targeted diagnostic
 run, enable tracing explicitly with `--trace on`. The ordinary local command

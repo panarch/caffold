@@ -5,15 +5,18 @@ import test from "node:test";
 
 import {
   ALL_VIEWPORTS_TAG,
+  DESKTOP_BROWSER_TAGS,
   SINGLE_RUN_PROJECTS,
   SINGLE_RUN_TAGS,
   VIEWPORT_COVERAGE_TAGS,
   VIEWPORT_PROJECTS,
   viewportCoveragePattern,
+  WEBKIT_PROJECT,
+  WEBKIT_TAG,
 } from "../e2e/support/project-coverage.js";
 
 const e2eRoot = resolve(import.meta.dirname, "../e2e");
-const allowedTags = new Set(VIEWPORT_COVERAGE_TAGS);
+const allowedTags = new Set([...VIEWPORT_COVERAGE_TAGS, WEBKIT_TAG]);
 
 async function specFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -61,12 +64,19 @@ test("every Playwright test declares its minimum viewport coverage", async () =>
         tags.every((tag) => allowedTags.has(tag)),
         `unknown viewport coverage tag in ${file}: ${tags.join(", ")}`,
       );
+      const coverage = tags.filter((tag) => tag !== WEBKIT_TAG);
+      assert.ok(coverage.length > 0, `${WEBKIT_TAG} needs a coverage tag in ${file}`);
       for (const exclusiveTag of [ALL_VIEWPORTS_TAG, ...SINGLE_RUN_TAGS]) {
         assert.ok(
-          tags.length === 1 || !tags.includes(exclusiveTag),
+          coverage.length === 1 || !coverage.includes(exclusiveTag),
           `${exclusiveTag} cannot be combined with other tags in ${file}`,
         );
       }
+      assert.ok(
+        !tags.includes(WEBKIT_TAG) ||
+          coverage.some((tag) => DESKTOP_BROWSER_TAGS.includes(tag)),
+        `${WEBKIT_TAG} runs in the desktop browser, so it needs coverage that runs there in ${file}`,
+      );
     }
   }
   assert.ok(declarations > 0);
@@ -94,4 +104,17 @@ test("each single-run project selects only its own coverage", () => {
       assert.doesNotMatch(tag, pattern);
     }
   }
+});
+
+test("the WebKit project selects only WebKit tests the desktop browser runs", () => {
+  const pattern = viewportCoveragePattern(WEBKIT_PROJECT);
+  for (const tag of DESKTOP_BROWSER_TAGS) {
+    assert.match(`${tag} ${WEBKIT_TAG}`, pattern);
+    assert.match(`${WEBKIT_TAG} ${tag}`, pattern);
+    assert.doesNotMatch(tag, pattern);
+  }
+  for (const tag of ["@foldable", "@phone"]) {
+    assert.doesNotMatch(`${tag} ${WEBKIT_TAG}`, pattern);
+  }
+  assert.doesNotMatch(WEBKIT_TAG, pattern);
 });

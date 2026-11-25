@@ -2183,7 +2183,7 @@ async function fillConversation(page, markdown, write) {
   return long;
 }
 
-test("slides the conversation up while its reader follows a stream", { tag: "@server-changes" }, async ({
+test("slides the conversation up while its reader follows a stream", { tag: ["@server-changes", "@webkit"] }, async ({
   page,
 }) => {
   const slides = await recordSlides(page);

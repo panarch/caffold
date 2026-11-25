@@ -491,8 +491,18 @@ when it takes a different production path or shows a different result.
   instead.
 
 `@all-viewports`, `@server-changes`, and `@server-steady` are never combined
-with another tag. Review should reject untagged tests and tags that do not
-match these answers.
+with another coverage tag. Review should reject untagged tests and tags that do
+not match these answers.
+
+`@webkit` is added beside a coverage tag the desktop browser runs (`@desktop`,
+`@all-viewports`, `@server-changes`, or `@server-steady`), never alone, when
+the test checks behavior that can differ by browser engine and has broken in
+WebKit or shares the cause of a WebKit break: where a scrollport keeps or
+restores its place, a scrollport shown again after it was hidden, what a
+top-layer popover or dialog covers, or where focus goes. The test must pass in
+Playwright's WebKit. Leave out what Playwright's WebKit cannot run, such as
+microphone or clipboard-write permissions and CDP sessions, and pixel or touch
+checks, where Linux WebKit draws and handles input unlike Safari.
 
 When an expected result depends on the order of independently delivered events
 or asynchronous completions, the test must gate the exact boundary the

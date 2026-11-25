@@ -322,7 +322,7 @@ test("work details offer a folded group's rows to the keyboard only while it is 
   await expect(dialog).toContainText("intentionally-missing");
 });
 
-test("a reader anchored on a command keeps their place when it folds into a group", { tag: "@server-changes" }, async ({
+test("a reader anchored on a command keeps their place when it folds into a group", { tag: ["@server-changes", "@webkit"] }, async ({
   page,
 }) => {
   const task = activeTask();
@@ -380,7 +380,8 @@ test("a reader anchored on a command keeps their place when it folds into a grou
     scroller.dispatchEvent(new Event("scroll"));
   });
   const readingOffset = await entryOffset(docsEntry);
-  expect(readingOffset).toBeCloseTo(40, 0);
+  // WebKit scrolls to whole pixels, which leaves the command within a pixel.
+  expect(Math.abs(readingOffset - 40)).toBeLessThan(1);
   expect(await isScrolledToBottom(scroller)).toBe(false);
 
   await emitTaskEvent(page, {
