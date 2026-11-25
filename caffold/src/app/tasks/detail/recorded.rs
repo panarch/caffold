@@ -13,7 +13,13 @@ use crate::app::tasks::{
 use crate::task_store::ManagedThread;
 
 impl DetailContext {
-    pub(in crate::app::tasks) async fn publish_workspace_access(&self, task: &str) {
+    /// Tell a recorded Task's viewers what changed by sending its recorded
+    /// history again. A Task that is not recorded is left alone.
+    pub(in crate::app::tasks) async fn publish_recorded_detail(
+        &self,
+        task: &str,
+        reason: &'static str,
+    ) {
         match self.recorded_detail(task, None).await {
             Ok(Some(detail)) => {
                 self.sync
@@ -21,7 +27,7 @@ impl DetailContext {
                         thread_id: task.to_string(),
                         revision: detail.revision,
                         detail,
-                        reason: "workspace-ownership-changed",
+                        reason,
                         error: None,
                     })))
             }

@@ -72,7 +72,10 @@ async fn create_owned(
             },
         )
         .await?;
-    state.detail.publish_workspace_access(&source).await;
+    state
+        .detail
+        .publish_recorded_detail(&source, "workspace-ownership-changed")
+        .await;
     let id = &created.task.thread_id;
     let detail = state
         .detail
@@ -136,6 +139,7 @@ mod tests {
                 codex::{CodexThreadClient, MockCodexResponse},
             },
             app::tasks::{
+                TaskDetailPublication,
                 routes::{router, test_support::seed_section},
                 test_support::task_state_with_terminals,
             },
@@ -147,7 +151,7 @@ mod tests {
             http::{Request, header::CONTENT_TYPE},
         };
         use serde_json::{Value, json};
-        use std::{fs, path::Path, process::Command};
+        use std::{fs, path::Path, process::Command, time::Duration};
         use tower::ServiceExt;
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().canonicalize().unwrap();
@@ -340,6 +344,8 @@ mod tests {
         );
         assert!(!detail.events.is_empty());
         assert!(detail.task.as_ref().unwrap().conversation_available);
+        state.task_store.update_completed_at(&source, 5).unwrap();
+        let mut viewers = state.task_sync.subscribe_updates();
         let seen = app
             .clone()
             .oneshot(
@@ -353,6 +359,21 @@ mod tests {
         let seen: Value =
             serde_json::from_slice(&to_bytes(seen.into_body(), usize::MAX).await.unwrap()).unwrap();
         assert_eq!(seen["conversationAvailable"], true);
+        // The source's viewers read its recorded history, and hear it seen there.
+        let told = loop {
+            let publication = tokio::time::timeout(Duration::from_secs(1), viewers.recv())
+                .await
+                .expect("being seen reaches the source's viewers")
+                .expect("the viewers' channel stays open");
+            if publication.thread_id() == source {
+                break publication;
+            }
+        };
+        let TaskDetailPublication::Sync(told) = told else {
+            panic!("a recorded Task's viewers hear its recorded history again");
+        };
+        assert_eq!(told.reason, "task-seen");
+        assert!(!told.detail.task.as_ref().unwrap().unseen);
         state.detail.bootstrap(&source, 0).await;
         let refused = app
             .clone()

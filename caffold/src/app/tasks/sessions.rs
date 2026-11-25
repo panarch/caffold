@@ -426,6 +426,21 @@ impl TaskSessions {
         Some(snapshot(&state))
     }
 
+    /// Move the revision past the Task being seen, which Caffold keeps beside
+    /// the conversation, so the state that tells viewers outranks every earlier
+    /// publication. A session holding no conversation has published only its
+    /// loading answer, and its first snapshot reads the Task as it is then.
+    pub(in crate::app::tasks) async fn record_seen(
+        &self,
+        thread_id: &str,
+    ) -> Option<SessionSnapshot> {
+        let entry = self.existing_entry(thread_id).await?;
+        let mut state = entry.state.lock().await;
+        state.conversation.as_ref()?;
+        state.revision = state.revision.saturating_add(1);
+        Some(snapshot(&state))
+    }
+
     /// Whether the agent says it is working on this Task, with a turn open or
     /// none.
     pub(in crate::app::tasks) async fn working(&self, thread_id: &str) -> bool {
@@ -720,5 +735,40 @@ mod tests {
 
         assert!(sessions.snapshot("thread-1").await.is_none());
         assert_eq!(sessions.diagnostics().await.tracked_sessions, 0);
+    }
+
+    #[tokio::test]
+    async fn being_seen_moves_only_a_conversation_holding_session_to_its_next_revision() {
+        let sessions = TaskSessions::default();
+        assert!(sessions.record_seen("thread-1").await.is_none());
+        assert!(
+            sessions.snapshot("thread-1").await.is_none(),
+            "a Task nobody has opened gets no session for being seen"
+        );
+
+        // Listed on a new connection, the session lets its conversation go.
+        sessions.track_listed_codex_thread(1, "thread-1").await;
+        let loading = sessions.snapshot("thread-1").await.unwrap();
+        assert!(loading.conversation.is_none());
+        assert!(sessions.record_seen("thread-1").await.is_none());
+        assert_eq!(
+            sessions.snapshot("thread-1").await.unwrap().revision,
+            loading.revision
+        );
+
+        sessions
+            .observe_thread_metadata(Conversation::from(&thread(ThreadStatus::Idle, Vec::new())))
+            .await;
+        let before = sessions.snapshot("thread-1").await.unwrap().revision;
+        let seen = sessions
+            .record_seen("thread-1")
+            .await
+            .expect("a session holding the conversation tells its viewers");
+
+        assert_eq!(seen.revision, before + 1);
+        assert_eq!(
+            sessions.snapshot("thread-1").await.unwrap().revision,
+            seen.revision
+        );
     }
 }

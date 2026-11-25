@@ -513,6 +513,33 @@ test("selects the view switch choice that names the Review a Task shows", () => 
   assert.deepEqual(selected, ["review", "working", "branch"]);
 });
 
+test("tells the floating conversation whether Task Detail's record has the Task unseen", () => {
+  const snapshots = [];
+  const owner = headerOwner({
+    taskRoute: { threadId: "thread-a", review: true },
+    taskSnapshot: { task: { threadId: "thread-a", unseen: true } },
+    managedTask: { threadId: "thread-a", title: "Listed", unseen: false },
+    activeSurface: () => "review",
+    presentation: "code",
+    floatingConversation: { value: { setSnapshot: (snapshot) => snapshots.push(snapshot) } },
+  });
+
+  // Task Detail's record decides, as it does for the header; the list's row
+  // does not.
+  detailLayout.syncTaskPresentation.call(owner);
+  owner.taskSnapshot = { task: { threadId: "thread-a", unseen: false } };
+  owner.managedTask = { ...owner.managedTask, unseen: true };
+  detailLayout.syncTaskPresentation.call(owner);
+  // Another Task's record says nothing about the Task now open.
+  owner.taskSnapshot = { task: { threadId: "thread-b", unseen: true } };
+  detailLayout.syncTaskPresentation.call(owner);
+
+  assert.deepEqual(
+    snapshots.map(({ unseen }) => unseen),
+    [true, false, false],
+  );
+});
+
 test("the terminal toggle enters from any screen and returns to where it was", () => {
   const requested = [];
   const activations = [];

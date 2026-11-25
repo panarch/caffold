@@ -21,6 +21,8 @@ export interface FloatingConversationSnapshot {
   presentation: FloatingConversationPresentation;
   // The Task the conversation belongs to; another Task starts folded.
   subjectKey: string;
+  // Whether a turn of the Task finished since its conversation last showed.
+  unseen: boolean;
 }
 
 export interface FloatingConversationChangeDetail {
@@ -67,13 +69,14 @@ interface ResizeRange extends CardSize {
  * whole Detail body. Over a screen that shows a file it is a round button at
  * the bottom right, and opens from there into a card, or on a phone into a
  * sheet over the whole screen; the card's header folds it again, and the
- * card's top left corner resizes it.
+ * card's top left corner resizes it. While the Task has a finished turn
+ * nobody has seen, the button carries the Task list's green dot.
  *
  * Detail places Task Detail in this element's slot once. Only the frame around
  * it changes, so the conversation, its draft, and its scroll stay as they are.
  * Whether it is open and the size the person gave it are this element's to
- * keep: Detail says where it shows and whose it is, and hears when it opens
- * and folds.
+ * keep: Detail says where it shows, whose it is, and whether that Task is
+ * unseen, and hears when it opens and folds.
  */
 @customElement("caffold-task-detail-floating-conversation")
 export class CaffoldTaskDetailFloatingConversation extends CaffoldElement {
@@ -89,6 +92,8 @@ export class CaffoldTaskDetailFloatingConversation extends CaffoldElement {
   private accessor size: CardSize | null = readStoredSize();
   @state()
   private accessor resizing = false;
+  @state()
+  private accessor unseen = false;
 
   private subjectKey = "";
   // Whether Detail was last told the card is open.
@@ -129,10 +134,15 @@ export class CaffoldTaskDetailFloatingConversation extends CaffoldElement {
     this.resizing = false;
   }
 
-  setSnapshot({ presentation, subjectKey }: FloatingConversationSnapshot) {
+  setSnapshot({
+    presentation,
+    subjectKey,
+    unseen,
+  }: FloatingConversationSnapshot) {
     const subjectChanged = subjectKey !== this.subjectKey;
     this.subjectKey = subjectKey;
     this.presentation = presentation;
+    this.unseen = unseen;
     if (presentation !== "floating" || subjectChanged) {
       this.setOpen(false);
     }
@@ -195,25 +205,29 @@ export class CaffoldTaskDetailFloatingConversation extends CaffoldElement {
   override render() {
     const floating = this.floating;
     const open = this.open;
+    const openLabel = this.unseen
+      ? "Show the conversation — completed, not viewed"
+      : "Show the conversation";
     return html`
       <button
         ${drawn(this.openButton)}
         ${this.hints.disclosure({
           id: "floating-conversation:open",
-          label: "Show the conversation",
+          label: openLabel,
           action: ACTION_HINT_ACTION.CONVERSATION_SHOW,
           when: floating && !open,
         })}
         type="button"
         class="floating-conversation-open"
-        aria-label="Show the conversation"
+        aria-label=${openLabel}
         aria-expanded="false"
-        title="Show the conversation"
+        title=${openLabel}
+        ?data-unseen=${this.unseen}
         ?hidden=${!floating || open}
         @click=${this.openCard}
       >${inlineIcon(
         "MessageSquare",
-        "Show the conversation",
+        openLabel,
         "floating-conversation-icon",
       )}</button>
       <div

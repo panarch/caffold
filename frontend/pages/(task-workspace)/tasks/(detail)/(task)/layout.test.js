@@ -389,3 +389,73 @@ test("markDisplayedTaskSeen delays marking seen when the document is hidden", ()
     document.visibilityState = previousState;
   }
 });
+
+// Runs `check` with the document visible, as a person reading the window.
+function whileVisible(check) {
+  const previousState = document.visibilityState;
+  document.visibilityState = "visible";
+  try {
+    return check();
+  } finally {
+    document.visibilityState = previousState;
+  }
+}
+
+test("markDisplayedTaskSeen marks a Task seen only while its conversation shows", () => {
+  const unseenTask = { threadId: "thread-a", unseen: true, lastCompletedMs: 100 };
+  const seenRequestKeys = new Set();
+  const owner = screen({ seenRequestKeys });
+
+  whileVisible(() => {
+    for (const view of ["review", "git", "github", "terminal"]) {
+      owner.reviewView = view;
+      taskDetail.markDisplayedTaskSeen.call(owner, "thread-a", unseenTask);
+      assert.equal(seenRequestKeys.size, 0, `${view} hides the conversation`);
+    }
+    owner.floatingConversationShown = true;
+    taskDetail.markDisplayedTaskSeen.call(owner, "thread-a", unseenTask);
+  });
+
+  assert.deepEqual([...seenRequestKeys], ["thread-a:100"], "the open card shows it");
+});
+
+test("opening the floating card marks the Task's unseen finished turn seen", () => {
+  const seenRequestKeys = new Set();
+  const owner = screen({
+    reviewView: "review",
+    floatingConversationShown: false,
+    taskDetail: { task: { threadId: "thread-a", unseen: true, lastCompletedMs: 100 } },
+    seenRequestKeys,
+    draw() {},
+    conversationComponent: { value: { reconcileViewportResize() {} } },
+  });
+
+  whileVisible(() => {
+    taskDetail.setFloatingConversationShown.call(owner, true);
+  });
+
+  assert.deepEqual([...seenRequestKeys], ["thread-a:100"]);
+});
+
+test("recoverForeground leaves a Task unseen behind the folded card", async () => {
+  const seenRequestKeys = new Set();
+  const owner = screen({
+    reviewView: "review",
+    taskDetail: { task: { threadId: "thread-a", unseen: true, lastCompletedMs: 100 } },
+    seenRequestKeys,
+    detailSession: {
+      recover: () => Promise.resolve({ ok: true, skipped: true }),
+    },
+  });
+
+  const previousState = document.visibilityState;
+  document.visibilityState = "visible";
+  try {
+    const outcome = await owner.recoverForeground();
+    assert.equal(outcome.ok, true);
+  } finally {
+    document.visibilityState = previousState;
+  }
+
+  assert.equal(seenRequestKeys.size, 0);
+});

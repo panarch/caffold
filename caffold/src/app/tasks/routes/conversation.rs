@@ -77,7 +77,7 @@ pub(super) fn generated_image_api_error(
 /// anything. Codex is asked, because asking it is cheap and refreshes what the
 /// session store knows; Claude is not, because reaching a Claude Task that
 /// nobody is watching means starting a process, and a person clicking a row did
-/// not ask for that.
+/// not ask for that. The Task list and the Task's viewers hear that it is seen.
 pub(super) async fn mark_task_seen(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
@@ -129,6 +129,7 @@ pub(super) async fn mark_task_seen(
     };
     apply_managed_thread_metadata(&mut task, &managed);
     notify_task_updated(&state, ActiveTask::of(&task, worktree));
+    state.detail.publish_seen(&thread_id).await;
     Ok(Json(task))
 }
 
@@ -386,6 +387,7 @@ mod tests {
             state.task_store.get(thread_id).unwrap().unwrap().unseen(),
             "a Task whose turn finished unwatched starts unseen"
         );
+        let mut signals = state.task_runtime.subscribe();
 
         let Json(task) = mark_task_seen(State(state.clone()), AxumPath(thread_id.to_string()))
             .await
@@ -399,6 +401,10 @@ mod tests {
         assert!(
             state.task_runtime.usage_diagnostics().threads.is_empty(),
             "nothing woke an agent to answer a click"
+        );
+        assert!(
+            state.task_sessions.snapshot(thread_id).await.is_none() && signals.try_recv().is_err(),
+            "a Task without a session has no viewer to tell, and gets no session for it"
         );
     }
 
@@ -616,6 +622,52 @@ mod tests {
         assert_eq!(managed.last_seen_activity_ms, Some(9_000));
         assert_eq!(managed.last_completed_at_ms, Some(9_000));
         assert_eq!(managed.last_observed_recency_ms, Some(10_000));
+    }
+
+    #[tokio::test]
+    async fn marking_a_task_seen_tells_its_viewers_at_the_revision_it_moved_to() {
+        use crate::app::tasks::TaskDetailPublication;
+        use std::time::Duration;
+
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-seen-viewed";
+        let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/read",
+            json!({ "thread": thread }),
+        )]);
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        state
+            .task_store
+            .update_completed_at(thread_id, 9_000)
+            .unwrap();
+        let mut viewers = state.task_sync.subscribe_updates();
+
+        let Json(task) = mark_task_seen(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .unwrap();
+
+        assert!(!task.unseen);
+        let publication = tokio::time::timeout(Duration::from_secs(1), viewers.recv())
+            .await
+            .expect("being seen reaches the Task's viewers")
+            .expect("the viewers' channel stays open");
+        let TaskDetailPublication::State(seen) = publication else {
+            panic!("being seen changes the Task beside its conversation");
+        };
+        assert_eq!(seen.thread_id, thread_id);
+        assert!(!seen.task.as_ref().unwrap().unseen);
+        assert_eq!(
+            seen.revision,
+            state
+                .task_sessions
+                .snapshot(thread_id)
+                .await
+                .unwrap()
+                .revision,
+            "the state carries the revision being seen moved the session to"
+        );
     }
 
     #[tokio::test]
