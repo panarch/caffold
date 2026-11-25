@@ -40,8 +40,20 @@ export class CaffoldPaneResizer extends CaffoldElement {
     this.moveResize(event);
   private readonly onPointerEnd = (event: PointerEvent) =>
     this.endResize(event);
-  private readonly onKeyDown = (event: KeyboardEvent) =>
+  // Escape only leaves the separator: no next step waits elsewhere, as a
+  // floating card's header waits for the second Escape that folds it.
+  private readonly onKeyDown = (event: KeyboardEvent) => {
+    if (
+      event.key === "Escape" &&
+      !event.isComposing &&
+      !(event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+    ) {
+      event.preventDefault();
+      this.blur();
+      return;
+    }
     this.adjustFromKeyboard(event);
+  };
   private readonly onFocus = () => this.syncRange();
   private readonly hints = new ActionHints(this);
 
