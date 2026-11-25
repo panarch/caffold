@@ -303,7 +303,10 @@ repository capability, it returns to New Task.
 On a Task screen that shows a file (Working Tree, Branch, a Git commit, Git
 Compare, and GitHub Pull Files) the Task's conversation is a round button with
 the Conversation icon at the bottom right, whose fill alone lets the code show
-through; whether the Task is working shows in the header as everywhere. It opens
+through; whether the Task is working shows in the header as everywhere. A turn
+that finishes while the conversation is not showing puts the Task list's green
+dot, without its blink, on the button, and its name says so, until the card
+opens or the Conversation screen shows, here or on another device. It opens
 there into a card with the conversation, Current Plan, and follow-up Composer as
 on the Conversation screen, over the file without changing its width and over
 everything on that screen, a foldable's list drawer included. The focus

@@ -1139,7 +1139,11 @@ snapshot and live event application, Conversation, Command dialog, Tool call
 details dialog, code-block Markdown and Mermaid preview dialogs, current-plan
 strip,
 follow-up Composer, and Task mutations. It publishes a subject snapshot upward; it does not mount Integrated
-Review, Git, GitHub, or their Summary controls.
+Review, Git, GitHub, or their Summary controls. It marks its Task seen
+(`PUT /api/tasks/{id}/seen`) only while the window is visible and the
+conversation shows, on the Conversation screen or in the open floating card,
+so a turn that ends behind a file screen, the terminal, or the folded card
+stays unseen until the conversation shows.
 
 Tasks hands Detail its code-or-reading presentation of each route, the one
 that puts a file tree in the Task list's place. On a Task screen it presents as
@@ -1673,6 +1677,14 @@ other control in it folds the card and returns focus to the button, as does the
 header; a menu or dialog open in the card takes its own `Escape` first, and on
 the resize handle `Escape` returns focus to the header, so the next one folds
 the card.
+
+Detail's snapshot also says whether Task Detail's record of the Task is unseen.
+While it is, the folded button carries the Task list's green dot, its size
+without its blink, ringed in the surface color. The dot is placed from the
+button's center, out at 45° to a pixel inside the middle of the border line, so
+it rests on the circle's top right edge at any Interface size, and the button's
+name, title, and Action Hint read `Show the conversation — completed, not
+viewed`.
 
 Detail's body sets the sizes and publishes the room the screens under it leave
 as `--task-detail-floating-clearance`, a registered length worked out where

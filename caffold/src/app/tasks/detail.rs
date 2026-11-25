@@ -730,6 +730,26 @@ impl DetailContext {
             })));
     }
 
+    /// Tell the Task's viewers it was seen, the way each reads the Task when it
+    /// attaches: a recorded Task's history again, or the state beside its
+    /// session's conversation at the revision being seen moved it to.
+    pub(in crate::app::tasks) async fn publish_seen(&self, thread_id: &str) {
+        match self.recorded_access(thread_id).await {
+            Ok(Some(_)) => {
+                self.publish_recorded_detail(thread_id, "task-seen").await;
+            }
+            Ok(None) => {
+                if let Some(snapshot) = self.sessions.record_seen(thread_id).await {
+                    self.runtime.announce_task_state(thread_id, snapshot);
+                }
+            }
+            Err(error) => {
+                self.broadcast_error(thread_id, error.into_error_body())
+                    .await;
+            }
+        }
+    }
+
     /// Tell viewers about a change beside the conversation. The conversation
     /// is not sent again: its items reach viewers as their own events.
     async fn broadcast_state(&self, thread_id: &str, snapshot: SessionSnapshot) {

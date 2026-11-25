@@ -966,6 +966,9 @@ export class CaffoldTaskDetail extends CaffoldElement {
     return true;
   }
 
+  // A Task is seen only while its conversation shows in a visible window. A
+  // turn that ends behind a file screen, the terminal, or the folded card
+  // stays unseen until the conversation shows.
   private markDisplayedTaskSeen(
     threadId: string,
     task: Task | null | undefined,
@@ -973,6 +976,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
     if (
       !task?.unseen ||
       taskThreadId(task) !== threadId ||
+      this.shownView !== "conversation" ||
       document.visibilityState !== "visible"
     ) {
       return;
@@ -1167,7 +1171,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
   /**
    * Shows or hides this Task's conversation in Detail's floating card. While
    * it shows there, the conversation, its Current Plan, and the Composer are
-   * as active as on the Conversation screen.
+   * as active as on the Conversation screen, and the Task is seen as there.
    */
   setFloatingConversationShown(shown: boolean) {
     if (this.floatingConversationShown === shown) {
@@ -1177,6 +1181,7 @@ export class CaffoldTaskDetail extends CaffoldElement {
     this.draw();
     if (shown) {
       this.conversationComponent.value?.reconcileViewportResize();
+      this.markDisplayedTaskSeen(this.selectedThreadId, this.taskDetail?.task);
     }
   }
 

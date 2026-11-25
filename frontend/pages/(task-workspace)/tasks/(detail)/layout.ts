@@ -998,6 +998,7 @@ export class CaffoldDetailLayout extends CaffoldElement {
     this.floatingConversation.value?.setSnapshot({
       presentation: this.conversationPresentation(),
       subjectKey: detailIdentityKey(this.subjectIdentity()),
+      unseen: Boolean(canonicalTask?.unseen),
     });
     this.taskDetail.value?.reconcileVisibleSurface();
   }
@@ -1015,6 +1016,7 @@ export class CaffoldDetailLayout extends CaffoldElement {
     this.floatingConversation.value?.setSnapshot({
       presentation: "hidden",
       subjectKey: "",
+      unseen: false,
     });
     this.viewSwitch.value?.setSnapshot({
       label: "Section view",

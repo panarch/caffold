@@ -38,6 +38,65 @@ async function openWorkingTreeFile(page, options = {}) {
   };
 }
 
+// Records in the page, as each one starts, every request that marks a Task
+// seen.
+async function recordSeenMarks(page) {
+  await page.addInitScript(() => {
+    window.__seenMarks = [];
+    const fetchBefore = window.fetch;
+    window.fetch = (input, init = {}) => {
+      const url = new URL(
+        input instanceof Request ? input.url : `${input}`,
+        window.location.href,
+      );
+      if (
+        `${init.method ?? "GET"}`.toUpperCase() === "PUT" &&
+        url.pathname.endsWith("/seen")
+      ) {
+        window.__seenMarks.push(url.pathname);
+      }
+      return fetchBefore.call(window, input, init);
+    };
+  });
+}
+
+function seenMarks(page) {
+  return page.evaluate(() => window.__seenMarks);
+}
+
+// The server records the mark and answers with the Task seen.
+async function answerSeenMarks(page, taskScenario) {
+  await page.route(`**/api/tasks/${taskScenario.threadId}/seen`, (route) =>
+    route.fulfill({ json: { ...taskScenario.task, unseen: false } }),
+  );
+}
+
+// The Task's state as its viewers hear it from the server, renamed so the
+// header shows when Task Detail has taken it.
+async function emitTaskState(page, taskScenario, { revision, title, unseen }) {
+  await page.evaluate(
+    (state) =>
+      window.__caffoldTaskSse.source(state.threadId).emit("task-state", state),
+    {
+      threadId: taskScenario.threadId,
+      revision,
+      task: { ...taskScenario.task, title, unseen },
+    },
+  );
+  // Task Detail decides whether to mark the Task seen as it takes the state,
+  // before the header draws the new title.
+  await expect(page.locator(".task-detail-summary")).toContainText(title);
+}
+
+// A turn of the open Task finishes behind the folded card.
+function finishTurnUnseen(page, taskScenario) {
+  return emitTaskState(page, taskScenario, {
+    revision: 50,
+    title: "Planner changes reviewed",
+    unseen: true,
+  });
+}
+
 // A phone's sheet slides up as it opens; geometry is read once it is in place.
 function settled(locator) {
   return locator.evaluate((element) =>
@@ -485,6 +544,124 @@ test("draws the folded button see-through and the open card opaque", { tag: "@se
   await openButton.click();
   await expect(card).toBeVisible();
   expect(await alpha(card)).toBe(1);
+});
+
+test("puts a still green dot on the folded button while the Task's finished turn is unseen", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  await recordSeenMarks(page);
+  const { taskScenario, openButton } = await openWorkingTreeFile(page);
+  // The dot the button draws, against the Task list's dot and the button's
+  // circle.
+  const dot = () =>
+    openButton.evaluate((button) => {
+      const after = getComputedStyle(button, "::after");
+      const probe = document.createElement("span");
+      probe.style.display = "block";
+      probe.style.width = "var(--interface-space-5)";
+      probe.style.background = "var(--success)";
+      probe.style.boxShadow = "0 0 0 2px var(--surface)";
+      button.append(probe);
+      const listDot = getComputedStyle(probe);
+      const matches = {
+        size: after.width === listDot.width && after.height === listDot.width,
+        color: after.backgroundColor === listDot.backgroundColor,
+        ring: after.boxShadow === listDot.boxShadow,
+      };
+      probe.remove();
+      const border = Number.parseFloat(getComputedStyle(button).borderTopWidth);
+      const inner = button.getBoundingClientRect().width - border * 2;
+      const width = Number.parseFloat(after.width);
+      // Before its transform the dot sits at the button's center; the
+      // transform carries it up and right at 45° to a pixel inside the middle
+      // of the border line.
+      const { m41: x, m42: y } =
+        after.transform === "none"
+          ? new DOMMatrixReadOnly()
+          : new DOMMatrixReadOnly(after.transform);
+      const reach = Math.hypot(x, y);
+      const lineMiddle = inner / 2 + border / 2;
+      return {
+        drawn: after.content !== "none",
+        ...matches,
+        centered:
+          Number.parseFloat(after.top) + Number.parseFloat(after.marginTop) + width / 2 === inner / 2 &&
+          Number.parseFloat(after.left) + Number.parseFloat(after.marginLeft) + width / 2 === inner / 2,
+        diagonal: x > 0 && y < 0 && Math.abs(x + y) < 0.01,
+        pixelInsideTheLine: Math.abs(reach - (lineMiddle - 1)) < 0.01,
+        animation: after.animationName,
+      };
+    });
+  await expect(openButton).toHaveAccessibleName("Show the conversation");
+  expect((await dot()).drawn).toBe(false);
+
+  await finishTurnUnseen(page, taskScenario);
+
+  await expect(openButton).toHaveAccessibleName(
+    "Show the conversation — completed, not viewed",
+  );
+  await expect(openButton).toHaveAttribute(
+    "title",
+    "Show the conversation — completed, not viewed",
+  );
+  expect(await dot()).toEqual({
+    drawn: true,
+    size: true,
+    color: true,
+    ring: true,
+    centered: true,
+    diagonal: true,
+    pixelInsideTheLine: true,
+    animation: "none",
+  });
+  // Neither the folded card nor the file behind it shows the conversation.
+  expect(await seenMarks(page)).toEqual([]);
+
+  // Seen here or on another device, the server tells the Task's viewers at
+  // the next revision.
+  await emitTaskState(page, taskScenario, {
+    revision: 51,
+    title: "Planner changes seen",
+    unseen: false,
+  });
+  await expect(openButton).toHaveAccessibleName("Show the conversation");
+  expect((await dot()).drawn).toBe(false);
+});
+
+test("marks the Task seen once the card opens", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  await recordSeenMarks(page);
+  const { taskScenario, openButton, card } = await openWorkingTreeFile(page);
+  await answerSeenMarks(page, taskScenario);
+  await finishTurnUnseen(page, taskScenario);
+  await expect(openButton).toHaveAttribute("data-unseen", "");
+  expect(await seenMarks(page)).toEqual([]);
+
+  await openButton.click();
+
+  await expect(card).toBeVisible();
+  await expect
+    .poll(() => seenMarks(page))
+    .toEqual([`/api/tasks/${taskScenario.threadId}/seen`]);
+});
+
+test("marks the Task seen on reaching the Conversation screen", { tag: "@server-changes" }, async ({
+  page,
+}) => {
+  await recordSeenMarks(page);
+  const { taskScenario, tasksPage, openButton } = await openWorkingTreeFile(page);
+  await answerSeenMarks(page, taskScenario);
+  await finishTurnUnseen(page, taskScenario);
+  await expect(openButton).toHaveAttribute("data-unseen", "");
+  expect(await seenMarks(page)).toEqual([]);
+
+  await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
+
+  await expect(openButton).toBeHidden();
+  await expect
+    .poll(() => seenMarks(page))
+    .toEqual([`/api/tasks/${taskScenario.threadId}/seen`]);
 });
 
 test("reaches the button, the card's header, and its resize handle with Action Hints", { tag: "@server-steady" }, async ({

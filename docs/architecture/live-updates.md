@@ -117,12 +117,18 @@ the provider conversation cache; its retention and membership rules belong to
 [Agent Runtimes](agent-runtimes.md#backend-reconciliation).
 
 A change beside the conversation, to the Task's status, activity, background
-work, title, composer settings or context usage, reaches viewers as
-`task-state`: the session revision, the Task record, its composer settings,
-and its context usage, without events. The conversation's start, a turn's start
-or end, and every reread of canonical history reach them as a full `task-sync`,
-and conversation items as `task-event` deltas. Task List takes its row from
-either publication.
+work, title, composer settings, context usage or whether it is seen, reaches
+viewers as `task-state`: the session revision, the Task record, its composer
+settings, and its context usage, without events. The conversation's start, a
+turn's start or end, and every reread of canonical history reach them as a full
+`task-sync`, and conversation items as `task-event` deltas. Task List takes its
+row from either publication.
+
+Marking a Task seen moves its session's revision on before that `task-state`
+goes out, so no state published earlier brings the Task back unseen. A session
+that does not hold the conversation yet publishes nothing; its first snapshot
+reads the Task as it is. A Task whose viewers read its recorded history hears
+it as that history's `task-sync` again, with reason `task-seen`.
 
 All drivers implement steering; Task state has no separate steering capability.
 Prompt HTTP responses carry

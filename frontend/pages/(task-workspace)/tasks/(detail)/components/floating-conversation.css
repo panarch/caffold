@@ -72,6 +72,25 @@
   height: var(--interface-icon-large-size);
 }
 
+/* A finished turn nobody has seen: the Task list's green dot, without its
+   blink, ringed in the surface color. From the button's center it goes out
+   at 45° to a pixel inside the middle of the 1px border, where it reads as
+   resting on the circle rather than hanging off it. */
+.floating-conversation-open[data-unseen]::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--interface-space-5);
+  height: var(--interface-space-5);
+  margin: calc(var(--interface-space-5) / -2);
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 2px var(--surface);
+  content: "";
+  transform: rotate(-45deg)
+    translateX(calc(var(--task-detail-floating-button-size) / 2 - 1.5px));
+}
+
 :host([data-presentation="floating"]:not([data-open]))
   .floating-conversation-card {
   display: none;
