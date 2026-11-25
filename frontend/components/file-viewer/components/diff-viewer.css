@@ -101,7 +101,7 @@ slot[name="end"]::slotted(*) {
    it holds its room after the last line, as wide as the viewer however far
    the lines scroll sideways, and it rises with that room into view: it
    ends a diff shorter than the viewer at the bottom, and a longer one
-   right after the last line. A card in keyboard focus shows it in place. */
+   right after the last line. */
 @supports (animation-timeline: view()) and (timeline-scope: --file-end) {
   .diff-viewer {
     position: relative;
@@ -128,10 +128,6 @@ slot[name="end"]::slotted(*) {
     animation: file-end-rises linear both;
     animation-timeline: --file-end;
     animation-range: entry 0% entry 100%;
-  }
-
-  slot[name="end"]:focus-within {
-    animation: none;
   }
 }
 
