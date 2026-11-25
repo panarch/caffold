@@ -1098,7 +1098,12 @@ export class CaffoldTaskConversation extends CaffoldElement {
       return;
     }
     const { before, nextScrollHeight } = event.detail;
-    if (before?.atBottom || this.atPlacedEnd(scroller)) {
+    // Drawing can pull the scroll back, as when it takes a loading notice
+    // away at the end, so the place before it decides.
+    if (
+      before?.atBottom ||
+      this.atPlacedEnd(before?.scrollTop ?? scroller.scrollTop)
+    ) {
       this.followBottom(scroller, before?.scrollTop ?? null);
     } else if (
       this.restoreAnchor(scroller, this.scrollByThread.get(threadId) ?? null)
@@ -1118,7 +1123,7 @@ export class CaffoldTaskConversation extends CaffoldElement {
 
   private handleScroll() {
     const scroller = this.scroller();
-    if (scroller && !this.atPlacedEnd(scroller)) {
+    if (scroller && !this.atPlacedEnd(scroller.scrollTop)) {
       this.placedEndTop = null;
     }
     this.rememberScroll();
@@ -1165,7 +1170,8 @@ export class CaffoldTaskConversation extends CaffoldElement {
       scrollTop: scroller.scrollTop,
       scrollHeight: scroller.scrollHeight,
       clientHeight: scroller.clientHeight,
-      atBottom: isScrolledToBottom(scroller) || this.atPlacedEnd(scroller),
+      atBottom:
+        isScrolledToBottom(scroller) || this.atPlacedEnd(scroller.scrollTop),
       anchorEventId: anchor?.dataset.eventId ?? "",
       anchorOffset: anchor
         ? anchor.getBoundingClientRect().top - scrollerRect.top
@@ -1241,10 +1247,9 @@ export class CaffoldTaskConversation extends CaffoldElement {
   // it shows can grow below before the conversation follows: Markdown drawn,
   // an entry opened, a scrollport shown again. Until the reader scrolls, the
   // conversation is still following its end, wherever that has moved.
-  private atPlacedEnd(scroller: HTMLElement) {
+  private atPlacedEnd(scrollTop: number) {
     return (
-      this.placedEndTop !== null &&
-      Math.abs(scroller.scrollTop - this.placedEndTop) < 1
+      this.placedEndTop !== null && Math.abs(scrollTop - this.placedEndTop) < 1
     );
   }
 

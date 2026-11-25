@@ -16,6 +16,7 @@ import {
   captureReviewScreenshot,
   emitTaskDetailBootstrap,
   installEventSourceMock,
+  isScrolledToBottom,
   mockAgentModels,
   recordSlides,
   stabilizeDynamicText,
@@ -2157,6 +2158,65 @@ test("shows the loading notice plainly until the Markdown renderer arrives", { t
   await expect(markdown).toHaveAttribute("data-render-state", "markdown");
   await expect(markdown.locator(".markdown-loading")).toHaveCount(0);
 });
+
+// The answer's loading notice is the conversation's last line. Markdown
+// arriving takes it away, which pulls the scroll back, before it draws the
+// answer; the conversation hears where it stood before that, at its end.
+test("keeps its end when Markdown replaces the loading notice there", { tag: ["@server-changes", "@webkit"] }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page, {
+    threadId: "thread_markdown_replaces_notice_at_end",
+  });
+  let releaseWords;
+  const wordsHeld = new Promise((resolve) => {
+    releaseWords = resolve;
+  });
+  await page.route("https://cdn.jsdelivr.net/npm/@pierre/words@**", async (route) => {
+    await wordsHeld;
+    await route.fallback();
+  });
+  await scenario.seedCompletedTask();
+  await page.goto(`/tasks/${scenario.threadId}`);
+  const scroller = page.locator(".task-conversation-scroll");
+  const answer = page.locator(".task-assistant-message caffold-task-markdown");
+  await expect(answer).toHaveAttribute("data-render-state", "loading");
+  await expect.poll(() => picturesDrawn(scroller)).toBe(true);
+  await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
+  const end = await scroller.evaluate((element) => element.scrollTop);
+  expect(end).toBeGreaterThan(0);
+  await answer.evaluate((element) => {
+    element.addEventListener("caffold:task-markdown-rendered", (event) => {
+      window.__answerBefore = event.detail.before;
+    }, { once: true });
+  });
+
+  releaseWords();
+  await expect(answer).toHaveAttribute("data-render-state", "markdown");
+  expect(await page.evaluate(() => window.__answerBefore)).toMatchObject({
+    scrollTop: end,
+    atBottom: true,
+  });
+  await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
+});
+
+// Whether the conversation's attached pictures are drawn, so nothing above
+// its end grows any more.
+function picturesDrawn(scroller) {
+  return scroller.evaluate((element) => {
+    const pictures = [];
+    const collect = (root) => {
+      pictures.push(...root.querySelectorAll("img[data-attachment-source]"));
+      for (const host of root.querySelectorAll("*")) {
+        if (host.shadowRoot) {
+          collect(host.shadowRoot);
+        }
+      }
+    };
+    collect(element);
+    return pictures.length > 0 && pictures.every((picture) => !picture.hidden && picture.complete);
+  });
+}
 
 // Streams a long answer into an opened Task until the conversation scrolls,
 // puts the reader at its end, and returns the answer written so far.

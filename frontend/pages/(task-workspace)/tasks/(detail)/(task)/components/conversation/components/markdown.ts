@@ -149,6 +149,7 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
   // What the next update draws: the text's change, or every block, since each
   // block's links and code blocks follow the other three properties.
   private pendingDraw: "none" | "text" | "all" = "none";
+  private scrollContextBeforeDraw: ScrollContext | null = null;
   private session: WordsSession | null = null;
   private drawnMarkdown: DrawnMarkdown | null = null;
   private readonly fenceLabels = new WeakMap<Element, string>();
@@ -171,15 +172,21 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
       changed.has("threadId") ||
       changed.has("fileLinks") ||
       changed.has("codeBlockControls");
-    if (!drawsAll && !changed.has("markdown")) {
-      return;
+    if (drawsAll || changed.has("markdown")) {
+      this.pendingDraw =
+        drawsAll || this.pendingDraw === "all" ? "all" : "text";
+      if (words) {
+        this.renderState = "markdown";
+      } else if (this.renderState !== "loading" || !this.loadToken) {
+        this.startLoading();
+      }
     }
-    this.pendingDraw = drawsAll || this.pendingDraw === "all" ? "all" : "text";
-    if (words) {
-      this.renderState = "markdown";
-    } else if (this.renderState !== "loading" || !this.loadToken) {
-      this.startLoading();
-    }
+    // Read before the template changes: Markdown taking over takes the
+    // loading notice or the plain text away before `draw` runs.
+    this.scrollContextBeforeDraw =
+      this.renderState === "markdown" && this.pendingDraw !== "none"
+        ? captureScrollContext(this)
+        : null;
   }
 
   override render() {
@@ -210,7 +217,7 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
     if (this.renderState === "markdown" && this.pendingDraw !== "none") {
       const all = this.pendingDraw === "all";
       this.pendingDraw = "none";
-      this.draw(all);
+      this.draw(all, this.scrollContextBeforeDraw);
     }
   }
 
@@ -339,7 +346,7 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
 
   // Draws Words' answer for the current text. The blocks it has finished stay
   // as drawn; the end still being written is compared and drawn again.
-  private draw(all: boolean) {
+  private draw(all: boolean, before: ScrollContext | null) {
     const body = this.body;
     if (!body || !words) {
       return;
@@ -358,7 +365,6 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
       previous && !update.reset && update.revision === previous.revision + 1
         ? previous.tail
         : null;
-    const scrollContext = captureScrollContext(this);
     if (!tail) {
       body.replaceChildren();
     }
@@ -383,7 +389,7 @@ export class CaffoldTaskMarkdown extends CaffoldElement {
     this.scrollCodeBlocks = [
       ...body.querySelectorAll<CaffoldTaskCodeBlock>("caffold-task-code-block"),
     ];
-    dispatchRendered(this, scrollContext);
+    dispatchRendered(this, before);
   }
 
   // Matches the next blocks with the drawn end in order. A block whose HTML is
