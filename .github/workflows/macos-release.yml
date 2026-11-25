@@ -43,6 +43,12 @@ jobs:
       archive: ${{ steps.metadata.outputs.archive }}
       checksum: ${{ steps.metadata.outputs.checksum }}
       artifact_name: caffold-macos-arm64-v${{ steps.metadata.outputs.version }}
+    # Line tables instead of full debug info lower the memory the test build
+    # uses while compiling the caffold crate twice at once, to stay within the
+    # macOS runner's memory; backtraces keep their file and line. The setting is
+    # job-wide so the Cargo cache key and the cached dependencies follow it.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
     steps:
       - name: Require main
