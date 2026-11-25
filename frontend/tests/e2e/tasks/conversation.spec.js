@@ -1825,7 +1825,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
     "plan",
   ]);
 });
-test("keeps task conversation scroll anchored during live updates", { tag: "@all-viewports" }, async ({ page }) => {
+test("keeps task conversation scroll anchored during live updates", { tag: ["@all-viewports", "@webkit"] }, async ({ page }) => {
   await installEventSourceMock(page, {
     registryKey: "__taskEventSources",
   });

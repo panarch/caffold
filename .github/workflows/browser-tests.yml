@@ -18,6 +18,11 @@ jobs:
       fail-fast: false
       matrix:
         project: [desktop, server-changes, server-steady, foldable, phone]
+        browser: [chromium]
+        # What can break by engine runs once more in WebKit.
+        include:
+          - project: webkit
+            browser: webkit
 
     steps:
       - name: Check out the requested source
@@ -46,7 +51,13 @@ jobs:
         working-directory: frontend
 
       - name: Install Chromium
+        if: matrix.browser == 'chromium'
         run: npx playwright install chromium
+        working-directory: frontend
+
+      - name: Install WebKit
+        if: matrix.browser == 'webkit'
+        run: npx playwright install --with-deps webkit
         working-directory: frontend
 
       - name: Build the browser test server

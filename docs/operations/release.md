@@ -101,7 +101,7 @@ commit, and takes no release-specific inputs:
 - `repository-tooling-tests.yml`: release version tooling.
 - `macos-packaging-contracts.yml`: portable packaging and installer contracts.
 - `linux-packaging-contracts.yml`: the install script against a local release and stand-ins for systemd, the Linux packaging checks, and the Linux workflow definitions.
-- `browser-tests.yml`: the desktop, server-changes, server-steady, foldable, and phone matrix, with one worker and an isolated fixture workspace per job. Browser configuration and retry behavior match ordinary CI.
+- `browser-tests.yml`: the desktop, server-changes, server-steady, foldable, and phone matrix, and a webkit job for `@webkit` tests in WebKit, with one worker and an isolated fixture workspace per job. Browser configuration and retry behavior match ordinary CI.
 - `rust-checks.yml`: formatting, locked tests, and locked Clippy.
 
 Only after every shared check succeeds does Release call `macos-release.yml`.

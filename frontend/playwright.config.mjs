@@ -2,7 +2,10 @@ import { defineConfig } from "@playwright/test";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { viewportCoveragePattern } from "./tests/e2e/support/project-coverage.js";
+import {
+  viewportCoveragePattern,
+  WEBKIT_PROJECT,
+} from "./tests/e2e/support/project-coverage.js";
 import { createRegularPlaywrightServer } from "./tests/playwright-local-server.mjs";
 
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -72,6 +75,11 @@ export default defineConfig({
         isMobile: true,
         hasTouch: true,
       },
+    },
+    {
+      name: WEBKIT_PROJECT,
+      grep: viewportCoveragePattern(WEBKIT_PROJECT),
+      use: { ...desktopBrowser, browserName: "webkit" },
     },
   ],
 });
