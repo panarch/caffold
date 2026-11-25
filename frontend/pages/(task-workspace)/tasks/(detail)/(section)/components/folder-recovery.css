@@ -80,6 +80,7 @@ header {
   .previous-path {
     color: var(--muted);
     overflow-wrap: anywhere;
+    -webkit-user-select: text;
     user-select: text;
   }
 

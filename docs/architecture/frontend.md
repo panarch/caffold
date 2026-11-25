@@ -2836,6 +2836,13 @@ takes `returnPopoverFocus` from `frontend/popover-focus.ts` as its
 `beforetoggle` listener: closing with focus inside, it hands focus back to what
 had it as it opened, as the browser does for a popover in the document.
 
+A modal dialog that closes when the person presses outside it declares
+`closedby="any"` and leaves that press to the browser. Safari has no
+`closedby` yet, so there a press outside does nothing; every such dialog keeps
+a visible control that closes it, such as Close, Cancel, or OK, and Caffold
+adds no script to stand in for the browser. Component stylesheets that set
+`user-select` also set `-webkit-user-select`, which Safari still reads.
+
 The document's own stylesheet, `styles.css`, holds the theme tokens, the fonts,
 and the rules for the page itself; it imports no component's stylesheet.
 

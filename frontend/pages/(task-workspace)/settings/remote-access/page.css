@@ -191,6 +191,7 @@ button:disabled {
   color: var(--text);
   font-size: var(--settings-detail-value-size);
   overflow-wrap: anywhere;
+  -webkit-user-select: all;
   user-select: all;
 }
 

@@ -131,6 +131,7 @@ details[open] .task-command-disclosure-chevron-expanded {
   font-size: var(--code-font-size);
   line-height: var(--code-line-height);
   text-overflow: ellipsis;
+  -webkit-user-select: text;
   user-select: text;
   white-space: nowrap;
 }

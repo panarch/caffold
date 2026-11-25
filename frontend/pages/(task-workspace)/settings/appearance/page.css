@@ -408,6 +408,7 @@
   color: var(--code-gutter-text);
   padding: 0 var(--interface-space-4);
   text-align: right;
+  -webkit-user-select: none;
   user-select: none;
 }
 

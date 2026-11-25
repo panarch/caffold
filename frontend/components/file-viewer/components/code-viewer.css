@@ -137,6 +137,7 @@ slot[name="end"]::slotted(*) {
   position: sticky;
   left: 0;
   z-index: 2;
+  -webkit-user-select: none;
   user-select: none;
   background: var(--code-gutter);
   border-right: 1px solid var(--border);

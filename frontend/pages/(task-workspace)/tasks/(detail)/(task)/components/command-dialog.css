@@ -147,6 +147,7 @@ dialog::backdrop {
   overflow-wrap: anywhere;
   font-size: var(--code-font-size);
   line-height: var(--code-line-height);
+  -webkit-user-select: text;
   user-select: text;
   /* Every detail field keeps the whitespace it was given. The command is
      the one that has any — a multi-line script whose newlines, collapsed,
@@ -181,6 +182,7 @@ dialog::backdrop {
   font-size: var(--code-font-size);
   line-height: var(--code-line-height);
   white-space: pre;
+  -webkit-user-select: text;
   user-select: text;
 }
 

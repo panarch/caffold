@@ -153,6 +153,7 @@ slot[name="end"]::slotted(*) {
   grid-template-columns: var(--diff-old-width) var(--diff-new-width) var(
       --diff-prefix-width
     );
+  -webkit-user-select: none;
   user-select: none;
   background: inherit;
   border-right: 1px solid var(--border);
