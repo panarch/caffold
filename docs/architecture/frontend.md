@@ -2247,7 +2247,7 @@ a hidden, inert copy of them in its `end-room` slot, the last row of its scroll
 content, which holds their room after the last line and drives a view timeline;
 the cards rise with that room into view through a scroll-driven animation, so
 they end a short file at the viewer's bottom and a long one right after its last
-line, and a card in keyboard focus shows them wherever the code is. Without
+line. Without
 scroll-driven animations the leaf drops the copy and puts the cards in a row
 under the code. The cards keep 0.75rem of space below them, or 1.25rem on a
 phone held upright, which clears the screen's rounded corners. An owner that

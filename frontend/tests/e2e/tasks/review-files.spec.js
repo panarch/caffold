@@ -2195,6 +2195,44 @@ test("raises a long Source file's adjacent files with its end and keeps them sti
   });
 });
 
+test("keeps a long Source file's adjacent files with the scroll while a card has focus", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/files");
+  await page.evaluate(async () => {
+    await import("/assets/components/file-viewer.js");
+    const viewer = document.createElement("caffold-review-file-viewer");
+    viewer.style.cssText = "display: block; width: 600px; height: 400px;";
+    document.body.append(viewer);
+    viewer.setAdjacentFiles({
+      previous: { path: "src/a.rs", name: "a.rs", folder: "src" },
+      next: { path: "src/c.rs", name: "c.rs", folder: "src" },
+    });
+    const lines = Array.from({ length: 120 }, (_, index) => `line ${index + 1}`);
+    viewer.setFile({ path: "src/b.rs", content: lines.join("\n") });
+  });
+  const viewer = page.locator("caffold-review-file-viewer");
+  const code = viewer.locator("caffold-code-viewer");
+  const previous = viewer
+    .getByRole("navigation", { name: "Changed files" })
+    .locator(".viewer-adjacent-previous");
+  const scrollTo = (end) => code.locator(".code-lines").evaluate((element, end) => {
+    element.scrollTop = end ? element.scrollHeight : 0;
+  }, end);
+  const cardsBelowViewer = () => code.evaluate((element) => {
+    const band = element.shadowRoot.querySelector("slot[name=end]").getBoundingClientRect();
+    return band.top >= element.getBoundingClientRect().bottom - 1;
+  });
+
+  await scrollTo(true);
+  await expect.poll(cardsBelowViewer).toBe(false);
+  // The click leaves Chromium's focus on the card.
+  await previous.click();
+  await expect(previous).toBeFocused();
+  await scrollTo(false);
+  await expect.poll(cardsBelowViewer).toBe(true);
+});
+
 test("spaces the file header's choice and buttons as the Detail header spaces its own", { tag: ["@desktop", "@phone"] }, async ({
   page,
 }) => {

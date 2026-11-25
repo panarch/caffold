@@ -2406,20 +2406,31 @@ test("raises the adjacent files with a long diff's end and keeps them still side
   }).toEqual([true, true, true, true, true]);
 });
 
-test("shows the adjacent files at the viewer's bottom while one has keyboard focus", { tag: "@server-steady" }, async ({
+test("keeps the adjacent files with the scroll while one has focus", { tag: "@server-steady" }, async ({
   page,
 }) => {
-  const { cards, diffViewer } = await openLongDiff(page);
+  const { cards, diffViewer, scrollTo } = await openLongDiff(page);
   await expect.poll(async () => {
     const { band, viewer } = await cardsPlacement(diffViewer);
     return band.top >= viewer.bottom - 1;
   }).toBe(true);
 
-  await cards.locator(".viewer-adjacent-previous").focus();
+  // A click leaves Chromium's focus on a card, and Next keeps it when the file
+  // it opens has a next file too.
+  const previous = cards.locator(".viewer-adjacent-previous");
+  await previous.focus();
+  await expect(previous).toBeFocused();
   await expect.poll(async () => {
     const { band, viewer, scrollTop } = await cardsPlacement(diffViewer);
-    return [Math.abs(band.bottom - viewer.bottom) <= 1, scrollTop];
+    return [band.top >= viewer.bottom - 1, scrollTop];
   }).toEqual([true, 0]);
+
+  const { room } = await cardsPlacement(diffViewer);
+  await scrollTo({ fromEnd: room.height / 2 });
+  await expect.poll(async () => {
+    const { band, room } = await cardsPlacement(diffViewer);
+    return Math.abs(band.top - room.top) <= 1;
+  }).toBe(true);
 });
 
 async function openLongDiff(page) {
