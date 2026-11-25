@@ -520,6 +520,7 @@ dependencies = [
  "chrono",
  "clap",
  "copilot-sdk",
+ "flate2",
  "futures-util",
  "gluesql",
  "hmac 0.12.1",
@@ -1353,8 +1354,9 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "gluesql"
-version = "0.19.0"
-source = "git+https://github.com/gluesql/gluesql.git?branch=main#aae2a135146be08fb99f7b97782a58ca1cb10412"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "521a36501b500eee7ff430ab7120b840595415021dcdc765a4f8ca847734816d"
 dependencies = [
  "gluesql-core",
  "gluesql-macros",
@@ -1364,8 +1366,9 @@ dependencies = [
 
 [[package]]
 name = "gluesql-core"
-version = "0.19.0"
-source = "git+https://github.com/gluesql/gluesql.git?branch=main#aae2a135146be08fb99f7b97782a58ca1cb10412"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7181bbbbbd34522ff701761284b027bf1942370c409126c425692feab7c4b686"
 dependencies = [
  "bigdecimal",
  "cfg-if",
@@ -1389,8 +1392,9 @@ dependencies = [
 
 [[package]]
 name = "gluesql-macros"
-version = "0.19.0"
-source = "git+https://github.com/gluesql/gluesql.git?branch=main#aae2a135146be08fb99f7b97782a58ca1cb10412"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8479c3df9de39a5ab5226e27c25925142165f18882607733ebef93c64aa59ee8"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1400,8 +1404,9 @@ dependencies = [
 
 [[package]]
 name = "gluesql-redb-storage"
-version = "0.19.0"
-source = "git+https://github.com/gluesql/gluesql.git?branch=main#aae2a135146be08fb99f7b97782a58ca1cb10412"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4fd5efad563b2bde33ad41db3809edf91cdb185c7321eca9d02ce80c01ede792"
 dependencies = [
  "bincode",
  "gluesql-core",
@@ -1413,8 +1418,9 @@ dependencies = [
 
 [[package]]
 name = "gluesql_memory_storage"
-version = "0.19.0"
-source = "git+https://github.com/gluesql/gluesql.git?branch=main#aae2a135146be08fb99f7b97782a58ca1cb10412"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2787ab7de2d846a28b894a8c345c6ca2483b2b3059a95d8955b896f372f01603"
 dependencies = [
  "gluesql-core",
  "serde",
@@ -3651,7 +3657,6 @@ checksum = "9a875d8cd437cc8a97e9aeaeea352ec9a19aea99c23e9effb17757291de80b08"
 dependencies = [
  "bigdecimal",
  "log",
- "serde",
 ]
 
 [[package]]

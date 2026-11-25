@@ -17,6 +17,11 @@ and `~/.caffold` on Linux.
 | **Logs and diagnostic reports** — records used to investigate problems with Caffold | On a Mac, logs are in `~/Library/Logs/Caffold`, and reports saved when the server stops responding are in `diagnostics/stalls/` in Caffold's data folder. On Linux, logs are in the systemd journal: `journalctl --user -u caffold`. |
 | **Browser settings** — Appearance, Keyboard, and Files | Saved separately in each browser on each device. |
 
+In the data folder, `caffold.redb` holds your Task metadata, Sections, and
+Notes. If you see a file named `caffold.redb.before-gluesql-0.21-<id>.bak`
+alongside it, that file is a copy of the database from just before the
+storage upgrade.
+
 API keys are stored in files only your user account can read, and Caffold never
 shows a saved key again.
 
