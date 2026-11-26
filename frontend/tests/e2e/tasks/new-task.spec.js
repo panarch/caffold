@@ -463,16 +463,16 @@ test("creates a task with responsive composer controls and canonical approval st
       viewportWidth: window.innerWidth,
     };
   });
-  expect(modelPopoverMetrics.popoverLeft).toBeGreaterThanOrEqual(9);
-  expect(modelPopoverMetrics.popoverRight).toBeLessThanOrEqual(
-    modelPopoverMetrics.viewportWidth - 9,
-  );
   expect(modelPopoverMetrics.popoverTop).toBeGreaterThanOrEqual(9);
-  expect(modelPopoverMetrics.popoverBottom).toBeLessThanOrEqual(
-    modelPopoverMetrics.viewportHeight - 9,
-  );
   await expect(modelPopover.locator("small")).toHaveCount(0);
   if (testInfo.project.name !== "phone") {
+    expect(modelPopoverMetrics.popoverLeft).toBeGreaterThanOrEqual(9);
+    expect(modelPopoverMetrics.popoverRight).toBeLessThanOrEqual(
+      modelPopoverMetrics.viewportWidth - 9,
+    );
+    expect(modelPopoverMetrics.popoverBottom).toBeLessThanOrEqual(
+      modelPopoverMetrics.viewportHeight - 9,
+    );
     expect(modelPopoverMetrics.backdropVisible).toBe(false);
     expect(modelPopoverMetrics.popoverLeft).toBeGreaterThanOrEqual(
       modelPopoverMetrics.paneLeft,
@@ -492,14 +492,11 @@ test("creates a task with responsive composer controls and canonical approval st
       modelPopoverMetrics.popoverTop - modelPopoverMetrics.buttonBottom,
     ).toBeLessThanOrEqual(14);
   } else {
+    // A portrait phone opens the menu as a sheet along the bottom edge.
     expect(modelPopoverMetrics.backdropVisible).toBe(false);
-    expect(modelPopoverMetrics.popoverLeft).toBeGreaterThanOrEqual(9);
-    expect(modelPopoverMetrics.popoverRight).toBeLessThanOrEqual(
-      modelPopoverMetrics.viewportWidth - 9,
-    );
-    expect(
-      modelPopoverMetrics.viewportHeight - modelPopoverMetrics.popoverBottom,
-    ).toBeLessThanOrEqual(14);
+    expect(modelPopoverMetrics.popoverLeft).toBe(0);
+    expect(modelPopoverMetrics.popoverRight).toBe(modelPopoverMetrics.viewportWidth);
+    expect(modelPopoverMetrics.popoverBottom).toBe(modelPopoverMetrics.viewportHeight);
     await page.mouse.click(2, 2);
     await expect(modelPopover).toBeHidden();
     await newTaskComposer.locator(".task-model-button").click();

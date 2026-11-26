@@ -199,16 +199,20 @@
   justify-self: start;
 }
 
-/* Every row down to the model list is held to the popover's height, so a long
-   list scrolls in place and the settings under it stay in view. */
+/* Every box down to the model list is held to the popover's height, so a long
+   list scrolls in place and the settings under it stay in view. The popover
+   holds its content in a flex column, which can only shrink it: Safari lays an
+   anchored grid popover out against a definite height and grows its row to
+   fill that height. */
 .task-model-popover:popover-open {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
 }
 
 .task-model-popover-content {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
 }
 
 :host([data-placement="above"]) .task-model-popover,
@@ -454,7 +458,7 @@
     inset: auto 0.625rem 0.625rem;
     width: auto;
     max-height: min(544px, calc(100dvh - 1.5rem));
-    margin: 0;
+    margin: 0 auto;
     border-radius: 1rem;
     box-shadow: 0 -12px 48px rgb(var(--shadow-rgb) / 18%);
   }
@@ -467,6 +471,24 @@
   .task-model-popover::backdrop,
   .task-permission-popover::backdrop {
     background: rgb(var(--overlay-rgb) / 10%);
+  }
+}
+
+/* A card's corners would meet a phone screen's rounded corners, so the menus
+   are a sheet along the bottom edge. Its padding takes in the card's gap, so
+   what it holds keeps its place. */
+@media (max-width: 520px) and (orientation: portrait) {
+  .task-model-popover,
+  .task-permission-popover,
+  :host([data-placement="above"]) .task-model-popover,
+  :host([data-placement="above"]) .task-permission-popover {
+    inset: auto 0 0;
+    justify-self: stretch;
+    width: auto;
+    max-width: none;
+    padding: 0.5rem 1.125rem max(1.125rem, env(safe-area-inset-bottom));
+    border-bottom-width: 0;
+    border-radius: 1rem 1rem 0 0;
   }
 }
 

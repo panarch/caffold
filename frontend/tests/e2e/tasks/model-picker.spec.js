@@ -302,6 +302,51 @@ test("keeps two rows of a long model list on a narrow phone and scrolls the colu
   await captureReviewScreenshot(page, testInfo, "model-picker-narrow-long");
 });
 
+test("opens both menus as a sheet along a portrait phone's bottom edge and as a centered card when it turns", { tag: "@phone" }, async ({ page }) => {
+  await installCatalog(page);
+  const detail = taskDetailFixture({ model: "shared", reasoningEffort: "xhigh" });
+  await page.route("**/api/tasks/thread-1", (route) => route.fulfill({ json: detail }));
+  const portrait = page.viewportSize();
+  // New Task opens the menus below its controls, a Task's follow-up Composer
+  // above them; each placement has its own rules to override.
+  const composers = [
+    { path: "/tasks/new?cwd=src", form: ".task-new-form", placement: "below" },
+    { path: "/tasks/thread-1?cwd=src", form: ".task-follow-up-form", placement: "above" },
+  ];
+  for (const composer of composers) {
+    await page.goto(composer.path);
+    if (composer.placement === "above") {
+      await emitTaskDetailBootstrap(page, detail);
+    }
+    const picker = page.locator(`${composer.form} caffold-task-turn-options`);
+    await expect(picker).toHaveAttribute("data-placement", composer.placement);
+    for (const kind of ["model", "permission"]) {
+      const menu = picker.locator(`.task-${kind}-popover`);
+      await picker.locator(`.task-${kind}-button`).click();
+      await expect(menu).toBeVisible();
+      expect(await menu.evaluate(menuPlacement)).toMatchObject({
+        sides: [0, 0],
+        bottom: 0,
+        bottomBorder: "0px",
+        corners: [1, 1, 0, 0],
+        padding: [1.125, 1.125, 1.125],
+      });
+
+      await page.setViewportSize({ width: portrait.height, height: portrait.width });
+      await expect(menu).toBeVisible();
+      expect(await menu.evaluate(menuPlacement)).toMatchObject({
+        centered: true,
+        bottom: 0.625,
+        bottomBorder: "1px",
+        corners: [1, 1, 1, 1],
+      });
+      await page.setViewportSize(portrait);
+      await page.keyboard.press("Escape");
+      await expect(menu).toBeHidden();
+    }
+  }
+});
+
 test("opening the menu again offers the models the agents answer now", { tag: "@server-changes" }, async ({ page }) => {
   const agents = { models: catalog() };
   const asked = await answerModelsFrom(page, agents);
@@ -378,6 +423,32 @@ function visualCatalog() {
     "GPT-5.6-Sol", "GPT-5.6-Terra", "GPT-5.6-Luna", "GPT-5.5", "GPT-5.3-Codex-Spark",
   ].map((displayName) => ({ ...models[0], model: displayName, displayName, isDefault: false })));
   return models;
+}
+
+// Where an open menu sits in the viewport and how its edges are drawn. Lengths
+// are in rem: the gaps to the left and right edges and to the bottom edge, the
+// corner radii from the top left clockwise, and the left, right, and bottom
+// padding.
+function menuPlacement(element) {
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+  const inRem = (pixels) => Math.round((pixels / rem) * 1000) / 1000;
+  const box = element.getBoundingClientRect();
+  const style = getComputedStyle(element);
+  const left = box.left;
+  const right = innerWidth - box.right;
+  return {
+    sides: [left, right].map(inRem),
+    centered: Math.abs(left - right) < 1,
+    bottom: inRem(innerHeight - box.bottom),
+    bottomBorder: style.borderBottomWidth,
+    corners: [
+      style.borderTopLeftRadius,
+      style.borderTopRightRadius,
+      style.borderBottomRightRadius,
+      style.borderBottomLeftRadius,
+    ].map((radius) => inRem(parseFloat(radius))),
+    padding: [style.paddingLeft, style.paddingRight, style.paddingBottom].map((value) => inRem(parseFloat(value))),
+  };
 }
 
 async function installCatalog(page, models = catalog()) {
