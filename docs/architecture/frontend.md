@@ -1408,7 +1408,8 @@ strip, and the follow-up Composer's panel share: `--task-detail-column-inset`
 and the follow-up Composer's gutter are 0.875rem, or 0.625rem at 860px and
 narrower, the gutter also on a touch screen. In phone portrait the follow-up
 Composer becomes a bar along the screen's bottom edge, which Task Detail also
-sets, by the window. Conversation pads its scroller from those values and is
+sets, by the window, and the model and approval-mode menus are placed by the
+window as well. Conversation pads its scroller from those values and is
 the `task-conversation` container its rows read inside that padding: a user
 message takes up to 92% of its row at 840px and narrower, and at 600px command
 and tool-call summaries leave out their metadata and the working row takes two

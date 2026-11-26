@@ -530,6 +530,11 @@ circle the microphone's size, so the model label keeps its room. The shield is
 the same for every mode and turns red for a mode that gives up a protection;
 choosing it opens the same mode list.
 
+In windows 900px and wider the model and approval-mode menus open attached to
+their control. In phone portrait they open as a sheet along the bottom edge of
+the screen with rounded top corners, and in other windows as a card centered
+above the bottom edge.
+
 When the selected Task's effective working directory contains the valid
 [current plan document pair](workflows.md#current-plan-documents), a compact
 read-only control floats directly above the follow-up Composer without moving
