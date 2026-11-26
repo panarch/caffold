@@ -26,6 +26,15 @@ pub(super) fn migration_required(error: &TaskStoreError) -> bool {
 pub(super) fn migrate(path: &Path) -> Result<()> {
     let source = fs::File::open(path)?;
     source.try_lock().map_err(io::Error::from)?;
+    let migrated = migrate_staged_copy(path);
+    // Closing alone keeps the lock while a child process started meanwhile
+    // still holds a copy of the descriptor.
+    let unlocked = source.unlock();
+    migrated?;
+    Ok(unlocked?)
+}
+
+fn migrate_staged_copy(path: &Path) -> Result<()> {
     let staged = StagedDatabase::new(path);
     fs::copy(path, staged.path())?;
 
@@ -248,7 +257,7 @@ mod tests {
         assert!(migrate(&path).is_err());
         assert_eq!(fs::read(&path).unwrap(), before);
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
-        drop(source);
+        source.unlock().unwrap();
 
         migrate_task_store(&path).unwrap();
         let inode = fs::metadata(&path).unwrap().ino();
