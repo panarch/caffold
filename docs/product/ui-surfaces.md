@@ -415,6 +415,13 @@ source in the conversation's theme, typeface, and text size, while the block
 keeps showing the source that Copy copies. When the diagram cannot be drawn, the
 dialog shows the reason with the source and Retry.
 
+Command output, Tool call details, a code block's Markdown and Mermaid previews,
+image previews, and the current plan's Plan and Checklist open in dialogs of one
+kind. On a phone, 620px wide or narrower, each opens as a sheet along the bottom
+edge of the screen below a narrow dimmed strip, with room after the end of what
+it shows so the last lines clear the screen's rounded corners. In wider windows
+the previews and the plan documents take the window's height.
+
 Finished commands that ran one after another fold into one **Ran N commands**
 card that counts the failed and declined ones; opening it shows each command's
 row with its **View output**. The empty thinking an agent records around its

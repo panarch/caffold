@@ -5,7 +5,7 @@
 dialog {
   width: min(72rem, calc(100vw - 2rem));
   max-width: none;
-  height: min(52rem, calc(100dvh - 2rem));
+  height: calc(100dvh - 2rem);
   max-height: none;
   margin: auto;
   padding: 0;
@@ -161,15 +161,28 @@ dialog::backdrop {
   line-height: var(--interface-line-height);
 }
 
+/* On a phone the dialog is a sheet along the bottom edge, and the end of what
+   it shows clears the screen's rounded corners. */
 @media (max-width: 620px) {
   dialog {
-    width: calc(100vw - 0.5rem);
-    height: calc(100dvh - 0.5rem);
+    inset: calc(env(safe-area-inset-top) + var(--interface-space-5)) 0 0;
+    width: auto;
+    height: auto;
+    margin: 0;
+    border-bottom-width: 0;
+    border-radius: 16px 16px 0 0;
   }
 
   .task-image-preview-header,
   .task-image-preview-body {
     padding: var(--interface-space-8);
+  }
+
+  .task-image-preview-body {
+    padding-bottom: calc(
+      var(--interface-space-8) +
+      max(var(--interface-space-8), env(safe-area-inset-bottom))
+    );
   }
 }
 

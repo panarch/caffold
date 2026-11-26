@@ -4,6 +4,7 @@ import {
   activateActionHint,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { dialogFrame } from "../support/dialog-frame.js";
 import {
   activeTaskProjection,
   canonicalTaskState,
@@ -469,6 +470,24 @@ test("each code block's Wrap, Copy, and scrolling are in the dialog's keyboard m
         elements.map((element) => element.getAttribute("aria-label").replace(/^[A-Z]+ — /, "")),
       ),
   ).toEqual(expect.arrayContaining(["Tool call input", "Tool call result 1", "Tool call result 2"]));
+});
+
+test("the details dialog opens as a sheet along a phone's bottom edge", { tag: "@phone" }, async ({ page }) => {
+  await openTask(page, activeTask(), [started(), prompt(), toolCall("codexMcp", now + 1_000)]);
+  await page
+    .locator(".task-tool-call > caffold-task-tool-call")
+    .getByRole("button", { name: "View details" })
+    .click();
+  const dialog = page.locator("caffold-task-tool-call-dialog > dialog");
+  await expect(dialog).toBeVisible();
+
+  const frame = await dialog.evaluate(dialogFrame, { end: ".task-tool-call-dialog-body" });
+  expect(frame).toMatchObject({
+    gaps: [0, 0, 0.625 * frame.rem, 0],
+    corners: ["16px", "16px", "0px", "0px"],
+    bottomBorder: "0px",
+    endRoom: 2 * frame.rem,
+  });
 });
 
 function activeTask() {
