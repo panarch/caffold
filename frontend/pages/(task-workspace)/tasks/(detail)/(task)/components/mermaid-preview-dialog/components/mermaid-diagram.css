@@ -17,11 +17,15 @@
   }
 
   /* The inset belongs to the diagram's own box, so a wide diagram keeps it
-     at both ends of its scroll. */
+     at both ends of its scroll. An owner may add room after its end. */
   & > .diagram {
     width: max-content;
     margin-inline: auto;
     padding: clamp(1rem, 3vw, 2rem);
+    padding-bottom: calc(
+      clamp(1rem, 3vw, 2rem) +
+      var(--mermaid-diagram-scroll-end-clearance, 0rem)
+    );
     -webkit-user-select: text;
     user-select: text;
 

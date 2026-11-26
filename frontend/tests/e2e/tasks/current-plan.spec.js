@@ -15,6 +15,7 @@ import {
   activateActionHintIntoPopover,
   popoverActionHintDialog,
 } from "../support/action-hints.js";
+import { dialogFrame } from "../support/dialog-frame.js";
 import { focusLook, pointerHovers } from "../support/focus-look.js";
 import {
   installTaskApiFixture,
@@ -1173,6 +1174,33 @@ test("rejects a stale plan refresh when Task context changes", { tag: "@server-c
   await expect(currentPlan.locator("[data-current-plan-progress]")).toHaveText(
     "2 / 4",
   );
+});
+
+test("opens the plan as a sheet along a phone's bottom edge and as tall as a desktop window", { tag: ["@desktop", "@phone"] }, async ({
+  page,
+}, testInfo) => {
+  const phone = testInfo.project.name === "phone";
+  if (!phone) {
+    await page.setViewportSize({ width: 1728, height: 1000 });
+  }
+  const workspace = prepareWorkspace(testInfo);
+  writeCurrentDocuments(workspace.absolutePath, {
+    plan: "# Sheet plan\n\nRead the plan to its end.\n",
+    checklist: "- [ ] Read the plan\n",
+  });
+  const dialog = await openPlanDocument(page, workspace);
+
+  const frame = await dialog.evaluate(dialogFrame, { end: "caffold-markdown-preview" });
+  if (phone) {
+    expect(frame).toMatchObject({
+      gaps: [0, 0, 0.625 * frame.rem, 0],
+      corners: ["16px", "16px", "0px", "0px"],
+      bottomBorder: "0px",
+      endRoom: 2 * frame.rem,
+    });
+  } else {
+    expect(frame).toMatchObject({ width: 56 * frame.rem, height: frame.viewportHeight - 2 * frame.rem });
+  }
 });
 
 async function openPlanDocument(page, workspace) {

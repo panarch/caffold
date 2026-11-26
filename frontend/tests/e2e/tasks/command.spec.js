@@ -4,6 +4,7 @@ import {
   enterActionHints,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { dialogFrame } from "../support/dialog-frame.js";
 import {
   activeTaskProjection,
   canonicalTaskState,
@@ -374,6 +375,43 @@ test("the output is a code block whose Copy and Wrap act on the output alone", {
   await expect(dialog).toHaveAttribute("open", "");
   await expect(block).toHaveCount(0);
   await expect(outputSection.locator(":scope > pre")).toHaveText("(No output)");
+});
+
+test("the output dialog opens as a sheet along a phone's bottom edge", { tag: "@phone" }, async ({ page }) => {
+  const threadId = "thread_command_sheet";
+  const turnId = "turn_command_sheet";
+  const now = 1_767_450_000_000;
+  const task = activeTask(threadId, turnId, now);
+  const events = [
+    turnEvent("event_turn_started", "turn_started", now, turnId, { status: "inProgress" }),
+    commandEvent(now + 1_000, turnId, {
+      command: "git status --short --branch",
+      status: "completed",
+      exitCode: 0,
+      durationMs: 900,
+      output: "## main",
+    }),
+  ];
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({ json: taskDetail(task, events, 1) }),
+  );
+  await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(page, taskDetail(task, events, 1));
+  await expect(page.locator(".task-command > caffold-task-command")).toHaveAttribute("data-command-terminal", "");
+
+  await activateActionHint(page, /View output$/);
+  const dialog = page.locator("caffold-task-command-dialog > dialog");
+  await expect(dialog).toHaveAttribute("open", "");
+  const frame = await dialog.evaluate(dialogFrame, { end: ".task-command-dialog-body" });
+  expect(frame).toMatchObject({
+    gaps: [0, 0, 0.625 * frame.rem, 0],
+    corners: ["16px", "16px", "0px", "0px"],
+    bottomBorder: "0px",
+    endRoom: 2 * frame.rem,
+  });
 });
 
 function activeTask(threadId, turnId, startedAtMs) {

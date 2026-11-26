@@ -4,6 +4,7 @@ import {
   activateActionHint,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { dialogFrame } from "../support/dialog-frame.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import { captureReviewScreenshot } from "../support/task-fixtures.js";
 
@@ -257,6 +258,34 @@ test("drives the preview with Action Hints and Scroll mode", { tag: "@server-ste
   await expect(dialog).not.toHaveAttribute("open", "");
   await expect(previewButton).toBeFocused();
   expect(scenario.pageErrors).toEqual([]);
+});
+
+test("opens as a sheet along a phone's bottom edge and as tall as a desktop window", { tag: ["@desktop", "@phone"] }, async ({
+  page,
+}, testInfo) => {
+  const phone = testInfo.project.name === "phone";
+  if (!phone) {
+    await page.setViewportSize({ width: 1728, height: 1000 });
+  }
+  await seedPreviewTask(page, "thread_markdown_preview_frame_" + testInfo.project.name, [PREVIEW_SOURCE]);
+  const dialog = page.locator("caffold-task-markdown-preview-dialog > dialog");
+  await finalMarkdown(page)
+    .locator("caffold-task-code-block")
+    .getByRole("button", { name: "Preview Markdown" })
+    .click();
+  await expect(dialog).toHaveAttribute("open", "");
+
+  const frame = await dialog.evaluate(dialogFrame, { end: "caffold-markdown-preview" });
+  if (phone) {
+    expect(frame).toMatchObject({
+      gaps: [0, 0, 0.625 * frame.rem, 0],
+      corners: ["16px", "16px", "0px", "0px"],
+      bottomBorder: "0px",
+      endRoom: 2 * frame.rem,
+    });
+  } else {
+    expect(frame).toMatchObject({ width: 56 * frame.rem, height: frame.viewportHeight - 2 * frame.rem });
+  }
 });
 
 function finalMarkdown(page) {

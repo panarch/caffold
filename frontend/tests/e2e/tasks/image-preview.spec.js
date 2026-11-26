@@ -4,6 +4,7 @@ import {
   activateActionHint,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { dialogFrame } from "../support/dialog-frame.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 
 test.beforeEach(async ({ page }) => {
@@ -279,6 +280,36 @@ test("renders and previews assistant-generated images after history reload", { t
   await expect(restoredPreview).toBeVisible();
   await restoredPreview.click();
   await expect(dialog).toBeVisible();
+});
+
+test("opens as a sheet along a phone's bottom edge and as tall as a desktop window", { tag: ["@desktop", "@phone"] }, async ({
+  page,
+}, testInfo) => {
+  const phone = testInfo.project.name === "phone";
+  if (!phone) {
+    await page.setViewportSize({ width: 1728, height: 1000 });
+  }
+  const scenario = await installTaskLoopFixture(page);
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  await pastePortraitImage(tasksPage.locator('.task-new-form textarea[name="prompt"]'), "sheet.png");
+  await clickComposerPreview(
+    tasksPage.locator(".task-new-form .task-composer-attachment").getByRole("button", { name: "Preview sheet.png" }),
+  );
+  const dialog = tasksPage.locator(":scope > caffold-task-image-preview-dialog > dialog");
+  await expect(dialog).toHaveAttribute("open", "");
+
+  const frame = await dialog.evaluate(dialogFrame, { end: ".task-image-preview-body" });
+  if (phone) {
+    expect(frame).toMatchObject({
+      gaps: [0, 0, 0.625 * frame.rem, 0],
+      corners: ["16px", "16px", "0px", "0px"],
+      bottomBorder: "0px",
+      endRoom: 2 * frame.rem,
+    });
+  } else {
+    expect(frame).toMatchObject({ width: 72 * frame.rem, height: frame.viewportHeight - 2 * frame.rem });
+  }
 });
 
 async function clickComposerPreview(previewTrigger) {

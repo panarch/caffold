@@ -4,6 +4,7 @@ import {
   activateActionHint,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { dialogFrame } from "../support/dialog-frame.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import { captureReviewScreenshot } from "../support/task-fixtures.js";
 
@@ -404,6 +405,40 @@ test("closes the preview when another Task opens", { tag: "@server-steady" }, as
   });
   await expect(dialog).not.toHaveAttribute("open", "");
   expect(scenario.pageErrors).toEqual([]);
+});
+
+test("opens as a sheet along a phone's bottom edge and as tall as a desktop window", { tag: ["@desktop", "@phone"] }, async ({
+  page,
+}, testInfo) => {
+  const phone = testInfo.project.name === "phone";
+  if (!phone) {
+    await page.setViewportSize({ width: 1728, height: 1000 });
+  }
+  await seedMermaidTask(page, `thread_mermaid_preview_frame_${testInfo.project.name}`, [
+    mermaidFence(ER_SOURCE),
+  ]);
+  const dialog = mermaidDialog(page);
+  await finalMarkdown(page)
+    .locator("caffold-task-code-block")
+    .getByRole("button", { name: "Preview Mermaid" })
+    .click();
+  await expect(dialog).toHaveAttribute("open", "");
+  await expect(dialog.locator("caffold-task-mermaid-diagram")).toHaveAttribute("data-render-state", "ready");
+
+  const frame = await dialog.evaluate(dialogFrame, {
+    end: "caffold-task-mermaid-diagram",
+    inShadow: ".diagram",
+  });
+  if (phone) {
+    expect(frame).toMatchObject({
+      gaps: [0, 0, 0.625 * frame.rem, 0],
+      corners: ["16px", "16px", "0px", "0px"],
+      bottomBorder: "0px",
+      endRoom: 2 * frame.rem,
+    });
+  } else {
+    expect(frame).toMatchObject({ width: 56 * frame.rem, height: frame.viewportHeight - 2 * frame.rem });
+  }
 });
 
 function mermaidFence(source) {

@@ -184,11 +184,17 @@ dialog::backdrop {
   user-select: text;
 }
 
+/* On a phone the dialog is a sheet along the bottom edge, and the end of what
+   it shows clears the screen's rounded corners. */
 @media (max-width: 620px) {
   dialog {
-    width: calc(100vw - 0.5rem);
-    height: calc(100dvh - 0.5rem);
+    inset: calc(env(safe-area-inset-top) + var(--interface-space-5)) 0 0;
+    width: auto;
+    height: auto;
     max-height: none;
+    margin: 0;
+    border-bottom-width: 0;
+    border-radius: 16px 16px 0 0;
   }
 
   .task-tool-call-dialog-card {
@@ -199,6 +205,13 @@ dialog::backdrop {
   .task-tool-call-dialog-header,
   .task-tool-call-dialog-body {
     padding: var(--interface-space-8);
+  }
+
+  .task-tool-call-dialog-body {
+    padding-bottom: calc(
+      var(--interface-space-8) +
+      max(var(--interface-space-8), env(safe-area-inset-bottom))
+    );
   }
 
   .task-tool-call-dialog-details > div {

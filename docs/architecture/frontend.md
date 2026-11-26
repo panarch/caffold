@@ -1470,7 +1470,12 @@ component applies the resolved theme, the UI typeface, and the Conversation text
 size right before each render and runs renders one at a time. It waits for that
 typeface to load first, since Mermaid sizes each label by drawing it. The
 component sizes the SVG to its viewBox, so the diagram shows at its natural size
-and scrolls inside the dialog. It keeps one current SVG: a closed dialog keeps
+and scrolls inside the dialog. Like Markdown Preview's
+`--markdown-preview-scroll-end-clearance`, its optional
+`--mermaid-diagram-scroll-end-clearance` token, which defaults to zero, adds
+room after the diagram's end; the dialog sets it where it opens as a phone
+sheet, as the Markdown preview and current-plan dialogs set Markdown Preview's.
+It keeps one current SVG: a closed dialog keeps
 the result for the same source and appearance, and a changed theme or setting
 draws again while the dialog is open. Mermaid cannot stop a render, so one that
 finishes after its source, appearance, or dialog changed is dropped. When
