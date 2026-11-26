@@ -2233,6 +2233,44 @@ test("keeps a long Source file's adjacent files with the scroll while a card has
   await expect.poll(cardsBelowViewer).toBe(true);
 });
 
+test("stops Source and Diff at their sideways ends instead of bouncing, and keeps their bounce up and down", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/files");
+
+  // A touch screen's bounce cannot be driven here; this reads the rule that
+  // decides it on each scroll area.
+  const overscroll = await page.evaluate(async () => {
+    await import("/assets/components/file-viewer.js");
+    const viewer = document.createElement("caffold-review-file-viewer");
+    viewer.style.cssText = "display: block; width: 520px; height: 300px;";
+    document.body.append(viewer);
+    const drawn = () => new Promise(requestAnimationFrame);
+    const scrollArea = () => {
+      const leaf = viewer.shadowRoot.querySelector("caffold-code-viewer, caffold-diff-viewer");
+      const style = getComputedStyle(leaf.shadowRoot.querySelector(".code-lines, .diff-lines"));
+      return [style.overscrollBehaviorX, style.overscrollBehaviorY];
+    };
+
+    viewer.setFile({ path: "src/a.js", content: "const a = 1;\n" });
+    await drawn();
+    const source = scrollArea();
+    viewer.setChangeChoices({
+      choices: [
+        { value: "diff", label: "Diff", icon: "FileDiff" },
+        { value: "visual", label: "Visual", icon: "Images" },
+      ],
+      selected: "diff",
+    });
+    viewer.setDiff({ path: "src/a.js", diff: "@@ -1,1 +1,1 @@\n-const a = 1;\n+const a = 2;" });
+    await drawn();
+    const diff = scrollArea();
+    viewer.remove();
+    return { source, diff };
+  });
+  expect(overscroll).toEqual({ source: ["none", "contain"], diff: ["none", "contain"] });
+});
+
 test("spaces the file header's choice and buttons as the Detail header spaces its own", { tag: ["@desktop", "@phone"] }, async ({
   page,
 }) => {
