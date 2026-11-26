@@ -41,7 +41,10 @@
   display: grid;
   grid-template-rows: 1fr auto;
   overflow: auto;
-  overscroll-behavior: contain;
+  /* A sideways bounce would pull the code and its line numbers aside
+     together, so that axis stops at its ends; up and down still bounce. */
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: contain;
   background: var(--code-bg);
   font-family: var(--font-code);
   font-size: var(--code-font-size);

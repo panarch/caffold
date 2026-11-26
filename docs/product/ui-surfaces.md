@@ -614,6 +614,9 @@ removed line and the new file's on the others. Once Source's numbers have
 scrolled out of view, each line the scope changed keeps its mark as a thin strip
 at the left edge.
 
+Pulled past a sideways end, Source and Diff stop instead of bouncing; at the
+top and bottom they bounce as other scrolling lists do.
+
 A file opened from Changes ends, in Diff, Source, Visual, and a notice about
 it, with cards for the changed files before and after it in the list's order,
 a file in both Working Tree groups counted where it first shows; a card opens
