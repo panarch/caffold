@@ -57,6 +57,7 @@ test("defines an interface and a code registry with separate defaults", async ()
     "0xproto",
     "geist-mono",
     "ibm-plex-mono",
+    "intel-one-mono",
     "jetbrains-mono",
     "monaspace-neon",
     "system-mono",
@@ -64,6 +65,7 @@ test("defines an interface and a code registry with separate defaults", async ()
     "0xproto-nerd-font",
     "geist-mono-nerd-font",
     "blex-mono-nerd-font",
+    "intone-mono-nerd-font",
     "jetbrains-mono-nerd-font",
     "monaspice-ne-nerd-font",
   ]);
@@ -76,6 +78,7 @@ test("defines an interface and a code registry with separate defaults", async ()
       "0xProto Nerd Font",
       "GeistMono Nerd Font",
       "BlexMono Nerd Font",
+      "IntoneMono Nerd Font",
       "JetBrainsMono Nerd Font",
       "MonaspiceNe Nerd Font",
     ],

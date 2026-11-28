@@ -68,6 +68,15 @@ commit `9d6f0559691ebe670a23fbf7b72a8dc42362f1fb`.
 - `IBMPlexMono-Regular.woff2`: `ba204497f16b6d334cee9d1e963a831b73e3a56e1d6300a8489d18df7214b350`
 - `IBMPlexMono-Bold.woff2`: `ea576f38d05cc44cca48c45314984beb8cc1d2b886f58e1dce99f15dc344eb1d`
 
+## Intel One Mono
+
+[`intel/intel-one-mono`](https://github.com/intel/intel-one-mono) release
+`V1.5.0`, `intel-one-mono-woff2.zip`. The release package carries no license
+file; `IntelOneMono-OFL.txt` comes from the repository at the same tag.
+
+- `IntelOneMono-Regular.woff2`: `e79690bc3b711d34cebc6a967d9bf9db9e6ad1c4b9a9627323d5130a3d927b64`
+- `IntelOneMono-Bold.woff2`: `dc7f6cae79315eedb8f626304fb96b24808a68a22c4f91fd6333ec2bea24fd22`
+
 ## JetBrains Mono
 
 [`JetBrains/JetBrainsMono`](https://github.com/JetBrains/JetBrainsMono) release
@@ -90,9 +99,9 @@ license file; `MonaspaceNeon-OFL.txt` comes from the repository at the same tag.
 [`ryanoasis/nerd-fonts`](https://github.com/ryanoasis/nerd-fonts) release
 `v3.5.1`. Each face is the release's `Nerd Font Mono` build of one bundled code
 font: the font with icon sets and Powerline symbols added, each fitted to one
-cell. Three builds carry another name because the original's license reserves
-it: D2 Coding, IBM Plex Mono, and Monaspace become D2KodingLigature, BlexMono,
-and Monaspice.
+cell. Four builds carry another name because the original's license reserves
+it: D2 Coding, IBM Plex Mono, Intel One Mono, and Monaspace become
+D2KodingLigature, BlexMono, IntoneMono, and Monaspice.
 
 The release ships TTF and OTF only. Each file is converted with fontTools
 `4.66.1` (Brotli `1.2.0`), which keeps every table and glyph outline:
@@ -164,6 +173,17 @@ archive's `LICENSE.txt`.
 - `BlexMonoNerdFontMono-Bold.ttf`: `0f0b5fc5970a8272bfa3a97e4aae465dd91b4da0faa76662635bc7bd1b91731d`
 - `BlexMonoNerdFontMono-Regular.woff2`: `ec18b00ba10137c18cce3c029565234cdc20cdba136c18122dee5244ad7adeab`
 - `BlexMonoNerdFontMono-Bold.woff2`: `8aebdda4acdef08562ffe23ae1851528740b8462711e3bf7b4b72f98b4386622`
+
+### IntoneMono Nerd Font
+
+`IntelOneMono.tar.xz`, Intel One Mono `1.4.0`. `IntoneMonoNerdFont-OFL.txt` is
+the archive's `LICENSE.txt`.
+
+- `IntelOneMono.tar.xz`: `792614cd446b3044e8043abab487cc604233b307a49ee61460b57bdc97b90f39`
+- `IntoneMonoNerdFontMono-Regular.ttf`: `a252e33ca5dcb50b9c34a6396bdaec55e4864ccf1f515e15029195d23dc79088`
+- `IntoneMonoNerdFontMono-Bold.ttf`: `446cf74bece5e7182426221b9eae3a4544b010c1d21bc5596802c0493c48a51d`
+- `IntoneMonoNerdFontMono-Regular.woff2`: `da516ab723edaa4a5e89690e74121aba9db867cce18efc50ae9c407c0a426eeb`
+- `IntoneMonoNerdFontMono-Bold.woff2`: `4b00debe6a7f002de89c7fabcb2c8d06436107ff7d6a118b27dd949bf16582a9`
 
 ### JetBrainsMono Nerd Font
 

@@ -256,6 +256,15 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "fonts/IBMPlexMono-OFL.txt" => Some(plain_text(include_str!(
             "../../frontend/assets/fonts/IBMPlexMono-OFL.txt"
         ))),
+        "fonts/IntelOneMono-Regular.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/IntelOneMono-Regular.woff2"
+        ))),
+        "fonts/IntelOneMono-Bold.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/IntelOneMono-Bold.woff2"
+        ))),
+        "fonts/IntelOneMono-OFL.txt" => Some(plain_text(include_str!(
+            "../../frontend/assets/fonts/IntelOneMono-OFL.txt"
+        ))),
         "fonts/JetBrainsMono-Regular.woff2" => Some(woff2(include_bytes!(
             "../../frontend/assets/fonts/JetBrainsMono-Regular.woff2"
         ))),
@@ -309,6 +318,15 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "fonts/BlexMonoNerdFont-OFL.txt" => Some(plain_text(include_str!(
             "../../frontend/assets/fonts/BlexMonoNerdFont-OFL.txt"
+        ))),
+        "fonts/IntoneMonoNerdFontMono-Regular.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/IntoneMonoNerdFontMono-Regular.woff2"
+        ))),
+        "fonts/IntoneMonoNerdFontMono-Bold.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/IntoneMonoNerdFontMono-Bold.woff2"
+        ))),
+        "fonts/IntoneMonoNerdFont-OFL.txt" => Some(plain_text(include_str!(
+            "../../frontend/assets/fonts/IntoneMonoNerdFont-OFL.txt"
         ))),
         "fonts/JetBrainsMonoNerdFontMono-Regular.woff2" => Some(woff2(include_bytes!(
             "../../frontend/assets/fonts/JetBrainsMonoNerdFontMono-Regular.woff2"
@@ -3099,6 +3117,7 @@ mod tests {
             "0xProto",
             "GeistMono",
             "IBMPlexMono",
+            "IntelOneMono",
             "JetBrainsMono",
             "MonaspaceNeon",
         ] {
@@ -3120,6 +3139,7 @@ mod tests {
             "0xProto",
             "GeistMono",
             "BlexMono",
+            "IntoneMono",
             "JetBrainsMono",
             "MonaspiceNe",
         ] {

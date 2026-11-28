@@ -89,6 +89,22 @@
 }
 
 @font-face {
+  font-family: "Caffold Intel One Mono";
+  src: url("./fonts/IntelOneMono-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Caffold Intel One Mono";
+  src: url("./fonts/IntelOneMono-Bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
   font-family: "Caffold JetBrains Mono";
   src: url("./fonts/JetBrainsMono-Regular.woff2") format("woff2");
   font-style: normal;
@@ -179,6 +195,22 @@
 @font-face {
   font-family: "Caffold BlexMono Nerd Font";
   src: url("./fonts/BlexMonoNerdFontMono-Bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Caffold IntoneMono Nerd Font";
+  src: url("./fonts/IntoneMonoNerdFontMono-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Caffold IntoneMono Nerd Font";
+  src: url("./fonts/IntoneMonoNerdFontMono-Bold.woff2") format("woff2");
   font-style: normal;
   font-weight: 700;
   font-display: swap;

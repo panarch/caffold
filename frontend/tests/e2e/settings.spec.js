@@ -3472,6 +3472,7 @@ test("switches and persists the local typeface presets", { tag: "@all-viewports"
     "0xProto",
     "Geist Mono",
     "IBM Plex Mono",
+    "Intel One Mono",
     "JetBrains Mono",
     "Monaspace Neon",
     "System Mono",
@@ -3484,6 +3485,7 @@ test("switches and persists the local typeface presets", { tag: "@all-viewports"
     "0xProto Nerd Font",
     "GeistMono Nerd Font",
     "BlexMono Nerd Font",
+    "IntoneMono Nerd Font",
     "JetBrainsMono Nerd Font",
     "MonaspiceNe Nerd Font",
   ]);

@@ -41,6 +41,11 @@ export const CODE_TYPEFACE_PRESETS: Readonly<Record<string, TypefacePreset>> =
       "IBM Plex Mono",
       SYSTEM_MONO_STACK,
     ),
+    "intel-one-mono": bundledTypeface(
+      "intel-one-mono",
+      "Intel One Mono",
+      SYSTEM_MONO_STACK,
+    ),
     "jetbrains-mono": bundledTypeface(
       "jetbrains-mono",
       "JetBrains Mono",
@@ -71,6 +76,10 @@ export const CODE_TYPEFACE_PRESETS: Readonly<Record<string, TypefacePreset>> =
     "blex-mono-nerd-font": nerdFontTypeface(
       "blex-mono-nerd-font",
       "BlexMono Nerd Font",
+    ),
+    "intone-mono-nerd-font": nerdFontTypeface(
+      "intone-mono-nerd-font",
+      "IntoneMono Nerd Font",
     ),
     "jetbrains-mono-nerd-font": nerdFontTypeface(
       "jetbrains-mono-nerd-font",
