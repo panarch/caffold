@@ -1,4 +1,4 @@
-import { html } from "lit";
+import { html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import {
   type ActionHintPull,
@@ -20,33 +20,64 @@ import type {
 
 import styles from "./navigator.css.js";
 
+interface SettingsNavigatorGroup {
+  label?: string;
+  entries: readonly SettingsNavigatorEntry[];
+}
+
 // Each brand mark is published in a single color so it can be tinted, and the
 // theme tints it through --brand-monochrome-filter.
-const ITEMS: readonly SettingsNavigatorEntry[] = [
-  { section: "appearance", label: "Appearance", icon: "Palette" },
-  { section: "keyboard", label: "Keyboard", icon: "Keyboard" },
-  { section: "files", label: "Files", icon: "File" },
+const GROUPS: readonly SettingsNavigatorGroup[] = [
   {
-    section: "language-servers",
-    label: "Language Servers",
-    icon: "CodeXml",
+    label: "Interface",
+    entries: [
+      { section: "appearance", label: "Appearance", icon: "Palette" },
+      { section: "keyboard", label: "Keyboard", icon: "Keyboard" },
+      { section: "voice", label: "Voice Input", icon: "Mic" },
+    ],
   },
-  { section: "notifications", label: "Notifications", icon: "Bell" },
-  { section: "name-and-icon", label: "Name & Icon", icon: "IdCard" },
-  { section: "remote-access", label: "Remote Access", icon: "Link" },
-  { section: "voice", label: "Voice Input", icon: "Mic" },
-  { section: "decision-model", label: "Decision Model", icon: "ShieldCheck" },
-  { section: "codex", label: "Codex", brand: "codex-template@2x.png" },
-  { section: "claude", label: "Claude", brand: "claude-template.png" },
-  { section: "grok", label: "Grok", brand: "grok-template.png" },
   {
-    section: "antigravity",
-    label: "Antigravity",
-    brand: "antigravity-icon.svg",
+    label: "Code",
+    entries: [
+      { section: "files", label: "Files", icon: "File" },
+      {
+        section: "language-servers",
+        label: "Language Servers",
+        icon: "CodeXml",
+      },
+    ],
   },
-  { section: "copilot", label: "GitHub Copilot", brand: "copilot.svg" },
-  { section: "about", label: "About Caffold", icon: "Info" },
+  {
+    label: "Server",
+    entries: [
+      { section: "name-and-icon", label: "Name & Icon", icon: "IdCard" },
+      { section: "remote-access", label: "Remote Access", icon: "Link" },
+      { section: "notifications", label: "Notifications", icon: "Bell" },
+    ],
+  },
+  {
+    label: "Agents",
+    entries: [
+      {
+        section: "decision-model",
+        label: "Decision Model",
+        icon: "ShieldCheck",
+      },
+      { section: "codex", label: "Codex", brand: "codex-template@2x.png" },
+      { section: "claude", label: "Claude", brand: "claude-template.png" },
+      { section: "grok", label: "Grok", brand: "grok-template.png" },
+      {
+        section: "antigravity",
+        label: "Antigravity",
+        brand: "antigravity-icon.svg",
+      },
+      { section: "copilot", label: "GitHub Copilot", brand: "copilot.svg" },
+    ],
+  },
+  { entries: [{ section: "about", label: "About Caffold", icon: "Info" }] },
 ];
+
+const ENTRIES = GROUPS.flatMap(({ entries }) => entries);
 
 @customElement("caffold-settings-navigator")
 export class CaffoldSettingsNavigator extends CaffoldElement {
@@ -67,15 +98,22 @@ export class CaffoldSettingsNavigator extends CaffoldElement {
   private readonly items = new DrawnRefs<CaffoldSettingsNavigatorItem>(this);
 
   override render() {
-    const items = ITEMS.map((entry) => {
-      const about = entry.section === "about";
-      return html`<caffold-settings-navigator-item
-        ${drawn(this.items.of(entry.section))}
-        .entry=${entry}
-        .selected=${entry.section === this.selectedSection}
-        .updateAvailable=${about && this.updateAvailable}
-        .reloadReady=${about && this.reloadReady}
-      ></caffold-settings-navigator-item>`;
+    const groups = GROUPS.map(({ label, entries }) => {
+      const heading = label
+        ? html`<h3 class="settings-navigator-group-label">${label}</h3>`
+        : nothing;
+      return html`<div class="settings-navigator-group">${heading}${entries.map(
+        (entry) => {
+          const about = entry.section === "about";
+          return html`<caffold-settings-navigator-item
+            ${drawn(this.items.of(entry.section))}
+            .entry=${entry}
+            .selected=${entry.section === this.selectedSection}
+            .updateAvailable=${about && this.updateAvailable}
+            .reloadReady=${about && this.reloadReady}
+          ></caffold-settings-navigator-item>`;
+        },
+      )}</div>`;
     });
     return html`
       <header class="settings-navigator-header">
@@ -89,7 +127,7 @@ export class CaffoldSettingsNavigator extends CaffoldElement {
         })}
         class="settings-navigator-list"
         aria-label="Settings sections"
-      >${items}</nav>
+      >${groups}</nav>
     `;
   }
 
@@ -98,7 +136,7 @@ export class CaffoldSettingsNavigator extends CaffoldElement {
     const list = this.list.value;
     return mergeActionHintScopes(
       own,
-      ...ITEMS.map(({ section }) =>
+      ...ENTRIES.map(({ section }) =>
         this.items.get(section)?.actionHintScope({
           ...pull,
           scopeId,
