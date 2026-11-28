@@ -16,6 +16,7 @@ import {
 } from "./support/browser-defaults.js";
 import {
   activeTaskProjection,
+  archivedListTask,
   captureReviewScreenshot,
   installEventSourceMock,
   mockAgentModels,
@@ -305,6 +306,95 @@ test("draws Settings sections at the Task list's row height and title weight, an
       })),
     );
   }
+});
+
+test("groups Settings sections under names lettered like the Task list's Archived heading", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: activeTaskProjection([
+        { threadId: "thread-active-reference", title: "Active reference", updatedMs: Date.now() },
+      ]),
+    })
+  );
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        tasks: [
+          archivedListTask({
+            threadId: "thread-archived-reference",
+            title: "Archived reference",
+            updatedMs: Date.now(),
+          }),
+        ],
+        nextCursor: null,
+      },
+    })
+  );
+
+  await page.goto("/");
+  const archived = page.locator("caffold-archived-task-list .task-list-section-header > h2");
+  await expect(archived).toHaveText("Archived");
+  const archivedLettering = await archived.evaluate((heading) => {
+    const style = getComputedStyle(heading);
+    return {
+      fontSize: style.fontSize,
+      fontWeight: style.fontWeight,
+      letterSpacing: style.letterSpacing,
+      textTransform: style.textTransform,
+      color: style.color,
+    };
+  });
+
+  await page.goto("/settings");
+  const navigator = page.locator("caffold-settings-navigator");
+  await expect(navigator.locator('button[data-settings-section="about"]')).toBeVisible();
+  const groups = await navigator.evaluate((element) =>
+    [...element.shadowRoot.querySelectorAll(".settings-navigator-group")].map((group) => {
+      const name = group.querySelector(".settings-navigator-group-label");
+      const buttons = [...group.querySelectorAll("caffold-settings-navigator-item")].map(
+        (item) => item.shadowRoot.querySelector("button"),
+      );
+      const mark = buttons[0].querySelector(
+        ".settings-navigator-item-icon-slot, .settings-navigator-item-brand",
+      );
+      const style = name && getComputedStyle(name);
+      return {
+        name: name?.textContent ?? null,
+        sections: buttons.map((button) => button.dataset.settingsSection),
+        lettering: style && {
+          fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          letterSpacing: style.letterSpacing,
+          textTransform: style.textTransform,
+          color: style.color,
+        },
+        nameStartsAtMark: name
+          ? Math.abs(
+            name.getBoundingClientRect().left + Number.parseFloat(style.paddingLeft)
+              - mark.getBoundingClientRect().left,
+          ) < 0.5
+          : null,
+        clipped: name ? name.scrollWidth > name.clientWidth : null,
+      };
+    })
+  );
+  const named = (name, sections) => ({
+    name,
+    sections,
+    lettering: archivedLettering,
+    nameStartsAtMark: true,
+    clipped: false,
+  });
+  expect(groups).toEqual([
+    named("Interface", ["appearance", "keyboard", "voice"]),
+    named("Code", ["files", "language-servers"]),
+    named("Server", ["name-and-icon", "remote-access", "notifications"]),
+    named("Agents", ["decision-model", "codex", "claude", "grok", "antigravity", "copilot"]),
+    { name: null, sections: ["about"], lettering: null, nameStartsAtMark: null, clipped: null },
+  ]);
 });
 
 test("draws no Settings page text larger than the page's description", { tag: ["@desktop", "@foldable"] }, async ({

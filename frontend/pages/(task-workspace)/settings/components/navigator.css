@@ -53,6 +53,25 @@
   display: none;
 }
 
+.settings-navigator-group {
+  display: grid;
+}
+
+.settings-navigator-group + .settings-navigator-group {
+  margin-top: var(--interface-space-6);
+}
+
+/* The Task list's Archived heading, inset like the entries' icons. */
+.settings-navigator-group-label {
+  margin: 0;
+  padding: var(--interface-space-2) var(--interface-space-7) 0.4375rem;
+  color: var(--muted);
+  font-size: var(--task-group-font-size);
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
 :host([hidden]) {
   display: none;
 }

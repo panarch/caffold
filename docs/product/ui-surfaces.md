@@ -784,6 +784,11 @@ The Notes surface only reads them.
 
 ## Settings
 
+The Settings list names four groups of pages: Interface (Appearance,
+Keyboard, Voice Input), Code (Files, Language Servers), Server (Name & Icon,
+Remote Access, Notifications), and Agents (Decision Model, Codex, Claude,
+Grok, Antigravity, GitHub Copilot). About Caffold comes last, outside them.
+
 Settings includes:
 
 - Appearance controls for System/Light/Dark theme, the Interface and Code
