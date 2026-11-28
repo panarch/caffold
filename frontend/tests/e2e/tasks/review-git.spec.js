@@ -2250,14 +2250,14 @@ test("ends a changed file with the files before and after it in the list's order
   await files.nth(1).click();
   await expect(previous).toContainText(`Previous ${name(order[0])}`);
   await expect(next).toContainText(`Next ${name(order[2])}`);
-  // A diff shorter than the viewer ends at the viewer's bottom with the cards,
-  // above the room left for the conversation's button.
-  const [cardsBox, viewerBox, room] = await Promise.all([
+  // A diff shorter than the viewer ends with the cards, whose band keeps the
+  // room left for the conversation's button under them and so reaches the
+  // viewer's bottom.
+  const [cardsBox, viewerBox] = await Promise.all([
     cards.boundingBox(),
     taskReview.locator("caffold-diff-viewer").boundingBox(),
-    floatingConversationRoom(taskReview),
   ]);
-  expect(Math.abs(cardsBox.y + cardsBox.height + room - (viewerBox.y + viewerBox.height)))
+  expect(Math.abs(cardsBox.y + cardsBox.height - (viewerBox.y + viewerBox.height)))
     .toBeLessThanOrEqual(1);
 
   await next.click();

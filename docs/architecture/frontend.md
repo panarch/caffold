@@ -2270,9 +2270,13 @@ scroll-driven animations the leaf drops the copy and puts the cards in a row
 under the code. The cards keep 0.75rem of space below them, or 1.25rem on a
 phone held upright, which clears the screen's rounded corners. An owner that
 floats controls over the viewer's bottom gives their height as
-`--file-viewer-scroll-end-clearance`: the `end` slot and its copy add it under
-the cards, which then rise above those controls, and is the room after the last
-line where there are no cards. Image at a percent, PDF, Word, PowerPoint, and
+`--file-viewer-scroll-end-clearance`. The cards' band keeps that room under the
+cards, in the copy as well, so the cards rise above those controls and the band
+reaches the viewer's bottom beneath them. Where no cards end the file, the leaf
+holds the room with its slots' fallback content: a code or diff leaf after the
+last line, through which the column behind the line numbers runs to the
+viewer's bottom, or in the row under the code without scroll-driven animations,
+and Visual under the pictures. Image at a percent, PDF, Word, PowerPoint, and
 Hangul leave that room after what they scroll without changing the size a page
 or picture fits, Markdown Preview takes it as its scroll-end clearance, and
 Excel leaves it at the end of its sheet tabs. Choosing

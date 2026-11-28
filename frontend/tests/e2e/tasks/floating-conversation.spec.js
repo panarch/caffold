@@ -403,14 +403,19 @@ test("keeps the end of a file clear of the button, and the same with the card op
   page,
 }, testInfo) => {
   const { taskReview, openButton, card } = await openWorkingTreeFile(page);
-  const cards = taskReview.getByRole("navigation", { name: "Changed files" });
+  // The band of file cards reaches the bottom under the button; the cards in
+  // it end above the button.
+  const fileCard = taskReview
+    .getByRole("navigation", { name: "Changed files" })
+    .locator(".viewer-adjacent-file")
+    .first();
 
-  await expect(cards).toBeVisible();
-  const [cardsBox, buttonBox] = await Promise.all([
-    cards.boundingBox(),
+  await expect(fileCard).toBeVisible();
+  const [fileCardBox, buttonBox] = await Promise.all([
+    fileCard.boundingBox(),
     openButton.boundingBox(),
   ]);
-  expect(cardsBox.y + cardsBox.height).toBeLessThanOrEqual(buttonBox.y);
+  expect(fileCardBox.y + fileCardBox.height).toBeLessThanOrEqual(buttonBox.y);
 
   if (testInfo.project.name === "phone") {
     return;
@@ -421,7 +426,7 @@ test("keeps the end of a file clear of the button, and the same with the card op
   await openButton.click();
   await expect(card).toBeVisible();
   expect(await floatingConversationRoom(taskReview)).toBe(room);
-  expect(await cards.boundingBox()).toEqual(cardsBox);
+  expect(await fileCard.boundingBox()).toEqual(fileCardBox);
 });
 
 test("keeps the end of a phone's file list clear of the button", { tag: "@phone" }, async ({ page }) => {

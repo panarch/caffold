@@ -2130,6 +2130,120 @@ test("scrolls a narrow viewer's line numbers away with the code and gives a narr
   expect(result.diff.narrowNumbers.width).toBeLessThan(result.diff.wideNumbers.width);
 });
 
+test("runs the line numbers through the room a floating control leaves after the last line", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/files");
+
+  const result = await page.evaluate(async () => {
+    await import("/assets/components/file-viewer.js");
+    const drawn = () => new Promise(requestAnimationFrame);
+    const viewer = document.createElement("caffold-review-file-viewer");
+    viewer.style.cssText =
+      "position: fixed; inset: 0 auto auto 0; z-index: 1000; width: 600px; height: 400px;" +
+      " --file-viewer-scroll-end-clearance: 72px;";
+    document.body.append(viewer);
+    // At the end of what scrolls, where the column behind the numbers and the
+    // room end against the viewer's bottom, how tall the room is, how far it
+    // starts from the last line, and whether a touch on it lands in what
+    // scrolls.
+    const place = async () => {
+      await drawn();
+      const leaf = viewer.shadowRoot.querySelector("caffold-code-viewer, caffold-diff-viewer");
+      const root = leaf.shadowRoot;
+      const scroller = root.querySelector(".code-lines, .diff-lines");
+      scroller.scrollTop = scroller.scrollHeight;
+      await drawn();
+      await drawn();
+      const box = (selector) => root.querySelector(selector).getBoundingClientRect();
+      // Whole pixels, with a hair below zero read as 0 rather than -0.
+      const px = (value) => Math.round(value) || 0;
+      const bottom = leaf.getBoundingClientRect().bottom;
+      const room = box("slot[name=end-room]");
+      const touched = root.elementFromPoint(
+        room.left + room.width / 2,
+        room.top + room.height / 2,
+      );
+      return {
+        column: px(box(".code-gutter-backdrop, .diff-gutter-backdrop").bottom - bottom),
+        room: px(room.height),
+        roomEnd: px(room.bottom - bottom),
+        afterLastLine: px(room.top - box(".code-row:last-child, .diff-row:last-child").bottom),
+        touchScrolls: scroller.contains(touched),
+      };
+    };
+    const lines = Array.from({ length: 120 }, (_, index) => `line ${index + 1}`);
+
+    viewer.setFile({ path: "src/short.rs", content: "fn main() {}" });
+    const shortSource = await place();
+    viewer.setFile({ path: "src/long.rs", content: lines.join("\n") });
+    const longSource = await place();
+    viewer.setDiff({ path: "src/short.rs", diff: "@@ -1 +1 @@\n-old\n+new" });
+    const shortDiff = await place();
+    viewer.setDiff({ path: "src/long.rs", diff: `@@ -0,0 +1,120 @@\n+${lines.join("\n+")}` });
+    const longDiff = await place();
+    return { shortSource, longSource, shortDiff, longDiff };
+  });
+
+  // A short file's room sits at the viewer's bottom, below empty space; a long
+  // one's starts right after the last line. Either way the column reaches the
+  // bottom.
+  const atBottom = { column: 0, room: 72, roomEnd: 0, touchScrolls: true };
+  expect(result).toEqual({
+    shortSource: { ...atBottom, afterLastLine: expect.any(Number) },
+    longSource: { ...atBottom, afterLastLine: 0 },
+    shortDiff: { ...atBottom, afterLastLine: expect.any(Number) },
+    longDiff: { ...atBottom, afterLastLine: 0 },
+  });
+  expect(result.shortSource.afterLastLine).toBeGreaterThan(0);
+  expect(result.shortDiff.afterLastLine).toBeGreaterThan(0);
+});
+
+test("keeps the room a floating control leaves under a file's adjacent files", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/files");
+
+  const result = await page.evaluate(async () => {
+    await import("/assets/components/file-viewer.js");
+    const drawn = () => new Promise(requestAnimationFrame);
+    const viewer = document.createElement("caffold-review-file-viewer");
+    viewer.style.cssText =
+      "display: block; width: 600px; height: 400px; --file-viewer-scroll-end-clearance: 72px;";
+    document.body.append(viewer);
+    viewer.setAdjacentFiles({
+      previous: { path: "src/a.rs", name: "a.rs", folder: "src" },
+      next: { path: "src/c.rs", name: "c.rs", folder: "src" },
+    });
+    // Where the band of cards and the cards in it end against the viewer's
+    // bottom, and how tall the room after the last line is against the band.
+    const place = async () => {
+      await drawn();
+      await drawn();
+      const leaf = viewer.shadowRoot.querySelector("caffold-code-viewer, caffold-diff-viewer");
+      const band = viewer.shadowRoot.querySelector("nav.viewer-adjacent-files").getBoundingClientRect();
+      const card = viewer.shadowRoot.querySelector("nav .viewer-adjacent-file").getBoundingClientRect();
+      const room = leaf.shadowRoot.querySelector("slot[name=end-room]").getBoundingClientRect();
+      const bottom = leaf.getBoundingClientRect().bottom;
+      const px = (value) => Math.round(value) || 0;
+      return {
+        band: px(band.bottom - bottom),
+        cardAboveRoom: bottom - card.bottom > 72,
+        roomHoldsBand: px(room.height - band.height),
+      };
+    };
+
+    viewer.setFile({ path: "src/b.rs", content: "fn main() {}" });
+    const source = await place();
+    viewer.setDiff({ path: "src/b.rs", diff: "@@ -1 +1 @@\n-old\n+new" });
+    const diff = await place();
+    return { source, diff };
+  });
+
+  const placed = { band: 0, cardAboveRoom: true, roomHoldsBand: 0 };
+  expect(result).toEqual({ source: placed, diff: placed });
+});
+
 test("raises a long Source file's adjacent files with its end and keeps them still sideways", { tag: "@server-steady" }, async ({
   page,
 }) => {
