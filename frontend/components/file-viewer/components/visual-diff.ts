@@ -164,7 +164,7 @@ export class CaffoldVisualDiff extends CaffoldElement {
               : this.renderSideBySide(views)
         }
       </div>
-      <slot name="end"></slot>
+      <slot name="end"><div class="scroll-end-clearance"></div></slot>
     `;
   }
 

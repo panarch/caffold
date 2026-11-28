@@ -594,7 +594,10 @@ dd {
 
 /* The files before and after this one, at the end of what the viewer shows:
    two cards that share the width, Previous on the left and Next on the
-   right, each naming its file and, shortened from the start, its folder. */
+   right, each naming its file and, shortened from the start, its folder.
+   An owner may float controls over the viewer's bottom and give their height
+   as --file-viewer-scroll-end-clearance; the band keeps that room under the
+   cards, so it reaches the viewer's bottom beneath those controls. */
 .viewer-adjacent-files {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -602,7 +605,10 @@ dd {
   gap: var(--interface-space-5);
   box-sizing: border-box;
   padding: var(--interface-space-5) var(--interface-space-6)
-    max(var(--interface-space-6), env(safe-area-inset-bottom));
+    calc(
+      max(var(--interface-space-6), env(safe-area-inset-bottom)) +
+      var(--file-viewer-scroll-end-clearance, 0rem)
+    );
   border-top: 1px solid var(--border);
   background: var(--surface);
   font-size: var(--interface-font-size);
@@ -689,22 +695,6 @@ dd {
    so they stop higher above the edge there. */
 @media (max-width: 520px) and (orientation: portrait) {
   .viewer-adjacent-files {
-    padding-bottom: max(var(--interface-space-10), env(safe-area-inset-bottom));
-  }
-}
-
-/* An owner may float controls over the viewer's bottom; it gives their
-   height as --file-viewer-scroll-end-clearance, and each view leaves that much
-   room after what it scrolls, or under the cards a notice ends with. */
-.notice-panel > .viewer-adjacent-files {
-  padding-bottom: calc(
-    max(var(--interface-space-6), env(safe-area-inset-bottom)) +
-    var(--file-viewer-scroll-end-clearance, 0rem)
-  );
-}
-
-@media (max-width: 520px) and (orientation: portrait) {
-  .notice-panel > .viewer-adjacent-files {
     padding-bottom: calc(
       max(var(--interface-space-10), env(safe-area-inset-bottom)) +
       var(--file-viewer-scroll-end-clearance, 0rem)

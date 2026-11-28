@@ -28,12 +28,16 @@
 /* The stage is the size every picture is scaled against: a picture shrinks
    to fit it and never grows past its own size, and both sides share one
    scale, so a picture that changed size shows the change. */
-/* What the owner places after the pictures, under the stage, above the
-   room for anything the owner floats over the viewer's bottom. */
+/* What the owner places after the pictures, under the stage. */
 slot[name="end"] {
   display: block;
   grid-row: 3;
-  padding-bottom: var(--file-viewer-scroll-end-clearance, 0rem);
+}
+
+/* Room for what the owner floats over the viewer's bottom. Cards keep it
+   under themselves, so the slot holds it only while nothing is placed in it. */
+.scroll-end-clearance {
+  height: var(--file-viewer-scroll-end-clearance, 0rem);
 }
 
 .visual-stage {

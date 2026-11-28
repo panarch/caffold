@@ -39,11 +39,13 @@
   line-height: var(--code-line-height);
 }
 
+/* The column runs through every row of what scrolls, the room after the
+   last line included. */
 .code-gutter-backdrop {
   position: sticky;
   left: 0;
   z-index: 1;
-  grid-area: 1 / 1;
+  grid-area: 1 / 1 / -1;
   width: var(--code-line-number-width);
   border-right: 1px solid var(--border);
   background: var(--code-gutter);
@@ -71,28 +73,18 @@ slot[name="end-room"] {
   display: none;
 }
 
-/* Room for what the owner floats over the viewer's bottom, under the cards
-   and their copy alike, so the copy still holds the cards' place. With no
-   cards it is the room after the last line. The visible slot lets the
-   pointer through to the lines under its empty part. */
-slot[name="end"],
-slot[name="end-room"] {
-  padding-bottom: var(--file-viewer-scroll-end-clearance, 0rem);
-}
-
-slot[name="end"] {
-  pointer-events: none;
-}
-
-slot[name="end"]::slotted(*) {
-  pointer-events: auto;
+/* Room for what the owner floats over the viewer's bottom. Cards keep it
+   under themselves, so a slot holds it only while nothing is placed in it. */
+.scroll-end-clearance {
+  height: var(--file-viewer-scroll-end-clearance, 0rem);
 }
 
 /* With them, it lies over the viewer's bottom. The owner's hidden copy of
    it holds its room after the last line, as wide as the viewer however far
    the lines scroll sideways, and it rises with that room into view: it
    ends a file shorter than the viewer at the bottom, and a longer one
-   right after the last line. */
+   right after the last line. Without cards, the copy's slot holds the room
+   after the last line itself. */
 @supports (animation-timeline: view()) and (timeline-scope: --file-end) {
   .code-viewer {
     position: relative;
@@ -119,6 +111,10 @@ slot[name="end"]::slotted(*) {
     animation: file-end-rises linear both;
     animation-timeline: --file-end;
     animation-range: entry 0% entry 100%;
+  }
+
+  slot[name="end"] > .scroll-end-clearance {
+    display: none;
   }
 }
 

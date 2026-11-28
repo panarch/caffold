@@ -282,13 +282,53 @@ test("ends an image's comparison with the files around it", { tag: "@server-stea
   const cards = taskReview.locator(".viewer-adjacent-files");
   await expect(visual.locator("figure").first()).toBeVisible();
   await expect(cards).toBeVisible();
-  // The cards sit under the pictures, at the bottom of the viewer, above the
-  // room left for the conversation's button.
-  const [cardsBox, visualBox, room] = await Promise.all([
+  // The cards sit under the pictures, above the room left for the
+  // conversation's button, which their band keeps under them down to the
+  // viewer's bottom.
+  const [cardsBox, cardBox, visualBox, room] = await Promise.all([
     cards.boundingBox(),
+    cards.locator(".viewer-adjacent-file").first().boundingBox(),
     visual.boundingBox(),
     floatingConversationRoom(taskReview),
   ]);
-  expect(Math.abs(cardsBox.y + cardsBox.height + room - (visualBox.y + visualBox.height)))
-    .toBeLessThanOrEqual(1);
+  const visualBottom = visualBox.y + visualBox.height;
+  expect(Math.abs(cardsBox.y + cardsBox.height - visualBottom)).toBeLessThanOrEqual(1);
+  expect(cardBox.y + cardBox.height + room).toBeLessThan(visualBottom);
+});
+
+test("leaves the room a floating control needs under the pictures only while nothing ends them", { tag: "@server-steady" }, async ({
+  page,
+}) => {
+  const picture = [...pngBytes(40, 40, () => [37, 99, 235, 255])];
+  await page.goto("/settings/files");
+  const result = await page.evaluate(async (bytes) => {
+    await import("/assets/components/file-viewer/components/visual-diff.js");
+    const drawn = () => new Promise(requestAnimationFrame);
+    const visual = document.createElement("caffold-visual-diff");
+    visual.style.cssText =
+      "position: fixed; top: 0; left: 0; width: 360px; height: 480px;" +
+      " --file-viewer-scroll-end-clearance: 72px;";
+    document.body.append(visual);
+    const side = () => {
+      const blob = new Blob([new Uint8Array(bytes)], { type: "image/png" });
+      return { status: "fetched", url: URL.createObjectURL(blob), bytes: blob.size };
+    };
+    visual.setComparison({ sides: { before: side(), after: side() }, mode: "side" });
+    // How far above the viewer's bottom the pictures' stage ends.
+    const underStage = async () => {
+      await drawn();
+      await drawn();
+      const stage = visual.shadowRoot.querySelector(".visual-stage").getBoundingClientRect();
+      return Math.round(visual.getBoundingClientRect().bottom - stage.bottom);
+    };
+    const alone = await underStage();
+    const cards = document.createElement("div");
+    cards.slot = "end";
+    cards.style.height = "40px";
+    visual.append(cards);
+    return { alone, withCards: await underStage() };
+  }, picture);
+
+  // What ends the pictures keeps that room itself.
+  expect(result).toEqual({ alone: 72, withCards: 40 });
 });
